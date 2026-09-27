@@ -13,8 +13,6 @@ from meow.orchestrator import (
     run_sprint,
 )
 
-DEFAULT_FEATURE_NAME = "feature"
-
 
 def _add_common_args(parser: argparse.ArgumentParser):
     parser.add_argument(
@@ -23,11 +21,15 @@ def _add_common_args(parser: argparse.ArgumentParser):
         default=".",
         help="Working directory for the harness (default: current directory).",
     )
+
+
+def _add_feature_args(parser: argparse.ArgumentParser):
     parser.add_argument(
-        "--worktree", "-w", dest="worktree", default=None,
+        "--name", "--feature-name", "-f", dest="feature_name", default=None,
         help=(
-            "Required worktree name under .worktrees unless --no-worktree/-n "
-            "is supplied; the skills may synthesize this value themselves."
+            "Feature name used for generated files and as the worktree name "
+            "when worktrees are enabled. Required unless --no-worktree/-n "
+            "is supplied."
         ),
     )
     parser.add_argument(
@@ -38,18 +40,24 @@ def _add_common_args(parser: argparse.ArgumentParser):
     )
 
 
-def _validate_worktree_requirement(parser: argparse.ArgumentParser, args) -> None:
-    requires_name = args.command in {"run", "plan", "cr"} and not args.no_worktree
-    if requires_name and args.worktree is None:
+def _validate_feature_name_requirement(parser: argparse.ArgumentParser, args) -> None:
+    requires_name = args.command in {"run", "plan"} and not args.no_worktree
+    if requires_name and args.feature_name is None:
         parser.error(
-            "--worktree/-w is required unless --no-worktree/-n is supplied"
+            "--name/--feature-name/-f is required unless "
+            "--no-worktree/-n is supplied"
         )
 
 
 def _should_use_worktree(args) -> bool:
-    return not args.no_worktree and not (
-        args.command == "review" and args.worktree is None
-    )
+    return args.command in {"run", "plan"} and not args.no_worktree
+
+
+def _resolve_input_path(path: str | None, working_dir: Path) -> Path | None:
+    if path is None:
+        return None
+    candidate = Path(path)
+    return (candidate if candidate.is_absolute() else working_dir / candidate).resolve()
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -67,6 +75,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Use an existing plan file instead of generating a new one.",
     )
     _add_common_args(run_parser)
+    _add_feature_args(run_parser)
 
     plan_parser = subparsers.add_parser(
         "plan",
@@ -74,6 +83,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     plan_parser.add_argument("request", help="Feature request text.")
     _add_common_args(plan_parser)
+    _add_feature_args(plan_parser)
 
     review_parser = subparsers.add_parser(
         "review",
@@ -115,51 +125,42 @@ def cli_main():
     log_working_directory(working_dir)
     use_worktree = _should_use_worktree(args)
 
-    _validate_worktree_requirement(parser, args)
+    _validate_feature_name_requirement(parser, args)
     _boot_repo(working_dir, include_gitignore=use_worktree)
 
     if args.command == "run":
-        feature_name = args.worktree or DEFAULT_FEATURE_NAME
-        plan_file = Path(args.plan).resolve() if args.plan else None
+        plan_file = _resolve_input_path(args.plan, working_dir)
         asyncio.run(
             run_sprint(
                 working_dir,
-                feature_name,
+                args.feature_name,
                 args.request,
                 use_worktree=use_worktree,
-                worktree_name=args.worktree,
                 plan_file=plan_file,
             )
         )
     elif args.command == "plan":
-        feature_name = args.worktree or DEFAULT_FEATURE_NAME
         asyncio.run(
             run_plan(
                 working_dir,
-                feature_name,
+                args.feature_name,
                 args.request,
                 use_worktree=use_worktree,
-                worktree_name=args.worktree,
             )
         )
     elif args.command == "review":
-        plan_file = Path(args.plan).resolve() if args.plan else None
+        plan_file = _resolve_input_path(args.plan, working_dir)
         asyncio.run(
             run_review(
                 working_dir,
                 plan_file,
-                use_worktree=use_worktree,
-                worktree_name=args.worktree,
             )
         )
     elif args.command == "cr":
         asyncio.run(
             run_prompt_review(
                 working_dir,
-                args.worktree,
                 args.prompt,
-                use_worktree=use_worktree,
-                worktree_name=args.worktree,
             )
         )
 

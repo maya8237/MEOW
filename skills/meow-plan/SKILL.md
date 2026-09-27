@@ -14,17 +14,20 @@ nothing.
 2. The current project must have a `.harness.toml` at its root. If it's
    missing, tell the user and stop; point them at meow's `GUIDE.md` for
    onboarding rather than guessing at lint commands.
-3. By default, use a safe explicit worktree name from the request (for
+   `meow plan` accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
+   target a project outside the current directory.
+3. By default, use a safe explicit feature name from the request (for
    example, slugify the feature, e.g. `add-csv-export`) and run, from the
    project root:
 
    ```bash
-   meow plan "<feature request>" --worktree "<generated-worktree-name>"
+   meow plan "<feature request>" --name "<generated-feature-name>" --working-dir "<project-path>"
    ```
 
    If the user explicitly wants to operate in the main repo instead of an
-   isolated worktree, add `--no-worktree` instead. That is the override for
-   repo-root mode; the normal harness path is still a named worktree.
+   isolated worktree, add `--no-worktree`; the feature name can then be
+   omitted. Add `--working-dir "<project-path>"` to target a project outside
+   the current directory.
 
    If `meow` isn't found on PATH, tell the user to install meow first
    (its README: a venv with `pip install -e .`, or `pipx install -e .` for a

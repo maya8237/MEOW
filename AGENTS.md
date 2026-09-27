@@ -6,17 +6,19 @@ MEOW — Management, Execution & Optimization of Workflows.
 
 Feature work in this repo runs through the MEOW harness engine — which is this
 repo — not ad hoc editing. From the repo root, with `.venv` active, provide a
-worktree name (or explicitly opt into working in the repo root):
+feature name (or explicitly opt into working in the repo root):
 
 ```bash
-meow run "<feature description>" --worktree "<feature-name>"
+meow run "<feature description>" --name "<feature-name>"
 ```
 
-`meow plan "<feature description>" --worktree "<feature-name>"` writes just the sprint plan, without
+`meow plan "<feature description>" --name "<feature-name>"` writes just the sprint plan, without
 implementing it. `meow review [--plan-file PATH]` re-runs the reviewer
 against an already-implemented plan (the most recent one in `docs_dir` by
 default) and loops fixes back through the generator until it passes. Pass a
 specific plan with `--plan-file PATH` (or `--plan PATH`).
+Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
+select the project directory.
 
 Config lives in `.harness.toml`. Sprint plans, contracts, and reviews are
 written to `docs/exec-plans/active/`.

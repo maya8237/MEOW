@@ -103,13 +103,12 @@ def _verdict_status(verdict_text: str) -> str:
 
 
 async def run_prompt_reviewer(
-    sprint: Sprint, feature_name: str | None, prompt: str | None
+    sprint: Sprint, prompt: str | None
 ) -> tuple[str, str]:
     """Grade the current working tree against a free-text prompt, or the git diff."""
     active_dir = sprint.active_working_dir() / sprint.config["docs_dir"]
     active_dir.mkdir(parents=True, exist_ok=True)
-    review_name = f"{feature_name}-review" if feature_name else "review"
-    review_file = active_dir / f"{review_name}.md"
+    review_file = active_dir / "review.md"
 
     review_basis = (prompt or "").strip()
     git_context = _git_review_context(sprint)

@@ -67,16 +67,15 @@ def _resolve_working_dir(
     working_dir: Path,
     *,
     use_worktree: bool,
-    worktree_name: str | None,
-    default_name: str | None,
+    feature_name: str | None,
 ) -> tuple[Path, str | None, bool]:
-    """Return the working directory and the effective worktree name."""
+    """Return the active directory and optional feature name."""
     if not use_worktree:
-        return working_dir, default_name, False
-    if not worktree_name:
-        raise ValueError("worktree_name is required when use_worktree=True")
+        return working_dir, feature_name, False
+    if not feature_name:
+        raise ValueError("feature_name is required when use_worktree=True")
 
-    return _ensure_feature_worktree(working_dir, worktree_name), worktree_name, True
+    return _ensure_feature_worktree(working_dir, feature_name), feature_name, True
 
 
 def _ensure_feature_worktree(working_dir: Path, feature_name: str) -> Path:
@@ -122,7 +121,7 @@ def _build_sprint(
     return Sprint(
         repo_dir=repo_dir,
         config=config,
-        explorer=make_explorer_agent(config),
+        explorer=make_explorer_agent(config, active_dir),
         lint_hook=make_lint_hook(active_dir, commands),
         working_dir=active_dir,
     )
@@ -253,7 +252,6 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
     request: str,
     *,
     use_worktree: bool = True,
-    worktree_name: str | None = None,
     plan_file: Path | None = None,
 ):
     config = load_config(working_dir)
@@ -261,13 +259,13 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
     active_dir, effective_name, is_worktree = _resolve_working_dir(
         working_dir,
         use_worktree=use_worktree,
-        worktree_name=worktree_name,
-        default_name=feature_name,
+        feature_name=feature_name,
     )
     sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
 
     if plan_file is None:
-        print(f"[planner] planning '{effective_name}' in {active_dir}...")
+        label = f" '{effective_name}'" if effective_name else ""
+        print(f"[planner] planning{label} in {active_dir}...")
         plan_file = await run_planner(sprint, effective_name, request)
         print(f"[planner] wrote {plan_file}")
 
@@ -290,18 +288,17 @@ async def run_plan(  # ruff: ignore[too-many-arguments]
     request: str,
     *,
     use_worktree: bool = True,
-    worktree_name: str | None = None,
 ) -> Path:
     config = load_config(working_dir)
     active_dir, effective_name, is_worktree = _resolve_working_dir(
         working_dir,
         use_worktree=use_worktree,
-        worktree_name=worktree_name,
-        default_name=feature_name,
+        feature_name=feature_name,
     )
     sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
 
-    print(f"[planner] planning '{effective_name}' in {active_dir}...")
+    label = f" '{effective_name}'" if effective_name else ""
+    print(f"[planner] planning{label} in {active_dir}...")
     plan_file = await run_planner(sprint, effective_name, request)
     print(f"[planner] wrote {plan_file}")
     return plan_file
@@ -310,24 +307,16 @@ async def run_plan(  # ruff: ignore[too-many-arguments]
 async def run_review(
     working_dir: Path,
     plan_file: Path | None,
-    *,
-    use_worktree: bool = True,
-    worktree_name: str | None = None,
 ):
     config = load_config(working_dir)
     _describe_lint_plan(config["lint"])
 
-    feature_name = worktree_name or (plan_file.stem if plan_file else "review")
-    active_dir, _, is_worktree = _resolve_working_dir(
-        working_dir,
-        use_worktree=use_worktree,
-        worktree_name=worktree_name,
-        default_name=feature_name,
-    )
-    resolved_plan_file = plan_file or _latest_plan_file(
-        active_dir / config["docs_dir"]
-    )
-    sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
+    active_dir = working_dir
+    if plan_file is not None:
+        resolved_plan_file = plan_file
+    else:
+        resolved_plan_file = _latest_plan_file(active_dir / config["docs_dir"])
+    sprint = _build_sprint(working_dir, config)
 
     print(f"[orchestrator] reviewing {resolved_plan_file} in {active_dir}...")
     if await _run_review_rounds(sprint, resolved_plan_file):
@@ -343,11 +332,7 @@ async def run_review(
 
 async def run_prompt_review(  # ruff: ignore[too-many-arguments]
     working_dir: Path,
-    feature_name: str | None,
-    prompt: str,
-    *,
-    use_worktree: bool = True,
-    worktree_name: str | None = None,
+    prompt: str | None,
 ):
     """Review the current implementation against a free-text prompt.
 
@@ -356,20 +341,15 @@ async def run_prompt_review(  # ruff: ignore[too-many-arguments]
     """
     config = load_config(working_dir)
     _describe_lint_plan(config["lint"])
-    active_dir, effective_name, is_worktree = _resolve_working_dir(
-        working_dir,
-        use_worktree=use_worktree,
-        worktree_name=worktree_name,
-        default_name=feature_name,
-    )
-    sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
+    active_dir = working_dir
+    sprint = _build_sprint(working_dir, config)
 
     print(f"[orchestrator] reviewing prompt in {active_dir}...")
-    status, _ = await run_prompt_reviewer(sprint, effective_name, prompt)
+    status, _ = await run_prompt_reviewer(sprint, prompt)
     review_file = (
         sprint.active_working_dir()
         / config["docs_dir"]
-        / f"{effective_name + '-review' if effective_name else 'review'}.md"
+        / "review.md"
     )
     print(f"[orchestrator] review {status}: {review_file}")
 
