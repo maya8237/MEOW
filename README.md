@@ -33,7 +33,7 @@ From another project's root, either activate the venv first or call the script
 by its full path:
 
 ```bash
-/path/to/meow/.venv/Scripts/meow run "Add CSV export"
+/path/to/meow/.venv/Scripts/meow run "Add CSV export" --worktree "add-csv-export"
 ```
 
 If you'd rather have `meow` available everywhere without activating anything,
@@ -45,11 +45,11 @@ From the root of a project that has a `.harness.toml` (with the venv active,
 or via the full path shown above):
 
 ```bash
-meow run "Add CSV export"
+meow run "Add CSV export" --worktree "add-csv-export"
 ```
 
-Pass `--project-root PATH` to run against a project other than the current
-directory. The sprint plan and review land in that project's `docs_dir`, never
+Pass `--working-dir PATH` (or `--work-dir PATH`) to use a different working
+directory. The sprint plan and review land in its `docs_dir`, never
 in this repo.
 
 Two narrower subcommands are also available:
@@ -118,7 +118,11 @@ meow/
         ├── config.py                   # .harness.toml loading + lint-command model
         ├── sprint.py                   # per-sprint state shared by every role
         ├── lint.py                     # auto-fixing per-file lint hook
-        ├── roles.py                    # explorer/planner/generator/reviewer agents
+        ├── agents/
+        │   ├── explorer.py             # explorer agent definition
+        │   ├── planner.py              # planner agent
+        │   ├── generator.py            # generator agent
+        │   └── reviewer.py             # reviewer agents and review helpers
         ├── orchestrator.py             # generator <-> reviewer round loop
-        └── cli.py                      # `harness` console-script entry point
+        └── cli.py                      # `meow` console-script entry point
 ```

@@ -1,10 +1,4 @@
-"""
-meow/sprint.py
-
-Sprint: the per-sprint state every role reads and none of them mutate. Kept
-in its own module so the agent-wiring roles and the orchestration loop can
-both import it without either depending on the other.
-"""
+"""Immutable sprint definition shared by each agent and the orchestrator."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,11 +12,11 @@ from meow.config import LintCommand
 class Sprint:
     """What every role needs and none of them change."""
 
-    project_root: Path
+    repo_dir: Path
     config: dict
     explorer: AgentDefinition
     lint_hook: object
-    working_directory: Path | None = None
+    working_dir: Path | None = None
     use_worktree: bool = False
     worktree_name: str | None = None
 
@@ -32,5 +26,5 @@ class Sprint:
     def lint_commands(self) -> list[LintCommand]:
         return self.config["lint"]
 
-    def working_root(self) -> Path:
-        return self.working_directory or self.project_root
+    def active_working_dir(self) -> Path:
+        return self.working_dir or self.repo_dir

@@ -16,13 +16,14 @@ Install (from the meow repo root):    pip install -e .
 Run (from inside a project repo):        meow run "Add CSV export"
 """
 
-import argparse
-import asyncio
-import re
 import shutil
 import subprocess
 from pathlib import Path
 
+from meow.agents.explorer import make_explorer_agent
+from meow.agents.generator import Generator
+from meow.agents.planner import run_planner
+from meow.agents.reviewer import run_prompt_reviewer, run_reviewer
 from meow.config import (
     DEFAULT_CONFIG,
     LintCommand,
@@ -31,26 +32,19 @@ from meow.config import (
     load_config,
 )
 from meow.lint import make_lint_hook
-from meow.roles import (
-    Generator,
-    make_explorer_agent,
-    run_planner,
-    run_prompt_reviewer,
-    run_reviewer,
-)
 from meow.sprint import Sprint
 
 assert DEFAULT_CONFIG and _lint_entry and _normalize_lint_commands  # re-exported
 
 
-def log_working_directory(project_root: Path) -> None:
-    """Print the active repo root once for each meow execution."""
-    print(f"[meow] working directory: {Path(project_root).resolve()}")
+def log_working_directory(working_dir: Path) -> None:
+    """Print the active working directory once for each meow execution."""
+    print(f"[meow] working directory: {Path(working_dir).resolve()}")
 
 
-def _ensure_gitignore_entry(project_root: Path, entry: str = ".worktrees/") -> None:
+def _ensure_gitignore_entry(working_dir: Path, entry: str = ".worktrees/") -> None:
     """Ensure the repo's .gitignore includes the given ignored path."""
-    gitignore = project_root / ".gitignore"
+    gitignore = working_dir / ".gitignore"
     contents = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
     lines = contents.splitlines()
     normalized = {line.strip() for line in lines}
@@ -63,37 +57,37 @@ def _ensure_gitignore_entry(project_root: Path, entry: str = ".worktrees/") -> N
         handle.write(f"{entry}\n")
 
 
-def _boot_repo(project_root: Path, *, include_gitignore: bool = True) -> None:
-    """Run the repository-level boot checks every meow command needs."""
+def _boot_repo(working_dir: Path, *, include_gitignore: bool = True) -> None:
+    """Run working-directory boot checks every meow command needs."""
     if include_gitignore:
-        _ensure_gitignore_entry(project_root)
+        _ensure_gitignore_entry(working_dir)
 
 
-def _resolve_worktree_root(
-    project_root: Path,
+def _resolve_working_dir(
+    working_dir: Path,
     *,
     use_worktree: bool,
     worktree_name: str | None,
-    default_name: str,
-) -> tuple[Path, str, bool]:
+    default_name: str | None,
+) -> tuple[Path, str | None, bool]:
     """Return the working directory and the effective worktree name."""
     if not use_worktree:
-        return project_root, default_name, False
+        return working_dir, default_name, False
     if not worktree_name:
         raise ValueError("worktree_name is required when use_worktree=True")
 
-    return _ensure_feature_worktree(project_root, worktree_name), worktree_name, True
+    return _ensure_feature_worktree(working_dir, worktree_name), worktree_name, True
 
 
-def _ensure_feature_worktree(project_root: Path, feature_name: str) -> Path:
+def _ensure_feature_worktree(working_dir: Path, feature_name: str) -> Path:
     """Create a per-feature worktree under the repo's .worktrees directory."""
-    worktrees_root = project_root / ".worktrees"
-    worktree_dir = worktrees_root / feature_name
+    worktrees_dir = working_dir / ".worktrees"
+    worktree_dir = worktrees_dir / feature_name
 
     if worktree_dir.exists():
         return worktree_dir
 
-    worktrees_root.mkdir(parents=True, exist_ok=True)
+    worktrees_dir.mkdir(parents=True, exist_ok=True)
 
     git = shutil.which("git")
     if git:
@@ -102,7 +96,7 @@ def _ensure_feature_worktree(project_root: Path, feature_name: str) -> Path:
                 [
                     git,
                     "-C",
-                    str(project_root),
+                    str(working_dir),
                     "worktree",
                     "add",
                     "--detach",
@@ -121,16 +115,16 @@ def _ensure_feature_worktree(project_root: Path, feature_name: str) -> Path:
 
 
 def _build_sprint(
-    project_root: Path, config: dict, working_directory: Path | None = None
+    repo_dir: Path, config: dict, working_dir: Path | None = None
 ) -> Sprint:
     commands = config["lint"]
-    effective_root = working_directory or project_root
+    active_dir = working_dir or repo_dir
     return Sprint(
-        project_root=effective_root,
+        repo_dir=repo_dir,
         config=config,
         explorer=make_explorer_agent(config),
-        lint_hook=make_lint_hook(project_root, commands),
-        working_directory=effective_root,
+        lint_hook=make_lint_hook(active_dir, commands),
+        working_dir=active_dir,
     )
 
 
@@ -180,6 +174,17 @@ async def _run_rounds(sprint: Sprint, plan_file: Path) -> bool:
     return False
 
 
+def _review_summary(verdict: str) -> str | None:
+    return next(
+        (
+            line.strip()
+            for line in verdict.splitlines()
+            if line.strip().startswith("SUMMARY:")
+        ),
+        None,
+    )
+
+
 async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
     """Loop reviewer -> generator, reviewing the existing code first.
 
@@ -191,12 +196,8 @@ async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
 
     print("[reviewer] round 1: reviewing...")
     status, verdict = await run_reviewer(sprint, plan_file)
-    summary_line = next(
-        (line.strip() for line in verdict.splitlines() if line.strip().startswith("SUMMARY:")),
-        None,
-    )
     print(f"[reviewer] round 1: {status}")
-    if summary_line:
+    if summary_line := _review_summary(verdict):
         print(f"[reviewer] round 1 summary: {summary_line}")
     if status == "PASS":
         return True
@@ -247,84 +248,88 @@ def _latest_plan_file(docs_dir: Path) -> Path:
 
 
 async def run_sprint(  # ruff: ignore[too-many-arguments]
-    project_root: Path,
-    feature_name: str,
+    working_dir: Path,
+    feature_name: str | None,
     request: str,
     *,
     use_worktree: bool = True,
     worktree_name: str | None = None,
+    plan_file: Path | None = None,
 ):
-    config = load_config(project_root)
+    config = load_config(working_dir)
     _describe_lint_plan(config["lint"])
-    worktree_root, effective_name, is_worktree = _resolve_worktree_root(
-        project_root,
+    active_dir, effective_name, is_worktree = _resolve_working_dir(
+        working_dir,
         use_worktree=use_worktree,
         worktree_name=worktree_name,
         default_name=feature_name,
     )
-    sprint = _build_sprint(project_root, config, worktree_root if is_worktree else None)
+    sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
 
-    print(f"[planner] planning '{effective_name}' in {worktree_root}...")
-    plan_file = await run_planner(sprint, effective_name, request)
-    print(f"[planner] wrote {plan_file}")
+    if plan_file is None:
+        print(f"[planner] planning '{effective_name}' in {active_dir}...")
+        plan_file = await run_planner(sprint, effective_name, request)
+        print(f"[planner] wrote {plan_file}")
 
     if await _run_rounds(sprint, plan_file):
-        print(f"[orchestrator] sprint '{feature_name}' complete.")
+        label = f" '{feature_name}'" if feature_name else ""
+        print(f"[orchestrator] sprint{label} complete.")
         return
 
     raise RuntimeError(
-        f"Sprint '{feature_name}' did not pass after {config['max_rounds']} "
+        f"Sprint{f' {feature_name!r}' if feature_name else ''} did not pass "
+        f"after {config['max_rounds']} "
         "rounds -- stopping instead of looping forever. Inspect the review "
         "file."
     )
 
 
 async def run_plan(  # ruff: ignore[too-many-arguments]
-    project_root: Path,
-    feature_name: str,
+    working_dir: Path,
+    feature_name: str | None,
     request: str,
     *,
     use_worktree: bool = True,
     worktree_name: str | None = None,
 ) -> Path:
-    config = load_config(project_root)
-    worktree_root, effective_name, is_worktree = _resolve_worktree_root(
-        project_root,
+    config = load_config(working_dir)
+    active_dir, effective_name, is_worktree = _resolve_working_dir(
+        working_dir,
         use_worktree=use_worktree,
         worktree_name=worktree_name,
         default_name=feature_name,
     )
-    sprint = _build_sprint(project_root, config, worktree_root if is_worktree else None)
+    sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
 
-    print(f"[planner] planning '{effective_name}' in {worktree_root}...")
+    print(f"[planner] planning '{effective_name}' in {active_dir}...")
     plan_file = await run_planner(sprint, effective_name, request)
     print(f"[planner] wrote {plan_file}")
     return plan_file
 
 
 async def run_review(
-    project_root: Path,
+    working_dir: Path,
     plan_file: Path | None,
     *,
     use_worktree: bool = True,
     worktree_name: str | None = None,
 ):
-    config = load_config(project_root)
+    config = load_config(working_dir)
     _describe_lint_plan(config["lint"])
 
-    resolved_plan_file = plan_file or _latest_plan_file(
-        project_root / config["docs_dir"]
-    )
-    feature_name = worktree_name or resolved_plan_file.stem
-    worktree_root, _, is_worktree = _resolve_worktree_root(
-        project_root,
+    feature_name = worktree_name or (plan_file.stem if plan_file else "review")
+    active_dir, _, is_worktree = _resolve_working_dir(
+        working_dir,
         use_worktree=use_worktree,
         worktree_name=worktree_name,
         default_name=feature_name,
     )
-    sprint = _build_sprint(project_root, config, worktree_root if is_worktree else None)
+    resolved_plan_file = plan_file or _latest_plan_file(
+        active_dir / config["docs_dir"]
+    )
+    sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
 
-    print(f"[orchestrator] reviewing {resolved_plan_file} in {worktree_root}...")
+    print(f"[orchestrator] reviewing {resolved_plan_file} in {active_dir}...")
     if await _run_review_rounds(sprint, resolved_plan_file):
         print(f"[orchestrator] review of {resolved_plan_file} complete.")
         return
@@ -337,8 +342,8 @@ async def run_review(
 
 
 async def run_prompt_review(  # ruff: ignore[too-many-arguments]
-    project_root: Path,
-    feature_name: str,
+    working_dir: Path,
+    feature_name: str | None,
     prompt: str,
     *,
     use_worktree: bool = True,
@@ -349,116 +354,31 @@ async def run_prompt_review(  # ruff: ignore[too-many-arguments]
     Unlike `run_review`, there is no Sprint Contract task list to loop a
     generator against, so this reports PASS/FAIL rather than gating on it.
     """
-    config = load_config(project_root)
+    config = load_config(working_dir)
     _describe_lint_plan(config["lint"])
-    worktree_root, effective_name, is_worktree = _resolve_worktree_root(
-        project_root,
+    active_dir, effective_name, is_worktree = _resolve_working_dir(
+        working_dir,
         use_worktree=use_worktree,
         worktree_name=worktree_name,
         default_name=feature_name,
     )
-    sprint = _build_sprint(project_root, config, worktree_root if is_worktree else None)
+    sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
 
-    print(f"[orchestrator] reviewing prompt in {worktree_root}...")
+    print(f"[orchestrator] reviewing prompt in {active_dir}...")
     status, _ = await run_prompt_reviewer(sprint, effective_name, prompt)
-    review_file = sprint.working_root() / config["docs_dir"] / f"{effective_name}-review.md"
+    review_file = (
+        sprint.active_working_dir()
+        / config["docs_dir"]
+        / f"{effective_name + '-review' if effective_name else 'review'}.md"
+    )
     print(f"[orchestrator] review {status}: {review_file}")
 
 
-# ---------------------------------------------------------------------------
-# CLI entry point -- registered as the `meow` console script
-# ---------------------------------------------------------------------------
-
-def _validate_worktree_requirement(parser: argparse.ArgumentParser, args) -> None:
-    if args.command in {"run", "plan"} and not getattr(args, "no_worktree", False) and getattr(args, "worktree", None) is None:
-        parser.error("--worktree/-w is required unless --no-worktree/-n is supplied")
-
-
-def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="meow")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    run_parser = subparsers.add_parser(
-        "run", help="Plan, implement, and review a feature request end to end."
-    )
-    run_parser.add_argument("request", help="Feature request text.")
-    run_parser.add_argument(
-        "--project-root", default=".",
-        help="Path to the project repo (default: current directory).",
-    )
-    run_parser.add_argument(
-        "--worktree", "-w", dest="worktree", default=None,
-        help="Required worktree name under .worktrees unless --no-worktree/-n is used.",
-    )
-    run_parser.add_argument(
-        "--no-worktree", "--noworktree", "-n",
-        dest="no_worktree",
-        action="store_true",
-        help="Run in the main repo instead of creating/using a .worktrees entry.",
-    )
-
-    plan_parser = subparsers.add_parser(
-        "plan",
-        help="Write a sprint plan for a feature request, without implementing it.",
-    )
-    plan_parser.add_argument("request", help="Feature request text.")
-    plan_parser.add_argument(
-        "--project-root", default=".",
-        help="Path to the project repo (default: current directory).",
-    )
-    plan_parser.add_argument(
-        "--worktree", "-w", dest="worktree", default=None,
-        help="Required worktree name under .worktrees unless --no-worktree/-n is used.",
-    )
-    plan_parser.add_argument(
-        "--no-worktree", "--noworktree", "-n",
-        dest="no_worktree",
-        action="store_true",
-        help="Run in the main repo instead of creating/using a .worktrees entry.",
-    )
-
-    review_parser = subparsers.add_parser(
-        "review",
-        help="Review an existing plan's implementation and fix any issues found.",
-    )
-    review_parser.add_argument(
-        "--plan-file", default=None,
-        help="Plan file to review (default: latest plan in docs_dir).",
-    )
-    review_parser.add_argument(
-        "--project-root", default=".",
-        help="Path to the project repo (default: current directory).",
-    )
-    review_parser.add_argument(
-        "--worktree", "-w", dest="worktree", default=None,
-        help="Optional worktree name for this review context when using a .worktrees entry.",
-    )
-    review_parser.add_argument(
-        "--no-worktree", "--noworktree", "-n",
-        dest="no_worktree",
-        action="store_true",
-        help="Run in the main repo instead of creating/using a .worktrees entry.",
-    )
-
-    return parser
-
-
 def cli_main():
-    parser = _build_arg_parser()
-    args = parser.parse_args()
-    project_root = Path(args.project_root).resolve()
-    log_working_directory(project_root)
-    _validate_worktree_requirement(parser, args)
+    """Keep the module entry point aligned with the installed CLI."""
+    from meow.cli import cli_main as run_cli
 
-    if args.command == "run":
-        feature_name = args.worktree or "feature"
-        asyncio.run(run_sprint(project_root, feature_name, args.request, use_worktree=not args.no_worktree, worktree_name=args.worktree))
-    elif args.command == "plan":
-        feature_name = args.worktree or "feature"
-        asyncio.run(run_plan(project_root, feature_name, args.request, use_worktree=not args.no_worktree, worktree_name=args.worktree))
-    elif args.command == "review":
-        plan_file = Path(args.plan_file).resolve() if args.plan_file else None
-        asyncio.run(run_review(project_root, plan_file, use_worktree=not args.no_worktree, worktree_name=args.worktree))
+    run_cli()
 
 
 if __name__ == "__main__":
