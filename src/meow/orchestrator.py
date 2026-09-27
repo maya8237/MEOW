@@ -20,423 +20,111 @@ import argparse
 import asyncio
 import re
 import shutil
-import tomllib
-from dataclasses import dataclass
+import subprocess
 from pathlib import Path
 
-from claude_agent_sdk import (
-    AgentDefinition,
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    HookMatcher,
-    ResultMessage,
-    TextBlock,
-    query,
+from meow.config import (
+    DEFAULT_CONFIG,
+    LintCommand,
+    _lint_entry,
+    _normalize_lint_commands,
+    load_config,
 )
+from meow.lint import make_lint_hook
+from meow.roles import (
+    Generator,
+    make_explorer_agent,
+    run_planner,
+    run_prompt_reviewer,
+    run_reviewer,
+)
+from meow.sprint import Sprint
 
-CONFIG_FILENAME = ".harness.toml"
-DEFAULT_FIX_FLAG = "--fix"
-LINT_ENTRY_KEYS = frozenset({"command", "fix_flag", "per_file", "gate"})
-
-DEFAULT_CONFIG = {
-    "lint_command": None,           # legacy single-command form
-    "lint_fix_flag": DEFAULT_FIX_FLAG,
-    "max_rounds": 8,
-    "docs_dir": "docs/exec-plans/active",
-    "models": {
-        "explorer": "haiku",
-        "planner": None,            # None = engine default
-        "generator": None,
-        "reviewer": None,
-    },
-}
+assert DEFAULT_CONFIG and _lint_entry and _normalize_lint_commands  # re-exported
 
 
-# ---------------------------------------------------------------------------
-# Lint commands
-# ---------------------------------------------------------------------------
+def _ensure_gitignore_entry(project_root: Path, entry: str = ".worktrees/") -> None:
+    """Ensure the repo's .gitignore includes the given ignored path."""
+    gitignore = project_root / ".gitignore"
+    contents = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+    lines = contents.splitlines()
+    normalized = {line.strip() for line in lines}
+    if entry in normalized or entry.rstrip("/") in normalized:
+        return
 
-@dataclass(frozen=True)
-class LintCommand:
-    """One lint command a project has configured.
-
-    A `per_file` command runs as the generator's post-edit hook, on the single
-    file just written. A `gate` command runs project-wide for the reviewer and
-    its failure is a sprint FAIL; a non-gate command is advisory, which is what
-    a whole-project analyzer needs when it is expected to report findings on
-    pre-existing code.
-    """
-
-    command: str
-    fix_flag: str | None = None
-    per_file: bool = True
-    gate: bool = True
-
-    def argv(self) -> list[str]:
-        """The command as argv, check-only, program resolved on PATH."""
-        argv = self.command.split()
-        if not argv:
-            raise ValueError(f"{CONFIG_FILENAME}: lint command is empty.")
-        # Windows will not exec a .cmd shim (npx, eslint and oxlint all ship
-        # as one) from a bare argv, so look the program up the way a shell
-        # would. Falls back to the original name so a genuinely missing
-        # program still surfaces as the OS error rather than being hidden.
-        return [shutil.which(argv[0]) or argv[0], *argv[1:]]
-
-    def argv_for_file(self, file_path: str) -> list[str]:
-        """The command as argv for one file, auto-fixing where supported."""
-        argv = self.argv()
-        if self.fix_flag:
-            argv.append(self.fix_flag)
-        argv.append(file_path)
-        return argv
+    with gitignore.open("a", encoding="utf-8") as handle:
+        if contents and not contents.endswith("\n"):
+            handle.write("\n")
+        handle.write(f"{entry}\n")
 
 
-def _lint_entry(raw: object, position: int) -> LintCommand:
-    """Validate one [[lint]] table from the config file."""
-    if not isinstance(raw, dict) or not raw.get("command"):
-        raise ValueError(
-            f"{CONFIG_FILENAME}: [[lint]] entry {position} must set "
-            "'command' (e.g. command = \"npx oxlint\")."
-        )
-    unknown = sorted(set(raw) - LINT_ENTRY_KEYS)
-    if unknown:
-        raise ValueError(
-            f"{CONFIG_FILENAME}: [[lint]] entry {position} has unknown "
-            f"key(s) {unknown}. Allowed: {sorted(LINT_ENTRY_KEYS)}."
-        )
-    return LintCommand(
-        command=raw["command"],
-        fix_flag=raw.get("fix_flag"),
-        per_file=bool(raw.get("per_file", True)),
-        gate=bool(raw.get("gate", True)),
-    )
+def _boot_repo(project_root: Path, *, include_gitignore: bool = True) -> None:
+    """Run the repository-level boot checks every meow command needs."""
+    if include_gitignore:
+        _ensure_gitignore_entry(project_root)
 
 
-def _normalize_lint_commands(user_config: dict) -> list[LintCommand]:
-    """Collapse both config forms into one list, in configured order.
+def _resolve_worktree_root(
+    project_root: Path,
+    *,
+    use_worktree: bool,
+    worktree_name: str | None,
+    default_name: str,
+) -> tuple[Path, str, bool]:
+    """Return the working directory and the effective worktree name."""
+    if not use_worktree:
+        return project_root, default_name, False
 
-    Any number of commands is allowed. The list form is a TOML array of
-    tables, each with its own fix flag and its own role:
+    resolved_name = worktree_name or default_name
+    return _ensure_feature_worktree(project_root, resolved_name), resolved_name, True
 
-        [[lint]]
-        command = "npx oxlint"
-        fix_flag = "--fix"
 
-        [[lint]]
-        command = "npx fallow"
-        per_file = false          # project-wide only, never per file
-        gate = false              # advisory: failure is not a sprint FAIL
+def _ensure_feature_worktree(project_root: Path, feature_name: str) -> Path:
+    """Create a per-feature worktree under the repo's .worktrees directory."""
+    worktrees_root = project_root / ".worktrees"
+    worktree_dir = worktrees_root / feature_name
 
-    The older single-command form still works and becomes one entry:
+    if worktree_dir.exists():
+        return worktree_dir
 
-        lint_command = "ruff check"
-        lint_fix_flag = "--fix"
-    """
-    entries = []
+    worktrees_root.mkdir(parents=True, exist_ok=True)
 
-    legacy = user_config.get("lint_command")
-    if legacy:
-        entries.append(
-            LintCommand(
-                command=legacy,
-                fix_flag=user_config.get("lint_fix_flag", DEFAULT_FIX_FLAG),
+    git = shutil.which("git")
+    if git:
+        try:
+            subprocess.run(
+                [
+                    git,
+                    "-C",
+                    str(project_root),
+                    "worktree",
+                    "add",
+                    "--detach",
+                    str(worktree_dir),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
             )
-        )
+            return worktree_dir
+        except subprocess.CalledProcessError:
+            pass
 
-    raw_entries = user_config.get("lint", [])
-    if not isinstance(raw_entries, list):
-        raise ValueError(
-            f"{CONFIG_FILENAME}: 'lint' must be a list of [[lint]] tables."
-        )
-    entries.extend(
-        _lint_entry(raw, position)
-        for position, raw in enumerate(raw_entries, start=1)
-    )
-
-    if not entries:
-        raise ValueError(
-            f"{CONFIG_FILENAME} must define at least one lint command -- "
-            "either a [[lint]] entry with a 'command' key, or the "
-            "single-command form lint_command = \"ruff check\"."
-        )
-
-    return entries
+    worktree_dir.mkdir(parents=True, exist_ok=True)
+    return worktree_dir
 
 
-# ---------------------------------------------------------------------------
-# Config loading
-# ---------------------------------------------------------------------------
-
-def load_config(project_root: Path) -> dict:
-    config_path = project_root / CONFIG_FILENAME
-    if not config_path.exists():
-        raise FileNotFoundError(
-            f"No {CONFIG_FILENAME} found in {project_root}. "
-            "Create one before running the harness -- see the harness "
-            "repo's README for the required fields."
-        )
-
-    with open(config_path, "rb") as f:
-        user_config = tomllib.load(f)
-
-    config = {**DEFAULT_CONFIG, **user_config}
-    config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}
-    config["lint"] = _normalize_lint_commands(user_config)
-
-    return config
-
-
-# ---------------------------------------------------------------------------
-# Per-sprint state shared by every role
-# ---------------------------------------------------------------------------
-
-@dataclass(frozen=True)
-class Sprint:
-    """What every role needs and none of them change."""
-
-    project_root: Path
-    config: dict
-    explorer: AgentDefinition
-    lint_hook: object
-
-    def model(self, role: str) -> str | None:
-        return self.config["models"][role]
-
-    def lint_commands(self) -> list[LintCommand]:
-        return self.config["lint"]
-
-
-def _build_sprint(project_root: Path, config: dict) -> Sprint:
+def _build_sprint(
+    project_root: Path, config: dict, worktree_root: Path | None = None
+) -> Sprint:
     commands = config["lint"]
     return Sprint(
         project_root=project_root,
         config=config,
         explorer=make_explorer_agent(config),
         lint_hook=make_lint_hook(project_root, commands),
+        working_directory=worktree_root,
     )
-
-
-# ---------------------------------------------------------------------------
-# Shared subagent: explorer
-# ---------------------------------------------------------------------------
-
-def make_explorer_agent(config: dict) -> AgentDefinition:
-    return AgentDefinition(
-        description=(
-            "Read-only codebase/log/test-output exploration. Use for any "
-            "research whose raw output doesn't need to be kept in full."
-        ),
-        prompt=(
-            "You are a read-only research agent. Investigate the question "
-            "you're given, then return only a concise summary with "
-            "file:line references -- never dump raw file contents or full "
-            "command output unless specifically asked to."
-        ),
-        tools=["Read", "Grep", "Glob", "Bash"],
-        model=config["models"]["explorer"],
-    )
-
-
-# ---------------------------------------------------------------------------
-# Hook: scoped, auto-fixing lint on every file the generator touches.
-# ---------------------------------------------------------------------------
-
-async def _run_lint_on_file(
-    project_root: Path, commands: list[LintCommand], file_path: str
-) -> list[str]:
-    """Run every per-file command, returning one report per failure."""
-    problems = []
-    for entry in commands:
-        process = await asyncio.create_subprocess_exec(
-            *entry.argv_for_file(file_path),
-            cwd=str(project_root),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await process.communicate()
-        if process.returncode != 0:
-            streams = (
-                stdout.decode(errors="replace"),
-                stderr.decode(errors="replace"),
-            )
-            report = "\n".join(part for part in streams if part.strip())
-            problems.append(f"$ {entry.command}\n{report}".rstrip())
-    return problems
-
-
-def make_lint_hook(project_root: Path, commands: list[LintCommand]):
-    per_file = [entry for entry in commands if entry.per_file]
-
-    async def lint_edited_file(input_data, tool_use_id, context):
-        if input_data.get("tool_name") not in {"Write", "Edit"}:
-            return {}
-
-        file_path = input_data.get("tool_input", {}).get("file_path")
-        if not file_path:
-            return {}
-
-        problems = await _run_lint_on_file(project_root, per_file, file_path)
-        if not problems:
-            return {}  # clean or auto-fixed -- nothing fed back into context
-
-        return {
-            "hookSpecificOutput": {
-                "hookEventName": "PostToolUse",
-                "additionalContext": (
-                    f"Lint issues in {file_path} that could not be "
-                    "auto-fixed:\n" + "\n\n".join(problems)
-                ),
-            }
-        }
-
-    return lint_edited_file
-
-
-# ---------------------------------------------------------------------------
-# Role: planner
-# ---------------------------------------------------------------------------
-
-async def run_planner(sprint: Sprint, feature_name: str, request: str) -> Path:
-    active_dir = sprint.project_root / sprint.config["docs_dir"]
-    active_dir.mkdir(parents=True, exist_ok=True)
-    plan_file = active_dir / f"{feature_name}.md"
-
-    options = ClaudeAgentOptions(
-        system_prompt=(
-            "You are a planning agent. Consult the explorer subagent for "
-            "any codebase context you need -- don't explore directly. "
-            "Produce a numbered task list with acceptance criteria per "
-            "task, plus a proposed '## Sprint Contract' section with "
-            f"concrete, testable pass/fail criteria. Write the result to "
-            f"{plan_file}. Do not write application code."
-        ),
-        allowed_tools=["Read", "Grep", "Glob", "Write", "Agent"],
-        agents={"explorer": sprint.explorer},
-        model=sprint.model("planner"),
-        cwd=str(sprint.project_root),
-    )
-
-    async for message in query(prompt=request, options=options):
-        if isinstance(message, ResultMessage) and message.subtype != "success":
-            raise RuntimeError(f"Planner failed: {message.subtype}")
-
-    return plan_file
-
-
-# ---------------------------------------------------------------------------
-# Role: generator (multi-turn, resumable across fix-rounds)
-# ---------------------------------------------------------------------------
-
-class Generator:
-    def __init__(self, sprint: Sprint, plan_file: Path):
-        options = ClaudeAgentOptions(
-            system_prompt=(
-                f"You implement tasks from {plan_file} one at a time. "
-                "Work against the agreed Sprint Contract criteria exactly "
-                "-- do not expand scope. When you believe a task is "
-                "complete, say so explicitly and stop; do not grade your "
-                "own work."
-            ),
-            allowed_tools=["Read", "Edit", "Write", "Bash", "Grep", "Glob", "Agent"],
-            agents={"explorer": sprint.explorer},
-            hooks={
-                "PostToolUse": [
-                    HookMatcher(matcher="Write|Edit", hooks=[sprint.lint_hook])
-                ]
-            },
-            model=sprint.model("generator"),
-            cwd=str(sprint.project_root),
-        )
-        self._client = ClaudeSDKClient(options=options)
-
-    async def __aenter__(self):
-        await self._client.__aenter__()
-        return self
-
-    async def __aexit__(self, *exc):
-        await self._client.__aexit__(*exc)
-
-    async def implement(self, instruction: str) -> str:
-        await self._client.query(instruction)
-        text = []
-        async for message in self._client.receive_response():
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        text.append(block.text)
-        return "\n".join(text)
-
-
-# ---------------------------------------------------------------------------
-# Role: reviewer
-# ---------------------------------------------------------------------------
-
-def _lint_instructions(commands: list[LintCommand]) -> str:
-    """Tell the reviewer which lint commands bind it and which only inform."""
-    gates = [entry.command for entry in commands if entry.gate]
-    advisory = [entry.command for entry in commands if not entry.gate]
-
-    parts = []
-    if gates:
-        listed = ", ".join(f"`{command}`" for command in gates)
-        parts.append(
-            "Run each of these project-wide and treat any failure as a "
-            f"FAIL criterion: {listed}."
-        )
-    if advisory:
-        listed = ", ".join(f"`{command}`" for command in advisory)
-        parts.append(
-            f"Also run {listed} and summarise the findings in your review, "
-            "but do not fail the sprint on them."
-        )
-    return " ".join(parts)
-
-
-def _architecture_review_instructions() -> str:
-    """Tell the reviewer to look for monolithic, SRP-breaking modules."""
-    return (
-        "Also perform a SOLID/SRP review. Flag any file or class that mixes "
-        "multiple responsibilities, such as config parsing + agent wiring + "
-        "lint hooks + orchestration + CLI handling in one module. Treat any "
-        "single file that does more than one broad concern as a FAIL criterion "
-        "unless the code is clearly split into cohesive helpers or classes. "
-        "Use file:line evidence; do not accept 'it works' as an excuse for "
-        "a monolithic design."
-    )
-
-
-async def run_reviewer(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
-    review_file = plan_file.with_name(plan_file.stem + "-review.md")
-
-    options = ClaudeAgentOptions(
-        system_prompt=(
-            "You are a skeptical QA reviewer. You did not write this code "
-            f"-- grade it critically. Read the Sprint Contract in "
-            f"{plan_file}. Check each criterion against the actual code "
-            "and mark PASS or FAIL with concrete evidence (file:line or "
-            "command output). "
-            + _lint_instructions(sprint.lint_commands())
-            + " "
-            + _architecture_review_instructions()
-            + f" Write your verdict to {review_file} starting with a line "
-            "'STATUS: PASS' or 'STATUS: FAIL', followed by one line per "
-            "criterion. Default to FAIL when uncertain."
-        ),
-        allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
-        model=sprint.model("reviewer"),
-        cwd=str(sprint.project_root),
-    )
-
-    async for message in query(prompt=f"Review {plan_file}", options=options):
-        if isinstance(message, ResultMessage) and message.subtype != "success":
-            raise RuntimeError(f"Reviewer failed: {message.subtype}")
-
-    verdict_text = review_file.read_text()
-    status_match = re.search(r"^STATUS:\s*(PASS|FAIL)", verdict_text, re.MULTILINE)
-    status = status_match.group(1) if status_match else "FAIL"
-    return status, verdict_text
 
 
 # ---------------------------------------------------------------------------
@@ -531,13 +219,26 @@ def _latest_plan_file(docs_dir: Path) -> Path:
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
-async def run_sprint(project_root: Path, feature_name: str, request: str):
+async def run_sprint(  # ruff: ignore[too-many-arguments]
+    project_root: Path,
+    feature_name: str,
+    request: str,
+    *,
+    use_worktree: bool = True,
+    worktree_name: str | None = None,
+):
     config = load_config(project_root)
     _describe_lint_plan(config["lint"])
-    sprint = _build_sprint(project_root, config)
+    worktree_root, effective_name, is_worktree = _resolve_worktree_root(
+        project_root,
+        use_worktree=use_worktree,
+        worktree_name=worktree_name,
+        default_name=feature_name,
+    )
+    sprint = _build_sprint(project_root, config, worktree_root if is_worktree else None)
 
-    print(f"[planner] planning '{feature_name}'...")
-    plan_file = await run_planner(sprint, feature_name, request)
+    print(f"[planner] planning '{effective_name}' in {worktree_root}...")
+    plan_file = await run_planner(sprint, effective_name, request)
     print(f"[planner] wrote {plan_file}")
 
     if await _run_rounds(sprint, plan_file):
@@ -551,26 +252,52 @@ async def run_sprint(project_root: Path, feature_name: str, request: str):
     )
 
 
-async def run_plan(project_root: Path, feature_name: str, request: str) -> Path:
+async def run_plan(  # ruff: ignore[too-many-arguments]
+    project_root: Path,
+    feature_name: str,
+    request: str,
+    *,
+    use_worktree: bool = True,
+    worktree_name: str | None = None,
+) -> Path:
     config = load_config(project_root)
-    sprint = _build_sprint(project_root, config)
+    worktree_root, effective_name, is_worktree = _resolve_worktree_root(
+        project_root,
+        use_worktree=use_worktree,
+        worktree_name=worktree_name,
+        default_name=feature_name,
+    )
+    sprint = _build_sprint(project_root, config, worktree_root if is_worktree else None)
 
-    print(f"[planner] planning '{feature_name}'...")
-    plan_file = await run_planner(sprint, feature_name, request)
+    print(f"[planner] planning '{effective_name}' in {worktree_root}...")
+    plan_file = await run_planner(sprint, effective_name, request)
     print(f"[planner] wrote {plan_file}")
     return plan_file
 
 
-async def run_review(project_root: Path, plan_file: Path | None):
+async def run_review(
+    project_root: Path,
+    plan_file: Path | None,
+    *,
+    use_worktree: bool = True,
+    worktree_name: str | None = None,
+):
     config = load_config(project_root)
     _describe_lint_plan(config["lint"])
-    sprint = _build_sprint(project_root, config)
 
     resolved_plan_file = plan_file or _latest_plan_file(
         project_root / config["docs_dir"]
     )
+    feature_name = worktree_name or resolved_plan_file.stem
+    worktree_root, _, is_worktree = _resolve_worktree_root(
+        project_root,
+        use_worktree=use_worktree,
+        worktree_name=worktree_name,
+        default_name=feature_name,
+    )
+    sprint = _build_sprint(project_root, config, worktree_root if is_worktree else None)
 
-    print(f"[orchestrator] reviewing {resolved_plan_file}...")
+    print(f"[orchestrator] reviewing {resolved_plan_file} in {worktree_root}...")
     if await _run_review_rounds(sprint, resolved_plan_file):
         print(f"[orchestrator] review of {resolved_plan_file} complete.")
         return
@@ -580,6 +307,35 @@ async def run_review(project_root: Path, plan_file: Path | None):
         f"{config['max_rounds']} rounds -- stopping instead of looping "
         "forever. Inspect the review file."
     )
+
+
+async def run_prompt_review(  # ruff: ignore[too-many-arguments]
+    project_root: Path,
+    feature_name: str,
+    prompt: str,
+    *,
+    use_worktree: bool = True,
+    worktree_name: str | None = None,
+):
+    """Review the current implementation against a free-text prompt.
+
+    Unlike `run_review`, there is no Sprint Contract task list to loop a
+    generator against, so this reports PASS/FAIL rather than gating on it.
+    """
+    config = load_config(project_root)
+    _describe_lint_plan(config["lint"])
+    worktree_root, effective_name, is_worktree = _resolve_worktree_root(
+        project_root,
+        use_worktree=use_worktree,
+        worktree_name=worktree_name,
+        default_name=feature_name,
+    )
+    sprint = _build_sprint(project_root, config, worktree_root if is_worktree else None)
+
+    print(f"[orchestrator] reviewing prompt in {worktree_root}...")
+    status, _ = await run_prompt_reviewer(sprint, effective_name, prompt)
+    review_file = project_root / config["docs_dir"] / f"{effective_name}-review.md"
+    print(f"[orchestrator] review {status}: {review_file}")
 
 
 # ---------------------------------------------------------------------------

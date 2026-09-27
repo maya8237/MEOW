@@ -22,9 +22,13 @@ class Sprint:
     config: dict
     explorer: AgentDefinition
     lint_hook: object
+    working_directory: Path | None = None
 
     def model(self, role: str) -> str | None:
         return self.config["models"][role]
 
     def lint_commands(self) -> list[LintCommand]:
         return self.config["lint"]
+
+    def working_root(self) -> Path:
+        return self.working_directory or self.project_root
