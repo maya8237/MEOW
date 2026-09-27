@@ -16,15 +16,31 @@ the *target project's* root. This repo holds only the engine.
 
 ## Install
 
+Into a dedicated virtualenv, from this repo's root:
+
 ```bash
-pip install -e .
+python -m venv .venv && .venv/Scripts/python -m pip install -e .
 ```
 
-That puts the `harness` console script on your PATH. Verify with `harness --help`.
+(`.venv/bin/python` on macOS/Linux.) The install is editable, so edits to the
+engine take effect immediately with no reinstall. Verify with
+`.venv/Scripts/harness --help`.
+
+Because the venv is local to this repo, `harness` is *not* on your global PATH.
+From another project's root, either activate the venv first or call the script
+by its full path:
+
+```bash
+/path/to/meow/.venv/Scripts/harness run "Add CSV export"
+```
+
+If you'd rather have `harness` available everywhere without activating
+anything, `pipx install -e .` gives it its own environment but a global shim.
 
 ## Run
 
-From the root of a project that has a `.harness.toml`:
+From the root of a project that has a `.harness.toml` (with the venv active,
+or via the full path shown above):
 
 ```bash
 harness run "Add CSV export"
