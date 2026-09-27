@@ -1,0 +1,28 @@
+# harness.toml.typescript.example -- a filled-in .harness.toml for a
+# TypeScript/JavaScript project.
+#
+# Copy to the project root as `.harness.toml`. This one assumes eslint for the
+# auto-fixing gate and tsc as an advisory, project-wide type check -- swap
+# eslint for `npx oxlint` if this project uses that instead (also auto-fixing,
+# generally faster).
+#
+# See harness.toml.example (in this same directory) for the fully annotated,
+# language-neutral version of every field.
+
+max_rounds = 8
+docs_dir = "docs/exec-plans/active"
+
+[models]
+explorer = "haiku"
+
+# Gate: per-file, auto-fixing, and its project-wide failure fails the sprint.
+[[lint]]
+command = "npx eslint"
+fix_flag = "--fix"
+
+# Advisory: tsc has no fix mode and no per-file mode worth using -- it just
+# gets reported in the evaluator's review, never fails the sprint on its own.
+[[lint]]
+command = "npx tsc --noEmit"
+per_file = false
+gate = false

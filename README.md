@@ -50,72 +50,15 @@ Pass `--project-root PATH` to run against a project other than the current
 directory. The sprint plan and review land in that project's `docs_dir`, never
 in this repo.
 
-## Configuring a project to use it
+## Onboarding a project
 
-Copy [`templates/harness.toml.example`](templates/harness.toml.example) to the
-project root as `.harness.toml` and fill it in. Top-level fields:
+Copy a template from `templates/` to the target repo's root as
+`.harness.toml`: `harness.toml.example` (annotated, language-neutral),
+`harness.toml.python.example`, or `harness.toml.typescript.example`.
 
-| Field | Required | Default | Purpose |
-|---|---|---|---|
-| `[[lint]]` | **yes** | — | One or more lint commands. See below. |
-| `max_rounds` | no | `8` | Generator↔evaluator rounds allowed before the sprint gives up rather than looping forever. |
-| `docs_dir` | no | `docs/exec-plans/active` | Where sprint plan/contract/review files are written, relative to the project root. Must already exist. |
-| `[models]` | no | see below | Per-role model overrides: `explorer`, `planner`, `generator`, `evaluator`. Omit a key to use the engine's default for that role. |
-
-The engine defaults `explorer` to `haiku` (cheap, read-only research) and leaves
-the other three to the SDK's own default model.
-
-> **TOML ordering.** Every top-level key must appear *above* the first
-> `[[lint]]` table — anything after one belongs to that table, not to the file.
-> The engine rejects a misplaced key with an error naming it.
-
-### Lint commands
-
-A project declares any number of lint commands, one `[[lint]]` table each, run
-in the order listed:
-
-| Key | Required | Default | Purpose |
-|---|---|---|---|
-| `command` | **yes** | — | The check-only command, **without** any fix flag (e.g. `ruff check`, `npx oxlint`, `golangci-lint run`). |
-| `fix_flag` | no | none | Appended when linting a single file, so the per-file hook can auto-fix. Omit for a command with no fix mode. |
-| `per_file` | no | `true` | Run as a hook on every file the generator writes. Set `false` for whole-project analysis that means nothing pointed at one file. |
-| `gate` | no | `true` | A project-wide failure is a sprint FAIL. Set `false` to make a command advisory — what you want for an analyzer that reports findings on pre-existing code. |
-
-```toml
-# The gate: per-file and auto-fixing, and its failure fails the sprint.
-[[lint]]
-command = "npx oxlint"
-fix_flag = "--fix"
-
-# Advisory project-graph analysis: informs the review, cannot fail it.
-[[lint]]
-command = "npx fallow"
-per_file = false
-gate = false
-```
-
-Each command's program is resolved on `PATH` before running, so `npx ...` works
-on Windows, where the shim is a `.cmd` file that cannot be exec'd from a bare
-argv.
-
-The older single-command form still works and is equivalent to one `[[lint]]`
-entry that is both per-file and a gate:
-
-```toml
-lint_command = "ruff check"
-lint_fix_flag = "--fix"
-```
-
-It's also worth pointing the project's `AGENTS.md` at the harness, so feature
-work runs through it rather than ad hoc editing:
-
-```markdown
-## Harness
-
-Feature work in this repo runs through the harness engine, not ad hoc
-editing. From the repo root: `harness run "<feature description>"`.
-Config lives in `.harness.toml`. See <meow repo link> for the engine itself.
-```
+See [GUIDE.md](GUIDE.md) for the full field reference, the recommended `docs/`
+layout, and a setup checklist — it's written for a Claude session onboarding a
+different repo onto meow, generic to any language.
 
 ## Layout
 
@@ -123,10 +66,15 @@ Config lives in `.harness.toml`. See <meow repo link> for the engine itself.
 meow/
 ├── pyproject.toml
 ├── README.md
+├── AGENTS.md
+├── GUIDE.md                             # onboarding a *different* repo onto meow
 ├── docs/
-│   └── harness-split-repo-handoff.md   # why the engine lives in its own repo
+│   └── exec-plans/
+│       └── active/                      # meow harnessing itself writes here
 ├── templates/
-│   └── harness.toml.example            # copy into consuming projects
+│   ├── harness.toml.example             # annotated, language-neutral
+│   ├── harness.toml.python.example      # ruff (gate) + mypy (advisory)
+│   └── harness.toml.typescript.example  # eslint (gate) + tsc (advisory)
 └── src/
     └── meow/
         ├── __init__.py
