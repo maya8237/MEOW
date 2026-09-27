@@ -10,7 +10,7 @@ Sprint Contract, the generator implements it under an auto-fixing lint hook, and
 a skeptical evaluator grades the result PASS/FAIL. FAIL feeds back into the
 generator, up to `max_rounds` times.
 
-Every project-specific value — the lint command, the per-role models, the round
+Every project-specific value — the lint commands, the per-role models, the round
 cap, where sprint files land — is read at runtime from a `.harness.toml` file in
 the *target project's* root. This repo holds only the engine.
 
@@ -53,18 +53,58 @@ in this repo.
 ## Configuring a project to use it
 
 Copy [`templates/harness.toml.example`](templates/harness.toml.example) to the
-project root as `.harness.toml` and fill it in. Fields:
+project root as `.harness.toml` and fill it in. Top-level fields:
 
 | Field | Required | Default | Purpose |
 |---|---|---|---|
-| `lint_command` | **yes** | — | The project's lint/check command, **without** any fix flag (e.g. `ruff check`, `eslint`, `golangci-lint run`). Run unmodified as the evaluator's full-project gate. |
-| `lint_fix_flag` | no | `--fix` | Appended to `lint_command` for the auto-fixing per-file hook on every file the generator writes. |
+| `[[lint]]` | **yes** | — | One or more lint commands. See below. |
 | `max_rounds` | no | `8` | Generator↔evaluator rounds allowed before the sprint gives up rather than looping forever. |
 | `docs_dir` | no | `docs/exec-plans/active` | Where sprint plan/contract/review files are written, relative to the project root. Must already exist. |
 | `[models]` | no | see below | Per-role model overrides: `explorer`, `planner`, `generator`, `evaluator`. Omit a key to use the engine's default for that role. |
 
 The engine defaults `explorer` to `haiku` (cheap, read-only research) and leaves
 the other three to the SDK's own default model.
+
+> **TOML ordering.** Every top-level key must appear *above* the first
+> `[[lint]]` table — anything after one belongs to that table, not to the file.
+> The engine rejects a misplaced key with an error naming it.
+
+### Lint commands
+
+A project declares any number of lint commands, one `[[lint]]` table each, run
+in the order listed:
+
+| Key | Required | Default | Purpose |
+|---|---|---|---|
+| `command` | **yes** | — | The check-only command, **without** any fix flag (e.g. `ruff check`, `npx oxlint`, `golangci-lint run`). |
+| `fix_flag` | no | none | Appended when linting a single file, so the per-file hook can auto-fix. Omit for a command with no fix mode. |
+| `per_file` | no | `true` | Run as a hook on every file the generator writes. Set `false` for whole-project analysis that means nothing pointed at one file. |
+| `gate` | no | `true` | A project-wide failure is a sprint FAIL. Set `false` to make a command advisory — what you want for an analyzer that reports findings on pre-existing code. |
+
+```toml
+# The gate: per-file and auto-fixing, and its failure fails the sprint.
+[[lint]]
+command = "npx oxlint"
+fix_flag = "--fix"
+
+# Advisory project-graph analysis: informs the review, cannot fail it.
+[[lint]]
+command = "npx fallow"
+per_file = false
+gate = false
+```
+
+Each command's program is resolved on `PATH` before running, so `npx ...` works
+on Windows, where the shim is a `.cmd` file that cannot be exec'd from a bare
+argv.
+
+The older single-command form still works and is equivalent to one `[[lint]]`
+entry that is both per-file and a gate:
+
+```toml
+lint_command = "ruff check"
+lint_fix_flag = "--fix"
+```
 
 It's also worth pointing the project's `AGENTS.md` at the harness, so feature
 work runs through it rather than ad hoc editing:

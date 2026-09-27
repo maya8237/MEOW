@@ -2,12 +2,17 @@
 # Run with: harness run "your feature request"   (from this repo's root)
 #
 # See templates/harness.toml.example for the annotated version of this file
-# that gets copied into other projects.
+# that gets copied into other projects. Note that every top-level key must
+# appear above the first [[lint]] table.
 
-lint_command = "ruff check"
-lint_fix_flag = "--fix"
 max_rounds = 8
 docs_dir = "docs/exec-plans/active"
 
 [models]
 explorer = "haiku"
+
+# One command, doing both jobs: auto-fixing hook per edited file, and the
+# project-wide gate the evaluator has to see pass.
+[[lint]]
+command = "ruff check"
+fix_flag = "--fix"
