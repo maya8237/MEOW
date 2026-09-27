@@ -8,6 +8,8 @@ nothing else; none of them know where those values came from.
 """
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 from claude_agent_sdk import (
@@ -141,6 +143,93 @@ def _architecture_review_instructions() -> str:
         "Use file:line evidence; do not accept 'it works' as an excuse for "
         "a monolithic design."
     )
+
+
+def _git_review_context(sprint: Sprint) -> str:
+    """Capture the current working tree status and diff for prompt-less reviews."""
+    root = sprint.working_root()
+    git = shutil.which("git")
+    if not git:
+        return "git is not installed or not on PATH; cannot inspect the working tree."
+
+    status = subprocess.run(
+        [git, "-C", str(root), "status", "--short", "--branch"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    diff = subprocess.run(
+        [git, "-C", str(root), "diff", "--"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return (
+        "Git status:\n"
+        f"{status.stdout.strip() or '(no git status output)'}\n\n"
+        "Git diff:\n"
+        f"{diff.stdout.strip() or '(no diff output)'}"
+    )
+
+
+async def run_prompt_reviewer(
+    sprint: Sprint, feature_name: str, prompt: str | None
+) -> tuple[str, str]:
+    """Grade the current working tree against a free-text prompt, or the git diff."""
+    active_dir = sprint.project_root / sprint.config["docs_dir"]
+    active_dir.mkdir(parents=True, exist_ok=True)
+    review_file = active_dir / f"{feature_name}-review.md"
+
+    review_basis = (prompt or "").strip()
+    git_context = _git_review_context(sprint)
+    prompt_text = (
+        f"The feature is described by this prompt: {review_basis!r}. "
+        if review_basis
+        else (
+            "There is no explicit prompt. Review the current working tree "
+            "using the `git status` and `git diff` content below as the "
+            "source of truth. "
+        )
+    )
+
+    options = ClaudeAgentOptions(
+        system_prompt=(
+            "You are a skeptical QA reviewer. You did not write this code "
+            "-- grade it critically. There is no Sprint Contract for this "
+            "review; evaluate the current working tree instead. "
+            + prompt_text
+            + "Run `git status` and `git diff` in the working directory to "
+            "see what has actually changed, then check whether the current "
+            "changes satisfy each distinct requirement implied by the task. "
+            "Use the following working-tree context as the source of truth: "
+            + git_context
+            + ". Mark each requirement PASS or FAIL with concrete evidence "
+            "(file:line or command output). "
+            + _lint_instructions(sprint.lint_commands())
+            + " "
+            + _architecture_review_instructions()
+            + f" Write your verdict to {review_file} starting with a line "
+            "'STATUS: PASS' or 'STATUS: FAIL', followed by one line per "
+            "requirement. Default to FAIL when uncertain."
+        ),
+        allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
+        model=sprint.model("reviewer"),
+        cwd=str(sprint.project_root),
+    )
+
+    query_prompt = (
+        f"Review the working tree against the task.\n\n{git_context}"
+        if not review_basis
+        else f"Review the prompt: {review_basis}\n\n{git_context}"
+    )
+    async for message in query(prompt=query_prompt, options=options):
+        if isinstance(message, ResultMessage) and message.subtype != "success":
+            raise RuntimeError(f"Reviewer failed: {message.subtype}")
+
+    verdict_text = review_file.read_text()
+    status_match = re.search(r"^STATUS:\s*(PASS|FAIL)", verdict_text, re.MULTILINE)
+    status = status_match.group(1) if status_match else "FAIL"
+    return status, verdict_text
 
 
 async def run_reviewer(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
