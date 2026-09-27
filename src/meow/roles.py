@@ -61,7 +61,7 @@ async def run_planner(sprint: Sprint, feature_name: str, request: str) -> Path:
         allowed_tools=["Read", "Grep", "Glob", "Write", "Agent"],
         agents={"explorer": sprint.explorer},
         model=sprint.model("planner"),
-        cwd=str(sprint.project_root),
+        cwd=str(sprint.working_root()),
     )
 
     async for message in query(prompt=request, options=options):
@@ -89,7 +89,7 @@ class Generator:
                 ]
             },
             model=sprint.model("generator"),
-            cwd=str(sprint.project_root),
+            cwd=str(sprint.working_root()),
         )
         self._client = ClaudeSDKClient(options=options)
 
@@ -114,7 +114,7 @@ class Generator:
 def _lint_instructions(commands: list[LintCommand]) -> str:
     """Tell the reviewer which lint commands bind it and which only inform."""
     gates = [entry.command for entry in commands if entry.gate]
-    advisory = [entry.command for entry in commands if not entry.gate]
+    non_blocking = [entry.command for entry in commands if not entry.gate]
 
     parts = []
     if gates:
@@ -123,8 +123,8 @@ def _lint_instructions(commands: list[LintCommand]) -> str:
             "Run each of these project-wide and treat any failure as a "
             f"FAIL criterion: {listed}."
         )
-    if advisory:
-        listed = ", ".join(f"`{command}`" for command in advisory)
+    if non_blocking:
+        listed = ", ".join(f"`{command}`" for command in non_blocking)
         parts.append(
             f"Also run {listed} and summarise the findings in your review, "
             "but do not fail the sprint on them."
@@ -140,18 +140,21 @@ def _architecture_review_instructions() -> str:
         "lint hooks + orchestration + CLI handling in one module. Treat any "
         "single file that does more than one broad concern as a FAIL criterion "
         "unless the code is clearly split into cohesive helpers or classes. "
-        "Use file:line evidence; do not accept 'it works' as an excuse for "
-        "a monolithic design."
+        "If the sprint used an isolated worktree, ensure every plan change stays "
+        "inside the active worktree root and that the main repo root remains "
+        "clean; any edit at the repo root is a FAIL criterion. Use file:line "
+        "evidence; do not accept 'it works' as an excuse for a monolithic "
+        "design."
     )
 
 
 def _git_review_context(sprint: Sprint) -> str:
-    """Capture the current working tree status and diff for prompt-less reviews."""
-    root = sprint.working_root()
+    """Capture the active worktree and repo-root status for reviewer checks."""
     git = shutil.which("git")
     if not git:
         return "git is not installed or not on PATH; cannot inspect the working tree."
 
+    root = sprint.working_root()
     status = subprocess.run(
         [git, "-C", str(root), "status", "--short", "--branch"],
         check=False,
@@ -164,12 +167,34 @@ def _git_review_context(sprint: Sprint) -> str:
         capture_output=True,
         text=True,
     )
-    return (
-        "Git status:\n"
+    context = (
+        "Git status for the active worktree:\n"
         f"{status.stdout.strip() or '(no git status output)'}\n\n"
-        "Git diff:\n"
+        "Git diff for the active worktree:\n"
         f"{diff.stdout.strip() or '(no diff output)'}"
     )
+
+    if sprint.working_directory and sprint.working_directory != sprint.project_root:
+        repo_status = subprocess.run(
+            [git, "-C", str(sprint.project_root), "status", "--short", "--branch"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        repo_diff = subprocess.run(
+            [git, "-C", str(sprint.project_root), "diff", "--"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        context += (
+            "\n\nMain repo root status (must be clean while a worktree is active):\n"
+            f"{repo_status.stdout.strip() or '(no git status output at repo root)'}\n\n"
+            "Main repo root diff:\n"
+            f"{repo_diff.stdout.strip() or '(no diff output at repo root)'}"
+        )
+
+    return context
 
 
 async def run_prompt_reviewer(
@@ -208,13 +233,15 @@ async def run_prompt_reviewer(
             + _lint_instructions(sprint.lint_commands())
             + " "
             + _architecture_review_instructions()
-            + f" Write your verdict to {review_file} starting with a line "
-            "'STATUS: PASS' or 'STATUS: FAIL', followed by one line per "
-            "requirement. Default to FAIL when uncertain."
+            + f" Write your verdict to {review_file} with the first line "
+            "starting with 'SUMMARY:' and containing a brief one- or two-"
+            "sentence summary. The next line must start with 'STATUS: PASS' "
+            "or 'STATUS: FAIL', followed by one line per requirement. "
+            "Default to FAIL when uncertain."
         ),
         allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
         model=sprint.model("reviewer"),
-        cwd=str(sprint.project_root),
+        cwd=str(sprint.working_root()),
     )
 
     query_prompt = (
@@ -245,13 +272,15 @@ async def run_reviewer(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
             + _lint_instructions(sprint.lint_commands())
             + " "
             + _architecture_review_instructions()
-            + f" Write your verdict to {review_file} starting with a line "
-            "'STATUS: PASS' or 'STATUS: FAIL', followed by one line per "
-            "criterion. Default to FAIL when uncertain."
+            + f" Write your verdict to {review_file} with the first line "
+            "starting with 'SUMMARY:' and containing a brief one- or two-"
+            "sentence summary. The next line must start with 'STATUS: PASS' "
+            "or 'STATUS: FAIL', followed by one line per criterion. "
+            "Default to FAIL when uncertain."
         ),
         allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
         model=sprint.model("reviewer"),
-        cwd=str(sprint.project_root),
+        cwd=str(sprint.working_root()),
     )
 
     async for message in query(prompt=f"Review {plan_file}", options=options):

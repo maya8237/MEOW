@@ -39,8 +39,8 @@ class LintCommand:
 
     A `per_file` command runs as the generator's post-edit hook, on the single
     file just written. A `gate` command runs project-wide for the evaluator and
-    its failure is a sprint FAIL; a non-gate command is advisory, which is what
-    a whole-project analyzer needs when it is expected to report findings on
+    its failure is a sprint FAIL; a non-gate command is non-blocking, which is
+    what a whole-project analyzer needs when it is expected to report findings on
     pre-existing code.
     """
 
@@ -103,7 +103,7 @@ def _normalize_lint_commands(user_config: dict) -> list[LintCommand]:
         [[lint]]
         command = "npx fallow"
         per_file = false          # project-wide only, never per file
-        gate = false              # advisory: failure is not a sprint FAIL
+        gate = false              # non-blocking: failure is not a sprint FAIL
 
     The older single-command form still works and becomes one entry:
 
