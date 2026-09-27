@@ -1,7 +1,7 @@
 """
 meow/orchestrator.py
 
-The generic harness engine: explorer, planner, generator, and evaluator as
+The generic harness engine: explorer, planner, generator, and reviewer as
 real peer agents, coordinated by plain Python control flow. Unlike the
 single-project version, all project-specific values (lint commands, models,
 round cap) are read from a `.harness.toml` file in the target project's
@@ -12,8 +12,8 @@ A project may configure any number of lint commands. Each one declares
 whether it runs per edited file, whether it can auto-fix, and whether its
 failure is allowed to fail a sprint -- see `_normalize_lint_commands`.
 
-Install (from the harness repo root):    pip install -e .
-Run (from inside a project repo):        harness run "Add CSV export"
+Install (from the meow repo root):    pip install -e .
+Run (from inside a project repo):        meow run "Add CSV export"
 """
 
 import argparse
@@ -48,7 +48,7 @@ DEFAULT_CONFIG = {
         "explorer": "haiku",
         "planner": None,            # None = engine default
         "generator": None,
-        "evaluator": None,
+        "reviewer": None,
     },
 }
 
@@ -62,7 +62,7 @@ class LintCommand:
     """One lint command a project has configured.
 
     A `per_file` command runs as the generator's post-edit hook, on the single
-    file just written. A `gate` command runs project-wide for the evaluator and
+    file just written. A `gate` command runs project-wide for the reviewer and
     its failure is a sprint FAIL; a non-gate command is advisory, which is what
     a whole-project analyzer needs when it is expected to report findings on
     pre-existing code.
@@ -206,6 +206,16 @@ class Sprint:
 
     def lint_commands(self) -> list[LintCommand]:
         return self.config["lint"]
+
+
+def _build_sprint(project_root: Path, config: dict) -> Sprint:
+    commands = config["lint"]
+    return Sprint(
+        project_root=project_root,
+        config=config,
+        explorer=make_explorer_agent(config),
+        lint_hook=make_lint_hook(project_root, commands),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -360,11 +370,11 @@ class Generator:
 
 
 # ---------------------------------------------------------------------------
-# Role: evaluator
+# Role: reviewer
 # ---------------------------------------------------------------------------
 
 def _lint_instructions(commands: list[LintCommand]) -> str:
-    """Tell the evaluator which lint commands bind it and which only inform."""
+    """Tell the reviewer which lint commands bind it and which only inform."""
     gates = [entry.command for entry in commands if entry.gate]
     advisory = [entry.command for entry in commands if not entry.gate]
 
@@ -385,7 +395,7 @@ def _lint_instructions(commands: list[LintCommand]) -> str:
 
 
 def _architecture_review_instructions() -> str:
-    """Tell the evaluator to look for monolithic, SRP-breaking modules."""
+    """Tell the reviewer to look for monolithic, SRP-breaking modules."""
     return (
         "Also perform a SOLID/SRP review. Flag any file or class that mixes "
         "multiple responsibilities, such as config parsing + agent wiring + "
@@ -397,7 +407,7 @@ def _architecture_review_instructions() -> str:
     )
 
 
-async def run_evaluator(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
+async def run_reviewer(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
     review_file = plan_file.with_name(plan_file.stem + "-review.md")
 
     options = ClaudeAgentOptions(
@@ -415,13 +425,13 @@ async def run_evaluator(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
             "criterion. Default to FAIL when uncertain."
         ),
         allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
-        model=sprint.model("evaluator"),
+        model=sprint.model("reviewer"),
         cwd=str(sprint.project_root),
     )
 
     async for message in query(prompt=f"Review {plan_file}", options=options):
         if isinstance(message, ResultMessage) and message.subtype != "success":
-            raise RuntimeError(f"Evaluator failed: {message.subtype}")
+            raise RuntimeError(f"Reviewer failed: {message.subtype}")
 
     verdict_text = review_file.read_text()
     status_match = re.search(r"^STATUS:\s*(PASS|FAIL)", verdict_text, re.MULTILINE)
@@ -444,7 +454,7 @@ def _describe_lint_plan(commands: list[LintCommand]) -> None:
 
 
 async def _run_rounds(sprint: Sprint, plan_file: Path) -> bool:
-    """Loop generator -> evaluator. True if the sprint passed."""
+    """Loop generator -> reviewer. True if the sprint passed."""
     max_rounds = sprint.config["max_rounds"]
 
     async with Generator(sprint, plan_file) as generator:
@@ -453,32 +463,78 @@ async def _run_rounds(sprint: Sprint, plan_file: Path) -> bool:
             print(f"[generator] round {round_num}: implementing...")
             await generator.implement(instruction)
 
-            print(f"[evaluator] round {round_num}: reviewing...")
-            status, verdict = await run_evaluator(sprint, plan_file)
-            print(f"[evaluator] round {round_num}: {status}")
+            print(f"[reviewer] round {round_num}: reviewing...")
+            status, verdict = await run_reviewer(sprint, plan_file)
+            print(f"[reviewer] round {round_num}: {status}")
 
             if status == "PASS":
                 return True
 
             instruction = (
-                "The evaluator found issues. Fix them, then stop. "
-                f"Evaluator feedback:\n{verdict}"
+                "The reviewer found issues. Fix them, then stop. "
+                f"Reviewer feedback:\n{verdict}"
             )
 
     return False
 
 
+async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
+    """Loop reviewer -> generator, reviewing the existing code first.
+
+    Unlike `_run_rounds`, this doesn't assume the plan is unimplemented --
+    it only spins up a generator session if the first review actually finds
+    something to fix. True if the plan ends up passing.
+    """
+    max_rounds = sprint.config["max_rounds"]
+
+    print("[reviewer] round 1: reviewing...")
+    status, verdict = await run_reviewer(sprint, plan_file)
+    print(f"[reviewer] round 1: {status}")
+    if status == "PASS":
+        return True
+
+    async with Generator(sprint, plan_file) as generator:
+        instruction = (
+            "The reviewer found issues. Fix them, then stop. "
+            f"Reviewer feedback:\n{verdict}"
+        )
+        for round_num in range(2, max_rounds + 1):
+            print(f"[generator] round {round_num}: implementing...")
+            await generator.implement(instruction)
+
+            print(f"[reviewer] round {round_num}: reviewing...")
+            status, verdict = await run_reviewer(sprint, plan_file)
+            print(f"[reviewer] round {round_num}: {status}")
+
+            if status == "PASS":
+                return True
+
+            instruction = (
+                "The reviewer found issues. Fix them, then stop. "
+                f"Reviewer feedback:\n{verdict}"
+            )
+
+    return False
+
+
+def _latest_plan_file(docs_dir: Path) -> Path:
+    """The most recently modified sprint plan in docs_dir, excluding reviews."""
+    candidates = [
+        path for path in docs_dir.glob("*.md")
+        if not path.name.endswith("-review.md")
+    ]
+    if not candidates:
+        raise FileNotFoundError(
+            f"No plan file found in {docs_dir}. Run `meow plan "
+            '"<feature>"` first, or pass --plan-file explicitly.'
+        )
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
 async def run_sprint(project_root: Path, feature_name: str, request: str):
     config = load_config(project_root)
-    commands = config["lint"]
-    _describe_lint_plan(commands)
-
-    sprint = Sprint(
-        project_root=project_root,
-        config=config,
-        explorer=make_explorer_agent(config),
-        lint_hook=make_lint_hook(project_root, commands),
-    )
+    _describe_lint_plan(config["lint"])
+    sprint = _build_sprint(project_root, config)
 
     print(f"[planner] planning '{feature_name}'...")
     plan_file = await run_planner(sprint, feature_name, request)
@@ -495,16 +551,51 @@ async def run_sprint(project_root: Path, feature_name: str, request: str):
     )
 
 
+async def run_plan(project_root: Path, feature_name: str, request: str) -> Path:
+    config = load_config(project_root)
+    sprint = _build_sprint(project_root, config)
+
+    print(f"[planner] planning '{feature_name}'...")
+    plan_file = await run_planner(sprint, feature_name, request)
+    print(f"[planner] wrote {plan_file}")
+    return plan_file
+
+
+async def run_review(project_root: Path, plan_file: Path | None):
+    config = load_config(project_root)
+    _describe_lint_plan(config["lint"])
+    sprint = _build_sprint(project_root, config)
+
+    resolved_plan_file = plan_file or _latest_plan_file(
+        project_root / config["docs_dir"]
+    )
+
+    print(f"[orchestrator] reviewing {resolved_plan_file}...")
+    if await _run_review_rounds(sprint, resolved_plan_file):
+        print(f"[orchestrator] review of {resolved_plan_file} complete.")
+        return
+
+    raise RuntimeError(
+        f"Review of {resolved_plan_file} did not pass after "
+        f"{config['max_rounds']} rounds -- stopping instead of looping "
+        "forever. Inspect the review file."
+    )
+
+
 # ---------------------------------------------------------------------------
-# CLI entry point -- registered as the `harness` console script
+# CLI entry point -- registered as the `meow` console script
 # ---------------------------------------------------------------------------
 
-def cli_main():
-    parser = argparse.ArgumentParser(prog="harness")
+def _slugify(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:50]
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="meow")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run_parser = subparsers.add_parser(
-        "run", help="Run a sprint for a feature request."
+        "run", help="Plan, implement, and review a feature request end to end."
     )
     run_parser.add_argument("request", help="Feature request text.")
     run_parser.add_argument(
@@ -512,12 +603,43 @@ def cli_main():
         help="Path to the project repo (default: current directory).",
     )
 
-    args = parser.parse_args()
+    plan_parser = subparsers.add_parser(
+        "plan",
+        help="Write a sprint plan for a feature request, without implementing it.",
+    )
+    plan_parser.add_argument("request", help="Feature request text.")
+    plan_parser.add_argument(
+        "--project-root", default=".",
+        help="Path to the project repo (default: current directory).",
+    )
+
+    review_parser = subparsers.add_parser(
+        "review",
+        help="Review an existing plan's implementation and fix any issues found.",
+    )
+    review_parser.add_argument(
+        "--plan-file", default=None,
+        help="Plan file to review (default: latest plan in docs_dir).",
+    )
+    review_parser.add_argument(
+        "--project-root", default=".",
+        help="Path to the project repo (default: current directory).",
+    )
+
+    return parser
+
+
+def cli_main():
+    args = _build_arg_parser().parse_args()
+    project_root = Path(args.project_root).resolve()
 
     if args.command == "run":
-        project_root = Path(args.project_root).resolve()
-        slug = re.sub(r"[^a-z0-9]+", "-", args.request.lower()).strip("-")[:50]
-        asyncio.run(run_sprint(project_root, slug, args.request))
+        asyncio.run(run_sprint(project_root, _slugify(args.request), args.request))
+    elif args.command == "plan":
+        asyncio.run(run_plan(project_root, _slugify(args.request), args.request))
+    elif args.command == "review":
+        plan_file = Path(args.plan_file).resolve() if args.plan_file else None
+        asyncio.run(run_review(project_root, plan_file))
 
 
 if __name__ == "__main__":

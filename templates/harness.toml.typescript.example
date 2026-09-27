@@ -21,7 +21,7 @@ command = "npx eslint"
 fix_flag = "--fix"
 
 # Advisory: tsc has no fix mode and no per-file mode worth using -- it just
-# gets reported in the evaluator's review, never fails the sprint on its own.
+# gets reported in the reviewer's review, never fails the sprint on its own.
 [[lint]]
 command = "npx tsc --noEmit"
 per_file = false

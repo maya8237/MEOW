@@ -13,7 +13,7 @@ meow fails immediately, with a clear error, before any agent call is made, if
 any of these are missing:
 
 - **meow installed and reachable** — see this repo's README for the venv/pipx
-  install. Verify with `harness --help`; if it's a venv-local install, either
+  install. Verify with `meow --help`; if it's a venv-local install, either
   activate it or call it by full path.
 - **`.harness.toml` at the project root**, with at least one `[[lint]]` entry
   (or the legacy `lint_command`). Missing file → `FileNotFoundError`; zero
@@ -26,7 +26,7 @@ any of these are missing:
 - **A writable `docs_dir`** — doesn't need to pre-exist (`run_planner`
   `mkdir`s it), just needs to resolve inside the project root.
 - **Your lint command actually working** — run it by hand first. If it's
-  broken or unconfigured, the per-file hook and the evaluator's gate both fail
+  broken or unconfigured, the per-file hook and the reviewer's gate both fail
   silently useless.
 
 ---
@@ -40,10 +40,10 @@ unknown key by name rather than ignoring it.
 | Field | Required | Default | Notes |
 |---|---|---|---|
 | `[[lint]]` | **Yes**, ≥1 | — | See below. |
-| `max_rounds` | No | `8` | Generator↔evaluator rounds before meow gives up. |
+| `max_rounds` | No | `8` | Generator↔reviewer rounds before meow gives up. |
 | `docs_dir` | No | `docs/exec-plans/active` | Relative to project root; auto-created. |
 | `[models].explorer` | No | `"haiku"` | Cheap, read-only research role. |
-| `[models].{planner,generator,evaluator}` | No | SDK default | `generator` does the heaviest work — consider pinning it explicitly. |
+| `[models].{planner,generator,reviewer}` | No | SDK default | `generator` does the heaviest work — consider pinning it explicitly. |
 
 Each `[[lint]]` table (run in listed order, program resolved on `PATH` so
 `npx ...` works on Windows):
@@ -84,7 +84,7 @@ docs/
 └── references/
 ```
 
-**`docs/ARCHITECTURE.md`** is the highest-value one: the evaluator runs a
+**`docs/ARCHITECTURE.md`** is the highest-value one: the reviewer runs a
 SOLID/SRP pass (`_architecture_review_instructions`) that fails any file
 mixing unrelated responsibilities. Without a stated architecture it's
 guessing at what "one responsibility" means for *this* project. The rest
@@ -102,7 +102,7 @@ Purely a human/agent-facing convention — not read by `orchestrator.py`:
 ## Harness
 
 Feature work in this repo runs through meow, not ad hoc editing. From the repo
-root: `harness run "<feature description>"`.
+root: `meow run "<feature description>"`.
 Config lives in `.harness.toml`. See <meow repo link>'s GUIDE.md for setup.
 ```
 
@@ -110,11 +110,11 @@ Config lives in `.harness.toml`. See <meow repo link>'s GUIDE.md for setup.
 
 ## 5. Setup checklist
 
-- [ ] `harness --help` runs
+- [ ] `meow --help` runs
 - [ ] `ANTHROPIC_API_KEY` set
 - [ ] `.harness.toml` has ≥1 `[[lint]]` entry, all top-level keys above it
 - [ ] Each lint `command` works run by hand
-- [ ] `harness run "<trivial test feature>"` — reported lint/models match
+- [ ] `meow run "<trivial test feature>"` — reported lint/models match
       *your* config (not defaults), a plan + `-review.md` land in `docs_dir`,
       and it resolves to `STATUS: PASS` or a clean `max_rounds` error
 

@@ -1,7 +1,7 @@
 [project]
 name = "meow"
 version = "0.1.0"
-description = "Planner/generator/evaluator harness engine for the Claude Agent SDK, reusable across projects via .harness.toml"
+description = "Planner/generator/reviewer harness engine for the Claude Agent SDK, reusable across projects via .harness.toml"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
-harness = "meow.orchestrator:cli_main"
+meow = "meow.cli:cli_main"
 
 [build-system]
 requires = ["hatchling"]
