@@ -14,9 +14,14 @@ written to `docs/exec-plans/active/`.
 
 ## Lint
 
-`ruff check` is the gate. The harness appends `--fix` when linting individual
-files the generator touches, and runs `ruff check` unmodified project-wide as
-part of the evaluator's verdict. Config is in `pyproject.toml`.
+`ruff check` is the gate, declared as the single `[[lint]]` entry in
+`.harness.toml`. The harness appends `--fix` when linting individual files the
+generator touches, and runs `ruff check` unmodified project-wide as part of the
+evaluator's verdict. Rule selection lives in `pyproject.toml`.
+
+A project can declare any number of `[[lint]]` commands, each choosing whether
+it runs per file and whether its failure may fail a sprint; meow itself only
+needs one.
 
 ## Layout
 

@@ -3,15 +3,10 @@
 # Copy this to the root of a project that uses the installed harness engine,
 # renamed to `.harness.toml`, then fill in the real values.
 # Run with: harness run "your feature request"   (from that project's root)
-
-# Required. The project's lint/check command, WITHOUT any fix flag --
-# the engine appends its own fix flag for the per-file hook, and runs this
-# exact command unmodified (check-only) for the evaluator's full-project gate.
-# Examples: "ruff check", "eslint", "golangci-lint run"
-lint_command = "<your-lint-command>"
-
-# Flag the engine appends to lint_command for the auto-fixing per-file hook.
-lint_fix_flag = "--fix"
+#
+# NOTE ON TOML: every top-level key must appear ABOVE the first [[lint]]
+# table. Anything written after one belongs to that table, not to the file.
+# The engine rejects the config with a clear error if you get this wrong.
 
 # How many generator <-> evaluator rounds to allow before giving up on a
 # sprint rather than looping forever.
@@ -28,3 +23,38 @@ explorer = "haiku"
 # planner = "claude-sonnet-5"
 # generator = "claude-opus-5-5"
 # evaluator = "claude-opus-5-5"
+
+# ---------------------------------------------------------------------------
+# Lint commands -- one [[lint]] table per command, any number of them.
+#
+#   command   required. The check-only command, WITHOUT any fix flag.
+#   fix_flag  optional. Appended when linting a single file, so the hook can
+#             auto-fix. Omit for a command that has no fix mode.
+#   per_file  optional, default true. Run as a hook on each file the
+#             generator writes. Set false for whole-project analysis that
+#             means nothing when pointed at one file.
+#   gate      optional, default true. A project-wide failure is a sprint
+#             FAIL. Set false to make a command advisory -- what you want
+#             for an analyzer that reports findings on pre-existing code.
+#
+# Commands run in the order listed. The program is resolved on PATH, so
+# `npx ...` works on Windows where the shim is a .cmd file.
+# ---------------------------------------------------------------------------
+
+[[lint]]
+command = "<your-lint-command>"   # e.g. "ruff check", "eslint", "npx oxlint"
+fix_flag = "--fix"
+
+# A second, project-only advisory check. Delete if you don't have one.
+# [[lint]]
+# command = "npx fallow"
+# per_file = false
+# gate = false
+
+# ---------------------------------------------------------------------------
+# The older single-command form still works, and is equivalent to one
+# [[lint]] entry that is both per-file and a gate. Prefer [[lint]].
+#
+#   lint_command = "ruff check"
+#   lint_fix_flag = "--fix"
+# ---------------------------------------------------------------------------

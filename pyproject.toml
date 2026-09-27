@@ -20,11 +20,22 @@ build-backend = "hatchling.build"
 packages = ["src/meow"]
 
 [project.optional-dependencies]
-dev = ["ruff"]
+dev = ["ruff", "pylint"]
 
 [tool.ruff]
 line-length = 88
 src = ["src"]
+preview = true
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "C90", "PLR"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 6
+
+[tool.ruff.lint.pylint]
+max-args = 4
+max-branches = 7
+max-returns = 4
+max-statements = 20
+max-public-methods = 10
