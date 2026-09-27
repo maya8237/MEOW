@@ -69,20 +69,8 @@ gate = false
 ## 3. Recommended, not enforced — but do it anyway
 
 No role is *required* to have any of these present — meow runs fine without
-them — but "not required" is not the same as "not read." All four roles
-(explorer, planner, generator, reviewer) carry `Read`/`Grep`/`Glob` and are
-given a shared instruction (`roles.py`'s `_docs_scan_instruction`, folded into
-each role's policy text and into `_architecture_review_instructions`) to Glob
-the project's `docs/` folder and read whatever's relevant to *that role's
-current job* — no role's prompt names a specific filename anywhere. That's
-deliberate: what's relevant depends on what the project actually put there,
-and a fixed reading list would either miss docs a project happens to have or
-force every role to read docs that don't apply to its task. The one
-structural exception is the reviewer's SOLID/SRP pass, which specifically
-looks in `docs/` for whatever describes this project's module boundaries and
-dependency rules — see below. For a guaranteed read regardless of relevance,
-name the doc directly in the request (e.g. `harness run "Add CSV export --
-see docs/product-specs/reports.md"`).
+them. When project documentation should guide a role, name it in the request
+(for example, `meow run "Add CSV export -- see docs/product-specs/reports.md"`).
 
 ```
 docs/
@@ -106,7 +94,7 @@ five-file repo the explorer can infer the shape by reading everything, but on
 a real codebase with several packages/modules it can't, and an unstated
 architecture produces reviews that are inconsistent from one sprint to the
 next, or that enforce a structure nobody actually chose. Write it when you
-onboard a project, before the first `harness run`, not after the review
+onboard a project, before the first `meow run`, not after the review
 quality suffers — it doesn't need to be long, just state the module
 boundaries and who's allowed to depend on whom, and it doesn't need the name
 `ARCHITECTURE.md` specifically, just to live somewhere under `docs/`.
@@ -145,7 +133,7 @@ Config lives in `.harness.toml`. See <meow repo link>'s GUIDE.md for setup.
       `docs/` (conventionally `docs/ARCHITECTURE.md`) — not enforced by meow,
       but skipping it on anything beyond a toy project degrades every
       architecture review from here on; see §3
-- [ ] `meow run "<trivial test feature>"` — reported lint/models match
+- [ ] `meow run "<trivial test feature>" --worktree "trivial-test-feature"` — reported lint/models match
       *your* config (not defaults), a plan + `-review.md` land in `docs_dir`,
       and it resolves to `STATUS: PASS` or a clean `max_rounds` error
 

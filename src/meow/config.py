@@ -141,11 +141,11 @@ def _normalize_lint_commands(user_config: dict) -> list[LintCommand]:
     return entries
 
 
-def load_config(project_root: Path) -> dict:
-    config_path = project_root / CONFIG_FILENAME
+def load_config(working_dir: Path) -> dict:
+    config_path = working_dir / CONFIG_FILENAME
     if not config_path.exists():
         raise FileNotFoundError(
-            f"No {CONFIG_FILENAME} found in {project_root}. "
+            f"No {CONFIG_FILENAME} found in {working_dir}. "
             "Create one before running the harness -- see the harness "
             "repo's README for the required fields."
         )

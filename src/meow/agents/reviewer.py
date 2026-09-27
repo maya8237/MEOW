@@ -1,114 +1,14 @@
-"""
-meow/roles.py
-
-The four peer agents -- explorer, planner, generator, reviewer -- as real
-Claude Agent SDK sessions. Each role takes a `Sprint` for the
-project-specific values it needs (models, lint commands, project root) and
-nothing else; none of them know where those values came from.
-"""
+"""Reviewer agent setup, review context, and verdict parsing."""
 
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
-from claude_agent_sdk import (
-    AgentDefinition,
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    HookMatcher,
-    ResultMessage,
-    TextBlock,
-    query,
-)
+from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
 from meow.config import LintCommand
 from meow.sprint import Sprint
-
-
-def make_explorer_agent(config: dict) -> AgentDefinition:
-    return AgentDefinition(
-        description=(
-            "Read-only codebase/log/test-output exploration. Use for any "
-            "research whose raw output doesn't need to be kept in full."
-        ),
-        prompt=(
-            "You are a read-only research agent. Investigate the question "
-            "you're given, then return only a concise summary with "
-            "file:line references -- never dump raw file contents or full "
-            "command output unless specifically asked to."
-        ),
-        tools=["Read", "Grep", "Glob", "Bash"],
-        model=config["models"]["explorer"],
-    )
-
-
-async def run_planner(sprint: Sprint, feature_name: str, request: str) -> Path:
-    active_dir = sprint.project_root / sprint.config["docs_dir"]
-    active_dir.mkdir(parents=True, exist_ok=True)
-    plan_file = active_dir / f"{feature_name}.md"
-
-    options = ClaudeAgentOptions(
-        system_prompt=(
-            "You are a planning agent. Consult the explorer subagent for "
-            "any codebase context you need -- don't explore directly. "
-            "Produce a numbered task list with acceptance criteria per "
-            "task, plus a proposed '## Sprint Contract' section with "
-            f"concrete, testable pass/fail criteria. Write the result to "
-            f"{plan_file}. Do not write application code."
-        ),
-        allowed_tools=["Read", "Grep", "Glob", "Write", "Agent"],
-        agents={"explorer": sprint.explorer},
-        model=sprint.model("planner"),
-        cwd=str(sprint.working_root()),
-    )
-
-    async for message in query(prompt=request, options=options):
-        if isinstance(message, ResultMessage) and message.subtype != "success":
-            raise RuntimeError(f"Planner failed: {message.subtype}")
-
-    return plan_file
-
-
-class Generator:
-    def __init__(self, sprint: Sprint, plan_file: Path):
-        options = ClaudeAgentOptions(
-            system_prompt=(
-                f"You implement tasks from {plan_file} one at a time. "
-                "Work against the agreed Sprint Contract criteria exactly "
-                "-- do not expand scope. When you believe a task is "
-                "complete, say so explicitly and stop; do not grade your "
-                "own work."
-            ),
-            allowed_tools=["Read", "Edit", "Write", "Bash", "Grep", "Glob", "Agent"],
-            agents={"explorer": sprint.explorer},
-            hooks={
-                "PostToolUse": [
-                    HookMatcher(matcher="Write|Edit", hooks=[sprint.lint_hook])
-                ]
-            },
-            model=sprint.model("generator"),
-            cwd=str(sprint.working_root()),
-        )
-        self._client = ClaudeSDKClient(options=options)
-
-    async def __aenter__(self):
-        await self._client.__aenter__()
-        return self
-
-    async def __aexit__(self, *exc):
-        await self._client.__aexit__(*exc)
-
-    async def implement(self, instruction: str) -> str:
-        await self._client.query(instruction)
-        text = []
-        async for message in self._client.receive_response():
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        text.append(block.text)
-        return "\n".join(text)
 
 
 def _lint_instructions(commands: list[LintCommand]) -> str:
@@ -141,28 +41,28 @@ def _architecture_review_instructions() -> str:
         "single file that does more than one broad concern as a FAIL criterion "
         "unless the code is clearly split into cohesive helpers or classes. "
         "If the sprint used an isolated worktree, ensure every plan change stays "
-        "inside the active worktree root and that the main repo root remains "
-        "clean; any edit at the repo root is a FAIL criterion. Use file:line "
+        "inside the active worktree and that the main working directory remains "
+        "clean; any edit there is a FAIL criterion. Use file:line "
         "evidence; do not accept 'it works' as an excuse for a monolithic "
         "design."
     )
 
 
 def _git_review_context(sprint: Sprint) -> str:
-    """Capture the active worktree and repo-root status for reviewer checks."""
+    """Capture the active worktree and original working-directory status."""
     git = shutil.which("git")
     if not git:
         return "git is not installed or not on PATH; cannot inspect the working tree."
 
-    root = sprint.working_root()
+    active_dir = sprint.active_working_dir()
     status = subprocess.run(
-        [git, "-C", str(root), "status", "--short", "--branch"],
+        [git, "-C", str(active_dir), "status", "--short", "--branch"],
         check=False,
         capture_output=True,
         text=True,
     )
     diff = subprocess.run(
-        [git, "-C", str(root), "diff", "--"],
+        [git, "-C", str(active_dir), "diff", "--"],
         check=False,
         capture_output=True,
         text=True,
@@ -174,36 +74,42 @@ def _git_review_context(sprint: Sprint) -> str:
         f"{diff.stdout.strip() or '(no diff output)'}"
     )
 
-    if sprint.working_directory and sprint.working_directory != sprint.project_root:
+    if sprint.working_dir and sprint.working_dir != sprint.repo_dir:
         repo_status = subprocess.run(
-            [git, "-C", str(sprint.project_root), "status", "--short", "--branch"],
+            [git, "-C", str(sprint.repo_dir), "status", "--short", "--branch"],
             check=False,
             capture_output=True,
             text=True,
         )
         repo_diff = subprocess.run(
-            [git, "-C", str(sprint.project_root), "diff", "--"],
+            [git, "-C", str(sprint.repo_dir), "diff", "--"],
             check=False,
             capture_output=True,
             text=True,
         )
         context += (
-            "\n\nMain repo root status (must be clean while a worktree is active):\n"
-            f"{repo_status.stdout.strip() or '(no git status output at repo root)'}\n\n"
-            "Main repo root diff:\n"
-            f"{repo_diff.stdout.strip() or '(no diff output at repo root)'}"
+            "\n\nOriginal working-directory status (must be clean while a "
+            f"worktree is active):\n{repo_status.stdout.strip() or '(no status)'}\n\n"
+            "Original working-directory diff:\n"
+            f"{repo_diff.stdout.strip() or '(no diff at original working directory)'}"
         )
 
     return context
 
 
+def _verdict_status(verdict_text: str) -> str:
+    status_match = re.search(r"^STATUS:\s*(PASS|FAIL)", verdict_text, re.MULTILINE)
+    return status_match.group(1) if status_match else "FAIL"
+
+
 async def run_prompt_reviewer(
-    sprint: Sprint, feature_name: str, prompt: str | None
+    sprint: Sprint, feature_name: str | None, prompt: str | None
 ) -> tuple[str, str]:
     """Grade the current working tree against a free-text prompt, or the git diff."""
-    active_dir = sprint.project_root / sprint.config["docs_dir"]
+    active_dir = sprint.active_working_dir() / sprint.config["docs_dir"]
     active_dir.mkdir(parents=True, exist_ok=True)
-    review_file = active_dir / f"{feature_name}-review.md"
+    review_name = f"{feature_name}-review" if feature_name else "review"
+    review_file = active_dir / f"{review_name}.md"
 
     review_basis = (prompt or "").strip()
     git_context = _git_review_context(sprint)
@@ -241,7 +147,7 @@ async def run_prompt_reviewer(
         ),
         allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
         model=sprint.model("reviewer"),
-        cwd=str(sprint.working_root()),
+        cwd=str(sprint.active_working_dir()),
     )
 
     query_prompt = (
@@ -254,9 +160,7 @@ async def run_prompt_reviewer(
             raise RuntimeError(f"Reviewer failed: {message.subtype}")
 
     verdict_text = review_file.read_text()
-    status_match = re.search(r"^STATUS:\s*(PASS|FAIL)", verdict_text, re.MULTILINE)
-    status = status_match.group(1) if status_match else "FAIL"
-    return status, verdict_text
+    return _verdict_status(verdict_text), verdict_text
 
 
 async def run_reviewer(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
@@ -280,7 +184,7 @@ async def run_reviewer(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
         ),
         allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
         model=sprint.model("reviewer"),
-        cwd=str(sprint.working_root()),
+        cwd=str(sprint.active_working_dir()),
     )
 
     async for message in query(prompt=f"Review {plan_file}", options=options):
@@ -288,6 +192,4 @@ async def run_reviewer(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
             raise RuntimeError(f"Reviewer failed: {message.subtype}")
 
     verdict_text = review_file.read_text()
-    status_match = re.search(r"^STATUS:\s*(PASS|FAIL)", verdict_text, re.MULTILINE)
-    status = status_match.group(1) if status_match else "FAIL"
-    return status, verdict_text
+    return _verdict_status(verdict_text), verdict_text

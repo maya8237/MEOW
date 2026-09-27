@@ -13,16 +13,15 @@ from meow.orchestrator import (
     run_sprint,
 )
 
-
 DEFAULT_FEATURE_NAME = "feature"
 
 
 def _add_common_args(parser: argparse.ArgumentParser):
     parser.add_argument(
-        "--work-dir", "-d",
-        dest="root",
+        "--working-dir", "--work-dir", "-d",
+        dest="working_dir",
         default=".",
-        help="Path to the project repo (default: current directory).",
+        help="Working directory for the harness (default: current directory).",
     )
     parser.add_argument(
         "--worktree", "-w", dest="worktree", default=None,
@@ -40,8 +39,17 @@ def _add_common_args(parser: argparse.ArgumentParser):
 
 
 def _validate_worktree_requirement(parser: argparse.ArgumentParser, args) -> None:
-    if args.command in {"run", "plan"} and not args.no_worktree and args.worktree is None:
-        parser.error("--worktree/-w is required unless --no-worktree/-n is supplied")
+    requires_name = args.command in {"run", "plan", "cr"} and not args.no_worktree
+    if requires_name and args.worktree is None:
+        parser.error(
+            "--worktree/-w is required unless --no-worktree/-n is supplied"
+        )
+
+
+def _should_use_worktree(args) -> bool:
+    return not args.no_worktree and not (
+        args.command == "review" and args.worktree is None
+    )
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -53,7 +61,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument("request", help="Feature request text.")
     run_parser.add_argument(
-        "--plan", "-p",
+        "--plan", "--plan-file", "-p",
         dest="plan",
         default=None,
         help="Use an existing plan file instead of generating a new one.",
@@ -72,7 +80,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Review an existing plan's implementation and fix any issues found.",
     )
     review_parser.add_argument(
-        "--plan", "-p",
+        "--plan", "--plan-file", "-p",
         dest="plan",
         default=None,
         help="Plan file to review (default: latest plan in docs_dir).",
@@ -103,19 +111,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def cli_main():
     parser = _build_arg_parser()
     args = parser.parse_args()
-    project_root = Path(args.root).resolve()
-    log_working_directory(project_root)
-    use_worktree = not args.no_worktree
+    working_dir = Path(args.working_dir).resolve()
+    log_working_directory(working_dir)
+    use_worktree = _should_use_worktree(args)
 
     _validate_worktree_requirement(parser, args)
-    _boot_repo(project_root, include_gitignore=use_worktree)
+    _boot_repo(working_dir, include_gitignore=use_worktree)
 
     if args.command == "run":
         feature_name = args.worktree or DEFAULT_FEATURE_NAME
         plan_file = Path(args.plan).resolve() if args.plan else None
         asyncio.run(
             run_sprint(
-                project_root,
+                working_dir,
                 feature_name,
                 args.request,
                 use_worktree=use_worktree,
@@ -127,7 +135,7 @@ def cli_main():
         feature_name = args.worktree or DEFAULT_FEATURE_NAME
         asyncio.run(
             run_plan(
-                project_root,
+                working_dir,
                 feature_name,
                 args.request,
                 use_worktree=use_worktree,
@@ -138,18 +146,17 @@ def cli_main():
         plan_file = Path(args.plan).resolve() if args.plan else None
         asyncio.run(
             run_review(
-                project_root,
+                working_dir,
                 plan_file,
                 use_worktree=use_worktree,
                 worktree_name=args.worktree,
             )
         )
     elif args.command == "cr":
-        feature_name = args.worktree or DEFAULT_FEATURE_NAME
         asyncio.run(
             run_prompt_review(
-                project_root,
-                feature_name,
+                working_dir,
+                args.worktree,
                 args.prompt,
                 use_worktree=use_worktree,
                 worktree_name=args.worktree,

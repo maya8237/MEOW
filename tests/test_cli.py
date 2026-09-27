@@ -7,22 +7,26 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from meow import cli, orchestrator
-from meow import roles as shared_roles
+from meow.agents import explorer as explorer_agent
+from meow.agents import generator as generator_agent
+from meow.agents import planner as planner_agent
+from meow.agents import reviewer as reviewer_agent
+from meow.sprint import Sprint
 
 
 class CliCommandTests(unittest.TestCase):
     def test_orchestrator_reuses_shared_role_implementations(self):
         self.assertIs(
             orchestrator.make_explorer_agent,
-            shared_roles.make_explorer_agent,
+            explorer_agent.make_explorer_agent,
         )
-        self.assertIs(orchestrator.run_planner, shared_roles.run_planner)
-        self.assertIs(orchestrator.Generator, shared_roles.Generator)
+        self.assertIs(orchestrator.run_planner, planner_agent.run_planner)
+        self.assertIs(orchestrator.Generator, generator_agent.Generator)
         self.assertIs(
             orchestrator.run_prompt_reviewer,
-            shared_roles.run_prompt_reviewer,
+            reviewer_agent.run_prompt_reviewer,
         )
-        self.assertIs(orchestrator.run_reviewer, shared_roles.run_reviewer)
+        self.assertIs(orchestrator.run_reviewer, reviewer_agent.run_reviewer)
 
     def test_feature_worktree_is_created_under_worktrees_by_default(self):
         project_root = Path("/tmp/project").resolve()
@@ -32,8 +36,8 @@ class CliCommandTests(unittest.TestCase):
         self.assertTrue(worktree.exists())
 
     def test_worktree_bootstrap_instruction_uses_request_prompt_for_name(self):
-        sprint = shared_roles.Sprint(
-            project_root=Path("/tmp/project").resolve(),
+        sprint = Sprint(
+            repo_dir=Path("/tmp/project").resolve(),
             config={
                 "models": {"planner": "x", "generator": "x", "reviewer": "x", "explorer": "x"},
                 "lint": [],
@@ -42,23 +46,23 @@ class CliCommandTests(unittest.TestCase):
             },
             explorer=None,
             lint_hook=None,
-            working_directory=None,
+            working_dir=None,
             use_worktree=True,
             worktree_name=None,
         )
         prompt = "Add CSV export"
 
-        instruction = shared_roles._worktree_bootstrap_instruction(sprint, prompt)
+        instruction = orchestrator._worktree_bootstrap_instruction(sprint, prompt)
 
         self.assertIn("Add CSV export", instruction)
         self.assertIn("normalize", instruction)
         self.assertIn("safe lowercase slug", instruction)
 
     def test_normalize_worktree_name_sanitizes_prompt_seed(self):
-        self.assertEqual(shared_roles._normalize_worktree_name("Add CSV export"), "add-csv-export")
-        self.assertEqual(shared_roles._normalize_worktree_name("---"), "feature")
+        self.assertEqual(orchestrator._normalize_worktree_name("Add CSV export"), "add-csv-export")
+        self.assertEqual(orchestrator._normalize_worktree_name("---"), "feature")
 
-    @patch("meow.roles.query")
+    @patch("meow.agents.planner.query")
     def test_agent_cwd_uses_worktree_root_when_present(self, mock_query):
         async def fake_query(*args, **kwargs):
             if False:
@@ -67,25 +71,25 @@ class CliCommandTests(unittest.TestCase):
         mock_query.side_effect = fake_query
         project_root = Path("/tmp/project").resolve()
         worktree_root = project_root / ".worktrees" / "ship-it"
-        sprint = shared_roles.Sprint(
-            project_root=project_root,
+        sprint = Sprint(
+            repo_dir=project_root,
             config={
                 "models": {"planner": "x", "generator": "x", "reviewer": "x", "explorer": "x"},
                 "lint": [],
                 "docs_dir": "docs",
                 "max_rounds": 1,
             },
-            explorer=shared_roles.make_explorer_agent({
+            explorer=explorer_agent.make_explorer_agent({
                 "models": {"explorer": "x"},
             }),
             lint_hook=None,
-            working_directory=worktree_root,
+            working_dir=worktree_root,
             use_worktree=True,
             worktree_name="ship-it",
         )
 
         async def _run():
-            await shared_roles.run_planner(sprint, "ship-it", "Add CSV export")
+            await planner_agent.run_planner(sprint, "ship-it", "Add CSV export")
 
         asyncio.run(_run())
 
@@ -134,9 +138,6 @@ class CliCommandTests(unittest.TestCase):
                 (project_root / ".gitignore").read_text(encoding="utf-8"),
                 "venv\n.worktrees/\n",
             )
-
-    def test_default_feature_name_is_short_and_generic(self):
-        self.assertEqual(cli.DEFAULT_FEATURE_NAME, "feature")
 
     @staticmethod
     @patch("builtins.print")
@@ -300,7 +301,7 @@ class CliCommandTests(unittest.TestCase):
         )
         mock_cr.assert_awaited_once_with(
             Path(".").resolve(),
-            "feature",
+            None,
             "add CSV export",
             use_worktree=True,
             worktree_name=None,
@@ -326,7 +327,7 @@ class CliCommandTests(unittest.TestCase):
         )
         mock_cr.assert_awaited_once_with(
             Path(".").resolve(),
-            "feature",
+            None,
             None,
             use_worktree=True,
             worktree_name=None,
@@ -361,7 +362,7 @@ class CliCommandTests(unittest.TestCase):
     ):
         with (
             patch("builtins.print") as mock_print,
-            patch("sys.argv", ["meow", "run", "ship-it", "--project-root", ".", "--no-worktree"]),
+            patch("sys.argv", ["meow", "run", "ship-it", "--working-dir", ".", "--no-worktree"]),
         ):
             orchestrator.cli_main()
 
@@ -378,25 +379,25 @@ class CliCommandTests(unittest.TestCase):
 
 class ArchitectureReviewInstructionsTests(unittest.TestCase):
     def test_instructs_reviewer_to_scan_docs_for_architecture_rules(self):
-        instructions = shared_roles._architecture_review_instructions()
+        instructions = reviewer_agent._architecture_review_instructions()
 
         self.assertIn("docs/", instructions)
         self.assertIn("Glob", instructions)
         self.assertNotIn("ARCHITECTURE.md", instructions)
         self.assertIn("FAIL", instructions)
 
-    def test_review_education_requires_repo_root_to_stay_clean_when_worktree_is_used(self):
-        instructions = shared_roles._architecture_review_instructions()
+    def test_review_education_requires_original_working_dir_to_stay_clean_when_worktree_is_used(self):
+        instructions = reviewer_agent._architecture_review_instructions()
 
         self.assertIn("worktree", instructions)
-        self.assertIn("repo root", instructions)
+        self.assertIn("main working directory", instructions)
         self.assertIn("clean", instructions)
         self.assertIn("FAIL", instructions)
 
 
 class DocsScanInstructionTests(unittest.TestCase):
     def test_names_no_specific_filename(self):
-        instruction = shared_roles._docs_scan_instruction("some purpose")
+        instruction = reviewer_agent._docs_scan_instruction("some purpose")
 
         self.assertIn("docs/", instruction)
         self.assertIn("Glob", instruction)
