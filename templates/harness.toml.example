@@ -8,7 +8,7 @@
 # table. Anything written after one belongs to that table, not to the file.
 # The engine rejects the config with a clear error if you get this wrong.
 
-# How many generator <-> evaluator rounds to allow before giving up on a
+# How many generator <-> reviewer rounds to allow before giving up on a
 # sprint rather than looping forever.
 max_rounds = 8
 
@@ -22,7 +22,7 @@ docs_dir = "docs/exec-plans/active"
 explorer = "haiku"
 # planner = "claude-sonnet-5"
 # generator = "claude-opus-5-5"
-# evaluator = "claude-opus-5-5"
+# reviewer = "claude-opus-5-5"
 
 # ---------------------------------------------------------------------------
 # Lint commands -- one [[lint]] table per command, any number of them.

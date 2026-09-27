@@ -12,7 +12,7 @@ docs_dir = "docs/exec-plans/active"
 explorer = "haiku"
 
 # One command, doing both jobs: auto-fixing hook per edited file, and the
-# project-wide gate the evaluator has to see pass.
+# project-wide gate the reviewer has to see pass.
 [[lint]]
 command = "ruff check"
 fix_flag = "--fix"

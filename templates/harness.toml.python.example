@@ -19,7 +19,7 @@ command = "ruff check"
 fix_flag = "--fix"
 
 # Advisory: mypy has no fix mode and pre-existing type debt shouldn't block a
-# sprint on its own -- it just gets reported in the evaluator's review.
+# sprint on its own -- it just gets reported in the reviewer's review.
 [[lint]]
 command = "mypy ."
 per_file = false

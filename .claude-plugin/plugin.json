@@ -1,0 +1,5 @@
+{
+  "name": "meow",
+  "description": "Planner/generator/reviewer harness engine: plan, implement, and review feature work through .harness.toml.",
+  "version": "0.1.0"
+}
