@@ -23,6 +23,8 @@ class Sprint:
     explorer: AgentDefinition
     lint_hook: object
     working_directory: Path | None = None
+    use_worktree: bool = False
+    worktree_name: str | None = None
 
     def model(self, role: str) -> str | None:
         return self.config["models"][role]

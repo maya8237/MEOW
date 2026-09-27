@@ -1,9 +1,9 @@
-# GUIDE.md — Initializing meow in a Project
+# GUIDE.md — Initializing MEOW in a Project
 
 For a Claude session (or anyone else) working in a **different** repo that
-wants feature work to run through **meow** instead of ad hoc editing. meow
-itself is language-agnostic — the only per-project choice is your lint
-command(s).
+wants feature work to run through **MEOW** — Management, Execution &
+Optimization of Workflows — instead of ad hoc editing. MEOW itself is
+language-agnostic — the only per-project choice is your lint command(s).
 
 ---
 
@@ -21,8 +21,6 @@ any of these are missing:
   point from `templates/`: `harness.toml.example` (annotated, language-neutral),
   `harness.toml.python.example` (ruff + mypy), `harness.toml.typescript.example`
   (eslint + tsc).
-- **`ANTHROPIC_API_KEY`** (or your provider's equivalent) in the environment —
-  without it, agent calls fail at the SDK level, not with a meow error.
 - **A writable `docs_dir`** — doesn't need to pre-exist (`run_planner`
   `mkdir`s it), just needs to resolve inside the project root.
 - **Your lint command actually working** — run it by hand first. If it's
@@ -60,7 +58,7 @@ Each `[[lint]]` table (run in listed order, program resolved on `PATH` so
 command = "npx oxlint"
 fix_flag = "--fix"
 
-[[lint]]                 # advisory: project-wide only, never fails the sprint
+[[lint]]                 # non-blocking: project-wide only, never fails the sprint
 command = "npx fallow"
 per_file = false
 gate = false
@@ -68,29 +66,58 @@ gate = false
 
 ---
 
-## 3. Recommended, not enforced
+## 3. Recommended, not enforced — but do it anyway
 
-Nothing in `orchestrator.py` checks for these — they help only if the
-`explorer` subagent happens to find them while researching a feature request.
-For a guaranteed read, name the doc directly in the request (e.g.
-`harness run "Add CSV export -- see docs/product-specs/reports.md"`).
+No role is *required* to have any of these present — meow runs fine without
+them — but "not required" is not the same as "not read." All four roles
+(explorer, planner, generator, reviewer) carry `Read`/`Grep`/`Glob` and are
+given a shared instruction (`roles.py`'s `_docs_scan_instruction`, folded into
+each role's policy text and into `_architecture_review_instructions`) to Glob
+the project's `docs/` folder and read whatever's relevant to *that role's
+current job* — no role's prompt names a specific filename anywhere. That's
+deliberate: what's relevant depends on what the project actually put there,
+and a fixed reading list would either miss docs a project happens to have or
+force every role to read docs that don't apply to its task. The one
+structural exception is the reviewer's SOLID/SRP pass, which specifically
+looks in `docs/` for whatever describes this project's module boundaries and
+dependency rules — see below. For a guaranteed read regardless of relevance,
+name the doc directly in the request (e.g. `harness run "Add CSV export --
+see docs/product-specs/reports.md"`).
 
 ```
 docs/
-├── ARCHITECTURE.md          # see below
+├── ARCHITECTURE.md          # see below — write this one first
 ├── design-docs/core-beliefs.md
 ├── exec-plans/{active,completed}/, tech-debt-tracker.md
 ├── product-specs/
 └── references/
 ```
 
-**`docs/ARCHITECTURE.md`** is the highest-value one: the reviewer runs a
-SOLID/SRP pass (`_architecture_review_instructions`) that fails any file
-mixing unrelated responsibilities. Without a stated architecture it's
-guessing at what "one responsibility" means for *this* project. The rest
-(`completed/`, `tech-debt-tracker.md`, `core-beliefs.md`) are never written or
-read automatically — just useful conventions for humans and agents sharing
-the repo.
+**Some file describing the architecture** (conventionally
+`docs/ARCHITECTURE.md`, but any role's docs scan will pick it up under
+whatever name or location it actually has) is the highest-value one to write
+during onboarding, not defer: on every sprint, the reviewer's SOLID/SRP pass
+looks for it and fails the sprint on violations of the module boundaries and
+dependency rules it states, on top of its generic mixed-responsibility check.
+Without it, that pass has nothing project-specific to check against — meow
+will still run, but every architecture review is a coin flip instead of a
+check against your actual design. The gap compounds as a project grows: on a
+five-file repo the explorer can infer the shape by reading everything, but on
+a real codebase with several packages/modules it can't, and an unstated
+architecture produces reviews that are inconsistent from one sprint to the
+next, or that enforce a structure nobody actually chose. Write it when you
+onboard a project, before the first `harness run`, not after the review
+quality suffers — it doesn't need to be long, just state the module
+boundaries and who's allowed to depend on whom, and it doesn't need the name
+`ARCHITECTURE.md` specifically, just to live somewhere under `docs/`.
+
+The rest (`completed/`, `tech-debt-tracker.md`, `core-beliefs.md`) get the
+same opportunistic treatment as everything else in `docs/`: no role goes
+looking for them specifically, but any role's docs scan picks them up when
+they're relevant to what it's doing, and a human sharing the repo reads them
+directly. Still worth setting up for the same reason: cheap now, and each one
+is a substitute for context a role would otherwise have to re-derive by
+exploring the whole repo every time it happens to matter.
 
 ---
 
@@ -114,6 +141,10 @@ Config lives in `.harness.toml`. See <meow repo link>'s GUIDE.md for setup.
 - [ ] `ANTHROPIC_API_KEY` set
 - [ ] `.harness.toml` has ≥1 `[[lint]]` entry, all top-level keys above it
 - [ ] Each lint `command` works run by hand
+- [ ] A doc describing the project's architecture written somewhere under
+      `docs/` (conventionally `docs/ARCHITECTURE.md`) — not enforced by meow,
+      but skipping it on anything beyond a toy project degrades every
+      architecture review from here on; see §3
 - [ ] `meow run "<trivial test feature>"` — reported lint/models match
       *your* config (not defaults), a plan + `-review.md` land in `docs_dir`,
       and it resolves to `STATUS: PASS` or a clean `max_rounds` error
@@ -136,6 +167,6 @@ moving branch.
 | `.harness.toml` | `FileNotFoundError` before any agent runs |
 | No `[[lint]]` entries or `lint_command` | `ValueError`: no lint command defined |
 | Unknown key in a `[[lint]]` table (often a top-level key placed after it) | `ValueError` naming the entry and key |
-| `ANTHROPIC_API_KEY` | API-level auth error on first agent call |
-| `docs/ARCHITECTURE.md` etc. | No error — less context, weaker SRP review |
+| No architecture doc anywhere under `docs/` | No error — reviewer's SOLID/SRP pass finds nothing to Glob/Read, so it has no project-specific boundaries to check, just its generic mixed-responsibility rule |
+| Other `docs/` files (`tech-debt-tracker.md`, `core-beliefs.md`, etc.) | No error — no role goes looking for them specifically, only opportunistically via each role's docs scan |
 | `AGENTS.md` | No effect on meow — human-facing only |

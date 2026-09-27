@@ -17,21 +17,24 @@ only reports.
 2. The current project must have a `.harness.toml` at its root. If it's
    missing, tell the user and stop; point them at meow's `GUIDE.md` for
    onboarding rather than guessing at lint commands.
-3. Run, from the project root:
+3. By default, keep the same isolated-worktree policy as the other harness
+   commands: run from the project root with a named worktree when the user is
+   doing feature work in a sandboxed checkout.
 
    ```bash
-   meow cr "<prompt>"
+   meow cr "<prompt>" --worktree "<generated-worktree-name>"
    ```
 
    If the user did not provide a prompt, run:
 
    ```bash
-   meow cr
+   meow cr --worktree "<generated-worktree-name>"
    ```
 
    In that case, the reviewer uses the current working tree's `git status`
    and `git diff` as the review input itself, without needing a textual
-   prompt.
+   prompt. If the user explicitly wants the repo root instead of an isolated
+   worktree, add `--no-worktree` instead.
 
    If `meow` isn't found on PATH, tell the user to install meow first
    (its README: a venv with `pip install -e .`, or `pipx install -e .` for a

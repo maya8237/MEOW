@@ -1,4 +1,6 @@
-# meow
+# MEOW
+
+MEOW — Management, Execution & Optimization of Workflows.
 
 The harness engine: a planner/generator/reviewer loop built on the
 [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview).
@@ -53,14 +55,16 @@ in this repo.
 Two narrower subcommands are also available:
 
 ```bash
-meow plan "Add CSV export"         # write the sprint plan only, don't implement it
-meow review                        # re-review + fix the latest plan in docs_dir
-meow review --plan-file PATH       # re-review + fix a specific plan
+meow plan "Add CSV export" --worktree "add-csv-export"  # write the sprint plan only, don't implement it
+meow review --worktree "add-csv-export"                  # re-review + fix the latest plan in that worktree
+meow review --plan-file PATH --worktree "add-csv-export" # re-review + fix a specific plan
 ```
 
-`review` runs the reviewer first; if it already passes, nothing else runs. On
-FAIL it loops the generator against the feedback and re-reviews, same as `run`,
-up to `max_rounds`.
+Use a worktree by default to isolate feature work from the main repo. `--no-worktree`
+lets you intentionally run in the repo root instead; this is the explicit override,
+not the normal harness path. `review` still runs the reviewer first; if it already
+passes, nothing else runs. On FAIL it loops the generator against the feedback and
+re-reviews, same as `run`, up to `max_rounds`.
 
 ## Claude Code plugin
 
@@ -106,8 +110,8 @@ meow/
 │       └── active/                      # meow harnessing itself writes here
 ├── templates/
 │   ├── harness.toml.example             # annotated, language-neutral
-│   ├── harness.toml.python.example      # ruff (gate) + mypy (advisory)
-│   └── harness.toml.typescript.example  # eslint (gate) + tsc (advisory)
+│   ├── harness.toml.python.example      # ruff (gate) + mypy (non-blocking)
+│   └── harness.toml.typescript.example  # eslint (gate) + tsc (non-blocking)
 └── src/
     └── meow/
         ├── __init__.py

@@ -2,11 +2,11 @@
 
 import argparse
 import asyncio
-import re
 from pathlib import Path
 
 from meow.orchestrator import (
     _boot_repo,
+    log_working_directory,
     run_plan,
     run_prompt_review,
     run_review,
@@ -14,28 +14,34 @@ from meow.orchestrator import (
 )
 
 
-def _slugify(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:50]
+DEFAULT_FEATURE_NAME = "feature"
 
 
 def _add_common_args(parser: argparse.ArgumentParser):
     parser.add_argument(
-        "--project-root", default=".",
+        "--work-dir", "-d",
+        dest="root",
+        default=".",
         help="Path to the project repo (default: current directory).",
     )
     parser.add_argument(
-        "--worktree",
-        default=None,
+        "--worktree", "-w", dest="worktree", default=None,
         help=(
-            "Use a dedicated worktree named this value under .worktrees; "
-            "default is the slugified feature name."
+            "Required worktree name under .worktrees unless --no-worktree/-n "
+            "is supplied; the skills may synthesize this value themselves."
         ),
     )
     parser.add_argument(
-        "--no-worktree",
+        "--no-worktree", "--noworktree", "-n",
+        dest="no_worktree",
         action="store_true",
         help="Run in the main repo instead of creating/using a .worktrees entry.",
     )
+
+
+def _validate_worktree_requirement(parser: argparse.ArgumentParser, args) -> None:
+    if args.command in {"run", "plan"} and not args.no_worktree and args.worktree is None:
+        parser.error("--worktree/-w is required unless --no-worktree/-n is supplied")
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -46,6 +52,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "run", help="Plan, implement, and review a feature request end to end."
     )
     run_parser.add_argument("request", help="Feature request text.")
+    run_parser.add_argument(
+        "--plan", "-p",
+        dest="plan",
+        default=None,
+        help="Use an existing plan file instead of generating a new one.",
+    )
     _add_common_args(run_parser)
 
     plan_parser = subparsers.add_parser(
@@ -60,7 +72,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Review an existing plan's implementation and fix any issues found.",
     )
     review_parser.add_argument(
-        "--plan-file",
+        "--plan", "-p",
+        dest="plan",
         default=None,
         help="Plan file to review (default: latest plan in docs_dir).",
     )
@@ -88,13 +101,18 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def cli_main():
-    args = _build_arg_parser().parse_args()
-    project_root = Path(args.project_root).resolve()
+    parser = _build_arg_parser()
+    args = parser.parse_args()
+    project_root = Path(args.root).resolve()
+    log_working_directory(project_root)
     use_worktree = not args.no_worktree
+
+    _validate_worktree_requirement(parser, args)
     _boot_repo(project_root, include_gitignore=use_worktree)
 
     if args.command == "run":
-        feature_name = args.worktree or _slugify(args.request)
+        feature_name = args.worktree or DEFAULT_FEATURE_NAME
+        plan_file = Path(args.plan).resolve() if args.plan else None
         asyncio.run(
             run_sprint(
                 project_root,
@@ -102,10 +120,11 @@ def cli_main():
                 args.request,
                 use_worktree=use_worktree,
                 worktree_name=args.worktree,
+                plan_file=plan_file,
             )
         )
     elif args.command == "plan":
-        feature_name = args.worktree or _slugify(args.request)
+        feature_name = args.worktree or DEFAULT_FEATURE_NAME
         asyncio.run(
             run_plan(
                 project_root,
@@ -116,7 +135,7 @@ def cli_main():
             )
         )
     elif args.command == "review":
-        plan_file = Path(args.plan_file).resolve() if args.plan_file else None
+        plan_file = Path(args.plan).resolve() if args.plan else None
         asyncio.run(
             run_review(
                 project_root,
@@ -126,8 +145,7 @@ def cli_main():
             )
         )
     elif args.command == "cr":
-        prompt_label = args.prompt or "git-diff-review"
-        feature_name = args.worktree or _slugify(prompt_label)
+        feature_name = args.worktree or DEFAULT_FEATURE_NAME
         asyncio.run(
             run_prompt_review(
                 project_root,

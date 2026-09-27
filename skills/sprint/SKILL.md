@@ -14,11 +14,17 @@ against the current project.
    project meow will harness, not necessarily the meow repo itself. If it's
    missing, tell the user and stop; point them at meow's `GUIDE.md` for
    onboarding rather than guessing at lint commands.
-3. Run, from the project root:
+3. By default, use a safe explicit worktree name from the request (for
+   example, slugify the feature, e.g. `add-csv-export`) and run, from the
+   project root:
 
    ```bash
-   meow run "<feature request>"
+   meow run "<feature request>" --worktree "<generated-worktree-name>"
    ```
+
+   If the user explicitly wants to operate in the main repo instead of an
+   isolated worktree, add `--no-worktree` instead. That is the override for
+   repo-root mode; the normal harness path is still a named worktree.
 
    If `meow` isn't found on PATH, tell the user to install meow first
    (its README: a venv with `pip install -e .`, or `pipx install -e .` for a

@@ -1,8 +1,10 @@
 # AGENTS.md
 
+MEOW — Management, Execution & Optimization of Workflows.
+
 ## Harness
 
-Feature work in this repo runs through the harness engine — which is this
+Feature work in this repo runs through the MEOW harness engine — which is this
 repo — not ad hoc editing. From the repo root, with `.venv` active:
 
 ```bash

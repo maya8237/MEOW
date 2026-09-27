@@ -43,6 +43,11 @@ from meow.sprint import Sprint
 assert DEFAULT_CONFIG and _lint_entry and _normalize_lint_commands  # re-exported
 
 
+def log_working_directory(project_root: Path) -> None:
+    """Print the active repo root once for each meow execution."""
+    print(f"[meow] working directory: {Path(project_root).resolve()}")
+
+
 def _ensure_gitignore_entry(project_root: Path, entry: str = ".worktrees/") -> None:
     """Ensure the repo's .gitignore includes the given ignored path."""
     gitignore = project_root / ".gitignore"
@@ -74,9 +79,10 @@ def _resolve_worktree_root(
     """Return the working directory and the effective worktree name."""
     if not use_worktree:
         return project_root, default_name, False
+    if not worktree_name:
+        raise ValueError("worktree_name is required when use_worktree=True")
 
-    resolved_name = worktree_name or default_name
-    return _ensure_feature_worktree(project_root, resolved_name), resolved_name, True
+    return _ensure_feature_worktree(project_root, worktree_name), worktree_name, True
 
 
 def _ensure_feature_worktree(project_root: Path, feature_name: str) -> Path:
@@ -115,15 +121,16 @@ def _ensure_feature_worktree(project_root: Path, feature_name: str) -> Path:
 
 
 def _build_sprint(
-    project_root: Path, config: dict, worktree_root: Path | None = None
+    project_root: Path, config: dict, working_directory: Path | None = None
 ) -> Sprint:
     commands = config["lint"]
+    effective_root = working_directory or project_root
     return Sprint(
-        project_root=project_root,
+        project_root=effective_root,
         config=config,
         explorer=make_explorer_agent(config),
         lint_hook=make_lint_hook(project_root, commands),
-        working_directory=worktree_root,
+        working_directory=effective_root,
     )
 
 
@@ -135,7 +142,7 @@ def _describe_lint_plan(commands: list[LintCommand]) -> None:
     """Report the configured lint commands before a sprint spends anything."""
     for entry in commands:
         roles = ["per-file" if entry.per_file else "project-only"]
-        roles.append("gate" if entry.gate else "advisory")
+        roles.append("gate" if entry.gate else "non-blocking")
         if entry.fix_flag:
             roles.append(f"fix {entry.fix_flag}")
         print(f"[lint] {entry.command}  ({', '.join(roles)})")
@@ -153,7 +160,14 @@ async def _run_rounds(sprint: Sprint, plan_file: Path) -> bool:
 
             print(f"[reviewer] round {round_num}: reviewing...")
             status, verdict = await run_reviewer(sprint, plan_file)
+            summary = "\n".join(
+                line.strip()
+                for line in verdict.splitlines()
+                if line.strip() and not line.startswith("STATUS:")
+            )[:400]
             print(f"[reviewer] round {round_num}: {status}")
+            if summary:
+                print(f"[reviewer] round {round_num} summary: {summary}")
 
             if status == "PASS":
                 return True
@@ -177,7 +191,13 @@ async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
 
     print("[reviewer] round 1: reviewing...")
     status, verdict = await run_reviewer(sprint, plan_file)
+    summary_line = next(
+        (line.strip() for line in verdict.splitlines() if line.strip().startswith("SUMMARY:")),
+        None,
+    )
     print(f"[reviewer] round 1: {status}")
+    if summary_line:
+        print(f"[reviewer] round 1 summary: {summary_line}")
     if status == "PASS":
         return True
 
@@ -192,7 +212,14 @@ async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
 
             print(f"[reviewer] round {round_num}: reviewing...")
             status, verdict = await run_reviewer(sprint, plan_file)
+            summary = "\n".join(
+                line.strip()
+                for line in verdict.splitlines()
+                if line.strip() and not line.startswith("STATUS:")
+            )[:400]
             print(f"[reviewer] round {round_num}: {status}")
+            if summary:
+                print(f"[reviewer] round {round_num} summary: {summary}")
 
             if status == "PASS":
                 return True
@@ -334,7 +361,7 @@ async def run_prompt_review(  # ruff: ignore[too-many-arguments]
 
     print(f"[orchestrator] reviewing prompt in {worktree_root}...")
     status, _ = await run_prompt_reviewer(sprint, effective_name, prompt)
-    review_file = project_root / config["docs_dir"] / f"{effective_name}-review.md"
+    review_file = sprint.working_root() / config["docs_dir"] / f"{effective_name}-review.md"
     print(f"[orchestrator] review {status}: {review_file}")
 
 
@@ -342,8 +369,9 @@ async def run_prompt_review(  # ruff: ignore[too-many-arguments]
 # CLI entry point -- registered as the `meow` console script
 # ---------------------------------------------------------------------------
 
-def _slugify(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:50]
+def _validate_worktree_requirement(parser: argparse.ArgumentParser, args) -> None:
+    if args.command in {"run", "plan"} and not getattr(args, "no_worktree", False) and getattr(args, "worktree", None) is None:
+        parser.error("--worktree/-w is required unless --no-worktree/-n is supplied")
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -358,6 +386,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--project-root", default=".",
         help="Path to the project repo (default: current directory).",
     )
+    run_parser.add_argument(
+        "--worktree", "-w", dest="worktree", default=None,
+        help="Required worktree name under .worktrees unless --no-worktree/-n is used.",
+    )
+    run_parser.add_argument(
+        "--no-worktree", "--noworktree", "-n",
+        dest="no_worktree",
+        action="store_true",
+        help="Run in the main repo instead of creating/using a .worktrees entry.",
+    )
 
     plan_parser = subparsers.add_parser(
         "plan",
@@ -367,6 +405,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument(
         "--project-root", default=".",
         help="Path to the project repo (default: current directory).",
+    )
+    plan_parser.add_argument(
+        "--worktree", "-w", dest="worktree", default=None,
+        help="Required worktree name under .worktrees unless --no-worktree/-n is used.",
+    )
+    plan_parser.add_argument(
+        "--no-worktree", "--noworktree", "-n",
+        dest="no_worktree",
+        action="store_true",
+        help="Run in the main repo instead of creating/using a .worktrees entry.",
     )
 
     review_parser = subparsers.add_parser(
@@ -381,21 +429,36 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--project-root", default=".",
         help="Path to the project repo (default: current directory).",
     )
+    review_parser.add_argument(
+        "--worktree", "-w", dest="worktree", default=None,
+        help="Optional worktree name for this review context when using a .worktrees entry.",
+    )
+    review_parser.add_argument(
+        "--no-worktree", "--noworktree", "-n",
+        dest="no_worktree",
+        action="store_true",
+        help="Run in the main repo instead of creating/using a .worktrees entry.",
+    )
 
     return parser
 
 
 def cli_main():
-    args = _build_arg_parser().parse_args()
+    parser = _build_arg_parser()
+    args = parser.parse_args()
     project_root = Path(args.project_root).resolve()
+    log_working_directory(project_root)
+    _validate_worktree_requirement(parser, args)
 
     if args.command == "run":
-        asyncio.run(run_sprint(project_root, _slugify(args.request), args.request))
+        feature_name = args.worktree or "feature"
+        asyncio.run(run_sprint(project_root, feature_name, args.request, use_worktree=not args.no_worktree, worktree_name=args.worktree))
     elif args.command == "plan":
-        asyncio.run(run_plan(project_root, _slugify(args.request), args.request))
+        feature_name = args.worktree or "feature"
+        asyncio.run(run_plan(project_root, feature_name, args.request, use_worktree=not args.no_worktree, worktree_name=args.worktree))
     elif args.command == "review":
         plan_file = Path(args.plan_file).resolve() if args.plan_file else None
-        asyncio.run(run_review(project_root, plan_file))
+        asyncio.run(run_review(project_root, plan_file, use_worktree=not args.no_worktree, worktree_name=args.worktree))
 
 
 if __name__ == "__main__":
