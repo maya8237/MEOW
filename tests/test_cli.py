@@ -35,33 +35,6 @@ class CliCommandTests(unittest.TestCase):
         self.assertEqual(worktree, project_root / ".worktrees" / "ship-it")
         self.assertTrue(worktree.exists())
 
-    def test_worktree_bootstrap_instruction_uses_request_prompt_for_name(self):
-        sprint = Sprint(
-            repo_dir=Path("/tmp/project").resolve(),
-            config={
-                "models": {"planner": "x", "generator": "x", "reviewer": "x", "explorer": "x"},
-                "lint": [],
-                "docs_dir": "docs",
-                "max_rounds": 1,
-            },
-            explorer=None,
-            lint_hook=None,
-            working_dir=None,
-            use_worktree=True,
-            worktree_name=None,
-        )
-        prompt = "Add CSV export"
-
-        instruction = orchestrator._worktree_bootstrap_instruction(sprint, prompt)
-
-        self.assertIn("Add CSV export", instruction)
-        self.assertIn("normalize", instruction)
-        self.assertIn("safe lowercase slug", instruction)
-
-    def test_normalize_worktree_name_sanitizes_prompt_seed(self):
-        self.assertEqual(orchestrator._normalize_worktree_name("Add CSV export"), "add-csv-export")
-        self.assertEqual(orchestrator._normalize_worktree_name("---"), "feature")
-
     @patch("meow.agents.planner.query")
     def test_agent_cwd_uses_worktree_root_when_present(self, mock_query):
         async def fake_query(*args, **kwargs):
@@ -79,13 +52,12 @@ class CliCommandTests(unittest.TestCase):
                 "docs_dir": "docs",
                 "max_rounds": 1,
             },
-            explorer=explorer_agent.make_explorer_agent({
-                "models": {"explorer": "x"},
-            }),
+            explorer=explorer_agent.make_explorer_agent(
+                {"models": {"explorer": "x"}}, worktree_root
+            ),
             lint_hook=None,
             working_dir=worktree_root,
             use_worktree=True,
-            worktree_name="ship-it",
         )
 
         async def _run():
@@ -95,37 +67,6 @@ class CliCommandTests(unittest.TestCase):
 
         options = mock_query.call_args.kwargs["options"]
         self.assertEqual(options.cwd, str(worktree_root))
-
-    @patch("meow.orchestrator.run_planner", new_callable=AsyncMock)
-    @patch("meow.orchestrator.load_config")
-    @patch("meow.orchestrator._generate_worktree_name", new_callable=AsyncMock, return_value="ship-it")
-    def test_run_plan_generates_worktree_name_via_name_helper(
-        self, mock_name_gen, mock_load_config, mock_run_planner
-    ):
-        mock_load_config.return_value = {
-            "models": {
-                "explorer": "haiku",
-                "planner": "sonnet",
-                "generator": "sonnet",
-                "reviewer": "sonnet",
-            },
-            "lint": [],
-            "docs_dir": "docs",
-            "max_rounds": 1,
-        }
-
-        asyncio.run(
-            orchestrator.run_plan(
-                Path("/tmp/project").resolve(),
-                "feature",
-                "Add CSV export",
-                use_worktree=True,
-                worktree_name=None,
-            )
-        )
-
-        mock_name_gen.assert_awaited_once()
-        self.assertEqual(mock_run_planner.call_args.args[1], "ship-it")
 
     def test_boot_repo_adds_worktrees_to_gitignore(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -154,8 +95,8 @@ class CliCommandTests(unittest.TestCase):
         mock_print.assert_called_once_with(
             f"[meow] working directory: {Path('.').resolve()}"
         )
-        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=True)
-        mock_review.assert_awaited_once()
+        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
+        mock_review.assert_awaited_once_with(Path(".").resolve(), None)
         mock_sprint.assert_not_called()
         mock_plan.assert_not_called()
 
@@ -201,7 +142,7 @@ class CliCommandTests(unittest.TestCase):
                 "meow",
                 "run",
                 "ship-it",
-                "--worktree",
+                "--name",
                 "case-123",
                 "--work-dir",
                 ".",
@@ -217,7 +158,6 @@ class CliCommandTests(unittest.TestCase):
             "case-123",
             "ship-it",
             use_worktree=True,
-            worktree_name="case-123",
             plan_file=Path("docs/exec-plans/active/ship-it.md").resolve(),
         )
         mock_plan.assert_not_called()
@@ -234,8 +174,8 @@ class CliCommandTests(unittest.TestCase):
         with patch("sys.argv", ["meow", "review", "--work-dir", "."]):
             cli.cli_main()
 
-        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=True)
-        mock_review.assert_awaited_once()
+        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
+        mock_review.assert_awaited_once_with(Path(".").resolve(), None)
         mock_sprint.assert_not_called()
         mock_plan.assert_not_called()
 
@@ -266,7 +206,7 @@ class CliCommandTests(unittest.TestCase):
     ):
         with patch(
             "sys.argv",
-            ["meow", "plan", "ship-it", "--worktree", "case-456", "--work-dir", "."],
+            ["meow", "plan", "ship-it", "--name", "case-456", "--work-dir", "."],
         ):
             cli.cli_main()
 
@@ -276,7 +216,6 @@ class CliCommandTests(unittest.TestCase):
             "case-456",
             "ship-it",
             use_worktree=True,
-            worktree_name="case-456",
         )
         mock_review.assert_not_called()
         mock_sprint.assert_not_called()
@@ -296,15 +235,10 @@ class CliCommandTests(unittest.TestCase):
         ):
             cli.cli_main()
 
-        mock_boot.assert_called_once_with(
-            Path(".").resolve(), include_gitignore=True
-        )
+        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
         mock_cr.assert_awaited_once_with(
             Path(".").resolve(),
-            None,
             "add CSV export",
-            use_worktree=True,
-            worktree_name=None,
         )
         mock_review.assert_not_called()
         mock_plan.assert_not_called()
@@ -322,15 +256,10 @@ class CliCommandTests(unittest.TestCase):
         ):
             cli.cli_main()
 
-        mock_boot.assert_called_once_with(
-            Path(".").resolve(), include_gitignore=True
-        )
+        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
         mock_cr.assert_awaited_once_with(
             Path(".").resolve(),
             None,
-            None,
-            use_worktree=True,
-            worktree_name=None,
         )
         mock_review.assert_not_called()
         mock_plan.assert_not_called()
@@ -346,12 +275,14 @@ class CliCommandTests(unittest.TestCase):
     ):
         with patch(
             "sys.argv",
-            ["meow", "review", "--work-dir", ".", "--no-worktree"],
+            ["meow", "run", "Change it", "--work-dir", ".", "--no-worktree"],
         ):
             cli.cli_main()
 
         mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
-        mock_review.assert_awaited_once()
+        mock_sprint.assert_awaited_once_with(
+            Path(".").resolve(), None, "Change it", use_worktree=False, plan_file=None
+        )
 
     @staticmethod
     @patch("meow.orchestrator.run_review", new_callable=AsyncMock)

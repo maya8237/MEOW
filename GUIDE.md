@@ -133,7 +133,7 @@ Config lives in `.harness.toml`. See <meow repo link>'s GUIDE.md for setup.
       `docs/` (conventionally `docs/ARCHITECTURE.md`) — not enforced by meow,
       but skipping it on anything beyond a toy project degrades every
       architecture review from here on; see §3
-- [ ] `meow run "<trivial test feature>" --worktree "trivial-test-feature"` — reported lint/models match
+- [ ] `meow run "<trivial test feature>" --name "trivial-test-feature"` — reported lint/models match
       *your* config (not defaults), a plan + `-review.md` land in `docs_dir`,
       and it resolves to `STATUS: PASS` or a clean `max_rounds` error
 

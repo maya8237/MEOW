@@ -10,7 +10,8 @@ from meow.sprint import Sprint
 async def run_planner(sprint: Sprint, feature_name: str | None, request: str) -> Path:
     active_dir = sprint.active_working_dir() / sprint.config["docs_dir"]
     active_dir.mkdir(parents=True, exist_ok=True)
-    plan_file = active_dir / f"{feature_name or 'plan'}.md"
+    plan_filename = f"{feature_name}.md" if feature_name else "plan.md"
+    plan_file = active_dir / plan_filename
 
     options = ClaudeAgentOptions(
         system_prompt=(

@@ -33,7 +33,7 @@ From another project's root, either activate the venv first or call the script
 by its full path:
 
 ```bash
-/path/to/meow/.venv/Scripts/meow run "Add CSV export" --worktree "add-csv-export"
+/path/to/meow/.venv/Scripts/meow run "Add CSV export" --name "add-csv-export"
 ```
 
 If you'd rather have `meow` available everywhere without activating anything,
@@ -45,24 +45,25 @@ From the root of a project that has a `.harness.toml` (with the venv active,
 or via the full path shown above):
 
 ```bash
-meow run "Add CSV export" --worktree "add-csv-export"
+meow run "Add CSV export" --name "add-csv-export"
 ```
 
-Pass `--working-dir PATH` (or `--work-dir PATH`) to use a different working
-directory. The sprint plan and review land in its `docs_dir`, never
-in this repo.
+Every subcommand accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
+select a project outside the current directory. The sprint plan and review
+land in that project's `docs_dir`, never in this repo.
 
 Two narrower subcommands are also available:
 
 ```bash
-meow plan "Add CSV export" --worktree "add-csv-export"  # write the sprint plan only, don't implement it
-meow review --worktree "add-csv-export"                  # re-review + fix the latest plan in that worktree
-meow review --plan-file PATH --worktree "add-csv-export" # re-review + fix a specific plan
+meow plan "Add CSV export" --name "add-csv-export" --working-dir PATH # write the sprint plan only
+meow review --working-dir .worktrees/add-csv-export                  # review the latest plan in that worktree
+meow review --plan-file PATH --working-dir .worktrees/add-csv-export # review a specific plan there
 ```
 
 Use a worktree by default to isolate feature work from the main repo. `--no-worktree`
-lets you intentionally run in the repo root instead; this is the explicit override,
-not the normal harness path. `review` still runs the reviewer first; if it already
+lets `run` and `plan` intentionally run in the selected working directory instead;
+the feature name is optional in that mode. `review` and `cr` always use the selected
+working directory and do not take a feature name. `review` still runs the reviewer first; if it already
 passes, nothing else runs. On FAIL it loops the generator against the feedback and
 re-reviews, same as `run`, up to `max_rounds`.
 
