@@ -1,0 +1,13 @@
+# .harness.toml -- meow harnessing itself.
+# Run with: harness run "your feature request"   (from this repo's root)
+#
+# See templates/harness.toml.example for the annotated version of this file
+# that gets copied into other projects.
+
+lint_command = "ruff check"
+lint_fix_flag = "--fix"
+max_rounds = 8
+docs_dir = "docs/exec-plans/active"
+
+[models]
+explorer = "haiku"

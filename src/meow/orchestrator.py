@@ -16,7 +16,6 @@ import argparse
 import asyncio
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 try:
@@ -105,7 +104,7 @@ def make_explorer_agent(config: dict) -> AgentDefinition:
 # ---------------------------------------------------------------------------
 
 def make_lint_hook(config: dict):
-    lint_cmd = config["lint_command"].split() + [config["lint_fix_flag"]]
+    lint_cmd = [*config["lint_command"].split(), config["lint_fix_flag"]]
 
     async def lint_edited_file(input_data, tool_use_id, context):
         if input_data.get("tool_name") not in ("Write", "Edit"):
@@ -188,7 +187,11 @@ class Generator:
             ),
             allowed_tools=["Read", "Edit", "Write", "Bash", "Grep", "Glob", "Agent"],
             agents={"explorer": explorer_agent},
-            hooks={"PostToolUse": [HookMatcher(matcher="Write|Edit", hooks=[lint_hook])]},
+            hooks={
+                "PostToolUse": [
+                    HookMatcher(matcher="Write|Edit", hooks=[lint_hook])
+                ]
+            },
             model=config["models"]["generator"],
             cwd=str(project_root),
         )
@@ -216,7 +219,9 @@ class Generator:
 # Role: evaluator
 # ---------------------------------------------------------------------------
 
-async def run_evaluator(project_root: Path, config: dict, plan_file: Path) -> tuple[str, str]:
+async def run_evaluator(
+    project_root: Path, config: dict, plan_file: Path
+) -> tuple[str, str]:
     review_file = plan_file.with_name(plan_file.stem + "-review.md")
     check_cmd = config["lint_command"]  # check-only, no fix flag
 
@@ -258,10 +263,14 @@ async def run_sprint(project_root: Path, feature_name: str, request: str):
     max_rounds = config["max_rounds"]
 
     print(f"[planner] planning '{feature_name}'...")
-    plan_file = await run_planner(project_root, config, explorer_agent, feature_name, request)
+    plan_file = await run_planner(
+        project_root, config, explorer_agent, feature_name, request
+    )
     print(f"[planner] wrote {plan_file}")
 
-    async with Generator(project_root, config, explorer_agent, lint_hook, plan_file) as generator:
+    async with Generator(
+        project_root, config, explorer_agent, lint_hook, plan_file
+    ) as generator:
         instruction = f"Implement the tasks in {plan_file}."
         for round_num in range(1, max_rounds + 1):
             print(f"[generator] round {round_num}: implementing...")
@@ -294,7 +303,9 @@ def cli_main():
     parser = argparse.ArgumentParser(prog="harness")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    run_parser = subparsers.add_parser("run", help="Run a sprint for a feature request.")
+    run_parser = subparsers.add_parser(
+        "run", help="Run a sprint for a feature request."
+    )
     run_parser.add_argument("request", help="Feature request text.")
     run_parser.add_argument(
         "--project-root", default=".",
