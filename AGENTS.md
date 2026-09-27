@@ -12,6 +12,10 @@ harness run "<feature description>"
 Config lives in `.harness.toml`. Sprint plans, contracts, and reviews are
 written to `docs/exec-plans/active/`.
 
+To onboard a *different* repo onto meow, see [GUIDE.md](GUIDE.md) — it's
+written for a Claude session working in that other repo, and covers what's
+strictly required versus merely recommended, generic to any language.
+
 ## Lint
 
 `ruff check` is the gate, declared as the single `[[lint]]` entry in
@@ -19,9 +23,8 @@ written to `docs/exec-plans/active/`.
 generator touches, and runs `ruff check` unmodified project-wide as part of the
 evaluator's verdict. Rule selection lives in `pyproject.toml`.
 
-A project can declare any number of `[[lint]]` commands, each choosing whether
-it runs per file and whether its failure may fail a sprint; meow itself only
-needs one.
+A project can declare any number of `[[lint]]` commands (see GUIDE.md for the
+`per_file`/`gate` fields); meow itself only needs one.
 
 ## Layout
 

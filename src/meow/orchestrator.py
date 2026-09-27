@@ -20,13 +20,9 @@ import argparse
 import asyncio
 import re
 import shutil
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-
-try:
-    import tomllib  # Python 3.11+
-except ModuleNotFoundError:
-    import tomli as tomllib  # Python 3.10 fallback -- pip install tomli
 
 from claude_agent_sdk import (
     AgentDefinition,
@@ -388,6 +384,19 @@ def _lint_instructions(commands: list[LintCommand]) -> str:
     return " ".join(parts)
 
 
+def _architecture_review_instructions() -> str:
+    """Tell the evaluator to look for monolithic, SRP-breaking modules."""
+    return (
+        "Also perform a SOLID/SRP review. Flag any file or class that mixes "
+        "multiple responsibilities, such as config parsing + agent wiring + "
+        "lint hooks + orchestration + CLI handling in one module. Treat any "
+        "single file that does more than one broad concern as a FAIL criterion "
+        "unless the code is clearly split into cohesive helpers or classes. "
+        "Use file:line evidence; do not accept 'it works' as an excuse for "
+        "a monolithic design."
+    )
+
+
 async def run_evaluator(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
     review_file = plan_file.with_name(plan_file.stem + "-review.md")
 
@@ -399,6 +408,8 @@ async def run_evaluator(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
             "and mark PASS or FAIL with concrete evidence (file:line or "
             "command output). "
             + _lint_instructions(sprint.lint_commands())
+            + " "
+            + _architecture_review_instructions()
             + f" Write your verdict to {review_file} starting with a line "
             "'STATUS: PASS' or 'STATUS: FAIL', followed by one line per "
             "criterion. Default to FAIL when uncertain."

@@ -3,10 +3,9 @@ name = "meow"
 version = "0.1.0"
 description = "Planner/generator/evaluator harness engine for the Claude Agent SDK, reusable across projects via .harness.toml"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "claude-agent-sdk",
-    "tomli; python_version < '3.11'",
 ]
 
 [project.scripts]
