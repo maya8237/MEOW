@@ -1,0 +1,30 @@
+# harness.toml.example -- template, from the meow harness repo.
+#
+# Copy this to the root of a project that uses the installed harness engine,
+# renamed to `.harness.toml`, then fill in the real values.
+# Run with: harness run "your feature request"   (from that project's root)
+
+# Required. The project's lint/check command, WITHOUT any fix flag --
+# the engine appends its own fix flag for the per-file hook, and runs this
+# exact command unmodified (check-only) for the evaluator's full-project gate.
+# Examples: "ruff check", "eslint", "golangci-lint run"
+lint_command = "<your-lint-command>"
+
+# Flag the engine appends to lint_command for the auto-fixing per-file hook.
+lint_fix_flag = "--fix"
+
+# How many generator <-> evaluator rounds to allow before giving up on a
+# sprint rather than looping forever.
+max_rounds = 8
+
+# Where sprint plan/contract/review files get written, relative to this
+# project's root. Must already exist as part of the project's docs/ setup.
+docs_dir = "docs/exec-plans/active"
+
+# Optional per-role model overrides. Omit a line to use the engine's default
+# for that role.
+[models]
+explorer = "haiku"
+# planner = "claude-sonnet-5"
+# generator = "claude-opus-5-5"
+# evaluator = "claude-opus-5-5"
