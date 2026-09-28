@@ -394,6 +394,39 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_sprint.assert_not_called()
 
     @staticmethod
+    def test_issue_solver_command_is_supported():
+        with (
+            patch("meow.cli._boot_repo") as mock_boot,
+            patch(
+                "meow.cli.run_issue_solver", new_callable=AsyncMock
+            ) as mock_issue_solver,
+            patch("sys.argv", ["meow", "issue-solver", "PROJ-1", "--work-dir", "."]),
+        ):
+            mock_issue_solver.return_value = {
+                "issue": "PROJ-1", "branch": "issue/PROJ-1"
+            }
+            cli.cli_main()
+
+        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=True)
+        mock_issue_solver.assert_awaited_once_with(Path(".").resolve(), "PROJ-1")
+
+    @staticmethod
+    def test_issue_solver_command_accepts_no_issue_key():
+        with (
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_issue_solver", new_callable=AsyncMock
+            ) as mock_issue_solver,
+            patch("sys.argv", ["meow", "issue-solver", "--work-dir", "."]),
+        ):
+            mock_issue_solver.return_value = {
+                "issue": "PROJ-2", "branch": "issue/PROJ-2"
+            }
+            cli.cli_main()
+
+        mock_issue_solver.assert_awaited_once_with(Path(".").resolve(), None)
+
+    @staticmethod
     @patch("meow.cli._boot_repo")
     @patch("meow.cli.run_review", new_callable=AsyncMock)
     @patch("meow.cli.run_plan", new_callable=AsyncMock)
