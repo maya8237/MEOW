@@ -16,6 +16,38 @@ Every project-specific value — the lint commands, the per-role models, the rou
 cap, where sprint files land — is read at runtime from a `.harness.toml` file in
 the *target project's* root. This repo holds only the engine.
 
+## Agent structure
+
+Each of the four roles is a `*Agent` class in `src/meow/agents/` built on a
+shared `Agent` base (`src/meow/agents/base.py`), which constructs SDK options
+and runs one-shot queries the same way for every role. Role classes take a
+generic `AgentContext` — either `Sprint` (sprint workflow state) or the
+sprint-free `ProjectContext` (project config + a directory, used by `cr`) —
+so review operations don't need a sprint or plan file. The explorer stays
+declarative (`AgentDefinition`, since the SDK runs it as a nested subagent);
+the generator keeps a persistent `ClaudeSDKClient` so a session survives
+across feedback rounds.
+
+## Agent skills
+
+MEOW makes role-specific Superpowers skills available through the Claude Agent
+SDK:
+
+- **Explorer:** `superpowers:systematic-debugging` guides evidence gathering
+  when investigating a bug. The explorer remains read-only.
+- **Planner:** `superpowers:writing-plans` guides task sizing, file mapping,
+  testability, and plan self-review. MEOW still controls the plan path and
+  Sprint Contract format.
+- **Generator:** `superpowers:executing-plans` guides task-by-task work;
+  `superpowers:test-driven-development` guides code changes;
+  `superpowers:systematic-debugging` guides failure investigation;
+  `superpowers:receiving-code-review` guides how it checks reviewer findings;
+  and `superpowers:verification-before-completion` guides its completion
+  evidence. MEOW retains worktree setup and the review loop.
+- **Reviewer:** `superpowers:verification-before-completion` guides independent
+  checks of the implementation and command evidence before it writes its
+  verdict.
+
 ## Install
 
 Into a dedicated virtualenv, from this repo's root:
@@ -120,6 +152,7 @@ meow/
         ├── sprint.py                   # per-sprint state shared by every role
         ├── lint.py                     # auto-fixing per-file lint hook
         ├── agents/
+        │   ├── base.py                 # shared AgentContext/Agent base + ProjectContext
         │   ├── explorer.py             # explorer agent definition
         │   ├── planner.py              # planner agent
         │   ├── generator.py            # generator agent

@@ -4,34 +4,53 @@ from pathlib import Path
 
 from claude_agent_sdk import (
     AssistantMessage,
-    ClaudeAgentOptions,
     ClaudeSDKClient,
     HookMatcher,
     TextBlock,
 )
 
-from meow.sprint import Sprint
+from meow.agents.base import Agent, GeneratorContext
 
 
-class Generator:
-    def __init__(self, sprint: Sprint, plan_file: Path):
-        options = ClaudeAgentOptions(
+class GeneratorAgent(Agent):
+    def __init__(self, context: GeneratorContext, plan_file: Path):
+        super().__init__(context)
+        options = self.options(
             system_prompt=(
                 f"You implement tasks from {plan_file} one at a time. "
                 "Work against the agreed Sprint Contract criteria exactly "
                 "-- do not expand scope. When you believe a task is "
                 "complete, say so explicitly and stop; do not grade your "
-                "own work."
+                "own work. Use executing-plans to work through the supplied "
+                "plan one task at a time and check each expected result. "
+                "MEOW's orchestrator owns worktree setup, review rounds, and "
+                "stopping control; do not create a separate ledger or commits. "
+                "Use test-driven development for code changes: write a failing "
+                "test, confirm the expected failure, implement, then run it "
+                "and confirm it passes. When an unexpected failure occurs, "
+                "use systematic debugging to establish its root cause before "
+                "editing. Before acting on reviewer feedback, verify each "
+                "finding against the code and plan; report unsupported or "
+                "out-of-scope findings instead of making unrelated changes. "
+                "Before reporting a task complete, run relevant project tests "
+                "and report actual command results. Do not declare sprint "
+                "success; the reviewer decides."
             ),
             allowed_tools=["Read", "Edit", "Write", "Bash", "Grep", "Glob", "Agent"],
-            agents={"explorer": sprint.explorer},
+            role="generator",
+            agents={"explorer": context.explorer},
+            skills=[
+                "superpowers:executing-plans",
+                "superpowers:test-driven-development",
+                "superpowers:systematic-debugging",
+                "superpowers:receiving-code-review",
+                "superpowers:verification-before-completion",
+            ],
             hooks={
                 "PostToolUse": [
-                    HookMatcher(matcher="Write|Edit", hooks=[sprint.lint_hook])
+                    HookMatcher(matcher="Write|Edit", hooks=[context.lint_hook])
                 ]
             },
-            model=sprint.model("generator"),
-            cwd=str(sprint.active_working_dir()),
         )
         self._client = ClaudeSDKClient(options=options)
 
@@ -51,3 +70,6 @@ class Generator:
                     if isinstance(block, TextBlock):
                         text.append(block.text)
         return "\n".join(text)
+
+
+Generator = GeneratorAgent

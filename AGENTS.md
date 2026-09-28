@@ -50,8 +50,28 @@ A project can declare any number of `[[lint]]` commands (see GUIDE.md for the
 The engine is split by responsibility under `src/meow/`: `config.py`
 (`.harness.toml` loading and the lint-command model), `sprint.py` (the shared
 per-sprint state), `lint.py` (the auto-fixing per-file hook), `agents/`
-(`explorer.py`, `planner.py`, `generator.py`, and `reviewer.py`, one module per
-agent role), `orchestrator.py` (the generator <-> reviewer round loop), and
-`cli.py` (the `meow` console-script entry point). The `src/` layout is
-deliberate: code run from the repo root reaches the *installed* copy, so a
-broken editable install is caught rather than masked.
+(one module per agent role, plus a shared base), `orchestrator.py` (the
+generator <-> reviewer round loop), and `cli.py` (the `meow` console-script
+entry point). The `src/` layout is deliberate: code run from the repo root
+reaches the *installed* copy, so a broken editable install is caught rather
+than masked.
+
+## Agent structure
+
+Every role in `agents/` follows the same class-based shape: `*Agent(context)`,
+where `context` satisfies the `AgentContext` protocol in `agents/base.py`
+(model selection per role, an active working directory, and lint commands).
+The generator additionally needs the pre-wired explorer definition and lint
+hook, declared on the narrower `GeneratorContext` protocol rather than on
+every role's context. The shared `Agent` base builds `ClaudeAgentOptions` and
+runs one-shot SDK queries consistently across roles; `Sprint` (sprint-workflow
+state) and the generic, sprint-free `ProjectContext` (config + a directory,
+used by `cr`) both satisfy `AgentContext` (`Sprint` also satisfies
+`GeneratorContext`), so a role class works the same way whether or not a
+sprint is in play. The explorer stays declarative — `ExplorerAgent.definition()` returns
+an `AgentDefinition` because the SDK consumes it as a nested subagent — while
+the generator keeps its own persistent `ClaudeSDKClient`/context-manager
+lifecycle so a session survives across feedback rounds. Each module also keeps
+thin, function-shaped compatibility wrappers (`make_explorer_agent`,
+`run_planner`, `run_reviewer`, `run_prompt_reviewer`, `Generator`) around its
+class for existing callers and imports.

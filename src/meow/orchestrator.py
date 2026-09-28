@@ -20,10 +20,11 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from meow.agents.base import ProjectContext
 from meow.agents.explorer import make_explorer_agent
 from meow.agents.generator import Generator
-from meow.agents.planner import run_planner
-from meow.agents.reviewer import run_prompt_reviewer, run_reviewer
+from meow.agents.planner import PlannerAgent, run_planner
+from meow.agents.reviewer import ReviewerAgent, run_prompt_reviewer, run_reviewer
 from meow.config import (
     DEFAULT_CONFIG,
     LintCommand,
@@ -35,6 +36,9 @@ from meow.lint import make_lint_hook
 from meow.sprint import Sprint
 
 assert DEFAULT_CONFIG and _lint_entry and _normalize_lint_commands  # re-exported
+assert run_prompt_reviewer  # re-exported for compatibility
+assert run_planner and run_reviewer  # re-exported for compatibility
+assert make_explorer_agent  # re-exported for compatibility
 
 
 def log_working_directory(working_dir: Path) -> None:
@@ -152,7 +156,7 @@ async def _run_rounds(sprint: Sprint, plan_file: Path) -> bool:
             await generator.implement(instruction)
 
             print(f"[reviewer] round {round_num}: reviewing...")
-            status, verdict = await run_reviewer(sprint, plan_file)
+            status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
             summary = "\n".join(
                 line.strip()
                 for line in verdict.splitlines()
@@ -194,7 +198,7 @@ async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
     max_rounds = sprint.config["max_rounds"]
 
     print("[reviewer] round 1: reviewing...")
-    status, verdict = await run_reviewer(sprint, plan_file)
+    status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
     print(f"[reviewer] round 1: {status}")
     if summary_line := _review_summary(verdict):
         print(f"[reviewer] round 1 summary: {summary_line}")
@@ -211,7 +215,7 @@ async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
             await generator.implement(instruction)
 
             print(f"[reviewer] round {round_num}: reviewing...")
-            status, verdict = await run_reviewer(sprint, plan_file)
+            status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
             summary = "\n".join(
                 line.strip()
                 for line in verdict.splitlines()
@@ -246,7 +250,7 @@ def _latest_plan_file(docs_dir: Path) -> Path:
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
-async def run_sprint(  # ruff: ignore[too-many-arguments]
+async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would change cli.py's call site
     working_dir: Path,
     feature_name: str | None,
     request: str,
@@ -266,7 +270,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
     if plan_file is None:
         label = f" '{effective_name}'" if effective_name else ""
         print(f"[planner] planning{label} in {active_dir}...")
-        plan_file = await run_planner(sprint, effective_name, request)
+        plan_file = await PlannerAgent(sprint).run(effective_name, request)
         print(f"[planner] wrote {plan_file}")
 
     if await _run_rounds(sprint, plan_file):
@@ -282,7 +286,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
     )
 
 
-async def run_plan(  # ruff: ignore[too-many-arguments]
+async def run_plan(
     working_dir: Path,
     feature_name: str | None,
     request: str,
@@ -299,7 +303,7 @@ async def run_plan(  # ruff: ignore[too-many-arguments]
 
     label = f" '{effective_name}'" if effective_name else ""
     print(f"[planner] planning{label} in {active_dir}...")
-    plan_file = await run_planner(sprint, effective_name, request)
+    plan_file = await PlannerAgent(sprint).run(effective_name, request)
     print(f"[planner] wrote {plan_file}")
     return plan_file
 
@@ -330,7 +334,7 @@ async def run_review(
     )
 
 
-async def run_prompt_review(  # ruff: ignore[too-many-arguments]
+async def run_prompt_review(
     working_dir: Path,
     prompt: str | None,
 ):
@@ -338,28 +342,19 @@ async def run_prompt_review(  # ruff: ignore[too-many-arguments]
 
     Unlike `run_review`, there is no Sprint Contract task list to loop a
     generator against, so this reports PASS/FAIL rather than gating on it.
+    No sprint or plan file is needed either -- a generic `ProjectContext`
+    built from config and the working directory is enough for the reviewer.
     """
     config = load_config(working_dir)
     _describe_lint_plan(config["lint"])
     active_dir = working_dir
-    sprint = _build_sprint(working_dir, config)
+    context = ProjectContext(working_dir, config)
 
     print(f"[orchestrator] reviewing prompt in {active_dir}...")
-    status, _ = await run_prompt_reviewer(sprint, prompt)
+    status, _ = await ReviewerAgent(context).review_prompt(prompt)
     review_file = (
-        sprint.active_working_dir()
+        context.active_working_dir()
         / config["docs_dir"]
         / "review.md"
     )
     print(f"[orchestrator] review {status}: {review_file}")
-
-
-def cli_main():
-    """Keep the module entry point aligned with the installed CLI."""
-    from meow.cli import cli_main as run_cli
-
-    run_cli()
-
-
-if __name__ == "__main__":
-    cli_main()
