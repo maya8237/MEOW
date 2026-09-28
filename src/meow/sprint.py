@@ -18,6 +18,7 @@ class Sprint:
     lint_hook: object
     working_dir: Path | None = None
     use_worktree: bool = False
+
     def model(self, role: str) -> str | None:
         return self.config["models"][role]
 
