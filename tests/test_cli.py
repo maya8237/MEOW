@@ -64,6 +64,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             "lint": [],
             "docs_dir": "docs",
             "max_rounds": 1,
+            "lint_timeout": 60,
         }
         working_dir = Path("/tmp/project").resolve()
 
@@ -85,6 +86,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             "lint": [],
             "docs_dir": "docs",
             "max_rounds": 1,
+            "lint_timeout": 60,
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -208,19 +210,19 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     # trimming any would weaken the "every other command stays untouched"
     # assertions below.
     @staticmethod
-    @patch("builtins.print")
+    @patch("meow.orchestrator.logger")
     @patch("meow.cli._boot_repo")
     @patch("meow.cli.run_review", new_callable=AsyncMock)
     @patch("meow.cli.run_plan", new_callable=AsyncMock)
     @patch("meow.cli.run_sprint", new_callable=AsyncMock)
     def test_cli_logs_working_directory_once(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
-        mock_sprint, mock_plan, mock_review, mock_boot, mock_print
+        mock_sprint, mock_plan, mock_review, mock_boot, mock_logger
     ):
         with patch("sys.argv", ["meow", "review", "--work-dir", "."]):
             cli.cli_main()
 
-        mock_print.assert_called_once_with(
-            f"[meow] working directory: {Path('.').resolve()}"
+        mock_logger.info.assert_called_once_with(
+            "working_directory_resolved", path=str(Path(".").resolve())
         )
         mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
         mock_review.assert_awaited_once_with(Path(".").resolve(), None)

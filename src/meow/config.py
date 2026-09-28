@@ -23,6 +23,8 @@ DEFAULT_CONFIG = {
     "lint_command": None,           # legacy single-command form
     "lint_fix_flag": DEFAULT_FIX_FLAG,
     "max_rounds": 8,
+    "lint_timeout": 60,             # seconds before a per-file lint command is killed
+
     "docs_dir": "docs/exec-plans/active",
     "models": {
         "explorer": "haiku",

@@ -33,6 +33,7 @@ from meow.config import (
     load_config,
 )
 from meow.lint import make_lint_hook
+from meow.logging import get_logger
 from meow.sprint import Sprint
 
 assert DEFAULT_CONFIG and _lint_entry and _normalize_lint_commands  # re-exported
@@ -40,10 +41,12 @@ assert run_prompt_reviewer  # re-exported for compatibility
 assert run_planner and run_reviewer  # re-exported for compatibility
 assert make_explorer_agent  # re-exported for compatibility
 
+logger = get_logger(__name__)
+
 
 def log_working_directory(working_dir: Path) -> None:
-    """Print the active working directory once for each meow execution."""
-    print(f"[meow] working directory: {Path(working_dir).resolve()}")
+    """Log the active working directory once for each meow execution."""
+    logger.info("working_directory_resolved", path=str(Path(working_dir).resolve()))
 
 
 def _ensure_gitignore_entry(working_dir: Path, entry: str = ".worktrees/") -> None:
@@ -126,7 +129,7 @@ def _build_sprint(
         repo_dir=repo_dir,
         config=config,
         explorer=make_explorer_agent(config, active_dir),
-        lint_hook=make_lint_hook(active_dir, commands),
+        lint_hook=make_lint_hook(active_dir, commands, config["lint_timeout"]),
         working_dir=active_dir,
     )
 
@@ -138,11 +141,13 @@ def _build_sprint(
 def _describe_lint_plan(commands: list[LintCommand]) -> None:
     """Report the configured lint commands before a sprint spends anything."""
     for entry in commands:
-        roles = ["per-file" if entry.per_file else "project-only"]
-        roles.append("gate" if entry.gate else "non-blocking")
-        if entry.fix_flag:
-            roles.append(f"fix {entry.fix_flag}")
-        print(f"[lint] {entry.command}  ({', '.join(roles)})")
+        logger.info(
+            "lint_command_configured",
+            command=entry.command,
+            per_file=entry.per_file,
+            gate=entry.gate,
+            fix_flag=entry.fix_flag,
+        )
 
 
 async def _run_rounds(sprint: Sprint, plan_file: Path) -> bool:
@@ -152,19 +157,26 @@ async def _run_rounds(sprint: Sprint, plan_file: Path) -> bool:
     async with Generator(sprint, plan_file) as generator:
         instruction = f"Implement the tasks in {plan_file}."
         for round_num in range(1, max_rounds + 1):
-            print(f"[generator] round {round_num}: implementing...")
+            logger.info(
+                "generator_round_started", round=round_num, max_rounds=max_rounds
+            )
             await generator.implement(instruction)
 
-            print(f"[reviewer] round {round_num}: reviewing...")
+            logger.info(
+                "reviewer_round_started", round=round_num, max_rounds=max_rounds
+            )
             status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
             summary = "\n".join(
                 line.strip()
                 for line in verdict.splitlines()
                 if line.strip() and not line.startswith("STATUS:")
             )[:400]
-            print(f"[reviewer] round {round_num}: {status}")
-            if summary:
-                print(f"[reviewer] round {round_num} summary: {summary}")
+            logger.info(
+                "reviewer_round_finished",
+                round=round_num,
+                status=status,
+                summary=summary,
+            )
 
             if status == "PASS":
                 return True
@@ -197,11 +209,14 @@ async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
     """
     max_rounds = sprint.config["max_rounds"]
 
-    print("[reviewer] round 1: reviewing...")
+    logger.info("reviewer_round_started", round=1, max_rounds=max_rounds)
     status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
-    print(f"[reviewer] round 1: {status}")
-    if summary_line := _review_summary(verdict):
-        print(f"[reviewer] round 1 summary: {summary_line}")
+    logger.info(
+        "reviewer_round_finished",
+        round=1,
+        status=status,
+        summary=_review_summary(verdict) or "",
+    )
     if status == "PASS":
         return True
 
@@ -211,19 +226,26 @@ async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
             f"Reviewer feedback:\n{verdict}"
         )
         for round_num in range(2, max_rounds + 1):
-            print(f"[generator] round {round_num}: implementing...")
+            logger.info(
+                "generator_round_started", round=round_num, max_rounds=max_rounds
+            )
             await generator.implement(instruction)
 
-            print(f"[reviewer] round {round_num}: reviewing...")
+            logger.info(
+                "reviewer_round_started", round=round_num, max_rounds=max_rounds
+            )
             status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
             summary = "\n".join(
                 line.strip()
                 for line in verdict.splitlines()
                 if line.strip() and not line.startswith("STATUS:")
             )[:400]
-            print(f"[reviewer] round {round_num}: {status}")
-            if summary:
-                print(f"[reviewer] round {round_num} summary: {summary}")
+            logger.info(
+                "reviewer_round_finished",
+                round=round_num,
+                status=status,
+                summary=summary,
+            )
 
             if status == "PASS":
                 return True
@@ -268,16 +290,23 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
     sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
 
     if plan_file is None:
-        label = f" '{effective_name}'" if effective_name else ""
-        print(f"[planner] planning{label} in {active_dir}...")
+        logger.info(
+            "planner_started",
+            feature_name=effective_name,
+            working_dir=str(active_dir),
+        )
         plan_file = await PlannerAgent(sprint).run(effective_name, request)
-        print(f"[planner] wrote {plan_file}")
+        logger.info("planner_finished", plan_file=str(plan_file))
 
     if await _run_rounds(sprint, plan_file):
-        label = f" '{feature_name}'" if feature_name else ""
-        print(f"[orchestrator] sprint{label} complete.")
+        logger.info("sprint_complete", feature_name=feature_name)
         return
 
+    logger.error(
+        "sprint_did_not_pass",
+        feature_name=feature_name,
+        max_rounds=config["max_rounds"],
+    )
     raise RuntimeError(
         f"Sprint{f' {feature_name!r}' if feature_name else ''} did not pass "
         f"after {config['max_rounds']} "
@@ -301,10 +330,11 @@ async def run_plan(
     )
     sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
 
-    label = f" '{effective_name}'" if effective_name else ""
-    print(f"[planner] planning{label} in {active_dir}...")
+    logger.info(
+        "planner_started", feature_name=effective_name, working_dir=str(active_dir)
+    )
     plan_file = await PlannerAgent(sprint).run(effective_name, request)
-    print(f"[planner] wrote {plan_file}")
+    logger.info("planner_finished", plan_file=str(plan_file))
     return plan_file
 
 
@@ -322,11 +352,18 @@ async def run_review(
         resolved_plan_file = _latest_plan_file(active_dir / config["docs_dir"])
     sprint = _build_sprint(working_dir, config)
 
-    print(f"[orchestrator] reviewing {resolved_plan_file} in {active_dir}...")
+    logger.info(
+        "review_started", plan_file=str(resolved_plan_file), working_dir=str(active_dir)
+    )
     if await _run_review_rounds(sprint, resolved_plan_file):
-        print(f"[orchestrator] review of {resolved_plan_file} complete.")
+        logger.info("review_complete", plan_file=str(resolved_plan_file))
         return
 
+    logger.error(
+        "review_did_not_pass",
+        plan_file=str(resolved_plan_file),
+        max_rounds=config["max_rounds"],
+    )
     raise RuntimeError(
         f"Review of {resolved_plan_file} did not pass after "
         f"{config['max_rounds']} rounds -- stopping instead of looping "
@@ -350,11 +387,11 @@ async def run_prompt_review(
     active_dir = working_dir
     context = ProjectContext(working_dir, config)
 
-    print(f"[orchestrator] reviewing prompt in {active_dir}...")
+    logger.info("prompt_review_started", working_dir=str(active_dir))
     status, _ = await ReviewerAgent(context).review_prompt(prompt)
     review_file = (
         context.active_working_dir()
         / config["docs_dir"]
         / "review.md"
     )
-    print(f"[orchestrator] review {status}: {review_file}")
+    logger.info("prompt_review_finished", status=status, review_file=str(review_file))
