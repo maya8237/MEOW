@@ -4,6 +4,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from meow.logging import configure_logging
 from meow.orchestrator import (
     _boot_repo,
     log_working_directory,
@@ -119,6 +120,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def cli_main():
+    configure_logging()
     parser = _build_arg_parser()
     args = parser.parse_args()
     working_dir = Path(args.working_dir).resolve()

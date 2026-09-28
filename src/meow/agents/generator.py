@@ -9,7 +9,10 @@ from claude_agent_sdk import (
     TextBlock,
 )
 
-from meow.agents.base import Agent, GeneratorContext
+from meow.agents.base import Agent, GeneratorContext, log_stream_message
+from meow.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class GeneratorAgent(Agent):
@@ -62,13 +65,16 @@ class GeneratorAgent(Agent):
         await self._client.__aexit__(*exc)
 
     async def implement(self, instruction: str) -> str:
+        logger.info("generator_turn_started")
         await self._client.query(instruction)
         text = []
         async for message in self._client.receive_response():
+            log_stream_message("generator", message)
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, TextBlock):
                         text.append(block.text)
+        logger.info("generator_turn_finished")
         return "\n".join(text)
 
 
