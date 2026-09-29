@@ -7,14 +7,12 @@ same generator<->reviewer loop `meow run` uses (`orchestrator.run_sprint`),
 inside a dedicated, named-branch worktree that gets pushed on success.
 
 Unlike `run`/`plan`'s worktrees (created detached, never pushed), this flow
-always needs a real branch to hand back to the caller, so it manages its own
-worktree instead of going through `orchestrator._ensure_feature_worktree`.
+always needs a real branch to hand back to the caller, so `worktree.py`
+creates its own worktree on one instead of the usual detached one.
 """
 
 import json
 import re
-import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
@@ -23,6 +21,7 @@ from meow.agents.issue_fetcher import IssueFetcherAgent
 from meow.config import load_config
 from meow.logging import get_logger
 from meow.orchestrator import run_sprint
+from meow.worktree import _ensure_branch_worktree, _push_branch
 
 logger = get_logger(__name__)
 
@@ -100,58 +99,6 @@ async def _fetch_issue(
         raise RuntimeError(f"Jira issue-fetcher output is missing {missing}: {data}")
     logger.info("jira_fetch_finished", key=data["key"])
     return data
-
-
-def _run_git(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=False)
-
-
-def _ensure_branch_worktree(
-    working_dir: Path, feature_name: str, branch_name: str
-) -> Path:
-    """Create (or reuse) a worktree checked out on a real, pushable branch."""
-    worktree_dir = working_dir / ".worktrees" / feature_name
-    if worktree_dir.exists():
-        return worktree_dir
-
-    git = shutil.which("git")
-    if not git:
-        raise RuntimeError(
-            "git is required for issue-solver's worktree/branch/push steps."
-        )
-
-    (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)
-    branch_exists = _run_git(
-        [git, "rev-parse", "--verify", "--quiet", branch_name], cwd=working_dir
-    ).returncode == 0
-
-    if branch_exists:
-        argv = [git, "worktree", "add", str(worktree_dir), branch_name]
-    else:
-        argv = [git, "worktree", "add", "-b", branch_name, str(worktree_dir)]
-    result = _run_git(argv, cwd=working_dir)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"Could not create worktree for branch '{branch_name}':\n{result.stderr}"
-        )
-    return worktree_dir
-
-
-def _push_branch(worktree_dir: Path, branch_name: str) -> None:
-    git = shutil.which("git")
-    remotes = _run_git([git, "remote"], cwd=worktree_dir).stdout.split()
-    if "origin" not in remotes:
-        raise RuntimeError(
-            "No 'origin' remote configured -- issue-solver can't push the "
-            f"finished branch '{branch_name}'. Add one with `git remote add "
-            "origin <url>`, or push it yourself."
-        )
-
-    result = _run_git([git, "push", "-u", "origin", branch_name], cwd=worktree_dir)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"git push failed for branch '{branch_name}':\n{result.stderr}"
-        )
 
 
 async def run_issue_solver(working_dir: Path, issue_key: str | None = None) -> dict:

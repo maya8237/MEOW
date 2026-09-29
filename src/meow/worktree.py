@@ -91,3 +91,61 @@ def _ensure_feature_worktree(working_dir: Path, feature_name: str) -> Path:
         ) from exc
 
     return worktree_dir
+
+
+def _run_git(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=False)
+
+
+def _ensure_branch_worktree(
+    working_dir: Path, feature_name: str, branch_name: str
+) -> Path:
+    """Create (or reuse) a worktree checked out on a real, pushable branch.
+
+    Unlike `_ensure_feature_worktree` (detached, never pushed -- what `run`/
+    `plan` need), `issue-solver` always needs a real branch to hand back to
+    its caller, so it creates its own worktree on one instead.
+    """
+    worktree_dir = working_dir / ".worktrees" / feature_name
+    if worktree_dir.exists():
+        return worktree_dir
+
+    git = shutil.which("git")
+    if not git:
+        raise RuntimeError(
+            "git is required for issue-solver's worktree/branch/push steps."
+        )
+
+    (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)
+    branch_exists = _run_git(
+        [git, "rev-parse", "--verify", "--quiet", branch_name], cwd=working_dir
+    ).returncode == 0
+
+    if branch_exists:
+        argv = [git, "worktree", "add", str(worktree_dir), branch_name]
+    else:
+        argv = [git, "worktree", "add", "-b", branch_name, str(worktree_dir)]
+    result = _run_git(argv, cwd=working_dir)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Could not create worktree for branch '{branch_name}':\n{result.stderr}"
+        )
+    return worktree_dir
+
+
+def _push_branch(worktree_dir: Path, branch_name: str) -> None:
+    """Push a finished issue-solver branch to `origin`."""
+    git = shutil.which("git")
+    remotes = _run_git([git, "remote"], cwd=worktree_dir).stdout.split()
+    if "origin" not in remotes:
+        raise RuntimeError(
+            "No 'origin' remote configured -- issue-solver can't push the "
+            f"finished branch '{branch_name}'. Add one with `git remote add "
+            "origin <url>`, or push it yourself."
+        )
+
+    result = _run_git([git, "push", "-u", "origin", branch_name], cwd=worktree_dir)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"git push failed for branch '{branch_name}':\n{result.stderr}"
+        )
