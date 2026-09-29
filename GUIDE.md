@@ -64,6 +64,16 @@ per_file = false
 gate = false
 ```
 
+`[jira]`/`[jira.mcp]` are optional and only needed for `meow issue-solver`
+(see §8):
+
+| Field | Required | Default | Notes |
+|---|---|---|---|
+| `[jira].project_key` | Only for `issue-solver` | — | Jira project searched for "the latest issue" when no issue key is given. |
+| `[jira].branch_prefix` | No | `"issue/"` | Prefix for the branch `issue-solver` creates and pushes. |
+| `[jira.mcp].command` | Only for `issue-solver` | — | Program that launches the Jira MCP server, e.g. `"uvx"`. |
+| `[jira.mcp].args` | No | `[]` | Its arguments, e.g. `["mcp-atlassian"]`. |
+
 ---
 
 ## 3. Recommended, not enforced — but do it anyway
@@ -172,7 +182,53 @@ moving branch.
 
 ---
 
-## 7. If something's missing
+## 7. Running `issue-solver` on a schedule (Windows Task Scheduler)
+
+`meow issue-solver [ISSUE-KEY]` fetches a Jira issue (or the most recently
+created one in `[jira].project_key` if you omit the key), solves it through
+the same plan/implement/review loop as `meow run`, inside its own worktree
+on branch `<branch_prefix><ISSUE-KEY>` (default `issue/<ISSUE-KEY>`), then
+pushes that branch to `origin`. On success it prints one JSON line to
+stdout — `{"issue": "PROJ-123", "branch": "issue/PROJ-123"}` — and exits 0;
+any failure (no active Jira MCP, no matching issue, the sprint not passing
+within `max_rounds`, or the push failing) raises before that line is
+printed, and the process exits non-zero.
+
+**Prerequisites beyond §1**: `[jira]`/`[jira.mcp]` set in `.harness.toml`
+(§2), a Jira MCP server reachable with those settings (this repo assumes
+[`mcp-atlassian`](https://github.com/sooperset/mcp-atlassian), installable
+with `uvx` so no separate install step is needed), its credentials in the
+environment (`JIRA_URL` plus either `JIRA_USERNAME`+`JIRA_API_TOKEN` for
+Cloud or `JIRA_PERSONAL_TOKEN` for Server/Data Center), and an `origin`
+remote the scheduled task's account can push to (e.g. an SSH key or stored
+credential, not an interactive prompt).
+
+**Persistent logs**: a scheduled task has no attached console, so set
+`MEOW_LOG_FILE` to a path before running — every run appends its
+key=value log lines there instead of only writing to stderr (`MEOW_LOG_LEVEL`
+also works the same way `meow run` uses it, e.g. `DEBUG` for more detail).
+
+**Registering the task** — from an elevated PowerShell prompt, using
+`schtasks` (adjust the venv path, working directory, issue key or omit it
+for "latest", and schedule):
+
+```powershell
+schtasks /Create /TN "meow-issue-solver" /SC DAILY /ST 09:00 /RL LIMITED /TR (
+    '"C:\path\to\meow\.venv\Scripts\meow.exe" issue-solver' +
+    ' --working-dir "C:\path\to\target-project"'
+)
+```
+
+`schtasks /TR` runs with a minimal environment, so set `MEOW_LOG_FILE` and
+the Jira credentials as that account's persistent user/system environment
+variables (`setx`) rather than relying on variables set in your interactive
+shell — a task's environment is not your shell's. Verify the task once with
+`schtasks /Run /TN "meow-issue-solver"`, then `Get-Content <MEOW_LOG_FILE>
+-Tail 50` to confirm it ran and to read its result.
+
+---
+
+## 8. If something's missing
 
 | Missing / wrong | Result |
 |---|---|
@@ -182,3 +238,6 @@ moving branch.
 | No architecture doc anywhere under `docs/` | No error — reviewer's SOLID/SRP pass finds nothing to Glob/Read, so it has no project-specific boundaries to check, just its generic mixed-responsibility rule |
 | Other `docs/` files (`tech-debt-tracker.md`, `core-beliefs.md`, etc.) | No error — no role goes looking for them specifically, only opportunistically via each role's docs scan |
 | `AGENTS.md` | No effect on meow — human-facing only |
+| `issue-solver` run without `[jira]`/`[jira.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
+| `issue-solver` run with no Jira MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__jira__*` tool call to succeed, not just a text claim of success |
+| `issue-solver` run with no `origin` remote | `RuntimeError` after the sprint passes, before attempting to push |

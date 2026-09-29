@@ -31,6 +31,7 @@ DEFAULT_CONFIG = {
         "planner": None,            # None = engine default
         "generator": None,
         "reviewer": None,
+        "issue_fetcher": None,
     },
 }
 
