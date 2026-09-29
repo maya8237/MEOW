@@ -8,13 +8,13 @@ from pathlib import Path
 from meow.issue_solver import run_issue_solver
 from meow.logging import configure_logging
 from meow.orchestrator import (
-    _boot_repo,
     log_working_directory,
     run_plan,
     run_prompt_review,
     run_review,
     run_sprint,
 )
+from meow.worktree import _boot_repo
 
 
 def _add_common_args(parser: argparse.ArgumentParser):

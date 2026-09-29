@@ -70,6 +70,18 @@ async def _run_lint_on_file(
     return problems
 
 
+def describe_lint_plan(commands: list[LintCommand]) -> None:
+    """Report the configured lint commands before a sprint spends anything."""
+    for entry in commands:
+        logger.info(
+            "lint_command_configured",
+            command=entry.command,
+            per_file=entry.per_file,
+            gate=entry.gate,
+            fix_flag=entry.fix_flag,
+        )
+
+
 def make_lint_hook(
     working_dir: Path, commands: list[LintCommand], timeout: float = 60
 ):

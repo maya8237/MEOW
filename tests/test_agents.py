@@ -22,6 +22,7 @@ class FakeProjectContext:
         self.repo_dir = self.project_dir
         self.config: dict = {"docs_dir": "docs/exec-plans/active"}
         self._lint_commands = [LintCommand(command="ruff check")]
+        self.use_worktree = False
 
     def model(self, role):
         self.model_calls.append(role)

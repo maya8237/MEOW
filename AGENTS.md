@@ -49,12 +49,15 @@ A project can declare any number of `[[lint]]` commands (see GUIDE.md for the
 
 The engine is split by responsibility under `src/meow/`: `config.py`
 (`.harness.toml` loading and the lint-command model), `sprint.py` (the shared
-per-sprint state), `lint.py` (the auto-fixing per-file hook), `agents/`
-(one module per agent role, plus a shared base), `orchestrator.py` (the
-generator <-> reviewer round loop), and `cli.py` (the `meow` console-script
-entry point). The `src/` layout is deliberate: code run from the repo root
-reaches the *installed* copy, so a broken editable install is caught rather
-than masked.
+per-sprint state and `build_sprint`, which wires it up from config), `lint.py`
+(the auto-fixing per-file hook plus reporting the configured lint plan),
+`worktree.py` (git/filesystem bootstrapping: `.gitignore` upkeep and creating
+per-feature worktrees), `agents/` (one module per agent role, plus a shared
+base), `orchestrator.py` (the generator <-> reviewer round loop and the
+top-level `run_*` entry points `cli.py` dispatches into), and `cli.py` (the
+`meow` console-script entry point). The `src/` layout is deliberate: code run
+from the repo root reaches the *installed* copy, so a broken editable install
+is caught rather than masked.
 
 ## Agent structure
 
