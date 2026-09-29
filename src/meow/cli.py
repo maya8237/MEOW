@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+from meow.gitlab_reviewer import run_gitlab_review
 from meow.issue_solver import IssueUnresolvedError, run_issue_solver
 from meow.logging import configure_logging, get_logger
 from meow.orchestrator import (
@@ -70,6 +71,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="meow")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    _add_run_parser(subparsers)
+    _add_plan_parser(subparsers)
+    _add_review_parser(subparsers)
+    _add_cr_parser(subparsers)
+    _add_issue_parser(subparsers)
+    _add_gitlab_review_parser(subparsers)
+
+    return parser
+
+
+def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
     run_parser = subparsers.add_parser(
         "run", help="Plan, implement, and review a feature request end to end."
     )
@@ -83,6 +95,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     _add_common_args(run_parser)
     _add_feature_args(run_parser)
 
+
+def _add_plan_parser(subparsers: argparse._SubParsersAction) -> None:
     plan_parser = subparsers.add_parser(
         "plan",
         help="Write a sprint plan for a feature request, without implementing it.",
@@ -91,6 +105,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     _add_common_args(plan_parser)
     _add_feature_args(plan_parser)
 
+
+def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
     review_parser = subparsers.add_parser(
         "review",
         help="Review an existing plan's implementation and fix any issues found.",
@@ -103,6 +119,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     _add_common_args(review_parser)
 
+
+def _add_cr_parser(subparsers: argparse._SubParsersAction) -> None:
     cr_parser = subparsers.add_parser(
         "cr",
         help=(
@@ -121,6 +139,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     _add_common_args(cr_parser)
 
+
+def _add_issue_parser(subparsers: argparse._SubParsersAction) -> None:
     issue_parser = subparsers.add_parser(
         "issue",
         help=(
@@ -139,7 +159,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     _add_common_args(issue_parser)
 
-    return parser
+
+def _add_gitlab_review_parser(subparsers: argparse._SubParsersAction) -> None:
+    gitlab_review_parser = subparsers.add_parser(
+        "gitlab-review",
+        help=(
+            "Fetch a GitLab merge request's diff and grade it, reporting a "
+            "PASS/FAIL verdict without editing anything."
+        ),
+    )
+    gitlab_review_parser.add_argument(
+        "mr_link", help="GitLab merge request URL to review."
+    )
+    _add_common_args(gitlab_review_parser)
 
 
 def _dispatch_issue(args, working_dir: Path) -> None:
@@ -151,7 +183,13 @@ def _dispatch_issue(args, working_dir: Path) -> None:
     print(json.dumps(result))
 
 
-def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
+def _dispatch_gitlab_review(args, working_dir: Path) -> None:
+    asyncio.run(run_gitlab_review(working_dir, args.mr_link))
+
+
+def _dispatch_feature(args, working_dir: Path, *, use_worktree: bool) -> bool:
+    """Handle `run`/`plan`, the only commands taking a feature name and
+    worktree flag. Returns True if it handled the command."""
     if args.command == "run":
         plan_file = _resolve_input_path(args.plan, working_dir)
         asyncio.run(
@@ -163,7 +201,8 @@ def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
                 plan_file=plan_file,
             )
         )
-    elif args.command == "plan":
+        return True
+    if args.command == "plan":
         asyncio.run(
             run_plan(
                 working_dir,
@@ -172,13 +211,22 @@ def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
                 use_worktree=use_worktree,
             )
         )
-    elif args.command == "review":
+        return True
+    return False
+
+
+def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
+    if _dispatch_feature(args, working_dir, use_worktree=use_worktree):
+        return
+    if args.command == "review":
         plan_file = _resolve_input_path(args.plan, working_dir)
         asyncio.run(run_review(working_dir, plan_file))
     elif args.command == "cr":
         asyncio.run(run_prompt_review(working_dir, args.prompt))
     elif args.command == "issue":
         _dispatch_issue(args, working_dir)
+    elif args.command == "gitlab-review":
+        _dispatch_gitlab_review(args, working_dir)
 
 
 def cli_main():
