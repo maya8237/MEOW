@@ -39,6 +39,10 @@ it -- it never implements what it plans. Never pass it on a scheduled
 interrupted sprint at the review stage instead of re-running the
 generator, using `--plan-file` if given or the latest plan in `docs_dir`
 otherwise; `plan` and `issue` don't take it.
+`meow review-fix-review <prompt> [--review-file PATH]` fixes an existing
+review's findings and re-reviews, looping up to `max_rounds` like `meow
+review`; the prompt is required, and a GitLab MR review file is rejected
+(no local checkout to fix).
 Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
 select the project directory.
 
@@ -54,12 +58,13 @@ strictly required versus merely recommended, generic to any language.
 This repo is also a Claude Code plugin (`.claude-plugin/plugin.json` +
 `skills/`), so the same operations are available as skills when meow is
 installed as a plugin in a project: `/meow:sprint`, `/meow:meow-plan`,
-`/meow:meow-review`, `/meow:meow-issue`, `/meow:gitlab-review`, and
-`/meow:lint-fix`. Each is a thin wrapper that shells out to the `meow` CLI
-above — see `skills/*/SKILL.md` for what each one runs. `lint-fix` is the
-odd one out: it runs `meow lint-fix --report-only` and then does the fixing
-itself in the calling session, rather than having meow spin up its own
-agent the way every other skill here does.
+`/meow:meow-review`, `/meow:meow-issue`, `/meow:gitlab-review`,
+`/meow:lint-fix`, and `/meow:review-fix-review`. Each is a thin wrapper
+that shells out to the `meow` CLI above — see `skills/*/SKILL.md` for what
+each one runs. `lint-fix` is the odd one out: it runs `meow lint-fix
+--report-only` and then does the fixing itself in the calling session,
+rather than having meow spin up its own agent the way every other skill
+here does.
 
 ## Lint
 
@@ -80,8 +85,9 @@ per-sprint state and `build_sprint`, which wires it up from config), `lint.py`
 project-wide fix/check functions `lint_fix.py` uses), `worktree.py`
 (git/filesystem bootstrapping: `.gitignore` upkeep and creating per-feature
 worktrees), `agents/` (one module per agent role, plus a shared base),
-`orchestrator.py` (the generator <-> reviewer round loop and the top-level
-`run_*` entry points `cli.py` dispatches into), `issue_solver.py`,
+`orchestrator.py` (the generator <-> reviewer round loop, including
+`review-fix-review`'s variants of that loop, and the top-level `run_*`
+entry points `cli.py` dispatches into), `issue_solver.py`,
 `gitlab_reviewer.py`, and `lint_fix.py` (the `run_*` entry points for
 `issue`/`gitlab-review`/`lint-fix`, each its own module rather than folded
 into `orchestrator.py`, the same SOLID/SRP separation the reviewer itself

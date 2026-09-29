@@ -16,6 +16,7 @@ from meow.orchestrator import (
     run_plan,
     run_prompt_review,
     run_review,
+    run_review_fix_review,
     run_sprint,
 )
 from meow.worktree import DirtyWorkingTreeError, _boot_repo, _ensure_clean_tree
@@ -127,6 +128,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     _add_issue_parser(subparsers)
     _add_gitlab_review_parser(subparsers)
     _add_lint_fix_parser(subparsers)
+    _add_review_fix_review_parser(subparsers)
 
     return parser
 
@@ -263,6 +265,31 @@ def _add_lint_fix_parser(subparsers: argparse._SubParsersAction) -> None:
     _add_common_args(lint_fix_parser)
 
 
+def _add_review_fix_review_parser(subparsers: argparse._SubParsersAction) -> None:
+    review_fix_review_parser = subparsers.add_parser(
+        "review-fix-review",
+        help=(
+            "Fix an existing review's findings and re-review, looping up "
+            "to max_rounds -- the same stop/raise behavior as `meow "
+            "review`, starting from an already-written review file."
+        ),
+    )
+    review_fix_review_parser.add_argument(
+        "prompt",
+        help="What the re-review should focus on or check for.",
+    )
+    review_fix_review_parser.add_argument(
+        "--review-file", "-r",
+        dest="review_file",
+        default=None,
+        help=(
+            "Review file to start from (default: the most recently "
+            "modified review file in docs_dir, of any flavor)."
+        ),
+    )
+    _add_common_args(review_fix_review_parser)
+
+
 def _dispatch_issue(args, working_dir: Path) -> None:
     approve_plan = _prompt_plan_approval if args.manually_approve_plan else None
     try:
@@ -292,12 +319,18 @@ def _dispatch_lint_fix(args, working_dir: Path) -> None:
     asyncio.run(run_lint_fix(working_dir, report_only=args.report_only))
 
 
+def _dispatch_review_fix_review(args, working_dir: Path) -> None:
+    review_file = _resolve_input_path(args.review_file, working_dir)
+    asyncio.run(run_review_fix_review(working_dir, args.prompt, review_file))
+
+
 _COMMAND_HANDLERS = {
     "review": _dispatch_review,
     "cr": _dispatch_cr,
     "issue": _dispatch_issue,
     "gitlab-review": _dispatch_gitlab_review,
     "lint-fix": _dispatch_lint_fix,
+    "review-fix-review": _dispatch_review_fix_review,
 }
 
 

@@ -302,3 +302,6 @@ shell — a task's environment is not your shell's. Verify the task once with
 | `meow gitlab-review` run without `[gitlab]`/`[gitlab.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
 | `meow gitlab-review` run with no GitLab MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__gitlab__*` tool call to succeed, not just a text claim of success |
 | `meow lint-fix` (standalone, not `--report-only`) never gets lint clean within `max_rounds` | `LintFixError` including the still-failing commands' raw output |
+| `meow review-fix-review` given a GitLab MR review file | `RuntimeError` explaining there is no local checkout of the merge request's code to fix |
+| `meow review-fix-review` with `--review-file` omitted and no review file anywhere in `docs_dir` | `FileNotFoundError` naming `docs_dir` and pointing at `--review-file` |
+| `meow review-fix-review` (either flavor) never passes within `max_rounds` | `RuntimeError` naming the review file, same stop/raise shape as `meow review` |

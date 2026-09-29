@@ -270,7 +270,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 )
 
             self.assertIsNone(result)
-            mock_review_plan.assert_awaited_once_with(plan_file)
+            mock_review_plan.assert_awaited_once_with(plan_file, focus=None)
             mock_generator_cls.assert_not_called()
             mock_planner_run.assert_not_called()
 
@@ -312,7 +312,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 )
 
             self.assertIsNone(result)
-            mock_review_plan.assert_awaited_once_with(plan_file)
+            mock_review_plan.assert_awaited_once_with(plan_file, focus=None)
             mock_generator_cls.assert_not_called()
 
     def test_run_sprint_resume_at_review_still_gates_on_approval(self):
@@ -1453,6 +1453,74 @@ class ResumeAtFlagTests(unittest.TestCase):
         parser = cli._build_arg_parser()
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             parser.parse_args(["plan", "feature request", "--resume-at", "review"])
+
+
+class ReviewFixReviewCommandTests(unittest.TestCase):
+    @staticmethod
+    def test_review_fix_review_command_is_supported():
+        with (
+            patch("meow.cli._boot_repo") as mock_boot,
+            patch(
+                "meow.cli.run_review_fix_review", new_callable=AsyncMock
+            ) as mock_review_fix,
+            patch(
+                "sys.argv",
+                [
+                    "meow", "review-fix-review", "Check error handling",
+                    "--work-dir", ".",
+                ],
+            ),
+        ):
+            cli.cli_main()
+
+        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
+        mock_review_fix.assert_awaited_once_with(
+            Path(".").resolve(), "Check error handling", None
+        )
+
+    @staticmethod
+    def test_review_fix_review_accepts_an_explicit_review_file():
+        with (
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_review_fix_review", new_callable=AsyncMock
+            ) as mock_review_fix,
+            patch(
+                "sys.argv",
+                [
+                    "meow", "review-fix-review", "Check error handling",
+                    "--review-file", "docs/feature-review.md",
+                    "--work-dir", ".",
+                ],
+            ),
+        ):
+            cli.cli_main()
+
+        mock_review_fix.assert_awaited_once_with(
+            Path(".").resolve(),
+            "Check error handling",
+            (Path(".") / "docs/feature-review.md").resolve(),
+        )
+
+    @staticmethod
+    def test_review_fix_review_does_not_require_a_clean_tree():
+        with (
+            patch("meow.cli._ensure_clean_tree") as mock_clean_tree,
+            patch("meow.cli._boot_repo"),
+            patch("meow.cli.run_review_fix_review", new_callable=AsyncMock),
+            patch(
+                "sys.argv",
+                ["meow", "review-fix-review", "Check it", "--work-dir", "."],
+            ),
+        ):
+            cli.cli_main()
+
+        mock_clean_tree.assert_not_called()
+
+    def test_review_fix_review_requires_a_prompt(self):
+        parser = cli._build_arg_parser()
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["review-fix-review", "--work-dir", "."])
 
 
 if __name__ == "__main__":

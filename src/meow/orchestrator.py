@@ -23,9 +23,12 @@ from meow.agents.base import ProjectContext
 from meow.agents.explorer import make_explorer_agent
 from meow.agents.generator import Generator
 from meow.agents.planner import PlannerAgent, run_planner
+from meow.agents.review_fixer import ReviewFixAgent
 from meow.agents.reviewer import (
+    MR_REVIEW_FILENAME,
     PROMPT_REVIEW_FILENAME,
     ReviewerAgent,
+    _verdict_status,
     run_prompt_reviewer,
     run_reviewer,
 )
@@ -133,23 +136,41 @@ def _review_summary(verdict: str) -> str | None:
     )
 
 
-async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
+async def _run_review_rounds(
+    sprint: Sprint,
+    plan_file: Path,
+    *,
+    initial_verdict: tuple[str, str] | None = None,
+    focus: str | None = None,
+) -> bool:
     """Loop reviewer -> generator, reviewing the existing code first.
 
     Unlike `_run_rounds`, this doesn't assume the plan is unimplemented --
     it only spins up a generator session if the first review actually finds
     something to fix. True if the plan ends up passing.
+
+    `initial_verdict`, when given, is used as round 1's verdict instead of
+    running a fresh review -- for `meow review-fix-review`, whose round 1
+    verdict is the existing review file it started from. `focus`, when
+    given, is passed to every `review_plan` call in the loop (not just the
+    first), so a requested focus doesn't drift out of scope across rounds.
     """
     max_rounds = sprint.config["max_rounds"]
 
-    logger.info("reviewer_round_started", round=1, max_rounds=max_rounds)
-    status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
-    logger.info(
-        "reviewer_round_finished",
-        round=1,
-        status=status,
-        summary=_review_summary(verdict) or "",
-    )
+    if initial_verdict is None:
+        logger.info("reviewer_round_started", round=1, max_rounds=max_rounds)
+        status, verdict = await ReviewerAgent(sprint).review_plan(
+            plan_file, focus=focus
+        )
+        logger.info(
+            "reviewer_round_finished",
+            round=1,
+            status=status,
+            summary=_review_summary(verdict) or "",
+        )
+    else:
+        status, verdict = initial_verdict
+
     if status == "PASS":
         return True
 
@@ -167,7 +188,9 @@ async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
             logger.info(
                 "reviewer_round_started", round=round_num, max_rounds=max_rounds
             )
-            status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
+            status, verdict = await ReviewerAgent(sprint).review_plan(
+                plan_file, focus=focus
+            )
             summary = "\n".join(
                 line.strip()
                 for line in verdict.splitlines()
@@ -191,6 +214,44 @@ async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
     return False
 
 
+async def _run_prompt_fix_rounds(
+    context: ProjectContext, prompt: str, initial_verdict: tuple[str, str]
+) -> bool:
+    """Like `_run_review_rounds`, but for a prompt-based review with no plan
+    file or Sprint Contract to hand a `GeneratorAgent` -- fixes with
+    `ReviewFixAgent` (a generic "fix these review findings" session, the
+    prompt-based equivalent of `_run_review_rounds`' plan-scoped generator)
+    and re-reviews with `ReviewerAgent.review_prompt(prompt)` instead of
+    `review_plan`. `initial_verdict` is always required here (unlike
+    `_run_review_rounds`, this has no "run a fresh review first" mode --
+    `meow review-fix-review` is the only caller, and it always starts from
+    an existing review file).
+    """
+    max_rounds = context.config["max_rounds"]
+    status, verdict = initial_verdict
+    if status == "PASS":
+        return True
+
+    async with ReviewFixAgent(context) as fixer:
+        for round_num in range(2, max_rounds + 1):
+            logger.info(
+                "review_fix_round_started", round=round_num, max_rounds=max_rounds
+            )
+            await fixer.fix(verdict)
+
+            status, verdict = await ReviewerAgent(context).review_prompt(prompt)
+            logger.info(
+                "review_fix_round_finished",
+                round=round_num,
+                status=status,
+                summary=_review_summary(verdict) or "",
+            )
+            if status == "PASS":
+                return True
+
+    return False
+
+
 def _latest_plan_file(docs_dir: Path) -> Path:
     """The most recently modified sprint plan in docs_dir, excluding reviews.
 
@@ -208,6 +269,111 @@ def _latest_plan_file(docs_dir: Path) -> Path:
             '"<feature>"` first, or pass --plan-file explicitly.'
         )
     return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def _detect_review_flavor(review_file: Path) -> str:
+    """Classify a review file by its filename -- meow's own three review
+    verdict formats each have a distinct, deterministic naming convention,
+    so no ambiguity and no guessing is needed here."""
+    name = review_file.name
+    if name == MR_REVIEW_FILENAME:
+        return "gitlab"
+    if name == PROMPT_REVIEW_FILENAME:
+        return "prompt"
+    if name.endswith("-review.md"):
+        return "plan"
+    raise ValueError(
+        f"{review_file} doesn't look like a review file meow wrote "
+        "(expected a name ending in 'review.md')."
+    )
+
+
+def _latest_review_file(docs_dir: Path) -> Path:
+    """The most recently modified review file in docs_dir, of any flavor."""
+    candidates = list(docs_dir.glob("*review.md"))
+    if not candidates:
+        raise FileNotFoundError(
+            f"No review file found in {docs_dir}. Run `meow review`, "
+            "`meow cr`, or `meow gitlab-review` first, or pass "
+            "--review-file explicitly."
+        )
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+async def run_review_fix_review(  # ruff: ignore[too-many-statements] -- each flavor's branch is already only a few lines; splitting further would not leave a genuinely reusable, independently-testable piece
+    working_dir: Path, prompt: str, review_file: Path | None = None
+) -> None:
+    """Fix and re-review an existing review verdict until it passes.
+
+    Reuses `_run_review_rounds`'s review-then-fix loop for plan-based
+    review files (its GeneratorAgent genuinely has a Sprint Contract to
+    work against) and `_run_prompt_fix_rounds`'s ReviewFixAgent-based loop
+    for prompt-based ones (no plan file exists, so GeneratorAgent's
+    hardcoded plan-file system prompt would not fit). MR-based review
+    files (from `meow gitlab-review`) are rejected up front: that command
+    is deliberately read-only and never checks the merge request's code
+    out locally, so there is nothing on disk here to fix.
+    """
+    config = load_config(working_dir)
+    describe_lint_plan(config["lint"])
+
+    docs_dir = working_dir / config["docs_dir"]
+    resolved_review_file = review_file or _latest_review_file(docs_dir)
+    flavor = _detect_review_flavor(resolved_review_file)
+    review_text = resolved_review_file.read_text(encoding="utf-8")
+    initial_verdict = (_verdict_status(review_text), review_text)
+
+    logger.info(
+        "review_fix_review_started",
+        review_file=str(resolved_review_file),
+        flavor=flavor,
+    )
+
+    if flavor == "gitlab":
+        raise RuntimeError(
+            f"{resolved_review_file} is a GitLab merge request review -- "
+            "`meow review-fix-review` can't fix it: there is no local "
+            "checkout of the merge request's code, and `gitlab-review` "
+            "never creates one. Check out the MR's branch locally and "
+            "review-fix-review a plan- or prompt-based review of that "
+            "checkout instead, or address the MR feedback directly."
+        )
+
+    if flavor == "plan":
+        plan_file = resolved_review_file.with_name(
+            resolved_review_file.name.removesuffix("-review.md") + ".md"
+        )
+        if not plan_file.exists():
+            raise FileNotFoundError(
+                f"{resolved_review_file} looks like a plan review, but its "
+                f"plan file {plan_file} no longer exists."
+            )
+        sprint = build_sprint(working_dir, config)
+        passed = await _run_review_rounds(
+            sprint, plan_file, initial_verdict=initial_verdict, focus=prompt
+        )
+    else:
+        context = ProjectContext(working_dir, config)
+        passed = await _run_prompt_fix_rounds(
+            context, prompt, initial_verdict=initial_verdict
+        )
+
+    if passed:
+        logger.info(
+            "review_fix_review_complete", review_file=str(resolved_review_file)
+        )
+        return
+
+    logger.error(
+        "review_fix_review_did_not_pass",
+        review_file=str(resolved_review_file),
+        max_rounds=config["max_rounds"],
+    )
+    raise RuntimeError(
+        f"review-fix-review of {resolved_review_file} did not pass after "
+        f"{config['max_rounds']} rounds -- stopping instead of looping "
+        "forever. Inspect the review file."
+    )
 
 
 async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would change cli.py's call site
