@@ -2,8 +2,10 @@
 
 import argparse
 import asyncio
+import json
 from pathlib import Path
 
+from meow.issue_solver import run_issue_solver
 from meow.logging import configure_logging
 from meow.orchestrator import (
     log_working_directory,
@@ -116,20 +118,28 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     _add_common_args(cr_parser)
 
+    issue_solver_parser = subparsers.add_parser(
+        "issue-solver",
+        help=(
+            "Fetch a Jira issue (or the latest one in the configured "
+            "project) and solve it end to end in a pushed worktree branch."
+        ),
+    )
+    issue_solver_parser.add_argument(
+        "issue",
+        nargs="?",
+        default=None,
+        help=(
+            "Jira issue key (e.g. PROJ-123). If omitted, uses the most "
+            "recently created issue in [jira].project_key."
+        ),
+    )
+    _add_common_args(issue_solver_parser)
+
     return parser
 
 
-def cli_main():
-    configure_logging()
-    parser = _build_arg_parser()
-    args = parser.parse_args()
-    working_dir = Path(args.working_dir).resolve()
-    log_working_directory(working_dir)
-    use_worktree = _should_use_worktree(args)
-
-    _validate_feature_name_requirement(parser, args)
-    _boot_repo(working_dir, include_gitignore=use_worktree)
-
+def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
     if args.command == "run":
         plan_file = _resolve_input_path(args.plan, working_dir)
         asyncio.run(
@@ -152,19 +162,27 @@ def cli_main():
         )
     elif args.command == "review":
         plan_file = _resolve_input_path(args.plan, working_dir)
-        asyncio.run(
-            run_review(
-                working_dir,
-                plan_file,
-            )
-        )
+        asyncio.run(run_review(working_dir, plan_file))
     elif args.command == "cr":
-        asyncio.run(
-            run_prompt_review(
-                working_dir,
-                args.prompt,
-            )
-        )
+        asyncio.run(run_prompt_review(working_dir, args.prompt))
+    elif args.command == "issue-solver":
+        result = asyncio.run(run_issue_solver(working_dir, args.issue))
+        print(json.dumps(result))
+
+
+def cli_main():
+    configure_logging()
+    parser = _build_arg_parser()
+    args = parser.parse_args()
+    working_dir = Path(args.working_dir).resolve()
+    log_working_directory(working_dir)
+    use_worktree = _should_use_worktree(args)
+
+    _validate_feature_name_requirement(parser, args)
+    _boot_repo(
+        working_dir, include_gitignore=use_worktree or args.command == "issue-solver"
+    )
+    _dispatch(args, working_dir, use_worktree=use_worktree)
 
 
 if __name__ == "__main__":
