@@ -29,6 +29,10 @@ DEFAULT_BRANCH_PREFIX = "issue/"
 _BRANCH_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
+class IssueUnresolvedError(RuntimeError):
+    """`meow issue` could not fetch, solve, or push the issue."""
+
+
 def _load_jira_config(config: dict) -> dict:
     """Validate `[jira]`/`[jira.mcp]` up front, with a clear error if absent."""
     jira = config.get("jira")
@@ -112,6 +116,18 @@ async def run_issue_solver(working_dir: Path, issue_key: str | None = None) -> d
     config = load_config(working_dir)
     jira_config = _load_jira_config(config)
 
+    try:
+        return await _solve_issue(working_dir, config, jira_config, issue_key)
+    except Exception as exc:
+        logger.warning(
+            "issue_unresolved", issue=issue_key or "latest", reason=str(exc)
+        )
+        raise IssueUnresolvedError(str(exc)) from exc
+
+
+async def _solve_issue(
+    working_dir: Path, config: dict, jira_config: dict, issue_key: str | None
+) -> dict:
     issue = await _fetch_issue(working_dir, config, jira_config, issue_key)
 
     sanitized_key = _sanitize(issue["key"])

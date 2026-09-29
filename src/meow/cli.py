@@ -3,10 +3,11 @@
 import argparse
 import asyncio
 import json
+import sys
 from pathlib import Path
 
-from meow.issue_solver import run_issue_solver
-from meow.logging import configure_logging
+from meow.issue_solver import IssueUnresolvedError, run_issue_solver
+from meow.logging import configure_logging, get_logger
 from meow.orchestrator import (
     log_working_directory,
     run_plan,
@@ -14,7 +15,9 @@ from meow.orchestrator import (
     run_review,
     run_sprint,
 )
-from meow.worktree import _boot_repo
+from meow.worktree import DirtyWorkingTreeError, _boot_repo, _ensure_clean_tree
+
+logger = get_logger(__name__)
 
 
 def _add_common_args(parser: argparse.ArgumentParser):
@@ -139,6 +142,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _dispatch_issue(args, working_dir: Path) -> None:
+    try:
+        result = asyncio.run(run_issue_solver(working_dir, args.issue))
+    except IssueUnresolvedError as exc:
+        print(f"\nWARNING: could not resolve the issue: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    print(json.dumps(result))
+
+
 def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
     if args.command == "run":
         plan_file = _resolve_input_path(args.plan, working_dir)
@@ -166,8 +178,7 @@ def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
     elif args.command == "cr":
         asyncio.run(run_prompt_review(working_dir, args.prompt))
     elif args.command == "issue":
-        result = asyncio.run(run_issue_solver(working_dir, args.issue))
-        print(json.dumps(result))
+        _dispatch_issue(args, working_dir)
 
 
 def cli_main():
@@ -179,6 +190,14 @@ def cli_main():
     use_worktree = _should_use_worktree(args)
 
     _validate_feature_name_requirement(parser, args)
+    if args.command in {"run", "issue"}:
+        try:
+            _ensure_clean_tree(working_dir)
+        except DirtyWorkingTreeError as exc:
+            logger.warning("run_blocked_uncommitted_changes")
+            print(f"\nWARNING: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        logger.info("run_initialized", command=args.command)
     _boot_repo(
         working_dir, include_gitignore=use_worktree or args.command == "issue"
     )
