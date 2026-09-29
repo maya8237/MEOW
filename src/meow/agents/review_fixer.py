@@ -16,6 +16,7 @@ from claude_agent_sdk import (
 from meow.agents.base import Agent, AgentContext, log_stream_message
 from meow.lint import make_lint_hook
 from meow.logging import get_logger
+from meow.prompts import review_fixer_prompt
 
 logger = get_logger(__name__)
 
@@ -33,14 +34,7 @@ class ReviewFixAgent(Agent):
             context.active_working_dir(), context.lint_commands(), timeout
         )
         options = self.options(
-            system_prompt=(
-                "You fix the review findings reported in the task message "
-                "-- nothing else. Do not expand scope, refactor unrelated "
-                "code, or change behavior beyond what each finding needs; "
-                "make the smallest edit that resolves each one. When you "
-                "believe every reported finding is fixed, say so "
-                "explicitly and stop."
-            ),
+            system_prompt=review_fixer_prompt(),
             allowed_tools=["Read", "Edit", "Write", "Bash", "Grep", "Glob"],
             role="review_fixer",
             hooks={

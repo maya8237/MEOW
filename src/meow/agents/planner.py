@@ -4,6 +4,7 @@ from pathlib import Path
 
 from meow.agents.base import Agent
 from meow.agents.explorer import ExplorerAgent
+from meow.prompts import planner_prompt
 from meow.sprint import Sprint
 
 
@@ -19,19 +20,7 @@ class PlannerAgent(Agent):
         plan_file = active_dir / plan_filename
 
         options = self.options(
-            system_prompt=(
-                "You are a planning agent. Consult the explorer subagent for "
-                "any codebase context you need -- don't explore directly. "
-                "Produce a numbered task list with acceptance criteria per "
-                "task, plus a proposed '## Sprint Contract' section with "
-                f"concrete, testable pass/fail criteria. Write the result to "
-                f"{plan_file}. Do not write application code. Apply the "
-                "writing-plans skill for task sizing, file mapping, testability, "
-                "and self-review. MEOW-specific requirements take precedence: "
-                "use the configured plan path, retain this Sprint Contract, "
-                "and do not use the skill's default plan location or add an "
-                "interactive execution-method handoff."
-            ),
+            system_prompt=planner_prompt(plan_file),
             allowed_tools=["Read", "Grep", "Glob", "Write", "Agent"],
             role="planner",
             agents={"explorer": ExplorerAgent(self.context).definition()},

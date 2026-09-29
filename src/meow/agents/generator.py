@@ -11,6 +11,7 @@ from claude_agent_sdk import (
 
 from meow.agents.base import Agent, GeneratorContext, log_stream_message
 from meow.logging import get_logger
+from meow.prompts import generator_prompt
 
 logger = get_logger(__name__)
 
@@ -19,26 +20,7 @@ class GeneratorAgent(Agent):
     def __init__(self, context: GeneratorContext, plan_file: Path):
         super().__init__(context)
         options = self.options(
-            system_prompt=(
-                f"You implement tasks from {plan_file} one at a time. "
-                "Work against the agreed Sprint Contract criteria exactly "
-                "-- do not expand scope. When you believe a task is "
-                "complete, say so explicitly and stop; do not grade your "
-                "own work. Use executing-plans to work through the supplied "
-                "plan one task at a time and check each expected result. "
-                "MEOW's orchestrator owns worktree setup, review rounds, and "
-                "stopping control; do not create a separate ledger or commits. "
-                "Use test-driven development for code changes: write a failing "
-                "test, confirm the expected failure, implement, then run it "
-                "and confirm it passes. When an unexpected failure occurs, "
-                "use systematic debugging to establish its root cause before "
-                "editing. Before acting on reviewer feedback, verify each "
-                "finding against the code and plan; report unsupported or "
-                "out-of-scope findings instead of making unrelated changes. "
-                "Before reporting a task complete, run relevant project tests "
-                "and report actual command results. Do not declare sprint "
-                "success; the reviewer decides."
-            ),
+            system_prompt=generator_prompt(plan_file),
             allowed_tools=["Read", "Edit", "Write", "Bash", "Grep", "Glob", "Agent"],
             role="generator",
             agents={"explorer": context.explorer},
