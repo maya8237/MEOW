@@ -43,7 +43,9 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Do not review anything under 'docs'", without)
 
     def test_mr_review_prompt_forbids_running_lint(self):
-        text = prompts.mr_review_prompt(Path("gitlab-review.md"), check_worktree_hygiene=False)
+        text = prompts.mr_review_prompt(
+            Path("gitlab-review.md"), check_worktree_hygiene=False
+        )
 
         self.assertIn("Do not run or reference the project's lint commands", text)
         self.assertIn("one line per concern", text)
