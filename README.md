@@ -99,14 +99,14 @@ working directory and do not take a feature name. `review` still runs the review
 passes, nothing else runs. On FAIL it loops the generator against the feedback and
 re-reviews, same as `run`, up to `max_rounds`.
 
-### `meow issue-solver`
+### `meow issue`
 
 Fetches a Jira issue and solves it end to end in a pushed worktree branch —
 built for unattended, scheduled use:
 
 ```bash
-meow issue-solver PROJ-123          # a specific issue
-meow issue-solver                   # the most recently created issue in [jira].project_key
+meow issue PROJ-123          # a specific issue
+meow issue                   # the most recently created issue in [jira].project_key
 ```
 
 Requires `[jira]`/`[jira.mcp]` in `.harness.toml` and a reachable Jira MCP
@@ -119,7 +119,7 @@ Windows Scheduled Task with persistent logging (`MEOW_LOG_FILE`).
 
 ## Claude Code plugin
 
-This repo doubles as a Claude Code plugin: add it as a plugin source and three
+This repo doubles as a Claude Code plugin: add it as a plugin source and these
 skills become available in any project that also has a `.harness.toml`:
 
 | Skill | Equivalent to |
@@ -127,6 +127,7 @@ skills become available in any project that also has a `.harness.toml`:
 | `/meow:sprint "<feature>"` | `meow run "<feature>"` |
 | `/meow:meow-plan "<feature>"` | `meow plan "<feature>"` |
 | `/meow:meow-review` | `meow review` |
+| `/meow:meow-issue [ISSUE-KEY]` | `meow issue [ISSUE-KEY]` |
 
 Each skill is a thin wrapper — see `skills/*/SKILL.md` — that shells out to the
 same `meow` CLI, so it needs `meow` importable the same way (venv active,
@@ -155,7 +156,8 @@ meow/
 ├── skills/
 │   ├── sprint/SKILL.md                  # /meow:sprint  -> harness run
 │   ├── meow-plan/SKILL.md               # /meow:meow-plan   -> harness plan
-│   └── meow-review/SKILL.md             # /meow:meow-review -> harness review
+│   ├── meow-review/SKILL.md             # /meow:meow-review -> harness review
+│   └── meow-issue/SKILL.md              # /meow:meow-issue  -> harness issue
 ├── docs/
 │   └── exec-plans/
 │       └── active/                      # meow harnessing itself writes here
@@ -175,8 +177,8 @@ meow/
         │   ├── planner.py              # planner agent
         │   ├── generator.py            # generator agent
         │   ├── reviewer.py             # reviewer agents and review helpers
-        │   └── issue_fetcher.py        # Jira MCP preflight + issue fetch, for issue-solver
+        │   └── issue_fetcher.py        # Jira MCP preflight + issue fetch, for `meow issue`
         ├── orchestrator.py             # generator <-> reviewer round loop
-        ├── issue_solver.py             # issue-solver flow: fetch, worktree+branch, sprint, push
+        ├── issue_solver.py             # `meow issue` flow: fetch, worktree+branch, sprint, push
         └── cli.py                      # `meow` console-script entry point
 ```

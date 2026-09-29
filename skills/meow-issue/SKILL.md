@@ -1,12 +1,12 @@
 ---
-name: issue-solver
+name: meow-issue
 description: Fetch a Jira issue (or the latest one in the configured project) and solve it end to end in a pushed worktree branch. Use when the user wants meow to pick up a Jira ticket and turn it into a branch, unattended or otherwise.
 ---
 
-# issue-solver
+# meow-issue
 
-Runs `meow issue-solver` against the current project: fetch a Jira issue
-through a configured Jira MCP server, solve it through the same
+Runs `meow issue` against the current project: fetch a Jira issue through a
+configured Jira MCP server, solve it through the same
 plan -> implement -> review loop `/meow:sprint` uses, in a dedicated
 worktree, then push the resulting branch.
 
@@ -16,12 +16,12 @@ worktree, then push the resulting branch.
    missing, tell the user and point them at GUIDE.md rather than guessing at
    Jira MCP settings.
 2. If the user gave a specific issue key (e.g. `PROJ-123`), pass it through.
-   Otherwise omit it — `issue-solver` picks the most recently created issue
-   in `[jira].project_key` on its own.
+   Otherwise omit it — `meow issue` picks the most recently created issue in
+   `[jira].project_key` on its own.
 3. Run, from the project root:
 
    ```bash
-   meow issue-solver [ISSUE-KEY] --working-dir "<project-path>"
+   meow issue [ISSUE-KEY] --working-dir "<project-path>"
    ```
 
    If `meow` isn't found on PATH, tell the user to install it first (this

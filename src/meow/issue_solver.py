@@ -1,7 +1,7 @@
 """
 meow/issue_solver.py
 
-The `issue-solver` flow: fetch a Jira issue (a given key, or the most
+The `meow issue` flow: fetch a Jira issue (a given key, or the most
 recently created one in a configured project), then solve it through the
 same generator<->reviewer loop `meow run` uses (`orchestrator.run_sprint`),
 inside a dedicated, named-branch worktree that gets pushed on success.
@@ -34,7 +34,7 @@ def _load_jira_config(config: dict) -> dict:
     jira = config.get("jira")
     if not isinstance(jira, dict):
         raise ValueError(
-            "No [jira] table found in .harness.toml. issue-solver needs "
+            "No [jira] table found in .harness.toml. `meow issue` needs "
             "[jira] with 'project_key' set, and a [jira.mcp] table "
             "describing how to launch the Jira MCP server, e.g.:\n\n"
             "[jira]\n"
@@ -51,7 +51,7 @@ def _load_jira_config(config: dict) -> dict:
     if not project_key:
         raise ValueError(
             "[jira] in .harness.toml must set 'project_key' -- the project "
-            "issue-solver searches for the latest issue when none is given."
+            "`meow issue` searches for the latest issue when none is given."
         )
 
     mcp = jira.get("mcp")

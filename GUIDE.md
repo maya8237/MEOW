@@ -64,14 +64,14 @@ per_file = false
 gate = false
 ```
 
-`[jira]`/`[jira.mcp]` are optional and only needed for `meow issue-solver`
+`[jira]`/`[jira.mcp]` are optional and only needed for `meow issue`
 (see §8):
 
 | Field | Required | Default | Notes |
 |---|---|---|---|
-| `[jira].project_key` | Only for `issue-solver` | — | Jira project searched for "the latest issue" when no issue key is given. |
-| `[jira].branch_prefix` | No | `"issue/"` | Prefix for the branch `issue-solver` creates and pushes. |
-| `[jira.mcp].command` | Only for `issue-solver` | — | Program that launches the Jira MCP server, e.g. `"uvx"`. |
+| `[jira].project_key` | Only for `issue` | — | Jira project searched for "the latest issue" when no issue key is given. |
+| `[jira].branch_prefix` | No | `"issue/"` | Prefix for the branch `meow issue` creates and pushes. |
+| `[jira.mcp].command` | Only for `issue` | — | Program that launches the Jira MCP server, e.g. `"uvx"`. |
 | `[jira.mcp].args` | No | `[]` | Its arguments, e.g. `["mcp-atlassian"]`. |
 
 ---
@@ -182,9 +182,9 @@ moving branch.
 
 ---
 
-## 7. Running `issue-solver` on a schedule (Windows Task Scheduler)
+## 7. Running `meow issue` on a schedule (Windows Task Scheduler)
 
-`meow issue-solver [ISSUE-KEY]` fetches a Jira issue (or the most recently
+`meow issue [ISSUE-KEY]` fetches a Jira issue (or the most recently
 created one in `[jira].project_key` if you omit the key), solves it through
 the same plan/implement/review loop as `meow run`, inside its own worktree
 on branch `<branch_prefix><ISSUE-KEY>` (default `issue/<ISSUE-KEY>`), then
@@ -213,8 +213,8 @@ also works the same way `meow run` uses it, e.g. `DEBUG` for more detail).
 for "latest", and schedule):
 
 ```powershell
-schtasks /Create /TN "meow-issue-solver" /SC DAILY /ST 09:00 /RL LIMITED /TR (
-    '"C:\path\to\meow\.venv\Scripts\meow.exe" issue-solver' +
+schtasks /Create /TN "meow-issue" /SC DAILY /ST 09:00 /RL LIMITED /TR (
+    '"C:\path\to\meow\.venv\Scripts\meow.exe" issue' +
     ' --working-dir "C:\path\to\target-project"'
 )
 ```
@@ -223,7 +223,7 @@ schtasks /Create /TN "meow-issue-solver" /SC DAILY /ST 09:00 /RL LIMITED /TR (
 the Jira credentials as that account's persistent user/system environment
 variables (`setx`) rather than relying on variables set in your interactive
 shell — a task's environment is not your shell's. Verify the task once with
-`schtasks /Run /TN "meow-issue-solver"`, then `Get-Content <MEOW_LOG_FILE>
+`schtasks /Run /TN "meow-issue"`, then `Get-Content <MEOW_LOG_FILE>
 -Tail 50` to confirm it ran and to read its result.
 
 ---
@@ -238,6 +238,6 @@ shell — a task's environment is not your shell's. Verify the task once with
 | No architecture doc anywhere under `docs/` | No error — reviewer's SOLID/SRP pass finds nothing to Glob/Read, so it has no project-specific boundaries to check, just its generic mixed-responsibility rule |
 | Other `docs/` files (`tech-debt-tracker.md`, `core-beliefs.md`, etc.) | No error — no role goes looking for them specifically, only opportunistically via each role's docs scan |
 | `AGENTS.md` | No effect on meow — human-facing only |
-| `issue-solver` run without `[jira]`/`[jira.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
-| `issue-solver` run with no Jira MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__jira__*` tool call to succeed, not just a text claim of success |
-| `issue-solver` run with no `origin` remote | `RuntimeError` after the sprint passes, before attempting to push |
+| `meow issue` run without `[jira]`/`[jira.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
+| `meow issue` run with no Jira MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__jira__*` tool call to succeed, not just a text claim of success |
+| `meow issue` run with no `origin` remote | `RuntimeError` after the sprint passes, before attempting to push |

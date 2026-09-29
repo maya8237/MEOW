@@ -476,13 +476,13 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_sprint.assert_not_called()
 
     @staticmethod
-    def test_issue_solver_command_is_supported():
+    def test_issue_command_is_supported():
         with (
             patch("meow.cli._boot_repo") as mock_boot,
             patch(
                 "meow.cli.run_issue_solver", new_callable=AsyncMock
             ) as mock_issue_solver,
-            patch("sys.argv", ["meow", "issue-solver", "PROJ-1", "--work-dir", "."]),
+            patch("sys.argv", ["meow", "issue", "PROJ-1", "--work-dir", "."]),
         ):
             mock_issue_solver.return_value = {
                 "issue": "PROJ-1", "branch": "issue/PROJ-1"
@@ -493,13 +493,13 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_issue_solver.assert_awaited_once_with(Path(".").resolve(), "PROJ-1")
 
     @staticmethod
-    def test_issue_solver_command_accepts_no_issue_key():
+    def test_issue_command_accepts_no_issue_key():
         with (
             patch("meow.cli._boot_repo"),
             patch(
                 "meow.cli.run_issue_solver", new_callable=AsyncMock
             ) as mock_issue_solver,
-            patch("sys.argv", ["meow", "issue-solver", "--work-dir", "."]),
+            patch("sys.argv", ["meow", "issue", "--work-dir", "."]),
         ):
             mock_issue_solver.return_value = {
                 "issue": "PROJ-2", "branch": "issue/PROJ-2"

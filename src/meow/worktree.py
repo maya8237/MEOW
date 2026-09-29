@@ -103,7 +103,7 @@ def _ensure_branch_worktree(
     """Create (or reuse) a worktree checked out on a real, pushable branch.
 
     Unlike `_ensure_feature_worktree` (detached, never pushed -- what `run`/
-    `plan` need), `issue-solver` always needs a real branch to hand back to
+    `plan` need), `meow issue` always needs a real branch to hand back to
     its caller, so it creates its own worktree on one instead.
     """
     worktree_dir = working_dir / ".worktrees" / feature_name
@@ -113,7 +113,7 @@ def _ensure_branch_worktree(
     git = shutil.which("git")
     if not git:
         raise RuntimeError(
-            "git is required for issue-solver's worktree/branch/push steps."
+            "git is required for `meow issue`'s worktree/branch/push steps."
         )
 
     (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)
@@ -134,12 +134,12 @@ def _ensure_branch_worktree(
 
 
 def _push_branch(worktree_dir: Path, branch_name: str) -> None:
-    """Push a finished issue-solver branch to `origin`."""
+    """Push a finished `meow issue` branch to `origin`."""
     git = shutil.which("git")
     remotes = _run_git([git, "remote"], cwd=worktree_dir).stdout.split()
     if "origin" not in remotes:
         raise RuntimeError(
-            "No 'origin' remote configured -- issue-solver can't push the "
+            "No 'origin' remote configured -- `meow issue` can't push the "
             f"finished branch '{branch_name}'. Add one with `git remote add "
             "origin <url>`, or push it yourself."
         )

@@ -36,7 +36,7 @@ def configure_logging() -> None:
     level_name = os.environ.get(LOG_LEVEL_ENV_VAR, "INFO").upper()
     level = logging.getLevelNamesMapping().get(level_name, logging.INFO)
 
-    # stderr, not stdout: `issue-solver` prints a single JSON result line to
+    # stderr, not stdout: `meow issue` prints a single JSON result line to
     # stdout on success, which a caller (e.g. a Windows Scheduled Task) needs
     # to read cleanly without log lines interleaved into it.
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
