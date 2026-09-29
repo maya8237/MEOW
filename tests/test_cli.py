@@ -586,6 +586,45 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_issue_solver.assert_awaited_once_with(Path(".").resolve(), None)
 
     @staticmethod
+    def test_gitlab_review_command_is_supported():
+        with (
+            patch("meow.cli._boot_repo") as mock_boot,
+            patch(
+                "meow.cli.run_gitlab_review", new_callable=AsyncMock
+            ) as mock_gitlab_review,
+            patch(
+                "sys.argv",
+                [
+                    "meow", "gitlab-review",
+                    "https://gitlab.example.com/group/project/-/merge_requests/1",
+                    "--work-dir", ".",
+                ],
+            ),
+        ):
+            cli.cli_main()
+
+        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
+        mock_gitlab_review.assert_awaited_once_with(
+            Path(".").resolve(),
+            "https://gitlab.example.com/group/project/-/merge_requests/1",
+        )
+
+    @staticmethod
+    def test_gitlab_review_command_does_not_require_clean_tree():
+        with (
+            patch("meow.cli._ensure_clean_tree") as mock_clean_tree,
+            patch("meow.cli._boot_repo"),
+            patch("meow.cli.run_gitlab_review", new_callable=AsyncMock),
+            patch(
+                "sys.argv",
+                ["meow", "gitlab-review", "https://gitlab.example.com/mr/1"],
+            ),
+        ):
+            cli.cli_main()
+
+        mock_clean_tree.assert_not_called()
+
+    @staticmethod
     @patch("meow.cli._ensure_clean_tree")
     @patch("meow.cli._boot_repo")
     @patch("meow.cli.run_review", new_callable=AsyncMock)

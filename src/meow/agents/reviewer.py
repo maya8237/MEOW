@@ -10,6 +10,7 @@ from meow.config import LintCommand
 from meow.sprint import Sprint
 
 PROMPT_REVIEW_FILENAME = "review.md"
+MR_REVIEW_FILENAME = "gitlab-review.md"
 
 
 def _lint_instructions(commands: list[LintCommand]) -> str:
@@ -198,6 +199,60 @@ class ReviewerAgent(Agent):
             f"\n\n{git_context}"
             if not review_basis
             else f"Review the prompt: {review_basis}\n\n{git_context}"
+        )
+        await self.run_query(query_prompt, options, "Reviewer")
+        verdict_text = review_file.read_text()
+        return _verdict_status(verdict_text), verdict_text
+
+    async def review_merge_request(
+        self, title: str, description: str, diff: str
+    ) -> tuple[str, str]:
+        """Grade a GitLab merge request's diff, independent of any local checkout.
+
+        Mirrors `review_prompt`'s no-Sprint-Contract, report-only shape, but
+        the source of truth is the merge request's title/description/diff
+        handed in by the caller (fetched through a GitLab MCP server), not a
+        local `git diff` -- the selected working directory need not be
+        checked out at the merge request's commit, so lint commands and
+        shell access are deliberately left out here; their result would not
+        reflect this diff.
+        """
+        review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
+        review_dir.mkdir(parents=True, exist_ok=True)
+        review_file = review_dir / MR_REVIEW_FILENAME
+        options = self.options(
+            system_prompt=(
+                "You are a skeptical QA reviewer. You did not write this "
+                "code -- grade it critically. You are reviewing a GitLab "
+                "merge request's diff, not a local working tree -- there is "
+                "no Sprint Contract and no `git diff` to run yourself. Use "
+                "only the merge request title, description, and diff given "
+                "in the task message as your source of truth; Read/Grep/Glob "
+                "the local project only for background context on the files "
+                "the diff touches, if that helps. Do not run or reference "
+                "the project's lint commands -- the local checkout may not "
+                "be at the merge request's commit, so their result would "
+                "not reflect this diff. Mark each distinct concern PASS or "
+                "FAIL with concrete evidence (a quoted diff hunk or "
+                "file:line). "
+                + _verification_instructions()
+                + _architecture_review_instructions(
+                    check_worktree_hygiene=self.context.use_worktree
+                )
+                + f" Write your verdict to {review_file} with the first line "
+                "starting with 'SUMMARY:' and containing a brief one- or "
+                "two-sentence summary. The next line must start with "
+                "'STATUS: PASS' or 'STATUS: FAIL', followed by one line per "
+                "concern. Default to FAIL when uncertain."
+            ),
+            allowed_tools=["Read", "Grep", "Glob", "Write"],
+            role="reviewer",
+            skills=["superpowers:verification-before-completion"],
+        )
+        query_prompt = (
+            f"Merge request title: {title}\n\n"
+            f"Merge request description:\n{description}\n\n"
+            f"Merge request diff:\n{diff}"
         )
         await self.run_query(query_prompt, options, "Reviewer")
         verdict_text = review_file.read_text()

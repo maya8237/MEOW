@@ -17,6 +17,11 @@ implementing it. `meow review [--plan-file PATH]` re-runs the reviewer
 against an already-implemented plan (the most recent one in `docs_dir` by
 default) and loops fixes back through the generator until it passes. Pass a
 specific plan with `--plan-file PATH` (or `--plan PATH`).
+`meow issue [ISSUE-KEY]` fetches a Jira issue and solves it end to end in a
+pushed worktree branch (needs `[jira]`/`[jira.mcp]` in `.harness.toml`).
+`meow gitlab-review "<mr-url>"` fetches a GitLab merge request's diff and
+grades it, reporting PASS/FAIL without editing anything (needs
+`[gitlab.mcp]`). See [GUIDE.md](GUIDE.md) for both config sections.
 Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
 select the project directory.
 

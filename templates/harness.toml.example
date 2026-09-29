@@ -37,6 +37,17 @@ explorer = "haiku"
 # command = "uvx"
 # args = ["mcp-atlassian"]
 
+# Optional -- only needed for `meow gitlab-review`. Declares how to launch
+# the GitLab MCP server it talks to fetch a merge request's diff; unlike
+# [jira], no project key is needed since the merge request URL is passed on
+# the command line each time. There is no single de facto GitLab MCP server
+# the way mcp-atlassian is for Jira -- pick one that exposes merge-request
+# read tools, and put its own credentials (typically a GitLab URL and a
+# personal/project access token) in the environment, not here.
+# [gitlab.mcp]
+# command = "<program that launches your GitLab MCP server>"
+# args = []
+
 # ---------------------------------------------------------------------------
 # Lint commands -- one [[lint]] table per command, any number of them.
 #

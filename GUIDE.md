@@ -74,6 +74,15 @@ gate = false
 | `[jira.mcp].command` | Only for `issue` | — | Program that launches the Jira MCP server, e.g. `"uvx"`. |
 | `[jira.mcp].args` | No | `[]` | Its arguments, e.g. `["mcp-atlassian"]`. |
 
+`[gitlab.mcp]` is optional and only needed for `meow gitlab-review` (see
+§8). Unlike `[jira]`, there is no `project_key`-style field -- the merge
+request URL is passed on the command line each time.
+
+| Field | Required | Default | Notes |
+|---|---|---|---|
+| `[gitlab.mcp].command` | Only for `gitlab-review` | — | Program that launches a GitLab MCP server exposing merge-request read tools. |
+| `[gitlab.mcp].args` | No | `[]` | Its arguments. |
+
 ---
 
 ## 3. Recommended, not enforced — but do it anyway
@@ -241,3 +250,5 @@ shell — a task's environment is not your shell's. Verify the task once with
 | `meow issue` run without `[jira]`/`[jira.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
 | `meow issue` run with no Jira MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__jira__*` tool call to succeed, not just a text claim of success |
 | `meow issue` run with no `origin` remote | `RuntimeError` after the sprint passes, before attempting to push |
+| `meow gitlab-review` run without `[gitlab]`/`[gitlab.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
+| `meow gitlab-review` run with no GitLab MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__gitlab__*` tool call to succeed, not just a text claim of success |

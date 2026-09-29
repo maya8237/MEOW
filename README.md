@@ -117,6 +117,22 @@ line — `{"issue": "PROJ-123", "branch": "issue/PROJ-123"}` — and exits 0.
 See [GUIDE.md](GUIDE.md) for the config fields and for running it from a
 Windows Scheduled Task with persistent logging (`MEOW_LOG_FILE`).
 
+### `meow gitlab-review`
+
+Fetches a GitLab merge request's diff and grades it, reporting a PASS/FAIL
+verdict — read-only, like `cr`, and never loops a generator to fix issues:
+
+```bash
+meow gitlab-review "https://gitlab.example.com/group/project/-/merge_requests/123"
+```
+
+Requires `[gitlab.mcp]` in `.harness.toml` and a reachable GitLab MCP server
+(checked before anything else runs). Unlike `meow issue`, it never creates a
+worktree, edits code, or pushes anything — it only fetches the merge
+request's title, description, and diff, grades them, and writes the verdict
+to `gitlab-review.md` in the selected working directory's `docs_dir`. See
+[GUIDE.md](GUIDE.md) for the config fields.
+
 ## Claude Code plugin
 
 This repo doubles as a Claude Code plugin: add it as a plugin source and these
@@ -128,6 +144,7 @@ skills become available in any project that also has a `.harness.toml`:
 | `/meow:meow-plan "<feature>"` | `meow plan "<feature>"` |
 | `/meow:meow-review` | `meow review` |
 | `/meow:meow-issue [ISSUE-KEY]` | `meow issue [ISSUE-KEY]` |
+| `/meow:gitlab-review "<mr-url>"` | `meow gitlab-review "<mr-url>"` |
 
 Each skill is a thin wrapper — see `skills/*/SKILL.md` — that shells out to the
 same `meow` CLI, so it needs `meow` importable the same way (venv active,
@@ -157,7 +174,8 @@ meow/
 │   ├── sprint/SKILL.md                  # /meow:sprint  -> harness run
 │   ├── meow-plan/SKILL.md               # /meow:meow-plan   -> harness plan
 │   ├── meow-review/SKILL.md             # /meow:meow-review -> harness review
-│   └── meow-issue/SKILL.md              # /meow:meow-issue  -> harness issue
+│   ├── meow-issue/SKILL.md              # /meow:meow-issue  -> harness issue
+│   └── gitlab-review/SKILL.md           # /meow:gitlab-review -> harness gitlab-review
 ├── docs/
 │   └── exec-plans/
 │       └── active/                      # meow harnessing itself writes here
@@ -177,8 +195,10 @@ meow/
         │   ├── planner.py              # planner agent
         │   ├── generator.py            # generator agent
         │   ├── reviewer.py             # reviewer agents and review helpers
-        │   └── issue_fetcher.py        # Jira MCP preflight + issue fetch, for `meow issue`
+        │   ├── issue_fetcher.py        # Jira MCP preflight + issue fetch, for `meow issue`
+        │   └── gitlab_fetcher.py       # GitLab MCP preflight + MR fetch, for `meow gitlab-review`
         ├── orchestrator.py             # generator <-> reviewer round loop
         ├── issue_solver.py             # `meow issue` flow: fetch, worktree+branch, sprint, push
+        ├── gitlab_reviewer.py          # `meow gitlab-review` flow: fetch MR, grade its diff
         └── cli.py                      # `meow` console-script entry point
 ```

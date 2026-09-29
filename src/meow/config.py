@@ -32,6 +32,7 @@ DEFAULT_CONFIG = {
         "generator": None,
         "reviewer": None,
         "issue_fetcher": None,
+        "gitlab_fetcher": None,
     },
 }
 
