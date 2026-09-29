@@ -630,6 +630,51 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_clean_tree.assert_not_called()
 
     @staticmethod
+    def test_lint_fix_command_is_supported():
+        with (
+            patch("meow.cli._ensure_clean_tree"),
+            patch("meow.cli._boot_repo") as mock_boot,
+            patch(
+                "meow.cli.run_lint_fix", new_callable=AsyncMock
+            ) as mock_lint_fix,
+            patch("sys.argv", ["meow", "lint-fix", "--work-dir", "."]),
+        ):
+            cli.cli_main()
+
+        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
+        mock_lint_fix.assert_awaited_once_with(Path(".").resolve(), report_only=False)
+
+    @staticmethod
+    def test_lint_fix_command_requires_clean_tree_by_default():
+        with (
+            patch("meow.cli._ensure_clean_tree") as mock_clean_tree,
+            patch("meow.cli._boot_repo"),
+            patch("meow.cli.run_lint_fix", new_callable=AsyncMock),
+            patch("sys.argv", ["meow", "lint-fix", "--work-dir", "."]),
+        ):
+            cli.cli_main()
+
+        mock_clean_tree.assert_called_once_with(Path(".").resolve())
+
+    @staticmethod
+    def test_lint_fix_report_only_skips_the_clean_tree_check():
+        with (
+            patch("meow.cli._ensure_clean_tree") as mock_clean_tree,
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_lint_fix", new_callable=AsyncMock
+            ) as mock_lint_fix,
+            patch(
+                "sys.argv",
+                ["meow", "lint-fix", "--report-only", "--work-dir", "."],
+            ),
+        ):
+            cli.cli_main()
+
+        mock_clean_tree.assert_not_called()
+        mock_lint_fix.assert_awaited_once_with(Path(".").resolve(), report_only=True)
+
+    @staticmethod
     @patch("meow.cli._ensure_clean_tree")
     @patch("meow.cli._boot_repo")
     @patch("meow.cli.run_review", new_callable=AsyncMock)

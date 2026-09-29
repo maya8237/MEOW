@@ -15,11 +15,11 @@ from meow.logging import get_logger
 logger = get_logger(__name__)
 
 
-async def _run_one_lint_command(
-    working_dir: Path, entry: LintCommand, file_path: str, timeout: float
-) -> str | None:
-    """Run one per-file command, returning its failure report, or None."""
-    argv = entry.argv_for_file(file_path)
+async def _run_subprocess(
+    working_dir: Path, argv: list[str], timeout: float
+) -> tuple[int, str] | None:
+    """Run one subprocess, returning (returncode, combined output), or None
+    on timeout."""
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=str(working_dir),
@@ -33,6 +33,18 @@ async def _run_one_lint_command(
     except TimeoutError:
         process.kill()
         await process.wait()
+        return None
+
+    streams = (stdout.decode(errors="replace"), stderr.decode(errors="replace"))
+    return process.returncode, "\n".join(part for part in streams if part.strip())
+
+
+async def _run_one_lint_command(
+    working_dir: Path, entry: LintCommand, file_path: str, timeout: float
+) -> str | None:
+    """Run one per-file command, returning its failure report, or None."""
+    result = await _run_subprocess(working_dir, entry.argv_for_file(file_path), timeout)
+    if result is None:
         logger.warning(
             "lint_command_timed_out",
             command=entry.command,
@@ -41,18 +53,66 @@ async def _run_one_lint_command(
         )
         return f"$ {entry.command}\nTimed out after {timeout}s -- killed."
 
-    if process.returncode == 0:
+    returncode, report = result
+    if returncode == 0:
         return None
 
-    streams = (stdout.decode(errors="replace"), stderr.decode(errors="replace"))
-    report = "\n".join(part for part in streams if part.strip())
     logger.info(
         "lint_command_failed",
         command=entry.command,
         file=file_path,
-        returncode=process.returncode,
+        returncode=returncode,
     )
     return f"$ {entry.command}\n{report}".rstrip()
+
+
+async def apply_lint_fixes(
+    working_dir: Path, commands: list[LintCommand], timeout: float
+) -> None:
+    """Run each configured command's own fix flag project-wide, where set.
+
+    Exit codes aren't checked here -- a linter may still exit non-zero after
+    fixing what it can, for issues it cannot auto-fix on its own. Callers
+    that need to know what's actually still broken re-check separately with
+    `check_lint_commands`.
+    """
+    for entry in commands:
+        if not entry.fix_flag:
+            continue
+        result = await _run_subprocess(
+            working_dir, [*entry.argv(), entry.fix_flag], timeout
+        )
+        if result is None:
+            logger.warning(
+                "lint_fix_command_timed_out", command=entry.command, timeout=timeout
+            )
+
+
+async def check_lint_commands(
+    working_dir: Path, commands: list[LintCommand], timeout: float
+) -> list[str]:
+    """Run every configured command project-wide in check-only mode.
+
+    Returns one failure report per command that fails, in the same
+    `$ <command>\\n<output>` shape the per-file hook already reports.
+    """
+    problems = []
+    for entry in commands:
+        result = await _run_subprocess(working_dir, entry.argv(), timeout)
+        if result is None:
+            logger.warning(
+                "lint_command_timed_out", command=entry.command, timeout=timeout
+            )
+            problems.append(f"$ {entry.command}\nTimed out after {timeout}s -- killed.")
+            continue
+
+        returncode, report = result
+        if returncode != 0:
+            logger.info(
+                "lint_command_failed", command=entry.command, returncode=returncode
+            )
+            problems.append(f"$ {entry.command}\n{report}".rstrip())
+    return problems
 
 
 async def _run_lint_on_file(

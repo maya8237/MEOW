@@ -133,6 +133,26 @@ request's title, description, and diff, grades them, and writes the verdict
 to `gitlab-review.md` in the selected working directory's `docs_dir`. See
 [GUIDE.md](GUIDE.md) for the config fields.
 
+### `meow lint-fix`
+
+Runs every command configured under `[[lint]]` and either fixes what's
+found or just reports it, depending on the mode:
+
+```bash
+meow lint-fix                          # apply each command's --fix, then fix what's left with an agent
+meow lint-fix --report-only            # only run the commands and print their raw output; fix nothing
+```
+
+The default mode actually edits the project: an auto-fix pass runs each
+command's own fix flag project-wide, then whatever is still failing is
+handed to a dedicated fixer agent in a loop (reusing the same per-file
+auto-fixing hook `run`'s generator uses) until clean or `max_rounds` is
+reached — same clean-tree requirement as `run`, since it edits the selected
+working directory in place with no worktree isolation. `--report-only`
+never edits or fixes anything and never runs an agent; it exists for the
+`lint-fix` skill, which runs it this way and does the fixing itself in the
+calling Claude Code session instead.
+
 ## Claude Code plugin
 
 This repo doubles as a Claude Code plugin: add it as a plugin source and these
@@ -145,6 +165,7 @@ skills become available in any project that also has a `.harness.toml`:
 | `/meow:meow-review` | `meow review` |
 | `/meow:meow-issue [ISSUE-KEY]` | `meow issue [ISSUE-KEY]` |
 | `/meow:gitlab-review "<mr-url>"` | `meow gitlab-review "<mr-url>"` |
+| `/meow:lint-fix` | `meow lint-fix --report-only`, then the skill fixes what it reports |
 
 Each skill is a thin wrapper — see `skills/*/SKILL.md` — that shells out to the
 same `meow` CLI, so it needs `meow` importable the same way (venv active,
@@ -175,7 +196,8 @@ meow/
 │   ├── meow-plan/SKILL.md               # /meow:meow-plan   -> harness plan
 │   ├── meow-review/SKILL.md             # /meow:meow-review -> harness review
 │   ├── meow-issue/SKILL.md              # /meow:meow-issue  -> harness issue
-│   └── gitlab-review/SKILL.md           # /meow:gitlab-review -> harness gitlab-review
+│   ├── gitlab-review/SKILL.md           # /meow:gitlab-review -> harness gitlab-review
+│   └── lint-fix/SKILL.md                # /meow:lint-fix -> harness lint-fix --report-only
 ├── docs/
 │   └── exec-plans/
 │       └── active/                      # meow harnessing itself writes here
@@ -188,7 +210,7 @@ meow/
         ├── __init__.py
         ├── config.py                   # .harness.toml loading + lint-command model
         ├── sprint.py                   # per-sprint state shared by every role
-        ├── lint.py                     # auto-fixing per-file lint hook
+        ├── lint.py                     # auto-fixing per-file hook + project-wide fix/check
         ├── agents/
         │   ├── base.py                 # shared AgentContext/Agent base + ProjectContext
         │   ├── explorer.py             # explorer agent definition
@@ -196,9 +218,11 @@ meow/
         │   ├── generator.py            # generator agent
         │   ├── reviewer.py             # reviewer agents and review helpers
         │   ├── issue_fetcher.py        # Jira MCP preflight + issue fetch, for `meow issue`
-        │   └── gitlab_fetcher.py       # GitLab MCP preflight + MR fetch, for `meow gitlab-review`
+        │   ├── gitlab_fetcher.py       # GitLab MCP preflight + MR fetch, for `meow gitlab-review`
+        │   └── lint_fixer.py           # lint-fix agent, for standalone `meow lint-fix`
         ├── orchestrator.py             # generator <-> reviewer round loop
         ├── issue_solver.py             # `meow issue` flow: fetch, worktree+branch, sprint, push
         ├── gitlab_reviewer.py          # `meow gitlab-review` flow: fetch MR, grade its diff
+        ├── lint_fix.py                 # `meow lint-fix` flow: fix-or-report, standalone vs. skill
         └── cli.py                      # `meow` console-script entry point
 ```
