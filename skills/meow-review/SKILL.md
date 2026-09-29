@@ -1,38 +1,40 @@
 ---
 name: meow-review
-description: Run meow's reviewer against an already-implemented sprint plan and fix every problem it finds, looping until it passes. Use when code exists for a plan and needs to be graded and cleaned up, not planned or built from scratch.
+description: Run meow's reviewer against an already-implemented sprint plan and fix every problem it finds, looping until it passes. Runs natively in this Claude Code session by default. Use when code exists for a plan and needs to be graded and cleaned up, not planned or built from scratch.
 ---
 
 # meow-review
 
-Runs the meow harness's reviewer (`meow review`) against an existing
-sprint plan in the current project. The reviewer grades the current code
-against that plan's Sprint Contract; on FAIL, meow loops the generator
-against the feedback and re-reviews, until it passes or `max_rounds` runs
-out.
+Grades the current code against an existing plan's Sprint Contract; on FAIL,
+fixes the findings and re-reviews until it passes or `max_rounds` runs out.
+Runs **natively** by default: a fresh reviewer subagent grades, you fix. Read
+[`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this
+skill's base directory) first. Use **CLI mode** (bottom) only if explicitly asked.
 
-1. The current project must have a `.harness.toml` at its root. If it's
-   missing, tell the user and stop; point them at meow's `GUIDE.md` for
-   onboarding rather than guessing at lint commands.
-   `meow review` accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
-   select the project whose plan and implementation should be reviewed.
-2. If the user named a specific plan file, run:
+## Native mode
 
-   ```bash
-   meow review --plan-file "<path>" --working-dir "<project-path>"
-   ```
+1. The project needs a `.harness.toml` at its root.
+2. Find the plan: the file the user named, else
+   `meow native latest-plan --working-dir "<project-path>"`. If none exists, tell
+   the user to run `/meow:meow-plan` or `/meow:sprint` first; do not invent one.
+3. Get limits: `meow native prepare --no-worktree --allow-dirty --working-dir "<project-path>"`
+   (read `max_rounds`; it changes nothing). Then start the counter with
+   `meow native round <plan_file> --reset`.
+4. Review-first loop (shared protocol): `round` (this is round 1) -> reviewer
+   subagent (`prompt reviewer-plan --plan <plan_file>`, no `--worktree`) -> `verdict`.
+   PASS ends. On FAIL, each further round is: `round` (stop if exhausted) ->
+   fix the findings as generator (verify each finding first; report unsupported
+   or out-of-scope ones) -> project-wide lint -> fresh reviewer -> `verdict`.
+5. Report PASS, or, if exhausted, the review file's path so the user can read
+   the remaining feedback.
 
-   Otherwise run `meow review --working-dir "<project-path>"` — it reviews
-   the most recently modified plan in that project's `docs_dir`.
+## CLI mode
 
-   If `meow` isn't found on PATH, tell the user to install meow first
-   (its README: a venv with `pip install -e .`, or `pipx install -e .` for a
-   global command) — don't guess at a path to some venv. If it fails because
-   no plan file exists yet, tell the user to run `/meow:meow-plan` or
-   `/meow:sprint` first rather than inventing one.
-3. This can take several rounds and prints progress as it goes (`[reviewer]`,
-   `[generator]` lines) — stream that output to the user rather than waiting
-   silently for it to finish.
-4. Report the final outcome: PASS (nothing left to fix), or the review file's
-   path if it still fails after `max_rounds` so the user can inspect the
-   remaining feedback themselves.
+```bash
+meow review --plan-file "<path>" --working-dir "<project-path>"
+```
+
+Omit `--plan-file` to review the newest plan in `docs_dir`. If `meow` isn't on
+PATH, tell the user to install it (README: `pip install -e .` in a venv, or
+`pipx install -e .`). If no plan exists, point at `/meow:meow-plan`. Stream its
+`[reviewer]`/`[generator]` progress; report PASS or the review file path.

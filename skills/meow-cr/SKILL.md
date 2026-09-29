@@ -1,45 +1,36 @@
 ---
 name: meow-cr
-description: Run meow's reviewer against a free-text prompt instead of a sprint plan, grading whatever is currently in the working tree against what the prompt asked for. Use when there's no plan file to check against, or the user wants a quick review of what changed against a stated intent.
+description: Run meow's reviewer against a free-text prompt instead of a sprint plan, grading whatever is currently in the working tree against what the prompt asked for. Runs natively in this Claude Code session by default. Use when there's no plan file to check against, or the user wants a quick review of what changed against a stated intent.
 ---
 
 # meow-cr
 
-Runs the meow harness's reviewer (`meow cr`) against a plain-text prompt in
-the current project, instead of a Sprint Contract in a plan file. The
-reviewer runs `git status`/`git diff` to see what actually changed, checks
-it against the prompt's requirements, and reports PASS/FAIL with evidence.
-Unlike `/meow:meow-review`, this never loops a generator to fix issues — it
-only reports.
+One reviewer pass over the working tree, graded against the user's prompt (or
+against `git diff` when there is no prompt). Reports PASS/FAIL only; it never
+loops a generator. Runs **natively** by default: a fresh reviewer subagent does
+the grading. Read [`../_shared/native-mode.md`](../_shared/native-mode.md)
+(relative to this skill's base directory) first. Use **CLI mode** (bottom) only
+if explicitly asked.
 
-1. The prompt is whatever text the user gave when invoking this skill. If
-   none was given, ask what feature/change to review against first.
-2. The current project must have a `.harness.toml` at its root. If it's
-   missing, tell the user and stop; point them at meow's `GUIDE.md` for
-   onboarding rather than guessing at lint commands.
-3. `meow cr` accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
-   select the project to review. Use it whenever the project is not the
-   current directory.
+## Native mode
 
-   ```bash
-   meow cr "<prompt>" --working-dir "<project-path>"
-   ```
+1. The prompt is whatever text the user gave; it may be empty (then the diff is
+   the review basis). The project needs a `.harness.toml` at its root.
+2. Run `meow native prompt reviewer-prompt --focus "<prompt>" --working-dir "<project-path>"`
+   (omit `--focus` when there is no prompt). Dispatch one reviewer subagent per
+   the shared protocol; it writes `review.md` (the JSON's `review_file`).
+3. Run `meow native lint --working-dir "<project-path>"` first if you want the
+   lint result in hand; the reviewer also runs the gate commands itself.
+4. `meow native verdict <review_file>`; report PASS or FAIL, the summary, and
+   the review file path. Do not edit any code.
 
-   If the user did not provide a prompt, run:
+## CLI mode
 
-   ```bash
-   meow cr --working-dir "<project-path>"
-   ```
+```bash
+meow cr "<prompt>" --working-dir "<project-path>"
+```
 
-   In that case, the reviewer uses the selected working directory's
-   `git status` and `git diff` as the review input itself, without needing a
-   textual prompt.
-
-   If `meow` isn't found on PATH, tell the user to install meow first
-   (its README: a venv with `pip install -e .`, or `pipx install -e .` for a
-   global command) — don't guess at a path to some venv.
-4. This prints progress as it goes (`[orchestrator]`, `[lint]` lines) --
-   stream that output to the user rather than waiting silently for it to
-   finish.
-5. Report the final outcome: PASS or FAIL, plus the review file's path so
-   the user can inspect the full evidence themselves.
+With no prompt run `meow cr --working-dir "<project-path>"`, which reviews the
+git diff. If `meow` isn't on PATH, tell the user to install it (README:
+`pip install -e .` in a venv, or `pipx install -e .`). Stream its progress and
+report PASS/FAIL plus the review file path.
