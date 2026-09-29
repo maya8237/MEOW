@@ -16,27 +16,24 @@ Install (from the meow repo root):    pip install -e .
 Run (from inside a project repo):        meow run "Add CSV export"
 """
 
-import shutil
-import subprocess
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
 from meow.agents.explorer import make_explorer_agent
 from meow.agents.generator import Generator
 from meow.agents.planner import PlannerAgent, run_planner
-from meow.agents.reviewer import ReviewerAgent, run_prompt_reviewer, run_reviewer
-from meow.config import (
-    DEFAULT_CONFIG,
-    LintCommand,
-    _lint_entry,
-    _normalize_lint_commands,
-    load_config,
+from meow.agents.reviewer import (
+    PROMPT_REVIEW_FILENAME,
+    ReviewerAgent,
+    run_prompt_reviewer,
+    run_reviewer,
 )
-from meow.lint import make_lint_hook
+from meow.config import load_config
+from meow.lint import describe_lint_plan
 from meow.logging import get_logger
-from meow.sprint import Sprint
+from meow.sprint import Sprint, build_sprint
+from meow.worktree import _resolve_working_dir
 
-assert DEFAULT_CONFIG and _lint_entry and _normalize_lint_commands  # re-exported
 assert run_prompt_reviewer  # re-exported for compatibility
 assert run_planner and run_reviewer  # re-exported for compatibility
 assert make_explorer_agent  # re-exported for compatibility
@@ -49,106 +46,32 @@ def log_working_directory(working_dir: Path) -> None:
     logger.info("working_directory_resolved", path=str(Path(working_dir).resolve()))
 
 
-def _ensure_gitignore_entry(working_dir: Path, entry: str = ".worktrees/") -> None:
-    """Ensure the repo's .gitignore includes the given ignored path."""
-    gitignore = working_dir / ".gitignore"
-    contents = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
-    lines = contents.splitlines()
-    normalized = {line.strip() for line in lines}
-    if entry in normalized or entry.rstrip("/") in normalized:
-        return
+def _prepare_sprint(
+    working_dir: Path, feature_name: str | None, *, use_worktree: bool
+) -> tuple[Sprint, str | None, Path]:
+    """Load config, resolve the active directory, and build a Sprint.
 
-    with gitignore.open("a", encoding="utf-8") as handle:
-        if contents and not contents.endswith("\n"):
-            handle.write("\n")
-        handle.write(f"{entry}\n")
-
-
-def _boot_repo(working_dir: Path, *, include_gitignore: bool = True) -> None:
-    """Run working-directory boot checks every meow command needs."""
-    if include_gitignore:
-        _ensure_gitignore_entry(working_dir)
-
-
-def _resolve_working_dir(
-    working_dir: Path,
-    *,
-    use_worktree: bool,
-    feature_name: str | None,
-) -> tuple[Path, str | None, bool]:
-    """Return the active directory and optional feature name."""
-    if not use_worktree:
-        return working_dir, feature_name, False
-    if not feature_name:
-        raise ValueError("feature_name is required when use_worktree=True")
-
-    return _ensure_feature_worktree(working_dir, feature_name), feature_name, True
-
-
-def _ensure_feature_worktree(working_dir: Path, feature_name: str) -> Path:
-    """Create a per-feature worktree under the repo's .worktrees directory."""
-    worktrees_dir = working_dir / ".worktrees"
-    worktree_dir = worktrees_dir / feature_name
-
-    if worktree_dir.exists():
-        return worktree_dir
-
-    worktrees_dir.mkdir(parents=True, exist_ok=True)
-
-    git = shutil.which("git")
-    if git:
-        try:
-            subprocess.run(
-                [
-                    git,
-                    "-C",
-                    str(working_dir),
-                    "worktree",
-                    "add",
-                    "--detach",
-                    str(worktree_dir),
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            return worktree_dir
-        except subprocess.CalledProcessError:
-            pass
-
-    worktree_dir.mkdir(parents=True, exist_ok=True)
-    return worktree_dir
-
-
-def _build_sprint(
-    repo_dir: Path, config: dict, working_dir: Path | None = None
-) -> Sprint:
-    commands = config["lint"]
-    active_dir = working_dir or repo_dir
-    return Sprint(
-        repo_dir=repo_dir,
-        config=config,
-        explorer=make_explorer_agent(config, active_dir),
-        lint_hook=make_lint_hook(active_dir, commands, config["lint_timeout"]),
-        working_dir=active_dir,
+    Shared setup for `run_sprint` and `run_plan`, which otherwise repeat this
+    sequence almost verbatim.
+    """
+    config = load_config(working_dir)
+    active_dir, effective_name, is_worktree = _resolve_working_dir(
+        working_dir,
+        use_worktree=use_worktree,
+        feature_name=feature_name,
     )
+    sprint = build_sprint(
+        working_dir,
+        config,
+        active_dir if is_worktree else None,
+        use_worktree=is_worktree,
+    )
+    return sprint, effective_name, active_dir
 
 
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
-
-def _describe_lint_plan(commands: list[LintCommand]) -> None:
-    """Report the configured lint commands before a sprint spends anything."""
-    for entry in commands:
-        logger.info(
-            "lint_command_configured",
-            command=entry.command,
-            per_file=entry.per_file,
-            gate=entry.gate,
-            fix_flag=entry.fix_flag,
-        )
-
 
 async def _run_rounds(sprint: Sprint, plan_file: Path) -> bool:
     """Loop generator -> reviewer. True if the sprint passed."""
@@ -259,10 +182,16 @@ async def _run_review_rounds(sprint: Sprint, plan_file: Path) -> bool:
 
 
 def _latest_plan_file(docs_dir: Path) -> Path:
-    """The most recently modified sprint plan in docs_dir, excluding reviews."""
+    """The most recently modified sprint plan in docs_dir, excluding reviews.
+
+    Excludes both `<plan>-review.md` verdicts and `cr`'s own free-standing
+    `review.md` report -- neither is a Sprint Contract, so picking either up
+    here would hand the reviewer a review to grade as if it were a plan.
+    """
     candidates = [
         path for path in docs_dir.glob("*.md")
         if not path.name.endswith("-review.md")
+        and path.name != PROMPT_REVIEW_FILENAME
     ]
     if not candidates:
         raise FileNotFoundError(
@@ -280,14 +209,10 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
     use_worktree: bool = True,
     plan_file: Path | None = None,
 ):
-    config = load_config(working_dir)
-    _describe_lint_plan(config["lint"])
-    active_dir, effective_name, is_worktree = _resolve_working_dir(
-        working_dir,
-        use_worktree=use_worktree,
-        feature_name=feature_name,
+    sprint, effective_name, active_dir = _prepare_sprint(
+        working_dir, feature_name, use_worktree=use_worktree
     )
-    sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
+    describe_lint_plan(sprint.config["lint"])
 
     if plan_file is None:
         logger.info(
@@ -305,11 +230,11 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
     logger.error(
         "sprint_did_not_pass",
         feature_name=feature_name,
-        max_rounds=config["max_rounds"],
+        max_rounds=sprint.config["max_rounds"],
     )
     raise RuntimeError(
         f"Sprint{f' {feature_name!r}' if feature_name else ''} did not pass "
-        f"after {config['max_rounds']} "
+        f"after {sprint.config['max_rounds']} "
         "rounds -- stopping instead of looping forever. Inspect the review "
         "file."
     )
@@ -322,13 +247,9 @@ async def run_plan(
     *,
     use_worktree: bool = True,
 ) -> Path:
-    config = load_config(working_dir)
-    active_dir, effective_name, is_worktree = _resolve_working_dir(
-        working_dir,
-        use_worktree=use_worktree,
-        feature_name=feature_name,
+    sprint, effective_name, active_dir = _prepare_sprint(
+        working_dir, feature_name, use_worktree=use_worktree
     )
-    sprint = _build_sprint(working_dir, config, active_dir if is_worktree else None)
 
     logger.info(
         "planner_started", feature_name=effective_name, working_dir=str(active_dir)
@@ -343,14 +264,14 @@ async def run_review(
     plan_file: Path | None,
 ):
     config = load_config(working_dir)
-    _describe_lint_plan(config["lint"])
+    describe_lint_plan(config["lint"])
 
     active_dir = working_dir
     if plan_file is not None:
         resolved_plan_file = plan_file
     else:
         resolved_plan_file = _latest_plan_file(active_dir / config["docs_dir"])
-    sprint = _build_sprint(working_dir, config)
+    sprint = build_sprint(working_dir, config)
 
     logger.info(
         "review_started", plan_file=str(resolved_plan_file), working_dir=str(active_dir)
@@ -383,7 +304,7 @@ async def run_prompt_review(
     built from config and the working directory is enough for the reviewer.
     """
     config = load_config(working_dir)
-    _describe_lint_plan(config["lint"])
+    describe_lint_plan(config["lint"])
     active_dir = working_dir
     context = ProjectContext(working_dir, config)
 
@@ -392,6 +313,6 @@ async def run_prompt_review(
     review_file = (
         context.active_working_dir()
         / config["docs_dir"]
-        / "review.md"
+        / PROMPT_REVIEW_FILENAME
     )
     logger.info("prompt_review_finished", status=status, review_file=str(review_file))

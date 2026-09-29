@@ -9,6 +9,8 @@ from meow.agents.base import Agent, AgentContext
 from meow.config import LintCommand
 from meow.sprint import Sprint
 
+PROMPT_REVIEW_FILENAME = "review.md"
+
 
 def _lint_instructions(commands: list[LintCommand]) -> str:
     """Tell the reviewer which lint commands bind it and which only inform."""
@@ -38,20 +40,26 @@ def _verification_instructions() -> str:
     )
 
 
-def _architecture_review_instructions() -> str:
+def _architecture_review_instructions(*, check_worktree_hygiene: bool = True) -> str:
     """Tell the reviewer to look for monolithic, SRP-breaking modules."""
-    return (
+    instructions = (
         "Also perform a SOLID/SRP review. Flag any file or class that mixes "
         "multiple responsibilities, such as config parsing + agent wiring + "
         "lint hooks + orchestration + CLI handling in one module. Treat any "
         "single file that does more than one broad concern as a FAIL criterion "
         "unless the code is clearly split into cohesive helpers or classes. "
-        "If the sprint used an isolated worktree, ensure every plan change stays "
-        "inside the active worktree and that the main working directory remains "
-        "clean; any edit there is a FAIL criterion. Use file:line "
-        "evidence; do not accept 'it works' as an excuse for a monolithic "
-        "design."
     )
+    if check_worktree_hygiene:
+        instructions += (
+            "If the sprint used an isolated worktree, ensure every plan change "
+            "stays inside the active worktree and that the main working "
+            "directory remains clean; any edit there is a FAIL criterion. "
+        )
+    instructions += (
+        "Use file:line evidence; do not accept 'it works' as an excuse for a "
+        "monolithic design."
+    )
+    return instructions
 
 
 def _git_review_context(context: AgentContext) -> tuple[str, bool]:
@@ -133,7 +141,7 @@ class ReviewerAgent(Agent):
         """Grade the working tree against a free-text prompt, or the git diff."""
         review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
         review_dir.mkdir(parents=True, exist_ok=True)
-        review_file = review_dir / "review.md"
+        review_file = review_dir / PROMPT_REVIEW_FILENAME
         review_basis = (prompt or "").strip()
         git_context, has_diff = _git_review_context(self.context)
         prompt_text = (
@@ -162,7 +170,9 @@ class ReviewerAgent(Agent):
                 + _lint_instructions(self.context.lint_commands())
                 + " "
                 + _verification_instructions()
-                + _architecture_review_instructions()
+                + _architecture_review_instructions(
+                    check_worktree_hygiene=self.context.use_worktree
+                )
                 + f" Write your verdict to {review_file} with the first line "
                 "starting with 'SUMMARY:' and containing a brief one- or two-"
                 "sentence summary. The next line must start with 'STATUS: PASS' "
@@ -194,7 +204,9 @@ class ReviewerAgent(Agent):
                 + _lint_instructions(self.context.lint_commands())
                 + " "
                 + _verification_instructions()
-                + _architecture_review_instructions()
+                + _architecture_review_instructions(
+                    check_worktree_hygiene=self.context.use_worktree
+                )
                 + f" Write your verdict to {review_file} with the first line "
                 "starting with 'SUMMARY:' and containing a brief one- or two-"
                 "sentence summary. The next line must start with 'STATUS: PASS' "
