@@ -190,8 +190,7 @@ def _latest_plan_file(docs_dir: Path) -> Path:
     """
     candidates = [
         path for path in docs_dir.glob("*.md")
-        if not path.name.endswith("-review.md")
-        and path.name != PROMPT_REVIEW_FILENAME
+        if not path.name.endswith("review.md")
     ]
     if not candidates:
         raise FileNotFoundError(

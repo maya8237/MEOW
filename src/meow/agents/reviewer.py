@@ -115,17 +115,25 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
     return review_context, bool(diff_text)
 
 
-def _no_prompt_review_instructions(*, has_diff: bool) -> str:
+def _no_prompt_review_instructions(*, has_diff: bool, docs_dir: str) -> str:
     """Select the review scope when the user did not supply a prompt."""
+    exclusion = (
+        f" Do not review anything under {docs_dir!r} -- that directory holds "
+        "meow's own generated sprint plans and review verdicts, not project "
+        "code, and grading them as if they were the project under review "
+        "produces nonsensical meta-reviews."
+    )
     if has_diff:
         return (
             "There is no explicit prompt and the git diff contains changes. "
-            "Review the changes shown in the git diff, using git status for context."
+            "Review the changes shown in the git diff, using git status for "
+            "context." + exclusion
         )
     return (
         "There is no explicit prompt and the git diff is empty. Review the "
         "entire project by inspecting its source and configuration files, "
         "looking for correctness issues and incomplete or broken behavior."
+        + exclusion
     )
 
 
@@ -143,11 +151,13 @@ class ReviewerAgent(Agent):
         review_dir.mkdir(parents=True, exist_ok=True)
         review_file = review_dir / PROMPT_REVIEW_FILENAME
         review_basis = (prompt or "").strip()
+        docs_dir = self.context.config["docs_dir"]
         git_context, has_diff = _git_review_context(self.context)
         prompt_text = (
             f"The feature is described by this prompt: {review_basis!r}. "
             if review_basis
-            else _no_prompt_review_instructions(has_diff=has_diff) + " "
+            else _no_prompt_review_instructions(has_diff=has_diff, docs_dir=docs_dir)
+            + " "
         )
         scope_instruction = (
             "Run `git status` and `git diff` in the working directory to "
@@ -184,7 +194,8 @@ class ReviewerAgent(Agent):
             skills=["superpowers:verification-before-completion"],
         )
         query_prompt = (
-            f"{_no_prompt_review_instructions(has_diff=has_diff)}\n\n{git_context}"
+            f"{_no_prompt_review_instructions(has_diff=has_diff, docs_dir=docs_dir)}"
+            f"\n\n{git_context}"
             if not review_basis
             else f"Review the prompt: {review_basis}\n\n{git_context}"
         )
