@@ -49,7 +49,7 @@ Each `[[lint]]` table (run in listed order, program resolved on `PATH` so
 | Key | Required | Default | Purpose |
 |---|---|---|---|
 | `command` | **Yes** | — | Check-only, no fix flag, e.g. `ruff check`, `npx oxlint`, `golangci-lint run`. |
-| `fix_flag` | No | none | Appended only for the per-file auto-fix hook. |
+| `fix_flag` | No | none | Appended for the per-file auto-fix hook, and for `meow lint-fix`'s project-wide auto-fix pass. Commands with no `fix_flag` are checked but never auto-fixed by either. |
 | `per_file` | No | `true` | `false` for whole-project-only analysis. |
 | `gate` | No | `true` | `false` makes it advisory — reported, never fails the sprint. |
 
@@ -252,3 +252,4 @@ shell — a task's environment is not your shell's. Verify the task once with
 | `meow issue` run with no `origin` remote | `RuntimeError` after the sprint passes, before attempting to push |
 | `meow gitlab-review` run without `[gitlab]`/`[gitlab.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
 | `meow gitlab-review` run with no GitLab MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__gitlab__*` tool call to succeed, not just a text claim of success |
+| `meow lint-fix` (standalone, not `--report-only`) never gets lint clean within `max_rounds` | `LintFixError` including the still-failing commands' raw output |

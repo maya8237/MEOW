@@ -8,6 +8,7 @@ from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 from meow.agents.base import Agent, AgentContext
 from meow.agents.explorer import ExplorerAgent
 from meow.agents.generator import Generator, GeneratorAgent
+from meow.agents.lint_fixer import LintFixAgent
 from meow.agents.planner import PlannerAgent
 from meow.agents.reviewer import ReviewerAgent, _verdict_status
 from meow.config import LintCommand
@@ -217,6 +218,47 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
         client.__aenter__.assert_awaited_once_with()
         client.__aexit__.assert_awaited_once()
         self.assertIs(Generator, GeneratorAgent)
+
+    async def test_lint_fix_agent_keeps_one_client_and_uses_the_lint_hook(  # ruff: ignore[too-many-statements]
+        self,
+    ):
+        client = MagicMock()
+        client.__aenter__ = unittest.mock.AsyncMock(return_value=client)
+        client.__aexit__ = unittest.mock.AsyncMock()
+        client.query = unittest.mock.AsyncMock()
+
+        async def responses():
+            await asyncio.sleep(0)
+            yield AssistantMessage(
+                content=[TextBlock(text="fixed"), TextBlock(text=" it")],
+                model="model",
+            )
+
+        client.receive_response.side_effect = [responses(), responses()]
+        with patch(
+            "meow.agents.lint_fixer.ClaudeSDKClient", return_value=client
+        ) as sdk:
+            async with LintFixAgent(self.context) as fixer:
+                await fixer.fix("first batch")
+                result = await fixer.fix("second batch")
+
+        sdk.assert_called_once()
+        options = sdk.call_args.kwargs["options"]
+        self.assertEqual(options.model, "model-for-lint_fixer")
+        self.assertEqual(options.cwd, str(self.context.project_dir))
+        matcher = options.hooks["PostToolUse"][0]
+        self.assertEqual(matcher.matcher, "Write|Edit")
+        self.assertEqual(
+            client.query.await_args_list[0].args,
+            ("Fix these lint failures:\n\nfirst batch",),
+        )
+        self.assertEqual(
+            client.query.await_args_list[1].args,
+            ("Fix these lint failures:\n\nsecond batch",),
+        )
+        self.assertEqual(result, "fixed\n it")
+        client.__aenter__.assert_awaited_once_with()
+        client.__aexit__.assert_awaited_once()
 
 
 class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):

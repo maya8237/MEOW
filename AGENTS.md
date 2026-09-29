@@ -22,6 +22,9 @@ pushed worktree branch (needs `[jira]`/`[jira.mcp]` in `.harness.toml`).
 `meow gitlab-review "<mr-url>"` fetches a GitLab merge request's diff and
 grades it, reporting PASS/FAIL without editing anything (needs
 `[gitlab.mcp]`). See [GUIDE.md](GUIDE.md) for both config sections.
+`meow lint-fix` runs every configured `[[lint]]` command and fixes what it
+finds; `meow lint-fix --report-only` only runs and reports, fixing nothing
+-- that's the mode the `lint-fix` skill uses, doing the fixing itself.
 Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
 select the project directory.
 
@@ -35,10 +38,14 @@ strictly required versus merely recommended, generic to any language.
 ## Claude Code plugin
 
 This repo is also a Claude Code plugin (`.claude-plugin/plugin.json` +
-`skills/`), so the same three operations are available as skills when meow
-is installed as a plugin in a project: `/meow:sprint`, `/meow:meow-plan`, and
-`/meow:meow-review`. Each is a thin wrapper that shells out to the `meow`
-CLI above — see `skills/*/SKILL.md` for what each one runs.
+`skills/`), so the same operations are available as skills when meow is
+installed as a plugin in a project: `/meow:sprint`, `/meow:meow-plan`,
+`/meow:meow-review`, `/meow:meow-issue`, `/meow:gitlab-review`, and
+`/meow:lint-fix`. Each is a thin wrapper that shells out to the `meow` CLI
+above — see `skills/*/SKILL.md` for what each one runs. `lint-fix` is the
+odd one out: it runs `meow lint-fix --report-only` and then does the fixing
+itself in the calling session, rather than having meow spin up its own
+agent the way every other skill here does.
 
 ## Lint
 
@@ -55,14 +62,18 @@ A project can declare any number of `[[lint]]` commands (see GUIDE.md for the
 The engine is split by responsibility under `src/meow/`: `config.py`
 (`.harness.toml` loading and the lint-command model), `sprint.py` (the shared
 per-sprint state and `build_sprint`, which wires it up from config), `lint.py`
-(the auto-fixing per-file hook plus reporting the configured lint plan),
-`worktree.py` (git/filesystem bootstrapping: `.gitignore` upkeep and creating
-per-feature worktrees), `agents/` (one module per agent role, plus a shared
-base), `orchestrator.py` (the generator <-> reviewer round loop and the
-top-level `run_*` entry points `cli.py` dispatches into), and `cli.py` (the
-`meow` console-script entry point). The `src/` layout is deliberate: code run
-from the repo root reaches the *installed* copy, so a broken editable install
-is caught rather than masked.
+(the auto-fixing per-file hook, reporting the configured lint plan, and the
+project-wide fix/check functions `lint_fix.py` uses), `worktree.py`
+(git/filesystem bootstrapping: `.gitignore` upkeep and creating per-feature
+worktrees), `agents/` (one module per agent role, plus a shared base),
+`orchestrator.py` (the generator <-> reviewer round loop and the top-level
+`run_*` entry points `cli.py` dispatches into), `issue_solver.py`,
+`gitlab_reviewer.py`, and `lint_fix.py` (the `run_*` entry points for
+`issue`/`gitlab-review`/`lint-fix`, each its own module rather than folded
+into `orchestrator.py`, the same SOLID/SRP separation the reviewer itself
+checks for), and `cli.py` (the `meow` console-script entry point). The
+`src/` layout is deliberate: code run from the repo root reaches the
+*installed* copy, so a broken editable install is caught rather than masked.
 
 ## Agent structure
 

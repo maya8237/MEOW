@@ -8,6 +8,7 @@ from pathlib import Path
 
 from meow.gitlab_reviewer import run_gitlab_review
 from meow.issue_solver import IssueUnresolvedError, run_issue_solver
+from meow.lint_fix import run_lint_fix
 from meow.logging import configure_logging, get_logger
 from meow.orchestrator import (
     log_working_directory,
@@ -77,6 +78,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     _add_cr_parser(subparsers)
     _add_issue_parser(subparsers)
     _add_gitlab_review_parser(subparsers)
+    _add_lint_fix_parser(subparsers)
 
     return parser
 
@@ -174,6 +176,27 @@ def _add_gitlab_review_parser(subparsers: argparse._SubParsersAction) -> None:
     _add_common_args(gitlab_review_parser)
 
 
+def _add_lint_fix_parser(subparsers: argparse._SubParsersAction) -> None:
+    lint_fix_parser = subparsers.add_parser(
+        "lint-fix",
+        help=(
+            "Run every configured lint command and fix what it finds. "
+            "--report-only runs and reports only, fixing nothing."
+        ),
+    )
+    lint_fix_parser.add_argument(
+        "--report-only",
+        dest="report_only",
+        action="store_true",
+        help=(
+            "Only run the configured lint commands and report failures -- "
+            "apply no fixes and run no agent. Used by the lint-fix skill "
+            "wrapper, which fixes what's reported itself."
+        ),
+    )
+    _add_common_args(lint_fix_parser)
+
+
 def _dispatch_issue(args, working_dir: Path) -> None:
     try:
         result = asyncio.run(run_issue_solver(working_dir, args.issue))
@@ -185,6 +208,28 @@ def _dispatch_issue(args, working_dir: Path) -> None:
 
 def _dispatch_gitlab_review(args, working_dir: Path) -> None:
     asyncio.run(run_gitlab_review(working_dir, args.mr_link))
+
+
+def _dispatch_review(args, working_dir: Path) -> None:
+    plan_file = _resolve_input_path(args.plan, working_dir)
+    asyncio.run(run_review(working_dir, plan_file))
+
+
+def _dispatch_cr(args, working_dir: Path) -> None:
+    asyncio.run(run_prompt_review(working_dir, args.prompt))
+
+
+def _dispatch_lint_fix(args, working_dir: Path) -> None:
+    asyncio.run(run_lint_fix(working_dir, report_only=args.report_only))
+
+
+_COMMAND_HANDLERS = {
+    "review": _dispatch_review,
+    "cr": _dispatch_cr,
+    "issue": _dispatch_issue,
+    "gitlab-review": _dispatch_gitlab_review,
+    "lint-fix": _dispatch_lint_fix,
+}
 
 
 def _dispatch_feature(args, working_dir: Path, *, use_worktree: bool) -> bool:
@@ -218,15 +263,15 @@ def _dispatch_feature(args, working_dir: Path, *, use_worktree: bool) -> bool:
 def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
     if _dispatch_feature(args, working_dir, use_worktree=use_worktree):
         return
-    if args.command == "review":
-        plan_file = _resolve_input_path(args.plan, working_dir)
-        asyncio.run(run_review(working_dir, plan_file))
-    elif args.command == "cr":
-        asyncio.run(run_prompt_review(working_dir, args.prompt))
-    elif args.command == "issue":
-        _dispatch_issue(args, working_dir)
-    elif args.command == "gitlab-review":
-        _dispatch_gitlab_review(args, working_dir)
+    _COMMAND_HANDLERS[args.command](args, working_dir)
+
+
+def _requires_clean_tree(args) -> bool:
+    """`run`/`issue` always edit in place; `lint-fix` only does unless
+    --report-only, which fixes nothing and is as read-only as `cr`."""
+    if args.command in {"run", "issue"}:
+        return True
+    return args.command == "lint-fix" and not args.report_only
 
 
 def cli_main():
@@ -238,7 +283,7 @@ def cli_main():
     use_worktree = _should_use_worktree(args)
 
     _validate_feature_name_requirement(parser, args)
-    if args.command in {"run", "issue"}:
+    if _requires_clean_tree(args):
         try:
             _ensure_clean_tree(working_dir)
         except DirtyWorkingTreeError as exc:
