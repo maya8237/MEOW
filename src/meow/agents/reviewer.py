@@ -258,15 +258,26 @@ class ReviewerAgent(Agent):
         verdict_text = review_file.read_text()
         return _verdict_status(verdict_text), verdict_text
 
-    async def review_plan(self, plan_file: Path) -> tuple[str, str]:
-        """Grade a sprint plan against its contract and the current code."""
+    async def review_plan(
+        self, plan_file: Path, *, focus: str | None = None
+    ) -> tuple[str, str]:
+        """Grade a sprint plan against its contract and the current code.
+
+        `focus`, when given, is appended as an extra instruction so the
+        reviewer pays particular attention to it in addition to the Sprint
+        Contract -- used by `meow review-fix-review` to carry its required
+        prompt argument into every round's grading, not just the first.
+        """
         review_file = plan_file.with_name(plan_file.stem + "-review.md")
+        focus_instruction = f" Pay particular attention to: {focus}." if focus else ""
         options = self.options(
             system_prompt=(
                 "You are a skeptical QA reviewer. You did not write this code "
                 f"-- grade it critically. Read the Sprint Contract in {plan_file}. "
                 "Check each criterion against the actual code and mark PASS or "
-                "FAIL with concrete evidence (file:line or command output). "
+                "FAIL with concrete evidence (file:line or command output)."
+                + focus_instruction
+                + " "
                 + _lint_instructions(self.context.lint_commands())
                 + " "
                 + _verification_instructions()

@@ -11,6 +11,7 @@ from meow.agents.explorer import ExplorerAgent
 from meow.agents.generator import Generator, GeneratorAgent
 from meow.agents.lint_fixer import LintFixAgent
 from meow.agents.planner import PlannerAgent
+from meow.agents.review_fixer import ReviewFixAgent
 from meow.agents.reviewer import ReviewerAgent, _verdict_status
 from meow.config import LintCommand
 
@@ -261,6 +262,47 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
         client.__aenter__.assert_awaited_once_with()
         client.__aexit__.assert_awaited_once()
 
+    async def test_review_fix_agent_keeps_one_client_and_uses_the_lint_hook(  # ruff: ignore[too-many-statements]
+        self,
+    ):
+        client = MagicMock()
+        client.__aenter__ = unittest.mock.AsyncMock(return_value=client)
+        client.__aexit__ = unittest.mock.AsyncMock()
+        client.query = unittest.mock.AsyncMock()
+
+        async def responses():
+            await asyncio.sleep(0)
+            yield AssistantMessage(
+                content=[TextBlock(text="fixed"), TextBlock(text=" it")],
+                model="model",
+            )
+
+        client.receive_response.side_effect = [responses(), responses()]
+        with patch(
+            "meow.agents.review_fixer.ClaudeSDKClient", return_value=client
+        ) as sdk:
+            async with ReviewFixAgent(self.context) as fixer:
+                await fixer.fix("first batch")
+                result = await fixer.fix("second batch")
+
+        sdk.assert_called_once()
+        options = sdk.call_args.kwargs["options"]
+        self.assertEqual(options.model, "model-for-review_fixer")
+        self.assertEqual(options.cwd, str(self.context.project_dir))
+        matcher = options.hooks["PostToolUse"][0]
+        self.assertEqual(matcher.matcher, "Write|Edit")
+        self.assertEqual(
+            client.query.await_args_list[0].args,
+            ("Fix these review findings:\n\nfirst batch",),
+        )
+        self.assertEqual(
+            client.query.await_args_list[1].args,
+            ("Fix these review findings:\n\nsecond batch",),
+        )
+        self.assertEqual(result, "fixed\n it")
+        client.__aenter__.assert_awaited_once_with()
+        client.__aexit__.assert_awaited_once()
+
 
 class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -304,6 +346,40 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"Write your verdict to {review_file}", options.system_prompt)
         self.assertIn("ruff check", options.system_prompt)
         self.assertIn("SOLID/SRP", options.system_prompt)
+
+    async def test_review_plan_includes_focus_text_when_given(self):
+        plan_file = self.context.project_dir / "feature.md"
+        verdict = "SUMMARY: reviewed\nSTATUS: PASS\ncriterion: PASS"
+
+        with (
+            patch.object(
+                ReviewerAgent, "run_query", new_callable=AsyncMock
+            ) as run_query,
+            patch.object(Path, "read_text", return_value=verdict),
+        ):
+            await ReviewerAgent(self.context).review_plan(
+                plan_file, focus="Check error handling on the API boundary"
+            )
+
+        _, options, _ = run_query.await_args.args
+        self.assertIn(
+            "Check error handling on the API boundary", options.system_prompt
+        )
+
+    async def test_review_plan_omits_focus_text_by_default(self):
+        plan_file = self.context.project_dir / "feature.md"
+        verdict = "SUMMARY: reviewed\nSTATUS: PASS\ncriterion: PASS"
+
+        with (
+            patch.object(
+                ReviewerAgent, "run_query", new_callable=AsyncMock
+            ) as run_query,
+            patch.object(Path, "read_text", return_value=verdict),
+        ):
+            await ReviewerAgent(self.context).review_plan(plan_file)
+
+        _, options, _ = run_query.await_args.args
+        self.assertNotIn("Pay particular attention to", options.system_prompt)
 
     async def test_review_prompt_uses_generic_context_git_review_and_docs_review_file(
         self,

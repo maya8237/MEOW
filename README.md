@@ -225,6 +225,29 @@ never edits or fixes anything and never runs an agent; it exists for the
 `lint-fix` skill, which runs it this way and does the fixing itself in the
 calling Claude Code session instead.
 
+### `meow review-fix-review`
+
+Fixes an existing review's findings and re-reviews, looping up to
+`max_rounds` — the same stop/raise behavior `meow review` already has,
+starting from an already-written review file instead of a plan:
+
+```bash
+meow review-fix-review "Check error handling on the API boundary" --review-file docs/add-csv-export-review.md
+```
+
+The prompt is required, describing what the re-review should focus on or
+check for — there is no "infer it automatically" fallback. `--review-file`
+(also `-r`) is optional; omitted, it picks the most recently modified
+review file (from `meow review`, `cr`, or `gitlab-review`) in `docs_dir`.
+A plan-based review file (from `meow review`) resumes fixing against its
+Sprint Contract; a prompt-based one (from `cr`) fixes against the given
+prompt directly. A GitLab MR review file (from `meow gitlab-review`) is
+rejected with a clear error — that command is deliberately read-only and
+never checks the merge request's code out locally, so there is nothing on
+disk here to fix. Like `meow review`, this never creates a worktree and
+never requires a clean tree; it operates on whatever `--working-dir`
+already is.
+
 ## Claude Code plugin
 
 This repo doubles as a Claude Code plugin: add it as a plugin source and these
@@ -238,6 +261,7 @@ skills become available in any project that also has a `.harness.toml`:
 | `/meow:meow-issue [ISSUE-KEY]` | `meow issue [ISSUE-KEY]` |
 | `/meow:gitlab-review "<mr-url>"` | `meow gitlab-review "<mr-url>"` |
 | `/meow:lint-fix` | `meow lint-fix --report-only`, then the skill fixes what it reports |
+| `/meow:review-fix-review "<prompt>"` | `meow review-fix-review "<prompt>"` |
 
 Each skill is a thin wrapper — see `skills/*/SKILL.md` — that shells out to the
 same `meow` CLI, so it needs `meow` importable the same way (venv active,
@@ -269,7 +293,8 @@ meow/
 │   ├── meow-review/SKILL.md             # /meow:meow-review -> harness review
 │   ├── meow-issue/SKILL.md              # /meow:meow-issue  -> harness issue
 │   ├── gitlab-review/SKILL.md           # /meow:gitlab-review -> harness gitlab-review
-│   └── lint-fix/SKILL.md                # /meow:lint-fix -> harness lint-fix --report-only
+│   ├── lint-fix/SKILL.md                # /meow:lint-fix -> harness lint-fix --report-only
+│   └── review-fix-review/SKILL.md       # /meow:review-fix-review -> harness review-fix-review
 ├── docs/
 │   └── exec-plans/
 │       └── active/                      # meow harnessing itself writes here
@@ -292,8 +317,9 @@ meow/
         │   ├── reviewer.py             # reviewer agents and review helpers
         │   ├── issue_fetcher.py        # Jira MCP preflight + issue fetch, for `meow issue`
         │   ├── gitlab_fetcher.py       # GitLab MCP preflight + MR fetch, for `meow gitlab-review`
-        │   └── lint_fixer.py           # lint-fix agent, for standalone `meow lint-fix`
-        ├── orchestrator.py             # generator <-> reviewer round loop
+        │   ├── lint_fixer.py           # lint-fix agent, for standalone `meow lint-fix`
+        │   └── review_fixer.py         # review-fix agent, for prompt-based `meow review-fix-review`
+        ├── orchestrator.py             # generator <-> reviewer round loop, incl. review-fix-review
         ├── issue_solver.py             # `meow issue` flow: fetch, worktree+branch, sprint, push
         ├── gitlab_reviewer.py          # `meow gitlab-review` flow: fetch MR, grade its diff
         ├── lint_fix.py                 # `meow lint-fix` flow: fix-or-report, standalone vs. skill

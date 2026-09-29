@@ -34,6 +34,7 @@ DEFAULT_CONFIG = {
         "issue_fetcher": None,
         "gitlab_fetcher": None,
         "lint_fixer": None,
+        "review_fixer": None,
     },
 }
 
