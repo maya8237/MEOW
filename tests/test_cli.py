@@ -288,6 +288,80 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             with self.assertRaisesRegex(RuntimeError, "No 'origin' remote"):
                 worktree._push_branch(project_root, "issue/PROJ-1")
 
+    def test_is_linked_worktree_is_false_for_the_main_checkout(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+
+            self.assertFalse(worktree._is_linked_worktree(project_root))
+
+    def test_is_linked_worktree_is_true_for_a_linked_worktree(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            worktree_dir = worktree._ensure_feature_worktree(
+                project_root, "ship-it"
+            )
+
+            self.assertTrue(worktree._is_linked_worktree(worktree_dir))
+
+    def test_ensure_clean_tree_ignores_uncommitted_changes_in_a_linked_worktree(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            worktree_dir = worktree._ensure_feature_worktree(
+                project_root, "ship-it"
+            )
+            (worktree_dir / "wip.txt").write_text("partial run", encoding="utf-8")
+
+            worktree._ensure_clean_tree(worktree_dir)  # must not raise
+
+    def test_ensure_clean_tree_still_blocks_a_dirty_main_repo(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            (project_root / "dirty.txt").write_text("oops", encoding="utf-8")
+
+            with self.assertRaises(worktree.DirtyWorkingTreeError):
+                worktree._ensure_clean_tree(project_root)
+
+    def test_feature_worktree_reuses_an_existing_registered_worktree(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            first = worktree._ensure_feature_worktree(project_root, "ship-it")
+            (first / "wip.txt").write_text("partial run", encoding="utf-8")
+
+            second = worktree._ensure_feature_worktree(project_root, "ship-it")
+
+            self.assertEqual(first, second)
+            self.assertTrue((second / "wip.txt").exists())
+
+    def test_feature_worktree_rejects_being_pointed_at_an_existing_worktree(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            worktree_dir = worktree._ensure_feature_worktree(
+                project_root, "ship-it"
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "--no-worktree"):
+                worktree._ensure_feature_worktree(worktree_dir, "nested")
+
+    def test_feature_worktree_rejects_a_stray_unregistered_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            stray = project_root / ".worktrees" / "ship-it"
+            stray.mkdir(parents=True)
+
+            with self.assertRaisesRegex(RuntimeError, "not a registered git worktree"):
+                worktree._ensure_feature_worktree(project_root, "ship-it")
+
     # One stacked @patch per collaborator this test verifies is left alone;
     # trimming any would weaken the "every other command stays untouched"
     # assertions below.
@@ -338,12 +412,13 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_review.assert_not_called()
 
     @staticmethod
+    @patch("meow.cli._ensure_clean_tree")
     @patch("meow.cli._boot_repo")
     @patch("meow.cli.run_review", new_callable=AsyncMock)
     @patch("meow.cli.run_plan", new_callable=AsyncMock)
     @patch("meow.cli.run_sprint", new_callable=AsyncMock)
-    def test_run_command_accepts_word_flags_and_short_aliases(
-        mock_sprint, mock_plan, mock_review, mock_boot
+    def test_run_command_accepts_word_flags_and_short_aliases(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+        mock_sprint, mock_plan, mock_review, mock_boot, mock_clean_tree
     ):
         with patch(
             "sys.argv",
@@ -478,6 +553,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @staticmethod
     def test_issue_command_is_supported():
         with (
+            patch("meow.cli._ensure_clean_tree"),
             patch("meow.cli._boot_repo") as mock_boot,
             patch(
                 "meow.cli.run_issue_solver", new_callable=AsyncMock
@@ -495,6 +571,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @staticmethod
     def test_issue_command_accepts_no_issue_key():
         with (
+            patch("meow.cli._ensure_clean_tree"),
             patch("meow.cli._boot_repo"),
             patch(
                 "meow.cli.run_issue_solver", new_callable=AsyncMock
@@ -509,12 +586,13 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_issue_solver.assert_awaited_once_with(Path(".").resolve(), None)
 
     @staticmethod
+    @patch("meow.cli._ensure_clean_tree")
     @patch("meow.cli._boot_repo")
     @patch("meow.cli.run_review", new_callable=AsyncMock)
     @patch("meow.cli.run_plan", new_callable=AsyncMock)
     @patch("meow.cli.run_sprint", new_callable=AsyncMock)
-    def test_no_worktree_flag_skips_boot(
-        mock_sprint, mock_plan, mock_review, mock_boot
+    def test_no_worktree_flag_skips_boot(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+        mock_sprint, mock_plan, mock_review, mock_boot, mock_clean_tree
     ):
         with patch(
             "sys.argv",
