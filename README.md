@@ -99,6 +99,22 @@ working directory and do not take a feature name. `review` still runs the review
 passes, nothing else runs. On FAIL it loops the generator against the feedback and
 re-reviews, same as `run`, up to `max_rounds`.
 
+`--source-branch BRANCH` (also `--from` or `-b`) checks a freshly created worktree
+out from that branch instead of the main checkout's current HEAD:
+
+```bash
+meow run "Backport the fix" --name "backport-fix" --source-branch "release/1.0"
+```
+
+The uncommitted-changes check is skipped only when *both* hold: a worktree is
+being created for this invocation (worktree mode, not `--no-worktree`) *and*
+`--source-branch` was given for it -- the worktree is then built from that
+branch, not the main checkout's current state, so the main checkout's own
+uncommitted changes are irrelevant to it. Every other combination -- no
+worktree, or a worktree with no source branch -- keeps the check exactly as
+before. Reusing an existing worktree (by name) also ignores `--source-branch`
+-- resuming what's already there takes priority over re-branching it.
+
 ### `meow issue`
 
 Fetches a Jira issue and solves it end to end in a pushed worktree branch —

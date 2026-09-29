@@ -47,7 +47,11 @@ def log_working_directory(working_dir: Path) -> None:
 
 
 def _prepare_sprint(
-    working_dir: Path, feature_name: str | None, *, use_worktree: bool
+    working_dir: Path,
+    feature_name: str | None,
+    *,
+    use_worktree: bool,
+    source_branch: str | None = None,
 ) -> tuple[Sprint, str | None, Path]:
     """Load config, resolve the active directory, and build a Sprint.
 
@@ -59,6 +63,7 @@ def _prepare_sprint(
         working_dir,
         use_worktree=use_worktree,
         feature_name=feature_name,
+        source_branch=source_branch,
     )
     sprint = build_sprint(
         working_dir,
@@ -207,9 +212,13 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
     *,
     use_worktree: bool = True,
     plan_file: Path | None = None,
+    source_branch: str | None = None,
 ):
     sprint, effective_name, active_dir = _prepare_sprint(
-        working_dir, feature_name, use_worktree=use_worktree
+        working_dir,
+        feature_name,
+        use_worktree=use_worktree,
+        source_branch=source_branch,
     )
     describe_lint_plan(sprint.config["lint"])
 
@@ -239,15 +248,19 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
     )
 
 
-async def run_plan(
+async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would change cli.py's call site
     working_dir: Path,
     feature_name: str | None,
     request: str,
     *,
     use_worktree: bool = True,
+    source_branch: str | None = None,
 ) -> Path:
     sprint, effective_name, active_dir = _prepare_sprint(
-        working_dir, feature_name, use_worktree=use_worktree
+        working_dir,
+        feature_name,
+        use_worktree=use_worktree,
+        source_branch=source_branch,
     )
 
     logger.info(

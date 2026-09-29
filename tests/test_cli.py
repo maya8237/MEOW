@@ -176,6 +176,60 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             self.assertEqual(worktree_dir, project_root / ".worktrees" / "ship-it")
             self.assertTrue(worktree_dir.exists())
 
+    def test_feature_worktree_is_created_from_a_source_branch_when_given(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            subprocess.run(
+                ["git", "-C", str(project_root), "branch", "other-branch"],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(project_root),
+                    "-c", "user.email=test@example.com",
+                    "-c", "user.name=test",
+                    "commit", "--allow-empty", "-q", "-m", "second commit",
+                ],
+                check=True,
+            )
+
+            worktree_dir = worktree._ensure_feature_worktree(
+                project_root, "ship-it", source_branch="other-branch"
+            )
+
+            checked_out = subprocess.run(
+                ["git", "-C", str(worktree_dir), "rev-parse", "HEAD"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            other_branch_commit = subprocess.run(
+                ["git", "-C", str(project_root), "rev-parse", "other-branch"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            main_commit = subprocess.run(
+                ["git", "-C", str(project_root), "rev-parse", "HEAD"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+
+            self.assertEqual(checked_out, other_branch_commit)
+            self.assertNotEqual(checked_out, main_commit)
+
+    def test_feature_worktree_reuse_ignores_source_branch(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            first = worktree._ensure_feature_worktree(project_root, "ship-it")
+            subprocess.run(
+                ["git", "-C", str(project_root), "branch", "other-branch"],
+                check=True,
+            )
+
+            second = worktree._ensure_feature_worktree(
+                project_root, "ship-it", source_branch="other-branch"
+            )
+
+            self.assertEqual(first, second)
+
     def test_feature_worktree_creation_raises_when_git_fails(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir).resolve()  # not a git repo
@@ -327,6 +381,27 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             with self.assertRaises(worktree.DirtyWorkingTreeError):
                 worktree._ensure_clean_tree(project_root)
 
+    def test_ensure_clean_tree_ignores_boot_repos_own_gitignore_edit(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            worktree._ensure_clean_tree(project_root)  # first invocation: passes
+            worktree._boot_repo(project_root, include_gitignore=True)
+
+            worktree._ensure_clean_tree(project_root)  # must not raise
+
+    def test_ensure_clean_tree_still_blocks_other_changes_beside_gitignore(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            worktree._boot_repo(project_root, include_gitignore=True)
+            (project_root / "dirty.txt").write_text("oops", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                worktree.DirtyWorkingTreeError, "2 uncommitted"
+            ):
+                worktree._ensure_clean_tree(project_root)
+
     def test_feature_worktree_reuses_an_existing_registered_worktree(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir).resolve()
@@ -356,6 +431,44 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             self.assertEqual(effective_name, "nested")
             self.assertFalse(is_worktree)
             self.assertFalse((worktree_dir / ".worktrees" / "nested").exists())
+
+    def test_resolve_working_dir_passes_source_branch_through_to_worktree_creation(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            subprocess.run(
+                ["git", "-C", str(project_root), "branch", "other-branch"],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(project_root),
+                    "-c", "user.email=test@example.com",
+                    "-c", "user.name=test",
+                    "commit", "--allow-empty", "-q", "-m", "second commit",
+                ],
+                check=True,
+            )
+
+            active_dir, _, is_worktree = worktree._resolve_working_dir(
+                project_root,
+                use_worktree=True,
+                feature_name="ship-it",
+                source_branch="other-branch",
+            )
+
+            self.assertTrue(is_worktree)
+            checked_out = subprocess.run(
+                ["git", "-C", str(active_dir), "rev-parse", "HEAD"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            other_branch_commit = subprocess.run(
+                ["git", "-C", str(project_root), "rev-parse", "other-branch"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            self.assertEqual(checked_out, other_branch_commit)
 
     def test_feature_worktree_rejects_a_stray_unregistered_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -448,9 +561,111 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             "ship-it",
             use_worktree=True,
             plan_file=Path("docs/exec-plans/active/ship-it.md").resolve(),
+            source_branch=None,
         )
         mock_plan.assert_not_called()
         mock_review.assert_not_called()
+
+    @staticmethod
+    @patch("meow.cli._ensure_clean_tree")
+    @patch("meow.cli._boot_repo")
+    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    def test_source_branch_is_passed_through_and_skips_the_clean_tree_check(
+        mock_sprint, mock_boot, mock_clean_tree
+    ):
+        with patch(
+            "sys.argv",
+            [
+                "meow", "run", "ship-it",
+                "--name", "case-123",
+                "--source-branch", "release/1.0",
+                "--work-dir", ".",
+            ],
+        ):
+            cli.cli_main()
+
+        mock_clean_tree.assert_not_called()
+        mock_sprint.assert_awaited_once_with(
+            Path(".").resolve(),
+            "case-123",
+            "ship-it",
+            use_worktree=True,
+            plan_file=None,
+            source_branch="release/1.0",
+        )
+
+    @staticmethod
+    @patch("meow.cli._ensure_clean_tree")
+    @patch("meow.cli._boot_repo")
+    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    def test_source_branch_accepts_the_from_alias(
+        mock_sprint, mock_boot, mock_clean_tree
+    ):
+        with patch(
+            "sys.argv",
+            ["meow", "run", "ship-it", "--name", "case-123", "--from", "release/1.0"],
+        ):
+            cli.cli_main()
+
+        mock_sprint.assert_awaited_once_with(
+            Path(".").resolve(),
+            "case-123",
+            "ship-it",
+            use_worktree=True,
+            plan_file=None,
+            source_branch="release/1.0",
+        )
+
+    @staticmethod
+    @patch("meow.cli._ensure_clean_tree")
+    @patch("meow.cli._boot_repo")
+    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    def test_worktree_mode_without_source_branch_still_requires_a_clean_tree(
+        mock_sprint, mock_boot, mock_clean_tree
+    ):
+        with patch(
+            "sys.argv",
+            ["meow", "run", "ship-it", "--name", "case-123", "--work-dir", "."],
+        ):
+            cli.cli_main()
+
+        mock_clean_tree.assert_called_once_with(Path(".").resolve())
+        mock_sprint.assert_awaited_once_with(
+            Path(".").resolve(),
+            "case-123",
+            "ship-it",
+            use_worktree=True,
+            plan_file=None,
+            source_branch=None,
+        )
+
+    @staticmethod
+    @patch("meow.cli._ensure_clean_tree")
+    @patch("meow.cli._boot_repo")
+    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    def test_source_branch_with_no_worktree_still_requires_a_clean_tree(
+        mock_sprint, mock_boot, mock_clean_tree
+    ):
+        with patch(
+            "sys.argv",
+            [
+                "meow", "run", "ship-it",
+                "--source-branch", "release/1.0",
+                "--no-worktree",
+                "--work-dir", ".",
+            ],
+        ):
+            cli.cli_main()
+
+        mock_clean_tree.assert_called_once_with(Path(".").resolve())
+        mock_sprint.assert_awaited_once_with(
+            Path(".").resolve(),
+            None,
+            "ship-it",
+            use_worktree=False,
+            plan_file=None,
+            source_branch="release/1.0",
+        )
 
     @staticmethod
     @patch("meow.cli._boot_repo")
@@ -506,6 +721,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             "case-456",
             "ship-it",
             use_worktree=True,
+            source_branch=None,
         )
         mock_review.assert_not_called()
         mock_sprint.assert_not_called()
@@ -691,7 +907,12 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
         mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
         mock_sprint.assert_awaited_once_with(
-            Path(".").resolve(), None, "Change it", use_worktree=False, plan_file=None
+            Path(".").resolve(),
+            None,
+            "Change it",
+            use_worktree=False,
+            plan_file=None,
+            source_branch=None,
         )
 
 
