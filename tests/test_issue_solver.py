@@ -1,21 +1,8 @@
-import subprocess
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from meow import issue_solver
-
-
-def _init_repo(path: Path) -> None:
-    subprocess.run(["git", "init", "-q"], cwd=path, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "t@example.com"], cwd=path, check=True
-    )
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=path, check=True)
-    (path / "README.md").write_text("hi\n", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=path, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=path, check=True)
 
 
 class LoadJiraConfigTests(unittest.TestCase):
@@ -71,51 +58,6 @@ class SanitizeTests(unittest.TestCase):
 
     def test_unsafe_characters_collapse_to_a_single_dash(self):
         self.assertEqual(issue_solver._sanitize("PROJ 123 / test"), "PROJ-123-test")
-
-
-class EnsureBranchWorktreeTests(unittest.TestCase):
-    def test_creates_a_new_named_branch_worktree(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            _init_repo(repo)
-
-            worktree_dir = issue_solver._ensure_branch_worktree(
-                repo, "issue-proj-1", "issue/PROJ-1"
-            )
-
-            self.assertTrue(worktree_dir.is_dir())
-            branch = subprocess.run(
-                ["git", "branch", "--show-current"],
-                cwd=worktree_dir,
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.strip()
-            self.assertEqual(branch, "issue/PROJ-1")
-
-    def test_reuses_an_existing_worktree_directory(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            _init_repo(repo)
-            first = issue_solver._ensure_branch_worktree(
-                repo, "issue-proj-1", "issue/PROJ-1"
-            )
-
-            second = issue_solver._ensure_branch_worktree(
-                repo, "issue-proj-1", "issue/PROJ-1"
-            )
-
-            self.assertEqual(first, second)
-
-
-class PushBranchTests(unittest.TestCase):
-    def test_raises_a_clear_error_when_there_is_no_origin_remote(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            _init_repo(repo)
-
-            with self.assertRaisesRegex(RuntimeError, "No 'origin' remote"):
-                issue_solver._push_branch(repo, "issue/PROJ-1")
 
 
 class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):

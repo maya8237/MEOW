@@ -229,6 +229,57 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "venv\n.worktrees/\n",
             )
 
+    @staticmethod
+    def _init_repo(project_root: Path) -> None:
+        subprocess.run(["git", "-C", str(project_root), "init", "-q"], check=True)
+        subprocess.run(
+            [
+                "git", "-C", str(project_root),
+                "-c", "user.email=test@example.com",
+                "-c", "user.name=test",
+                "commit", "--allow-empty", "-q", "-m", "init",
+            ],
+            check=True,
+        )
+
+    def test_ensure_branch_worktree_creates_a_real_pushable_branch(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+
+            worktree_dir = worktree._ensure_branch_worktree(
+                project_root, "issue-proj-1", "issue/PROJ-1"
+            )
+
+            self.assertTrue(worktree_dir.is_dir())
+            branch = subprocess.run(
+                ["git", "-C", str(worktree_dir), "branch", "--show-current"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            self.assertEqual(branch, "issue/PROJ-1")
+
+    def test_ensure_branch_worktree_reuses_an_existing_worktree_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+            first = worktree._ensure_branch_worktree(
+                project_root, "issue-proj-1", "issue/PROJ-1"
+            )
+
+            second = worktree._ensure_branch_worktree(
+                project_root, "issue-proj-1", "issue/PROJ-1"
+            )
+
+            self.assertEqual(first, second)
+
+    def test_push_branch_raises_a_clear_error_with_no_origin_remote(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            self._init_repo(project_root)
+
+            with self.assertRaisesRegex(RuntimeError, "No 'origin' remote"):
+                worktree._push_branch(project_root, "issue/PROJ-1")
+
     # One stacked @patch per collaborator this test verifies is left alone;
     # trimming any would weaken the "every other command stays untouched"
     # assertions below.
