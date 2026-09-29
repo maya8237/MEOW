@@ -118,8 +118,9 @@ never instead of, the instruction baseline.
 
 ### Skill layout
 
-`skills/_shared/` holds the protocol pieces (prepare, review loop, lint
-discipline, resume and error rules). Each of the eight SKILL.md files stays
+`skills/_shared/native-mode.md` holds the whole protocol (helper reference,
+roles, reviewer dispatch, lint discipline, round limits, review loop, file
+conventions) in one file so it cannot drift between pieces. Each of the eight SKILL.md files stays
 short: mode selection, its parameters, which shared pieces it applies, and its
 CLI-mode fallback. `lint-fix` moves to `meow native lint --project`.
 
@@ -148,3 +149,17 @@ plan under `docs/superpowers/plans/`.
   explorer; generator fixes stay scoped to reviewer findings.
 - Hook feasibility unknown: instruction baseline works without it.
 - `gh` is not installed on this machine: delivery is push plus compare URL.
+
+## Implementation notes
+
+- Hook feasibility (checked during implementation, from Claude Code docs
+  via a research subagent; not exercised live): a plugin SKILL.md can declare
+  `hooks:` in its frontmatter, but plugin-shipped subagents ignore `hooks`.
+  Native mode therefore ships the instruction-based baseline only
+  (`meow native lint --file` after each edit, project-wide gate before each
+  review). A skill-scoped PostToolUse hook is a possible follow-up; it would
+  fire for every edit in the session, not only meow's, and needs the active
+  worktree path, so it was left out.
+- `prepare --branch` returns `use_worktree: true`; the issue flow deliberately
+  omits `--worktree` when dispatching reviewers, matching the CLI, which runs
+  issue sprints with `use_worktree=False`.

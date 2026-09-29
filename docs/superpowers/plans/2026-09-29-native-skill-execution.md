@@ -58,7 +58,7 @@
 
 ### Task 4: Shared protocol + eight skills
 
-**Files:** Create `skills/_shared/{prepare,review-loop,lint-discipline,roles}.md`; rewrite `skills/*/SKILL.md` (sprint, meow-plan, meow-review, meow-cr, review-fix-review, meow-issue, gitlab-review, lint-fix) with native default + preserved CLI-mode section; `tests/test_native_skills.py`.
+**Files:** Create `skills/_shared/native-mode.md` (single protocol file, so pieces cannot drift); rewrite `skills/*/SKILL.md` (sprint, meow-plan, meow-review, meow-cr, review-fix-review, meow-issue, gitlab-review, lint-fix) with native default + preserved CLI-mode section; `tests/test_native_skills.py`.
 
 - [ ] Structure test: frontmatter present, every `meow native <cmd>` cited exists in the parser, each skill keeps its original `meow <cmd>` fallback.
 - [ ] Commit.

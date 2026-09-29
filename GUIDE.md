@@ -305,3 +305,16 @@ shell — a task's environment is not your shell's. Verify the task once with
 | `meow review-fix-review` given a GitLab MR review file | `RuntimeError` explaining there is no local checkout of the merge request's code to fix |
 | `meow review-fix-review` with `--review-file` omitted and no review file anywhere in `docs_dir` | `FileNotFoundError` naming `docs_dir` and pointing at `--review-file` |
 | `meow review-fix-review` (either flavor) never passes within `max_rounds` | `RuntimeError` naming the review file, same stop/raise shape as `meow review` |
+
+## 9. Native (in-session) skill mode
+
+When meow is installed as a Claude Code plugin, its skills run **natively** by
+default: the calling session plans and implements, and a fresh subagent
+reviews each round. Nothing extra is needed in `.harness.toml` -- `docs_dir`,
+`max_rounds`, `[[lint]]`, `models` and `docs/RULES.md` apply identically in both
+modes, and the plan/review files land in the same place, so either mode can
+continue the other's work. Only `meow` on PATH is required (for the agent-free
+`meow native ...` helper). In native mode `[jira.mcp]` and `[gitlab.mcp]` are
+not used: the session's own connected Jira/GitLab tools are used instead. Ask
+the skill for "CLI mode" to run through the Agent SDK, and use the `meow` CLI
+directly for anything unattended (scheduled tasks, terminals).

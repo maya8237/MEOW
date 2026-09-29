@@ -53,6 +53,21 @@ To onboard a *different* repo onto meow, see [GUIDE.md](GUIDE.md) — it's
 written for a Claude session working in that other repo, and covers what's
 strictly required versus merely recommended, generic to any language.
 
+## Native (in-session) skill execution
+
+Each skill runs in one of two modes. **Native** (default when invoked from
+Claude Code): the calling session plans/generates, a fresh Task subagent
+reviews each round, and `meow native <prepare|latest-plan|latest-review|
+verdict|lint|round|prompt|push>` supplies the deterministic facts as JSON
+(no agents started). **CLI**: the skill shells out to `meow <command>` and
+the Agent SDK does the work; this path is unchanged and is what runs
+headless. The shared native protocol is `skills/_shared/native-mode.md`;
+role prompts live once in `src/meow/prompts.py` and feed both the SDK
+agents and `meow native prompt`, so change a prompt there, never in a
+skill. Both modes must keep the same `.harness.toml` semantics, file names
+and `SUMMARY:`/`STATUS:` verdict format. Design:
+`docs/superpowers/specs/2026-09-29-native-skill-execution-design.md`.
+
 ## Claude Code plugin
 
 This repo is also a Claude Code plugin (`.claude-plugin/plugin.json` +
