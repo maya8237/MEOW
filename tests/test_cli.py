@@ -339,18 +339,23 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             self.assertEqual(first, second)
             self.assertTrue((second / "wip.txt").exists())
 
-    def test_feature_worktree_rejects_being_pointed_at_an_existing_worktree(
-        self,
-    ):
+    def test_resolve_working_dir_uses_an_existing_worktree_in_place(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir).resolve()
             self._init_repo(project_root)
             worktree_dir = worktree._ensure_feature_worktree(
                 project_root, "ship-it"
             )
+            (worktree_dir / "wip.txt").write_text("partial run", encoding="utf-8")
 
-            with self.assertRaisesRegex(RuntimeError, "--no-worktree"):
-                worktree._ensure_feature_worktree(worktree_dir, "nested")
+            active_dir, effective_name, is_worktree = worktree._resolve_working_dir(
+                worktree_dir, use_worktree=True, feature_name="nested"
+            )
+
+            self.assertEqual(active_dir, worktree_dir)
+            self.assertEqual(effective_name, "nested")
+            self.assertFalse(is_worktree)
+            self.assertFalse((worktree_dir / ".worktrees" / "nested").exists())
 
     def test_feature_worktree_rejects_a_stray_unregistered_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:
