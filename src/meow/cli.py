@@ -46,6 +46,21 @@ def _add_feature_args(parser: argparse.ArgumentParser):
         action="store_true",
         help="Run in the main repo instead of creating/using a .worktrees entry.",
     )
+    parser.add_argument(
+        "--source-branch", "--from", "-b",
+        dest="source_branch",
+        default=None,
+        help=(
+            "Branch a freshly created worktree should be checked out from, "
+            "instead of the main checkout's current HEAD. Ignored when an "
+            "existing worktree is reused, or when --no-worktree is set "
+            "(there is no worktree to create). Skips the uncommitted-"
+            "changes check for this invocation, but only together with "
+            "worktree mode (i.e. not --no-worktree) -- the new worktree is "
+            "built from this branch, not the main checkout's current "
+            "state, so its own uncommitted changes don't apply to it."
+        ),
+    )
 
 
 def _validate_feature_name_requirement(parser: argparse.ArgumentParser, args) -> None:
@@ -244,6 +259,7 @@ def _dispatch_feature(args, working_dir: Path, *, use_worktree: bool) -> bool:
                 args.request,
                 use_worktree=use_worktree,
                 plan_file=plan_file,
+                source_branch=args.source_branch,
             )
         )
         return True
@@ -254,6 +270,7 @@ def _dispatch_feature(args, working_dir: Path, *, use_worktree: bool) -> bool:
                 args.feature_name,
                 args.request,
                 use_worktree=use_worktree,
+                source_branch=args.source_branch,
             )
         )
         return True
@@ -268,8 +285,19 @@ def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
 
 def _requires_clean_tree(args) -> bool:
     """`run`/`issue` always edit in place; `lint-fix` only does unless
-    --report-only, which fixes nothing and is as read-only as `cr`."""
-    if args.command in {"run", "issue"}:
+    --report-only, which fixes nothing and is as read-only as `cr`.
+
+    `run` skips the check only when BOTH hold: a worktree is being created
+    for this invocation (worktree mode, i.e. not --no-worktree) AND
+    --source-branch was explicitly given for it -- the worktree is then
+    built from that branch, not the main checkout's current state, so the
+    main checkout's own uncommitted changes are irrelevant to it. Every
+    other combination -- no worktree, or a worktree with no source branch
+    -- keeps the check exactly as before.
+    """
+    if args.command == "run":
+        return not (not args.no_worktree and args.source_branch)
+    if args.command == "issue":
         return True
     return args.command == "lint-fix" and not args.report_only
 

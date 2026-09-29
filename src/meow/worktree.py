@@ -53,6 +53,11 @@ def _is_linked_worktree(path: Path) -> bool:
     )
 
 
+def _is_gitignore_change(status_line: str) -> bool:
+    """True if one `git status --porcelain` line is only about `.gitignore`."""
+    return status_line[3:].strip() == ".gitignore"
+
+
 def _ensure_clean_tree(working_dir: Path) -> None:
     """Raise `DirtyWorkingTreeError` if the repo has uncommitted changes.
 
@@ -61,6 +66,14 @@ def _ensure_clean_tree(working_dir: Path) -> None:
     is itself a linked worktree -- resuming one with uncommitted changes from
     a prior partial run is expected, not accidental, so only the main repo's
     own cleanliness is enforced here.
+
+    A dirty `.gitignore` alone never blocks: `_boot_repo` is the only thing
+    meow itself ever edits in the main repo, it never commits that edit, and
+    it runs on every invocation -- without this, a fresh project's very next
+    invocation would be blocked by meow's own bookkeeping rather than
+    anything a user needs to act on. `.gitignore` changes alongside other
+    real changes still show up in the reported list; only the block itself
+    is skipped when `.gitignore` is the sole thing dirty.
     """
     git = shutil.which("git")
     if not git:
@@ -71,6 +84,9 @@ def _ensure_clean_tree(working_dir: Path) -> None:
     if result.returncode != 0 or not result.stdout.strip():
         return
     changes = result.stdout.rstrip().splitlines()
+    blocking_changes = [line for line in changes if not _is_gitignore_change(line)]
+    if not blocking_changes:
+        return
     raise DirtyWorkingTreeError(
         f"{working_dir} has {len(changes)} uncommitted change(s); commit or "
         "stash them before running meow:\n" + "\n".join(changes)
@@ -88,20 +104,29 @@ def _resolve_working_dir(
     *,
     use_worktree: bool,
     feature_name: str | None,
+    source_branch: str | None = None,
 ) -> tuple[Path, str | None, bool]:
     """Return the active directory and optional feature name.
 
     If `working_dir` is already a linked git worktree, it is used in place,
     the same as if `use_worktree` were False -- pointing `--working-dir` at
     an existing worktree means "work here", not "nest another worktree
-    inside it".
+    inside it". `source_branch`, when given, is the branch a freshly
+    created worktree checks out instead of the main checkout's current
+    HEAD; see `_ensure_feature_worktree`.
     """
     if not use_worktree or _is_linked_worktree(working_dir):
         return working_dir, feature_name, False
     if not feature_name:
         raise ValueError("feature_name is required when use_worktree=True")
 
-    return _ensure_feature_worktree(working_dir, feature_name), feature_name, True
+    return (
+        _ensure_feature_worktree(
+            working_dir, feature_name, source_branch=source_branch
+        ),
+        feature_name,
+        True,
+    )
 
 
 def _registered_worktree_paths(git: str, working_dir: Path) -> set[Path]:
@@ -116,7 +141,9 @@ def _registered_worktree_paths(git: str, working_dir: Path) -> set[Path]:
     }
 
 
-def _ensure_feature_worktree(working_dir: Path, feature_name: str) -> Path:
+def _ensure_feature_worktree(
+    working_dir: Path, feature_name: str, *, source_branch: str | None = None
+) -> Path:
     """Create a per-feature worktree under the repo's .worktrees directory.
 
     Raises if `git worktree add` fails, rather than silently falling back to
@@ -127,6 +154,11 @@ def _ensure_feature_worktree(working_dir: Path, feature_name: str) -> Path:
     `git worktree remove` elsewhere, or created without git) -- reusing it
     silently would only fail confusingly later, deep in some agent's own
     git calls.
+
+    `source_branch`, when given, checks the new worktree out from that
+    branch instead of the main checkout's current HEAD -- ignored when an
+    existing worktree is being reused rather than created, since resuming
+    one takes priority over re-branching it.
 
     Callers must not pass a `working_dir` that is itself already a linked
     worktree -- `_resolve_working_dir` routes that case around this
@@ -157,21 +189,20 @@ def _ensure_feature_worktree(working_dir: Path, feature_name: str) -> Path:
             f"worktree at {worktree_dir}."
         )
 
+    argv = [
+        git,
+        "-C",
+        str(working_dir),
+        "worktree",
+        "add",
+        "--detach",
+        str(worktree_dir),
+    ]
+    if source_branch:
+        argv.append(source_branch)
+
     try:
-        subprocess.run(
-            [
-                git,
-                "-C",
-                str(working_dir),
-                "worktree",
-                "add",
-                "--detach",
-                str(worktree_dir),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        subprocess.run(argv, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(
             f"Failed to create worktree at {worktree_dir}: "

@@ -25,6 +25,11 @@ grades it, reporting PASS/FAIL without editing anything (needs
 `meow lint-fix` runs every configured `[[lint]]` command and fixes what it
 finds; `meow lint-fix --report-only` only runs and reports, fixing nothing
 -- that's the mode the `lint-fix` skill uses, doing the fixing itself.
+`run`/`plan --source-branch BRANCH` (also `--from`/`-b`) checks a freshly
+created worktree out from that branch instead of the main checkout's
+current HEAD. `run` skips the uncommitted-changes check only when both a
+worktree is being created (not `--no-worktree`) and `--source-branch` was
+given for it; every other combination keeps the check as before.
 Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
 select the project directory.
 
