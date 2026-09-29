@@ -29,15 +29,43 @@ class DirtyWorkingTreeError(RuntimeError):
     """The git working tree has uncommitted changes meow refuses to build on."""
 
 
+def _is_linked_worktree(path: Path) -> bool:
+    """True if `path` is a linked git worktree rather than the main checkout.
+
+    A linked worktree's own `--git-dir` (its private per-worktree state
+    under `<main>/.git/worktrees/<name>`) differs from `--git-common-dir`
+    (the repository shared with the main checkout and every other worktree);
+    the main checkout's are the same path. Used to tell resumable,
+    feature-scoped WIP from the main repo's own uncommitted changes, which
+    `_ensure_clean_tree` still guards. False if git is unavailable or `path`
+    isn't inside a git repo at all.
+    """
+    git = shutil.which("git")
+    if not git:
+        return False
+    git_dir = _run_git([git, "rev-parse", "--git-dir"], cwd=path)
+    common_dir = _run_git([git, "rev-parse", "--git-common-dir"], cwd=path)
+    if git_dir.returncode != 0 or common_dir.returncode != 0:
+        return False
+    return (
+        (path / git_dir.stdout.strip()).resolve()
+        != (path / common_dir.stdout.strip()).resolve()
+    )
+
+
 def _ensure_clean_tree(working_dir: Path) -> None:
     """Raise `DirtyWorkingTreeError` if the repo has uncommitted changes.
 
     Must run before `_boot_repo`, which may itself edit `.gitignore`. Skipped
-    when `working_dir` isn't a git repo or git is unavailable -- there is
-    nothing to protect, and the worktree steps report those cases themselves.
+    when `working_dir` isn't a git repo, git is unavailable, or `working_dir`
+    is itself a linked worktree -- resuming one with uncommitted changes from
+    a prior partial run is expected, not accidental, so only the main repo's
+    own cleanliness is enforced here.
     """
     git = shutil.which("git")
     if not git:
+        return
+    if _is_linked_worktree(working_dir):
         return
     result = _run_git([git, "status", "--porcelain"], cwd=working_dir)
     if result.returncode != 0 or not result.stdout.strip():
@@ -70,23 +98,57 @@ def _resolve_working_dir(
     return _ensure_feature_worktree(working_dir, feature_name), feature_name, True
 
 
+def _registered_worktree_paths(git: str, working_dir: Path) -> set[Path]:
+    """Absolute paths git currently has registered as worktrees of this repo."""
+    result = _run_git([git, "worktree", "list", "--porcelain"], cwd=working_dir)
+    if result.returncode != 0:
+        return set()
+    return {
+        Path(line.removeprefix("worktree ").strip()).resolve()
+        for line in result.stdout.splitlines()
+        if line.startswith("worktree ")
+    }
+
+
 def _ensure_feature_worktree(working_dir: Path, feature_name: str) -> Path:
     """Create a per-feature worktree under the repo's .worktrees directory.
 
     Raises if `git worktree add` fails, rather than silently falling back to
     a plain, non-git directory -- a generator session pointed at such a
     directory would run against an empty project with no error ever
-    surfaced.
+    surfaced. Also raises up front if `working_dir` is itself already a
+    linked worktree (nesting a second one inside it is never what pointing
+    `--working-dir` at an existing worktree means), and if an existing
+    `.worktrees/<feature_name>` directory is no longer a registered worktree
+    (e.g. left behind after `git worktree remove` elsewhere, or created
+    without git) -- reusing it silently would only fail confusingly later,
+    deep in some agent's own git calls.
     """
+    if _is_linked_worktree(working_dir):
+        raise RuntimeError(
+            f"{working_dir} is already a linked git worktree; pass "
+            "--no-worktree to run meow directly in it instead of nesting "
+            "another worktree inside it."
+        )
+
     worktrees_dir = working_dir / ".worktrees"
     worktree_dir = worktrees_dir / feature_name
+    git = shutil.which("git")
 
     if worktree_dir.exists():
+        if git and worktree_dir.resolve() not in _registered_worktree_paths(
+            git, working_dir
+        ):
+            raise RuntimeError(
+                f"{worktree_dir} exists but is not a registered git "
+                f"worktree of {working_dir} -- it may have been removed "
+                "with `git worktree remove` while the directory itself was "
+                "left behind, or created without git. Delete it and rerun."
+            )
         return worktree_dir
 
     worktrees_dir.mkdir(parents=True, exist_ok=True)
 
-    git = shutil.which("git")
     if not git:
         raise RuntimeError(
             "git is not installed or not on PATH; cannot create a feature "
