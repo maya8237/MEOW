@@ -24,7 +24,7 @@ explorer = "haiku"
 # generator = "claude-opus-5-5"
 # reviewer = "claude-opus-5-5"
 
-# Optional -- only needed for `meow issue-solver`. Declares the Jira project
+# Optional -- only needed for `meow issue`. Declares the Jira project
 # to search and how to launch the Jira MCP server it talks to. The server's
 # own credentials (JIRA_URL, JIRA_USERNAME, JIRA_API_TOKEN, or
 # JIRA_PERSONAL_TOKEN for Server/Data Center) belong in the environment, not

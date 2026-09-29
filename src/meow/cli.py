@@ -118,14 +118,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     _add_common_args(cr_parser)
 
-    issue_solver_parser = subparsers.add_parser(
-        "issue-solver",
+    issue_parser = subparsers.add_parser(
+        "issue",
         help=(
             "Fetch a Jira issue (or the latest one in the configured "
             "project) and solve it end to end in a pushed worktree branch."
         ),
     )
-    issue_solver_parser.add_argument(
+    issue_parser.add_argument(
         "issue",
         nargs="?",
         default=None,
@@ -134,7 +134,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "recently created issue in [jira].project_key."
         ),
     )
-    _add_common_args(issue_solver_parser)
+    _add_common_args(issue_parser)
 
     return parser
 
@@ -165,7 +165,7 @@ def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
         asyncio.run(run_review(working_dir, plan_file))
     elif args.command == "cr":
         asyncio.run(run_prompt_review(working_dir, args.prompt))
-    elif args.command == "issue-solver":
+    elif args.command == "issue":
         result = asyncio.run(run_issue_solver(working_dir, args.issue))
         print(json.dumps(result))
 
@@ -180,7 +180,7 @@ def cli_main():
 
     _validate_feature_name_requirement(parser, args)
     _boot_repo(
-        working_dir, include_gitignore=use_worktree or args.command == "issue-solver"
+        working_dir, include_gitignore=use_worktree or args.command == "issue"
     )
     _dispatch(args, working_dir, use_worktree=use_worktree)
 
