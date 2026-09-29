@@ -42,11 +42,31 @@ explorer = "haiku"
 # [jira], no project key is needed since the merge request URL is passed on
 # the command line each time. There is no single de facto GitLab MCP server
 # the way mcp-atlassian is for Jira -- pick one that exposes merge-request
-# read tools, and put its own credentials (typically a GitLab URL and a
-# personal/project access token) in the environment, not here.
+# read tools.
+#
+# Unlike [jira.mcp] (whose server reads its own credentials from the
+# environment), [gitlab.mcp.env] is passed straight through as that
+# server's environment when meow launches it -- set whatever variables
+# your chosen server needs (typically a GitLab URL and a personal/project
+# access token) directly here, by name.
+#
+# SECURITY: .harness.toml is an ordinary project file, meant to be
+# committed like any other config -- it is NOT gitignored. Putting a real
+# access token in [gitlab.mcp.env] commits that secret to your repo's
+# history in plain text, readable by anyone with read access (including
+# forks, CI logs, etc.) and hard to fully revoke even after rotating it.
+# If that's not acceptable for your repo, don't put the real value here --
+# keep the token in your actual shell/CI environment instead and reference
+# it in [gitlab.mcp.env] however your chosen MCP server supports (e.g. if
+# it supports variable expansion in its own config), or gitignore this
+# file (or a local override of it) if your project's conventions allow that.
 # [gitlab.mcp]
 # command = "<program that launches your GitLab MCP server>"
 # args = []
+#
+# [gitlab.mcp.env]
+# GITLAB_URL = "https://gitlab.example.com"
+# GITLAB_TOKEN = "<your GitLab personal/project access token>"
 
 # ---------------------------------------------------------------------------
 # Lint commands -- one [[lint]] table per command, any number of them.

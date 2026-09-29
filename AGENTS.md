@@ -30,6 +30,15 @@ created worktree out from that branch instead of the main checkout's
 current HEAD. `run` skips the uncommitted-changes check only when both a
 worktree is being created (not `--no-worktree`) and `--source-branch` was
 given for it; every other combination keeps the check as before.
+`run`/`issue --manually-approve-plan` (also `-m`) prints the plan after the
+planner writes it and prompts on stdin before the generator implements it;
+declining exits non-zero without running the generator. `plan` doesn't take
+it -- it never implements what it plans. Never pass it on a scheduled
+`meow issue` run: nothing is attached to answer the prompt, so it hangs.
+`run --resume-at {generate,review}` (default `generate`) picks up an
+interrupted sprint at the review stage instead of re-running the
+generator, using `--plan-file` if given or the latest plan in `docs_dir`
+otherwise; `plan` and `issue` don't take it.
 Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
 select the project directory.
 

@@ -1,8 +1,10 @@
 import asyncio
+import io
 import os
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -135,6 +137,268 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             mock_review_plan.assert_awaited_once_with(plan_file)
             self.assertEqual(mock_run_planner.call_count, 0)
             self.assertEqual(mock_run_reviewer.call_count, 0)
+
+    def test_run_sprint_raises_when_the_plan_is_not_approved(self):
+        config = {
+            "models": {
+                "planner": "x", "generator": "x", "reviewer": "x", "explorer": "x",
+            },
+            "lint": [],
+            "docs_dir": "docs",
+            "max_rounds": 1,
+            "lint_timeout": 60,
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            working_dir = Path(tmpdir)
+            plan_file = working_dir / "docs" / "plan.md"
+            mock_approve = MagicMock(return_value=False)
+
+            with (
+                patch("meow.orchestrator.load_config", return_value=config),
+                patch("meow.orchestrator.Generator") as mock_generator_cls,
+                patch.object(
+                    PlannerAgent, "run", new_callable=AsyncMock
+                ) as mock_planner_run,
+            ):
+                mock_planner_run.return_value = plan_file
+
+                with self.assertRaisesRegex(
+                    orchestrator.PlanNotApprovedError, "was not approved"
+                ):
+                    asyncio.run(
+                        orchestrator.run_sprint(
+                            working_dir,
+                            "ship-it",
+                            "Add CSV export",
+                            use_worktree=False,
+                            approve_plan=mock_approve,
+                        )
+                    )
+
+            mock_approve.assert_called_once_with(plan_file)
+            mock_generator_cls.assert_not_called()
+
+    def test_run_sprint_proceeds_when_the_plan_is_approved(self):
+        config = {
+            "models": {
+                "planner": "x", "generator": "x", "reviewer": "x", "explorer": "x",
+            },
+            "lint": [],
+            "docs_dir": "docs",
+            "max_rounds": 1,
+            "lint_timeout": 60,
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            working_dir = Path(tmpdir)
+            plan_file = working_dir / "docs" / "plan.md"
+            mock_approve = MagicMock(return_value=True)
+
+            mock_generator = MagicMock()
+            mock_generator.__aenter__ = AsyncMock(return_value=mock_generator)
+            mock_generator.__aexit__ = AsyncMock(return_value=False)
+            mock_generator.implement = AsyncMock(return_value="")
+
+            with (
+                patch("meow.orchestrator.load_config", return_value=config),
+                patch(
+                    "meow.orchestrator.Generator", return_value=mock_generator
+                ),
+                patch.object(
+                    PlannerAgent, "run", new_callable=AsyncMock
+                ) as mock_planner_run,
+                patch.object(
+                    ReviewerAgent, "review_plan", new_callable=AsyncMock
+                ) as mock_review_plan,
+            ):
+                mock_planner_run.return_value = plan_file
+                mock_review_plan.return_value = ("PASS", "STATUS: PASS\n")
+
+                result = asyncio.run(
+                    orchestrator.run_sprint(
+                        working_dir,
+                        "ship-it",
+                        "Add CSV export",
+                        use_worktree=False,
+                        approve_plan=mock_approve,
+                    )
+                )
+
+            self.assertIsNone(result)
+            mock_approve.assert_called_once_with(plan_file)
+            mock_generator.implement.assert_awaited_once()
+
+    def test_run_sprint_resumes_at_review_without_rerunning_the_generator(self):
+        config = {
+            "models": {
+                "planner": "x", "generator": "x", "reviewer": "x", "explorer": "x",
+            },
+            "lint": [],
+            "docs_dir": "docs",
+            "max_rounds": 1,
+            "lint_timeout": 60,
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            working_dir = Path(tmpdir)
+            plan_file = working_dir / "docs" / "plan.md"
+            plan_file.parent.mkdir(parents=True)
+            plan_file.write_text("# Plan", encoding="utf-8")
+
+            with (
+                patch("meow.orchestrator.load_config", return_value=config),
+                patch("meow.orchestrator.Generator") as mock_generator_cls,
+                patch.object(
+                    ReviewerAgent, "review_plan", new_callable=AsyncMock
+                ) as mock_review_plan,
+                patch.object(
+                    PlannerAgent, "run", new_callable=AsyncMock
+                ) as mock_planner_run,
+            ):
+                mock_review_plan.return_value = ("PASS", "STATUS: PASS\n")
+
+                result = asyncio.run(
+                    orchestrator.run_sprint(
+                        working_dir,
+                        "ship-it",
+                        "Add CSV export",
+                        use_worktree=False,
+                        plan_file=plan_file,
+                        resume_at="review",
+                    )
+                )
+
+            self.assertIsNone(result)
+            mock_review_plan.assert_awaited_once_with(plan_file)
+            mock_generator_cls.assert_not_called()
+            mock_planner_run.assert_not_called()
+
+    def test_run_sprint_resume_at_review_auto_detects_the_latest_plan(self):
+        config = {
+            "models": {
+                "planner": "x", "generator": "x", "reviewer": "x", "explorer": "x",
+            },
+            "lint": [],
+            "docs_dir": "docs",
+            "max_rounds": 1,
+            "lint_timeout": 60,
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            working_dir = Path(tmpdir)
+            docs_dir = working_dir / "docs"
+            docs_dir.mkdir()
+            plan_file = docs_dir / "existing-plan.md"
+            plan_file.write_text("# Plan", encoding="utf-8")
+
+            with (
+                patch("meow.orchestrator.load_config", return_value=config),
+                patch("meow.orchestrator.Generator") as mock_generator_cls,
+                patch.object(
+                    ReviewerAgent, "review_plan", new_callable=AsyncMock
+                ) as mock_review_plan,
+            ):
+                mock_review_plan.return_value = ("PASS", "STATUS: PASS\n")
+
+                result = asyncio.run(
+                    orchestrator.run_sprint(
+                        working_dir,
+                        "ship-it",
+                        "Add CSV export",
+                        use_worktree=False,
+                        resume_at="review",
+                    )
+                )
+
+            self.assertIsNone(result)
+            mock_review_plan.assert_awaited_once_with(plan_file)
+            mock_generator_cls.assert_not_called()
+
+    def test_run_sprint_resume_at_review_still_gates_on_approval(self):
+        config = {
+            "models": {
+                "planner": "x", "generator": "x", "reviewer": "x", "explorer": "x",
+            },
+            "lint": [],
+            "docs_dir": "docs",
+            "max_rounds": 1,
+            "lint_timeout": 60,
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            working_dir = Path(tmpdir)
+            plan_file = working_dir / "docs" / "plan.md"
+            plan_file.parent.mkdir(parents=True)
+            plan_file.write_text("# Plan", encoding="utf-8")
+            mock_approve = MagicMock(return_value=False)
+
+            with (
+                patch("meow.orchestrator.load_config", return_value=config),
+                patch("meow.orchestrator.Generator") as mock_generator_cls,
+                patch.object(
+                    ReviewerAgent, "review_plan", new_callable=AsyncMock
+                ) as mock_review_plan,
+                self.assertRaises(orchestrator.PlanNotApprovedError),
+            ):
+                asyncio.run(
+                    orchestrator.run_sprint(
+                        working_dir,
+                        "ship-it",
+                        "Add CSV export",
+                        use_worktree=False,
+                        plan_file=plan_file,
+                        resume_at="review",
+                        approve_plan=mock_approve,
+                    )
+                )
+
+            mock_approve.assert_called_once_with(plan_file)
+            mock_review_plan.assert_not_awaited()
+            mock_generator_cls.assert_not_called()
+
+    def test_run_sprint_rejects_an_invalid_resume_at_value(self):
+        with self.assertRaisesRegex(ValueError, "resume_at"):
+            asyncio.run(
+                orchestrator.run_sprint(
+                    Path("/project"),
+                    "ship-it",
+                    "Add CSV export",
+                    use_worktree=False,
+                    resume_at="somewhere-else",
+                )
+            )
+
+    def test_run_sprint_resume_at_review_raises_when_no_plan_exists_anywhere(self):
+        config = {
+            "models": {
+                "planner": "x", "generator": "x", "reviewer": "x", "explorer": "x",
+            },
+            "lint": [],
+            "docs_dir": "docs",
+            "max_rounds": 1,
+            "lint_timeout": 60,
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            working_dir = Path(tmpdir)
+
+            with (
+                patch("meow.orchestrator.load_config", return_value=config),
+                patch("meow.orchestrator.Generator") as mock_generator_cls,
+                self.assertRaisesRegex(FileNotFoundError, "No plan file found"),
+            ):
+                asyncio.run(
+                    orchestrator.run_sprint(
+                        working_dir,
+                        "ship-it",
+                        "Add CSV export",
+                        use_worktree=False,
+                        resume_at="review",
+                    )
+                )
+
+            mock_generator_cls.assert_not_called()
 
     def test_no_prompt_review_falls_back_to_full_project_when_diff_is_empty(self):
         instructions = reviewer_agent._no_prompt_review_instructions(
@@ -562,6 +826,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             use_worktree=True,
             plan_file=Path("docs/exec-plans/active/ship-it.md").resolve(),
             source_branch=None,
+            approve_plan=None,
+            resume_at="generate",
         )
         mock_plan.assert_not_called()
         mock_review.assert_not_called()
@@ -592,6 +858,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             use_worktree=True,
             plan_file=None,
             source_branch="release/1.0",
+            approve_plan=None,
+            resume_at="generate",
         )
 
     @staticmethod
@@ -614,6 +882,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             use_worktree=True,
             plan_file=None,
             source_branch="release/1.0",
+            approve_plan=None,
+            resume_at="generate",
         )
 
     @staticmethod
@@ -637,6 +907,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             use_worktree=True,
             plan_file=None,
             source_branch=None,
+            approve_plan=None,
+            resume_at="generate",
         )
 
     @staticmethod
@@ -665,6 +937,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             use_worktree=False,
             plan_file=None,
             source_branch="release/1.0",
+            approve_plan=None,
+            resume_at="generate",
         )
 
     @staticmethod
@@ -787,7 +1061,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             cli.cli_main()
 
         mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=True)
-        mock_issue_solver.assert_awaited_once_with(Path(".").resolve(), "PROJ-1")
+        mock_issue_solver.assert_awaited_once_with(
+            Path(".").resolve(), "PROJ-1", approve_plan=None
+        )
 
     @staticmethod
     def test_issue_command_accepts_no_issue_key():
@@ -804,7 +1080,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             }
             cli.cli_main()
 
-        mock_issue_solver.assert_awaited_once_with(Path(".").resolve(), None)
+        mock_issue_solver.assert_awaited_once_with(
+            Path(".").resolve(), None, approve_plan=None
+        )
 
     @staticmethod
     def test_gitlab_review_command_is_supported():
@@ -913,6 +1191,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             use_worktree=False,
             plan_file=None,
             source_branch=None,
+            approve_plan=None,
+            resume_at="generate",
         )
 
 
@@ -963,6 +1243,216 @@ class LatestPlanFileTests(unittest.TestCase):
             self.assertEqual(
                 orchestrator._latest_plan_file(docs_dir), plan_file
             )
+
+
+class PlanApprovalPromptTests(unittest.TestCase):
+    """`_prompt_plan_approval` is the default `approve_plan` callback for
+    --manually-approve-plan -- established here since no interactive-prompt
+    testing pattern existed in this repo before: patch `meow.cli.input`
+    (never real stdin) and capture stdout with `redirect_stdout` rather
+    than asserting against the live console."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self.plan_file = Path(self._tmpdir.name) / "plan.md"
+        self.plan_file.write_text(
+            "# Sprint Contract\n\n1. Do the thing.\n", encoding="utf-8"
+        )
+
+    def test_prints_the_plan_and_approves_on_y(self):
+        out = io.StringIO()
+        with (
+            patch("meow.cli.input", return_value="y") as mock_input,
+            redirect_stdout(out),
+        ):
+            approved = cli._prompt_plan_approval(self.plan_file)
+
+        self.assertTrue(approved)
+        self.assertIn("Do the thing.", out.getvalue())
+        self.assertIn(str(self.plan_file), out.getvalue())
+        mock_input.assert_called_once_with("Proceed with this plan? [y/N]: ")
+
+    def test_accepts_yes_case_insensitively(self):
+        with (
+            patch("meow.cli.input", return_value="YES"),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertTrue(cli._prompt_plan_approval(self.plan_file))
+
+    def test_declines_on_n(self):
+        with patch("meow.cli.input", return_value="n"), redirect_stdout(io.StringIO()):
+            self.assertFalse(cli._prompt_plan_approval(self.plan_file))
+
+    def test_declines_on_empty_answer(self):
+        with patch("meow.cli.input", return_value=""), redirect_stdout(io.StringIO()):
+            self.assertFalse(cli._prompt_plan_approval(self.plan_file))
+
+    def test_declines_on_eof_instead_of_raising(self):
+        with (
+            patch("meow.cli.input", side_effect=EOFError),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertFalse(cli._prompt_plan_approval(self.plan_file))
+
+
+class ManuallyApprovePlanFlagTests(unittest.TestCase):
+    """CLI-dispatch wiring for -m/--manually-approve-plan on `run`/`issue`
+    -- `meow plan` never runs the generator, so it has no approval gate to
+    offer and does not take this flag."""
+
+    @patch("meow.cli._ensure_clean_tree")
+    @patch("meow.cli._boot_repo")
+    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    def test_run_passes_the_prompt_callback_when_flag_is_given(
+        self, mock_sprint, mock_boot, mock_clean_tree
+    ):
+        with patch(
+            "sys.argv",
+            ["meow", "run", "ship-it", "--name", "case-123", "-m"],
+        ):
+            cli.cli_main()
+
+        self.assertEqual(mock_sprint.await_count, 1)
+        mock_sprint.assert_awaited_once_with(
+            Path(".").resolve(),
+            "case-123",
+            "ship-it",
+            use_worktree=True,
+            plan_file=None,
+            source_branch=None,
+            approve_plan=cli._prompt_plan_approval,
+            resume_at="generate",
+        )
+
+    @patch("meow.cli._ensure_clean_tree")
+    @patch("meow.cli._boot_repo")
+    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    def test_run_declining_the_plan_exits_cleanly_without_a_traceback(
+        self, mock_sprint, mock_boot, mock_clean_tree
+    ):
+        mock_sprint.side_effect = orchestrator.PlanNotApprovedError(
+            "Plan /tmp/plan.md was not approved -- stopping before the "
+            "generator runs."
+        )
+
+        with (
+            patch("sys.argv", ["meow", "run", "ship-it", "--name", "case-123", "-m"]),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            cli.cli_main()
+
+        self.assertEqual(ctx.exception.code, 1)
+
+    def test_issue_passes_the_prompt_callback_when_flag_is_given(self):
+        with (
+            patch("meow.cli._ensure_clean_tree"),
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_issue_solver", new_callable=AsyncMock
+            ) as mock_issue_solver,
+            patch(
+                "sys.argv",
+                ["meow", "issue", "PROJ-1", "--manually-approve-plan"],
+            ),
+        ):
+            mock_issue_solver.return_value = {
+                "issue": "PROJ-1", "branch": "issue/PROJ-1"
+            }
+            cli.cli_main()
+
+        self.assertEqual(mock_issue_solver.await_count, 1)
+        mock_issue_solver.assert_awaited_once_with(
+            Path(".").resolve(), "PROJ-1", approve_plan=cli._prompt_plan_approval
+        )
+
+    def test_issue_declining_the_plan_exits_cleanly_via_issue_unresolved_error(self):
+        from meow.issue_solver import IssueUnresolvedError
+
+        with (
+            patch("meow.cli._ensure_clean_tree"),
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_issue_solver",
+                new=AsyncMock(
+                    side_effect=IssueUnresolvedError(
+                        "Plan /tmp/plan.md was not approved -- stopping "
+                        "before the generator runs."
+                    )
+                ),
+            ),
+            patch("sys.argv", ["meow", "issue", "PROJ-1", "-m"]),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            cli.cli_main()
+
+        self.assertEqual(ctx.exception.code, 1)
+
+    def test_plan_command_does_not_accept_manually_approve_plan_flag(self):
+        parser = cli._build_arg_parser()
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["plan", "feature request", "-m"])
+
+
+class ResumeAtFlagTests(unittest.TestCase):
+    """CLI-dispatch wiring for --resume-at on `run` only -- `meow plan`
+    never runs the generator, so it has nothing to resume, and `meow
+    issue` is out of scope for this flag (see the plan doc)."""
+
+    @patch("meow.cli._ensure_clean_tree")
+    @patch("meow.cli._boot_repo")
+    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    def test_resume_at_review_is_passed_through(
+        self, mock_sprint, mock_boot, mock_clean_tree
+    ):
+        with patch(
+            "sys.argv",
+            ["meow", "run", "ship-it", "--name", "case-123", "--resume-at", "review"],
+        ):
+            cli.cli_main()
+
+        self.assertEqual(mock_sprint.await_count, 1)
+        mock_sprint.assert_awaited_once_with(
+            Path(".").resolve(),
+            "case-123",
+            "ship-it",
+            use_worktree=True,
+            plan_file=None,
+            source_branch=None,
+            approve_plan=None,
+            resume_at="review",
+        )
+
+    @patch("meow.cli._ensure_clean_tree")
+    @patch("meow.cli._boot_repo")
+    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    def test_resume_at_defaults_to_generate(
+        self, mock_sprint, mock_boot, mock_clean_tree
+    ):
+        with patch("sys.argv", ["meow", "run", "ship-it", "--name", "case-123"]):
+            cli.cli_main()
+
+        self.assertEqual(mock_sprint.await_count, 1)
+        mock_sprint.assert_awaited_once_with(
+            Path(".").resolve(),
+            "case-123",
+            "ship-it",
+            use_worktree=True,
+            plan_file=None,
+            source_branch=None,
+            approve_plan=None,
+            resume_at="generate",
+        )
+
+    def test_issue_command_does_not_accept_resume_at_flag(self):
+        parser = cli._build_arg_parser()
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["issue", "PROJ-1", "--resume-at", "review"])
+
+    def test_plan_command_does_not_accept_resume_at_flag(self):
+        parser = cli._build_arg_parser()
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["plan", "feature request", "--resume-at", "review"])
 
 
 if __name__ == "__main__":

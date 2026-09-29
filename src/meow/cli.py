@@ -11,6 +11,7 @@ from meow.issue_solver import IssueUnresolvedError, run_issue_solver
 from meow.lint_fix import run_lint_fix
 from meow.logging import configure_logging, get_logger
 from meow.orchestrator import (
+    PlanNotApprovedError,
     log_working_directory,
     run_plan,
     run_prompt_review,
@@ -63,6 +64,38 @@ def _add_feature_args(parser: argparse.ArgumentParser):
     )
 
 
+def _add_manual_approval_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--manually-approve-plan", "-m",
+        dest="manually_approve_plan",
+        action="store_true",
+        help=(
+            "Show the plan after the planner writes it and ask for "
+            "approval before the generator implements it. Declining exits "
+            "without running the generator."
+        ),
+    )
+
+
+def _print_plan(plan_file: Path) -> None:
+    print(f"\n----- Sprint plan: {plan_file} -----\n")
+    print(plan_file.read_text(encoding="utf-8"))
+    print("----- end of plan -----\n")
+
+
+def _prompt_plan_approval(plan_file: Path) -> bool:
+    """Show the plan and ask the user to approve it before the generator
+    runs -- the default `approve_plan` callback for --manually-approve-plan.
+    EOF (no console attached to answer) is treated as declining, the same
+    as any other unclear answer; only 'y'/'yes' approves."""
+    _print_plan(plan_file)
+    try:
+        answer = input("Proceed with this plan? [y/N]: ")
+    except EOFError:
+        return False
+    return answer.strip().lower() in {"y", "yes"}
+
+
 def _validate_feature_name_requirement(parser: argparse.ArgumentParser, args) -> None:
     requires_name = args.command in {"run", "plan"} and not args.no_worktree
     if requires_name and args.feature_name is None:
@@ -109,8 +142,25 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         help="Use an existing plan file instead of generating a new one.",
     )
+    run_parser.add_argument(
+        "--resume-at",
+        dest="resume_at",
+        choices=["generate", "review"],
+        default="generate",
+        help=(
+            "Where to resume the round loop when a plan already exists "
+            "(via --plan-file, or auto-detected in docs_dir when not "
+            "given): 'generate' (default) starts with the generator, same "
+            "as a fresh sprint. 'review' skips straight to reviewing the "
+            "existing code first, and only runs the generator if the "
+            "review finds something to fix -- for continuing a sprint "
+            "that was interrupted after the generator already produced "
+            "code, without re-running it on code that's already there."
+        ),
+    )
     _add_common_args(run_parser)
     _add_feature_args(run_parser)
+    _add_manual_approval_arg(run_parser)
 
 
 def _add_plan_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -175,6 +225,7 @@ def _add_issue_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     _add_common_args(issue_parser)
+    _add_manual_approval_arg(issue_parser)
 
 
 def _add_gitlab_review_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -213,8 +264,11 @@ def _add_lint_fix_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _dispatch_issue(args, working_dir: Path) -> None:
+    approve_plan = _prompt_plan_approval if args.manually_approve_plan else None
     try:
-        result = asyncio.run(run_issue_solver(working_dir, args.issue))
+        result = asyncio.run(
+            run_issue_solver(working_dir, args.issue, approve_plan=approve_plan)
+        )
     except IssueUnresolvedError as exc:
         print(f"\nWARNING: could not resolve the issue: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
@@ -252,16 +306,23 @@ def _dispatch_feature(args, working_dir: Path, *, use_worktree: bool) -> bool:
     worktree flag. Returns True if it handled the command."""
     if args.command == "run":
         plan_file = _resolve_input_path(args.plan, working_dir)
-        asyncio.run(
-            run_sprint(
-                working_dir,
-                args.feature_name,
-                args.request,
-                use_worktree=use_worktree,
-                plan_file=plan_file,
-                source_branch=args.source_branch,
+        approve_plan = _prompt_plan_approval if args.manually_approve_plan else None
+        try:
+            asyncio.run(
+                run_sprint(
+                    working_dir,
+                    args.feature_name,
+                    args.request,
+                    use_worktree=use_worktree,
+                    plan_file=plan_file,
+                    source_branch=args.source_branch,
+                    approve_plan=approve_plan,
+                    resume_at=args.resume_at,
+                )
             )
-        )
+        except PlanNotApprovedError as exc:
+            print(f"\n{exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
         return True
     if args.command == "plan":
         asyncio.run(
