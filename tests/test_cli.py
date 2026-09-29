@@ -1,4 +1,5 @@
 import asyncio
+import os
 import subprocess
 import tempfile
 import unittest
@@ -136,16 +137,23 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             self.assertEqual(mock_run_reviewer.call_count, 0)
 
     def test_no_prompt_review_falls_back_to_full_project_when_diff_is_empty(self):
-        instructions = reviewer_agent._no_prompt_review_instructions(has_diff=False)
+        instructions = reviewer_agent._no_prompt_review_instructions(
+            has_diff=False, docs_dir="docs/exec-plans/active"
+        )
 
         self.assertIn("git diff is empty", instructions)
         self.assertIn("entire project", instructions)
+        self.assertIn("docs/exec-plans/active", instructions)
+        self.assertIn("Do not review", instructions)
 
     def test_no_prompt_review_uses_diff_when_diff_has_changes(self):
-        instructions = reviewer_agent._no_prompt_review_instructions(has_diff=True)
+        instructions = reviewer_agent._no_prompt_review_instructions(
+            has_diff=True, docs_dir="docs/exec-plans/active"
+        )
 
         self.assertIn("git diff", instructions)
         self.assertNotIn("entire project", instructions)
+        self.assertIn("docs/exec-plans/active", instructions)
 
     def test_feature_worktree_is_created_under_worktrees_by_default(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -455,6 +463,34 @@ class ArchitectureReviewInstructionsTests(unittest.TestCase):
         self.assertNotIn("worktree", instructions)
         self.assertNotIn("main working directory", instructions)
         self.assertIn("SOLID/SRP", instructions)
+
+
+class LatestPlanFileTests(unittest.TestCase):
+    def test_ignores_crs_own_review_file_even_when_newest(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs_dir = Path(tmpdir)
+            plan_file = docs_dir / "plan.md"
+            plan_file.write_text("# Plan", encoding="utf-8")
+            review_file = docs_dir / "review.md"
+            review_file.write_text("STATUS: PASS", encoding="utf-8")
+            # Make the cr-produced review.md the most recently modified file,
+            # the exact situation that used to make it look like "the plan".
+            os.utime(review_file, (os.path.getatime(plan_file) + 10,) * 2)
+
+            self.assertEqual(
+                orchestrator._latest_plan_file(docs_dir), plan_file
+            )
+
+    def test_still_ignores_plan_review_verdicts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs_dir = Path(tmpdir)
+            plan_file = docs_dir / "plan.md"
+            plan_file.write_text("# Plan", encoding="utf-8")
+            (docs_dir / "plan-review.md").write_text("STATUS: PASS", encoding="utf-8")
+
+            self.assertEqual(
+                orchestrator._latest_plan_file(docs_dir), plan_file
+            )
 
 
 if __name__ == "__main__":
