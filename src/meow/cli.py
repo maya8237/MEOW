@@ -10,6 +10,7 @@ from meow.gitlab_reviewer import run_gitlab_review
 from meow.issue_solver import IssueUnresolvedError, run_issue_solver
 from meow.lint_fix import run_lint_fix
 from meow.logging import configure_logging, get_logger
+from meow.native_cli import add_native_parser, run_native
 from meow.orchestrator import (
     PlanNotApprovedError,
     log_working_directory,
@@ -129,6 +130,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     _add_gitlab_review_parser(subparsers)
     _add_lint_fix_parser(subparsers)
     _add_review_fix_review_parser(subparsers)
+    add_native_parser(subparsers)
 
     return parser
 
@@ -400,6 +402,9 @@ def cli_main():
     configure_logging()
     parser = _build_arg_parser()
     args = parser.parse_args()
+    if args.command == "native":
+        run_native(args)
+        return
     working_dir = Path(args.working_dir).resolve()
     log_working_directory(working_dir)
     use_worktree = _should_use_worktree(args)
