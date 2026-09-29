@@ -121,13 +121,35 @@ exploring the whole repo every time it happens to matter.
 
 ## 4. `AGENTS.md`
 
-Purely a human/agent-facing convention — not read by `orchestrator.py`:
+Purely a human/agent-facing convention — not read by `orchestrator.py`. Include
+enough here that a session can go from "nothing set up" to a running sprint
+without leaving this file: the run command, where `meow` actually comes from
+(this destination repo gets its own venv — it does not share meow's), how to
+(re)create that venv if it's missing or broken, and that no separate
+credential setup is needed.
 
 ```markdown
 ## Harness
 
 Feature work in this repo runs through meow, not ad hoc editing. From the repo
-root: `meow run "<feature description>"`.
+root, with this repo's own `.venv` active (or by full path,
+`.venv/Scripts/meow` on Windows / `.venv/bin/meow` elsewhere):
+
+    meow run "<feature description>" --name "<feature-name>"
+
+The engine itself lives in <meow repo path> and is installed into *this*
+repo's `.venv` as an editable package — `meow` is on PATH only with that venv
+active. It shells out to the `claude` CLI via the Claude Agent SDK and relies
+on that CLI's own existing authentication; no `ANTHROPIC_API_KEY` or other
+credential setup is needed.
+
+If `.venv` doesn't exist yet, or `meow --help` fails (e.g.
+`ModuleNotFoundError`), (re)create it before running anything — this is a
+local, reversible step, so just do it rather than asking:
+
+    python -m venv .venv
+    .venv/Scripts/python -m pip install -e "<meow repo path>"
+
 Config lives in `.harness.toml`. See <meow repo link>'s GUIDE.md for setup.
 ```
 
@@ -136,7 +158,9 @@ Config lives in `.harness.toml`. See <meow repo link>'s GUIDE.md for setup.
 ## 5. Setup checklist
 
 - [ ] `meow --help` runs
-- [ ] `ANTHROPIC_API_KEY` set
+- [ ] `claude` CLI is installed and already authenticated (meow shells out to
+      it via the Claude Agent SDK — no `ANTHROPIC_API_KEY` or other credential
+      setup needed; verify with `claude --version` or `claude doctor`)
 - [ ] `.harness.toml` has ≥1 `[[lint]]` entry, all top-level keys above it
 - [ ] Each lint `command` works run by hand
 - [ ] A doc describing the project's architecture written somewhere under

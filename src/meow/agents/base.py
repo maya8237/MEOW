@@ -73,6 +73,9 @@ class AgentContext(Protocol):
     @property
     def repo_dir(self) -> Path: ...
 
+    @property
+    def use_worktree(self) -> bool: ...
+
     def model(self, role: str) -> str | None: ...
 
     def lint_commands(self) -> list[LintCommand]: ...
@@ -142,6 +145,7 @@ class ProjectContext:
     def __init__(self, repo_dir: Path, config: dict):
         self.repo_dir = repo_dir
         self.config = config
+        self.use_worktree = False
 
     def model(self, role: str) -> str | None:
         return self.config["models"][role]
