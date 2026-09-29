@@ -89,8 +89,14 @@ def _resolve_working_dir(
     use_worktree: bool,
     feature_name: str | None,
 ) -> tuple[Path, str | None, bool]:
-    """Return the active directory and optional feature name."""
-    if not use_worktree:
+    """Return the active directory and optional feature name.
+
+    If `working_dir` is already a linked git worktree, it is used in place,
+    the same as if `use_worktree` were False -- pointing `--working-dir` at
+    an existing worktree means "work here", not "nest another worktree
+    inside it".
+    """
+    if not use_worktree or _is_linked_worktree(working_dir):
         return working_dir, feature_name, False
     if not feature_name:
         raise ValueError("feature_name is required when use_worktree=True")
@@ -116,21 +122,17 @@ def _ensure_feature_worktree(working_dir: Path, feature_name: str) -> Path:
     Raises if `git worktree add` fails, rather than silently falling back to
     a plain, non-git directory -- a generator session pointed at such a
     directory would run against an empty project with no error ever
-    surfaced. Also raises up front if `working_dir` is itself already a
-    linked worktree (nesting a second one inside it is never what pointing
-    `--working-dir` at an existing worktree means), and if an existing
-    `.worktrees/<feature_name>` directory is no longer a registered worktree
-    (e.g. left behind after `git worktree remove` elsewhere, or created
-    without git) -- reusing it silently would only fail confusingly later,
-    deep in some agent's own git calls.
-    """
-    if _is_linked_worktree(working_dir):
-        raise RuntimeError(
-            f"{working_dir} is already a linked git worktree; pass "
-            "--no-worktree to run meow directly in it instead of nesting "
-            "another worktree inside it."
-        )
+    surfaced. Also raises if an existing `.worktrees/<feature_name>`
+    directory is no longer a registered worktree (e.g. left behind after
+    `git worktree remove` elsewhere, or created without git) -- reusing it
+    silently would only fail confusingly later, deep in some agent's own
+    git calls.
 
+    Callers must not pass a `working_dir` that is itself already a linked
+    worktree -- `_resolve_working_dir` routes that case around this
+    function entirely, using it in place instead of nesting another one
+    inside it.
+    """
     worktrees_dir = working_dir / ".worktrees"
     worktree_dir = worktrees_dir / feature_name
     git = shutil.which("git")
