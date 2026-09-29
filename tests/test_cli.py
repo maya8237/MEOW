@@ -1,10 +1,12 @@
 import asyncio
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from meow import cli, orchestrator
+from meow import cli, orchestrator, worktree
+from meow import sprint as sprint_module
 from meow.agents import explorer as explorer_agent
 from meow.agents import generator as generator_agent
 from meow.agents import planner as planner_agent
@@ -68,7 +70,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         }
         working_dir = Path("/tmp/project").resolve()
 
-        sprint = orchestrator._build_sprint(working_dir, config, working_dir)
+        sprint = sprint_module.build_sprint(working_dir, config, working_dir)
 
         self.assertEqual(
             sprint.explorer,
@@ -146,11 +148,32 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         self.assertNotIn("entire project", instructions)
 
     def test_feature_worktree_is_created_under_worktrees_by_default(self):
-        project_root = Path("/tmp/project").resolve()
-        worktree = orchestrator._ensure_feature_worktree(project_root, "ship-it")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()
+            subprocess.run(
+                ["git", "-C", str(project_root), "init", "-q"], check=True
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(project_root),
+                    "-c", "user.email=test@example.com",
+                    "-c", "user.name=test",
+                    "commit", "--allow-empty", "-q", "-m", "init",
+                ],
+                check=True,
+            )
 
-        self.assertEqual(worktree, project_root / ".worktrees" / "ship-it")
-        self.assertTrue(worktree.exists())
+            worktree_dir = worktree._ensure_feature_worktree(project_root, "ship-it")
+
+            self.assertEqual(worktree_dir, project_root / ".worktrees" / "ship-it")
+            self.assertTrue(worktree_dir.exists())
+
+    def test_feature_worktree_creation_raises_when_git_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir).resolve()  # not a git repo
+
+            with self.assertRaises(RuntimeError):
+                worktree._ensure_feature_worktree(project_root, "ship-it")
 
     @patch("meow.agents.base.query")
     def test_agent_cwd_uses_worktree_root_when_present(self, mock_query):
@@ -199,7 +222,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             project_root = Path(tmpdir)
             (project_root / ".gitignore").write_text("venv\n", encoding="utf-8")
 
-            orchestrator._boot_repo(project_root)
+            worktree._boot_repo(project_root)
 
             self.assertEqual(
                 (project_root / ".gitignore").read_text(encoding="utf-8"),
@@ -423,6 +446,15 @@ class ArchitectureReviewInstructionsTests(unittest.TestCase):
         self.assertIn("main working directory", instructions)
         self.assertIn("clean", instructions)
         self.assertIn("FAIL", instructions)
+
+    def test_prompt_review_skips_worktree_hygiene_check(self):
+        instructions = reviewer_agent._architecture_review_instructions(
+            check_worktree_hygiene=False
+        )
+
+        self.assertNotIn("worktree", instructions)
+        self.assertNotIn("main working directory", instructions)
+        self.assertIn("SOLID/SRP", instructions)
 
 
 if __name__ == "__main__":
