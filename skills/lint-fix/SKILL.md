@@ -5,45 +5,41 @@ description: Run the current project's configured lint commands and fix whatever
 
 # lint-fix
 
-Runs `meow lint-fix --report-only` against the current project to get the
-raw output of every command configured under `.harness.toml`'s `[[lint]]`
-entries, then **you** — this Claude Code session — fix what it reports
-yourself. This is the opposite division of labor from every other meow
-skill here: `/meow:sprint`, `/meow:meow-review`, and friends have meow spin
-up its own agents to do the work; this one has meow only run the linters
-and hand you their raw output, because you are already in the session that
-should be editing this code.
+Runs the project's `[[lint]]` commands and has **you** — this session — fix what
+they report. This skill was already session-native; native mode now gets its
+facts from `meow native lint` (same runner as the other skills). Read
+[`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this
+skill's base directory) for the helper's conventions. Never run plain
+`meow lint-fix` here: that spins up meow's own fixer agent, duplicating your work
+and racing your edits.
 
-Do not run plain `meow lint-fix` (without `--report-only`) from this skill
-— that mode spins up meow's own fixer agent and edits the project itself,
-which duplicates what you're about to do and can race with your own edits.
+## Native mode
 
-1. The current project must have a `.harness.toml` at its root with at
-   least one `[[lint]]` entry. If it's missing, tell the user and stop;
-   point them at meow's `GUIDE.md` for onboarding rather than guessing at
-   lint commands.
-   `meow lint-fix` accepts `--working-dir PATH` (also `--work-dir` or `-d`)
-   to target a project outside the current directory.
-2. Run, from the project root:
+1. The project needs a `.harness.toml` with at least one `[[lint]]` entry;
+   otherwise tell the user and stop (point at GUIDE.md).
+2. Run `meow native prepare --no-worktree --allow-dirty --working-dir "<project-path>"`
+   for `max_rounds` and `docs_dir`, then
+   `meow native round <docs_dir>/lint-fix.md --reset`.
+3. Auto-fix pass, then check: `meow native lint --fix --working-dir "<project-path>"`.
+   - `"clean": true` -> report that nothing is left (mention any `informational`
+     findings) and stop.
+   - Otherwise each entry in `blocking` is a `$ <command>` block of raw linter
+     output. Fix each yourself with the smallest edit that resolves it, without
+     unrelated refactoring; run `meow native lint --file <path>` after each edit.
+4. Re-check with `meow native lint`; call `meow native round <docs_dir>/lint-fix.md`
+   before each further fix attempt and stop if it says `exhausted`.
+5. Report the final outcome: clean, or what is still outstanding and why (e.g. a
+   project-wide type error needing a design decision). `informational` findings
+   are non-blocking by configuration; list them, do not chase them.
 
-   ```bash
-   meow lint-fix --report-only --working-dir "<project-path>"
-   ```
+## CLI mode
 
-   If `meow` isn't found on PATH, tell the user to install it first (this
-   repo's README: a venv with `pip install -e .`, or `pipx install -e .`
-   for a global command) — don't guess at a path to some venv.
-3. Read the command's output:
-   - `Lint is clean -- no issues found.` and exit 0 — report that to the
-     user and stop; there is nothing to fix.
-   - A nonzero exit with one or more `$ <command>` blocks of raw lint
-     output — that's every failure from every configured command, exactly
-     as the linter reported it. Fix each one yourself in this working
-     tree, the smallest edit that resolves it, without expanding scope
-     into unrelated refactoring.
-4. After fixing, re-run the same `meow lint-fix --report-only` command to
-   confirm the tree is actually clean rather than assuming your edits
-   worked. Repeat step 3 if anything is still reported.
-5. Report the final outcome to the user: clean, or (if something couldn't
-   reasonably be auto-resolved, e.g. a project-wide type error needing a
-   design decision) what's still outstanding and why.
+Report-only, then fix by hand:
+
+```bash
+meow lint-fix --report-only --working-dir "<project-path>"
+```
+
+Exit 0 with `Lint is clean -- no issues found.` means done; otherwise fix each
+`$ <command>` block it printed and re-run to confirm. If `meow` isn't on PATH,
+tell the user to install it (README: `pip install -e .` in a venv, or `pipx install -e .`).

@@ -1,37 +1,38 @@
 ---
 name: meow-plan
-description: Have meow write a sprint plan (with a testable Sprint Contract) for a feature request, without implementing it. Use when the user wants a plan to review before any code gets written.
+description: Have meow write a sprint plan (with a testable Sprint Contract) for a feature request, without implementing it. Runs natively in this Claude Code session by default. Use when the user wants a plan to review before any code gets written.
 ---
 
 # meow-plan
 
-Runs the meow harness's planner only (`meow plan`) against the current
-project — writes a numbered task list and a Sprint Contract, but implements
-nothing.
+Writes a numbered task list and a Sprint Contract, implements nothing. Runs
+**natively** by default: you are the planner. Read
+[`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this
+skill's base directory) first for the `meow native` helper and planner rules.
+Use **CLI mode** (bottom) only if the user explicitly asks for it.
 
-1. The feature request is whatever text the user gave when invoking this
-   skill. If none was given, ask for a one-line feature description first.
-2. The current project must have a `.harness.toml` at its root. If it's
-   missing, tell the user and stop; point them at meow's `GUIDE.md` for
-   onboarding rather than guessing at lint commands.
-   `meow plan` accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
-   target a project outside the current directory.
-3. By default, use a safe explicit feature name from the request (for
-   example, slugify the feature, e.g. `add-csv-export`) and run, from the
-   project root:
+## Native mode
 
-   ```bash
-   meow plan "<feature request>" --name "<generated-feature-name>" --working-dir "<project-path>"
-   ```
+1. The feature request is whatever text the user gave. If none, ask for a
+   one-line description. The project needs a `.harness.toml` at its root.
+2. Slugify a feature name (e.g. `add-csv-export`) and run
+   `meow native prepare --name "<name>" --allow-dirty --working-dir "<project-path>"`
+   (`meow plan` never required a clean tree). Add `--no-worktree` if the user
+   wants the main repo (name then optional), `--source-branch <branch>` if given.
+   Report failures verbatim and stop.
+3. As planner, write `plan_file` (inside `active_dir`) following the shared
+   protocol's Planner row. Use an explorer subagent for any codebase research
+   you don't need in full. Read the file back and confirm the task list and
+   `## Sprint Contract` exist. Write no application code.
+4. Report the plan file's path. If they want it built: `/meow:sprint` (full loop)
+   or, once code exists, `/meow:meow-review`.
 
-   If the user explicitly wants to operate in the main repo instead of an
-   isolated worktree, add `--no-worktree`; the feature name can then be
-   omitted. Add `--working-dir "<project-path>"` to target a project outside
-   the current directory.
+## CLI mode
 
-   If `meow` isn't found on PATH, tell the user to install meow first
-   (its README: a venv with `pip install -e .`, or `pipx install -e .` for a
-   global command) — don't guess at a path to some venv.
-4. Report the plan file's path back to the user. If they want it
-   implemented, that's `/meow:sprint` (full loop) or `/meow:meow-review`
-   once code already exists against this plan.
+```bash
+meow plan "<feature request>" --name "<generated-feature-name>" --working-dir "<project-path>"
+```
+
+Add `--no-worktree` to use the main repo instead of an isolated worktree. If
+`meow` isn't on PATH, tell the user to install it (README: `pip install -e .`
+in a venv, or `pipx install -e .`). Report the plan file's path.
