@@ -25,6 +25,30 @@ def _ensure_gitignore_entry(working_dir: Path, entry: str = ".worktrees/") -> No
         handle.write(f"{entry}\n")
 
 
+class DirtyWorkingTreeError(RuntimeError):
+    """The git working tree has uncommitted changes meow refuses to build on."""
+
+
+def _ensure_clean_tree(working_dir: Path) -> None:
+    """Raise `DirtyWorkingTreeError` if the repo has uncommitted changes.
+
+    Must run before `_boot_repo`, which may itself edit `.gitignore`. Skipped
+    when `working_dir` isn't a git repo or git is unavailable -- there is
+    nothing to protect, and the worktree steps report those cases themselves.
+    """
+    git = shutil.which("git")
+    if not git:
+        return
+    result = _run_git([git, "status", "--porcelain"], cwd=working_dir)
+    if result.returncode != 0 or not result.stdout.strip():
+        return
+    changes = result.stdout.rstrip().splitlines()
+    raise DirtyWorkingTreeError(
+        f"{working_dir} has {len(changes)} uncommitted change(s); commit or "
+        "stash them before running meow:\n" + "\n".join(changes)
+    )
+
+
 def _boot_repo(working_dir: Path, *, include_gitignore: bool = True) -> None:
     """Run working-directory boot checks every meow command needs."""
     if include_gitignore:
