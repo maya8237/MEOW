@@ -14,6 +14,7 @@ creates its own worktree on one instead of the usual detached one.
 import json
 import re
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
@@ -105,19 +106,28 @@ async def _fetch_issue(
     return data
 
 
-async def run_issue_solver(working_dir: Path, issue_key: str | None = None) -> dict:
+async def run_issue_solver(
+    working_dir: Path,
+    issue_key: str | None = None,
+    *,
+    approve_plan: Callable[[Path], bool] | None = None,
+) -> dict:
     """Fetch a Jira issue, solve it in a worktree, push the branch, return it.
 
     Returns `{"issue": <key>, "branch": <branch name>}` on success. Raises on
-    any failure (no active Jira MCP, no matching issue, the sprint not
-    passing within max_rounds, or the push failing) -- there is no partial
-    "best effort" result.
+    any failure (no active Jira MCP, no matching issue, the plan being
+    declined when `approve_plan` is given, the sprint not passing within
+    max_rounds, or the push failing) -- there is no partial "best effort"
+    result. `approve_plan` is passed straight through to `run_sprint`; see
+    its docstring.
     """
     config = load_config(working_dir)
     jira_config = _load_jira_config(config)
 
     try:
-        return await _solve_issue(working_dir, config, jira_config, issue_key)
+        return await _solve_issue(
+            working_dir, config, jira_config, issue_key, approve_plan
+        )
     except Exception as exc:
         logger.warning(
             "issue_unresolved", issue=issue_key or "latest", reason=str(exc)
@@ -125,8 +135,12 @@ async def run_issue_solver(working_dir: Path, issue_key: str | None = None) -> d
         raise IssueUnresolvedError(str(exc)) from exc
 
 
-async def _solve_issue(
-    working_dir: Path, config: dict, jira_config: dict, issue_key: str | None
+async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- reducing args would change run_issue_solver's call site
+    working_dir: Path,
+    config: dict,
+    jira_config: dict,
+    issue_key: str | None,
+    approve_plan: Callable[[Path], bool] | None,
 ) -> dict:
     issue = await _fetch_issue(working_dir, config, jira_config, issue_key)
 
@@ -141,7 +155,13 @@ async def _solve_issue(
     )
 
     logger.info("issue_solver_sprint_started", issue=issue["key"], branch=branch_name)
-    await run_sprint(active_dir, feature_name, request, use_worktree=False)
+    await run_sprint(
+        active_dir,
+        feature_name,
+        request,
+        use_worktree=False,
+        approve_plan=approve_plan,
+    )
     logger.info("issue_solver_sprint_finished", issue=issue["key"], branch=branch_name)
 
     _push_branch(active_dir, branch_name)

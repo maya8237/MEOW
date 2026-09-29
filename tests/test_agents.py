@@ -1,4 +1,5 @@
 import asyncio
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -341,6 +342,91 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"Write your verdict to {review_file}", options.system_prompt)
         self.assertIn("ruff check", options.system_prompt)
         self.assertIn("SOLID/SRP", options.system_prompt)
+
+
+class RulesInjectionTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self.project_dir = Path(self._tmpdir.name)
+        (self.project_dir / "docs").mkdir()
+        self.context = FakeProjectContext()
+        self.context.project_dir = self.project_dir
+        self.context.repo_dir = self.project_dir
+
+    def _write_rules(self, text: str) -> None:
+        (self.project_dir / "docs" / "RULES.md").write_text(text, encoding="utf-8")
+
+    def test_options_is_unchanged_when_rules_md_is_absent(self):
+        without_rules = Agent(self.context).options(
+            system_prompt="base prompt",
+            allowed_tools=["Read"],
+            role="reviewer",
+        )
+
+        self.assertEqual(without_rules.system_prompt, "base prompt")
+
+    def test_options_appends_global_and_role_rules_for_the_given_role(self):
+        self._write_rules(
+            "Write tests first.\n\n## Reviewer\nUse Chrome DevTools to test "
+            "edge cases.\n"
+        )
+
+        options = Agent(self.context).options(
+            system_prompt="base prompt",
+            allowed_tools=["Read"],
+            role="reviewer",
+        )
+
+        self.assertTrue(options.system_prompt.startswith("base prompt"))
+        self.assertIn("Write tests first.", options.system_prompt)
+        self.assertIn("Use Chrome DevTools", options.system_prompt)
+
+    def test_options_omits_another_roles_section(self):
+        self._write_rules("## Reviewer\nUse Chrome DevTools to test edge cases.\n")
+
+        options = Agent(self.context).options(
+            system_prompt="base prompt",
+            allowed_tools=["Read"],
+            role="generator",
+        )
+
+        self.assertEqual(options.system_prompt, "base prompt")
+
+    def test_explorer_definition_includes_global_and_role_rules(self):
+        self._write_rules(
+            "Write tests first.\n\n## Explorer\nAlways check test coverage.\n"
+        )
+
+        definition = ExplorerAgent(self.context).definition()
+
+        self.assertIn("Write tests first.", definition.prompt)
+        self.assertIn("Always check test coverage.", definition.prompt)
+
+    async def test_planner_explorer_subagent_definition_carries_rules_too(self):
+        self._write_rules("## Explorer\nAlways check test coverage.\n")
+        observed = {}
+
+        async def fake_query(*, prompt, options):
+            observed["options"] = options
+            await asyncio.sleep(0)
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=0,
+                duration_api_ms=0,
+                is_error=False,
+                num_turns=1,
+                session_id="session",
+                result="done",
+            )
+
+        with patch("meow.agents.base.query", fake_query):
+            await PlannerAgent(self.context).run("ship-it", "Add CSV export")
+
+        self.assertIn(
+            "Always check test coverage.",
+            observed["options"].agents["explorer"].prompt,
+        )
 
 
 if __name__ == "__main__":

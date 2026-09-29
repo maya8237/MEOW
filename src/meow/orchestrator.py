@@ -16,6 +16,7 @@ Install (from the meow repo root):    pip install -e .
 Run (from inside a project repo):        meow run "Add CSV export"
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
@@ -39,6 +40,10 @@ assert run_planner and run_reviewer  # re-exported for compatibility
 assert make_explorer_agent  # re-exported for compatibility
 
 logger = get_logger(__name__)
+
+
+class PlanNotApprovedError(RuntimeError):
+    """The user declined the plan when `approve_plan` was supplied."""
 
 
 def log_working_directory(working_dir: Path) -> None:
@@ -213,7 +218,36 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
     use_worktree: bool = True,
     plan_file: Path | None = None,
     source_branch: str | None = None,
+    approve_plan: Callable[[Path], bool] | None = None,
+    resume_at: str = "generate",
 ):
+    """Plan (unless `plan_file` is given) then implement it in a round loop.
+
+    `approve_plan`, when given, is called with the plan file right before
+    the generator or reviewer starts using it (whether the plan was just
+    written, supplied via `plan_file`, or auto-detected); a False return
+    raises `PlanNotApprovedError` instead of proceeding. The actual
+    prompting -- printing the plan, reading a decision -- is the caller's
+    concern (see `cli._prompt_plan_approval`); this stays agnostic to how
+    approval is obtained, the same way `lint_hook` stays agnostic to how a
+    file gets linted.
+
+    `resume_at` selects where the round loop picks up:
+    - `"generate"` (default): unchanged behavior -- plan fresh unless
+      `plan_file` is given, then run the generator first (`_run_rounds`).
+    - `"review"`: skip planning; if `plan_file` wasn't given, auto-detect
+      the latest plan in the active directory's `docs_dir` (the same
+      lookup `meow review` uses). Review the existing code first
+      (`_run_review_rounds`), and only run the generator if that review
+      finds something to fix -- for continuing a sprint that was
+      interrupted after the generator already produced code, without
+      re-running it on code that's already there.
+    """
+    if resume_at not in {"generate", "review"}:
+        raise ValueError(
+            f"resume_at must be 'generate' or 'review', got {resume_at!r}"
+        )
+
     sprint, effective_name, active_dir = _prepare_sprint(
         working_dir,
         feature_name,
@@ -223,15 +257,26 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
     describe_lint_plan(sprint.config["lint"])
 
     if plan_file is None:
-        logger.info(
-            "planner_started",
-            feature_name=effective_name,
-            working_dir=str(active_dir),
-        )
-        plan_file = await PlannerAgent(sprint).run(effective_name, request)
-        logger.info("planner_finished", plan_file=str(plan_file))
+        if resume_at == "review":
+            plan_file = _latest_plan_file(active_dir / sprint.config["docs_dir"])
+        else:
+            logger.info(
+                "planner_started",
+                feature_name=effective_name,
+                working_dir=str(active_dir),
+            )
+            plan_file = await PlannerAgent(sprint).run(effective_name, request)
+            logger.info("planner_finished", plan_file=str(plan_file))
 
-    if await _run_rounds(sprint, plan_file):
+    if approve_plan is not None and not approve_plan(plan_file):
+        logger.warning("plan_not_approved", plan_file=str(plan_file))
+        raise PlanNotApprovedError(
+            f"Plan {plan_file} was not approved -- stopping before the "
+            "generator runs."
+        )
+
+    run_rounds = _run_review_rounds if resume_at == "review" else _run_rounds
+    if await run_rounds(sprint, plan_file):
         logger.info("sprint_complete", feature_name=feature_name)
         return
 

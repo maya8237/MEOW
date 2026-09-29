@@ -26,7 +26,16 @@ logger = get_logger(__name__)
 
 
 def _load_gitlab_config(config: dict) -> dict:
-    """Validate `[gitlab]`/`[gitlab.mcp]` up front, with a clear error if absent."""
+    """Validate `[gitlab]`/`[gitlab.mcp]` up front, with a clear error if absent.
+
+    Unlike `[jira.mcp]` (whose server reads its own credentials from the
+    environment), `[gitlab.mcp.env]` is read directly from `.harness.toml`
+    and passed straight through as the launched server's environment --
+    see the security note on `[gitlab.mcp.env]` in
+    `templates/harness.toml.example` before putting a real credential
+    there: `.harness.toml` is an ordinary, typically-committed project
+    file, not a secrets store.
+    """
     gitlab = config.get("gitlab")
     if not isinstance(gitlab, dict):
         raise ValueError(
@@ -36,8 +45,11 @@ def _load_gitlab_config(config: dict) -> dict:
             "[gitlab.mcp]\n"
             'command = "uvx"\n'
             'args = ["mcp-gitlab"]\n\n'
-            "See GUIDE.md for the GitLab credentials the server itself "
-            "needs in the environment."
+            "[gitlab.mcp.env]\n"
+            'GITLAB_URL = "https://gitlab.example.com"\n'
+            'GITLAB_TOKEN = "<token>"\n\n'
+            "See GUIDE.md for the [gitlab.mcp.env] field and its security "
+            "note."
         )
 
     mcp = gitlab.get("mcp")
@@ -48,7 +60,13 @@ def _load_gitlab_config(config: dict) -> dict:
             'with args = ["mcp-gitlab"]).'
         )
 
-    return {"mcp": {"command": mcp["command"], "args": mcp.get("args", [])}}
+    return {
+        "mcp": {
+            "command": mcp["command"],
+            "args": mcp.get("args", []),
+            "env": mcp.get("env", {}),
+        }
+    }
 
 
 async def _fetch_merge_request(

@@ -1,6 +1,6 @@
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from meow import issue_solver
 
@@ -100,11 +100,48 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
             "issue-proj-1",
             "Resolve Jira issue PROJ-1: Fix thing\n\nDetails.",
             use_worktree=False,
+            approve_plan=None,
         )
         mock_push.assert_called_once_with(
             Path("/project/.worktrees/issue-proj-1"), "issue/PROJ-1"
         )
         self.assertEqual(result, {"issue": "PROJ-1", "branch": "issue/PROJ-1"})
+
+    async def test_passes_approve_plan_through_to_run_sprint(self):
+        working_dir = Path("/project")
+        config = {
+            "jira": {
+                "project_key": "PROJ",
+                "mcp": {"command": "uvx", "args": []},
+            }
+        }
+        issue = {"key": "PROJ-1", "summary": "Fix thing", "description": "Details."}
+        mock_approve = MagicMock(return_value=True)
+
+        with (
+            patch("meow.issue_solver.load_config", return_value=config),
+            patch(
+                "meow.issue_solver._fetch_issue", new=AsyncMock(return_value=issue)
+            ),
+            patch(
+                "meow.issue_solver._ensure_branch_worktree",
+                return_value=Path("/project/.worktrees/issue-proj-1"),
+            ),
+            patch("meow.issue_solver.run_sprint", new=AsyncMock()) as mock_sprint,
+            patch("meow.issue_solver._push_branch"),
+        ):
+            result = await issue_solver.run_issue_solver(
+                working_dir, "PROJ-1", approve_plan=mock_approve
+            )
+
+        self.assertEqual(result, {"issue": "PROJ-1", "branch": "issue/PROJ-1"})
+        mock_sprint.assert_awaited_once_with(
+            Path("/project/.worktrees/issue-proj-1"),
+            "issue-proj-1",
+            "Resolve Jira issue PROJ-1: Fix thing\n\nDetails.",
+            use_worktree=False,
+            approve_plan=mock_approve,
+        )
 
     async def test_raises_before_fetching_when_jira_config_is_missing(self):
         with (

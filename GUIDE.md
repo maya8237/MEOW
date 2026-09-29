@@ -76,12 +76,31 @@ gate = false
 
 `[gitlab.mcp]` is optional and only needed for `meow gitlab-review` (see
 §8). Unlike `[jira]`, there is no `project_key`-style field -- the merge
-request URL is passed on the command line each time.
+request URL is passed on the command line each time. Unlike `[jira.mcp]`
+(whose server reads its own credentials from the environment),
+`[gitlab.mcp].env` is read from `.harness.toml` itself and passed straight
+through as the launched server's environment -- see the security note
+below before using it.
 
 | Field | Required | Default | Notes |
 |---|---|---|---|
 | `[gitlab.mcp].command` | Only for `gitlab-review` | — | Program that launches a GitLab MCP server exposing merge-request read tools. |
 | `[gitlab.mcp].args` | No | `[]` | Its arguments. |
+| `[gitlab.mcp].env` | No | `{}` | Environment variables passed to the launched server -- e.g. `GITLAB_URL`, `GITLAB_TOKEN`, or whatever your chosen server expects. |
+
+**Security note on `[gitlab.mcp].env`:** `.harness.toml` is an ordinary
+project file, meant to be committed like any other config -- meow does
+not gitignore it. Putting a real GitLab access token in
+`[gitlab.mcp].env` commits that secret to your repo's history in plain
+text, readable by anyone with read access to the repo (including forks
+and CI logs) and hard to fully revoke even after rotating it. If that's
+not acceptable for your project, don't put the real value here: keep the
+token in your actual shell/CI environment and reference it however your
+chosen GitLab MCP server supports (if it does its own variable
+expansion), or gitignore `.harness.toml` (or a local override of it) if
+your project's conventions allow that. This is specific to `[gitlab.mcp]`
+-- `[jira.mcp]` is unaffected and still expects its server's own
+credentials to come from the environment, not from this file.
 
 ---
 
@@ -94,6 +113,7 @@ them. When project documentation should guide a role, name it in the request
 ```
 docs/
 ├── ARCHITECTURE.md          # see below — write this one first
+├── RULES.md                 # see below — injected into every role's prompt
 ├── design-docs/core-beliefs.md
 ├── exec-plans/{active,completed}/, tech-debt-tracker.md
 ├── product-specs/
@@ -117,6 +137,30 @@ onboard a project, before the first `meow run`, not after the review
 quality suffers — it doesn't need to be long, just state the module
 boundaries and who's allowed to depend on whom, and it doesn't need the name
 `ARCHITECTURE.md` specifically, just to live somewhere under `docs/`.
+
+**`docs/RULES.md`** works differently from everything else under `docs/`:
+where `ARCHITECTURE.md` is only found if a role's own docs scan happens to
+look for it, `RULES.md` is read directly by meow itself and injected into
+every role's system prompt before it starts -- so a rule actually shapes
+what the agent does, not just what the reviewer catches afterward. A
+top-level section (anything before the first role heading) applies to
+all four roles; a `## Reviewer`, `## Planner`, `## Generator`, or
+`## Explorer` heading (case-insensitive) scopes everything under it to
+just that role. For example, a project that wants only the reviewer to
+exercise edge cases through Chrome DevTools, without asking the generator
+or planner to do the same, would write:
+
+```markdown
+Follow this project's existing code style and commit conventions.
+
+## Reviewer
+When testing UI changes, use Chrome DevTools (via its MCP or browser
+tools) to exercise edge cases -- empty states, long text, disabled
+controls -- not just the happy path a manual click-through would cover.
+```
+
+No `docs/RULES.md` at all is the default and needs no setup -- meow's
+prompts are completely unaffected, exactly as they are today.
 
 The rest (`completed/`, `tech-debt-tracker.md`, `core-beliefs.md`) get the
 same opportunistic treatment as everything else in `docs/`: no role goes
@@ -202,6 +246,11 @@ stdout — `{"issue": "PROJ-123", "branch": "issue/PROJ-123"}` — and exits 0;
 any failure (no active Jira MCP, no matching issue, the sprint not passing
 within `max_rounds`, or the push failing) raises before that line is
 printed, and the process exits non-zero.
+
+**Never pass `--manually-approve-plan`/`-m` on a scheduled run** -- it
+prompts on stdin for approval before the generator starts, and a scheduled
+task has no console attached to answer it, so the run just hangs instead of
+completing or failing cleanly.
 
 **Prerequisites beyond §1**: `[jira]`/`[jira.mcp]` set in `.harness.toml`
 (§2), a Jira MCP server reachable with those settings (this repo assumes

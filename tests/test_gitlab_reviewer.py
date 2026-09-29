@@ -22,7 +22,8 @@ class LoadGitlabConfigTests(unittest.TestCase):
         result = gitlab_reviewer._load_gitlab_config(config)
 
         self.assertEqual(
-            result, {"mcp": {"command": "uvx", "args": ["mcp-gitlab"]}}
+            result,
+            {"mcp": {"command": "uvx", "args": ["mcp-gitlab"], "env": {}}},
         )
 
     def test_defaults_args_to_empty_list(self):
@@ -31,6 +32,36 @@ class LoadGitlabConfigTests(unittest.TestCase):
         result = gitlab_reviewer._load_gitlab_config(config)
 
         self.assertEqual(result["mcp"]["args"], [])
+
+    def test_defaults_env_to_empty_dict(self):
+        config = {"gitlab": {"mcp": {"command": "uvx"}}}
+
+        result = gitlab_reviewer._load_gitlab_config(config)
+
+        self.assertEqual(result["mcp"]["env"], {})
+
+    def test_passes_through_configured_env_values(self):
+        config = {
+            "gitlab": {
+                "mcp": {
+                    "command": "uvx",
+                    "env": {
+                        "GITLAB_URL": "https://gitlab.example.com",
+                        "GITLAB_TOKEN": "glpat-secret",
+                    },
+                },
+            },
+        }
+
+        result = gitlab_reviewer._load_gitlab_config(config)
+
+        self.assertEqual(
+            result["mcp"]["env"],
+            {
+                "GITLAB_URL": "https://gitlab.example.com",
+                "GITLAB_TOKEN": "glpat-secret",
+            },
+        )
 
 
 class RunGitlabReviewTests(unittest.IsolatedAsyncioTestCase):
@@ -66,7 +97,7 @@ class RunGitlabReviewTests(unittest.IsolatedAsyncioTestCase):
         mock_fetch.assert_awaited_once_with(
             working_dir,
             config,
-            {"mcp": {"command": "uvx", "args": []}},
+            {"mcp": {"command": "uvx", "args": [], "env": {}}},
             mr_link,
         )
         mock_review.assert_awaited_once_with(

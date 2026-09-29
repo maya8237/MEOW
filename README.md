@@ -48,6 +48,27 @@ SDK:
   checks of the implementation and command evidence before it writes its
   verdict.
 
+## Project rules
+
+A project can add a `docs/RULES.md` file to shape every role's behavior
+directly, not just what the reviewer catches afterward. Content before
+the first role heading applies to all four roles (explorer, planner,
+generator, reviewer); a `## Reviewer` / `## Planner` / `## Generator` /
+`## Explorer` heading (case-insensitive) scopes everything under it to
+just that role. For example:
+
+```markdown
+Follow this project's existing code style and commit conventions.
+
+## Reviewer
+When testing UI changes, use Chrome DevTools to exercise edge cases
+-- empty states, long text, disabled controls -- not just the happy
+path.
+```
+
+No `docs/RULES.md` is the default; meow's behavior is unaffected until a
+project adds one.
+
 ## Install
 
 Into a dedicated virtualenv, from this repo's root:
@@ -115,6 +136,36 @@ worktree, or a worktree with no source branch -- keeps the check exactly as
 before. Reusing an existing worktree (by name) also ignores `--source-branch`
 -- resuming what's already there takes priority over re-branching it.
 
+`--manually-approve-plan` (also `-m`) pauses `run` (and `issue`, below)
+between planning and implementation: after the planner writes the plan,
+meow prints it and asks for approval before the generator starts. Declining
+exits with a nonzero status and no generator run:
+
+```bash
+meow run "Add CSV export" --name "add-csv-export" --manually-approve-plan
+```
+
+`meow plan` doesn't take this flag -- it never implements what it plans, so
+there's nothing after planning to gate.
+
+`--resume-at {generate,review}` picks up an interrupted sprint without
+starting over. `generate` (default) is today's behavior: plan fresh unless
+`--plan-file` is given, then the generator goes first. `review` skips
+planning -- using `--plan-file` if given, or auto-detecting the latest
+plan in `docs_dir` otherwise -- and reviews the existing code first, only
+running the generator if that review finds something to fix:
+
+```bash
+meow run "Add CSV export" --name "add-csv-export" --resume-at review
+```
+
+Use this when a prior `run` was interrupted after the generator already
+produced code (or partway through addressing reviewer feedback) --
+resuming at `review` re-evaluates whatever is actually on disk rather than
+re-running the generator on code that's already there. `meow plan` doesn't
+take this flag either, for the same reason it doesn't take
+`--manually-approve-plan`: it never implements what it plans.
+
 ### `meow issue`
 
 Fetches a Jira issue and solves it end to end in a pushed worktree branch —
@@ -132,6 +183,11 @@ pushes to `origin` once the sprint passes. On success it prints one JSON
 line — `{"issue": "PROJ-123", "branch": "issue/PROJ-123"}` — and exits 0.
 See [GUIDE.md](GUIDE.md) for the config fields and for running it from a
 Windows Scheduled Task with persistent logging (`MEOW_LOG_FILE`).
+
+`issue` also accepts `--manually-approve-plan`/`-m`, with the same
+plan-then-approve-then-implement behavior as `run`. Don't combine it with a
+scheduled/unattended run, though — there's no console attached to answer
+the prompt, so it will hang waiting for an approval that never comes.
 
 ### `meow gitlab-review`
 
@@ -227,6 +283,7 @@ meow/
         ├── config.py                   # .harness.toml loading + lint-command model
         ├── sprint.py                   # per-sprint state shared by every role
         ├── lint.py                     # auto-fixing per-file hook + project-wide fix/check
+        ├── rules.py                    # docs/RULES.md parsing, injected into role prompts
         ├── agents/
         │   ├── base.py                 # shared AgentContext/Agent base + ProjectContext
         │   ├── explorer.py             # explorer agent definition

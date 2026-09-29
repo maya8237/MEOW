@@ -79,8 +79,8 @@ class GitlabFetcherAgent(Agent):
         if not used_gitlab_tool or not succeeded:
             raise RuntimeError(
                 "No active GitLab MCP server responded. Check [gitlab.mcp] "
-                "in .harness.toml (command/args to launch it) and the "
-                "GitLab credentials it needs in the environment -- see "
+                "in .harness.toml -- command/args to launch it, and "
+                "[gitlab.mcp.env] for whatever credentials it needs -- see "
                 "GUIDE.md."
             )
         logger.info("gitlab_preflight_query_passed")
