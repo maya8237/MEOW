@@ -256,6 +256,85 @@ def _ensure_branch_worktree(
     return worktree_dir
 
 
+def _ensure_existing_branch_worktree(
+    working_dir: Path, feature_name: str, branch_name: str
+) -> Path:
+    """Check out an EXISTING branch -- local, or `origin/<branch_name>` --
+    into its own worktree, for reviewing/fixing a branch that already
+    exists rather than creating one.
+
+    Unlike `_ensure_branch_worktree` (creates `branch_name` fresh when it
+    doesn't exist yet, for `meow issue`'s new pushable branch) and
+    `_ensure_feature_worktree` (a detached, branch-less worktree for
+    `run`/`plan`), this requires `branch_name` to already exist and raises
+    a clear error otherwise instead of silently creating it.
+    """
+    worktree_dir = working_dir / ".worktrees" / feature_name
+    if worktree_dir.exists():
+        return worktree_dir
+
+    git = shutil.which("git")
+    if not git:
+        raise RuntimeError(
+            "git is required for `meow branch-review`'s worktree step."
+        )
+
+    (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)
+    local_exists = _run_git(
+        [git, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch_name}"],
+        cwd=working_dir,
+    ).returncode == 0
+
+    if local_exists:
+        argv = [git, "worktree", "add", str(worktree_dir), branch_name]
+    else:
+        remote_ref = f"refs/remotes/origin/{branch_name}"
+        remote_exists = _run_git(
+            [git, "rev-parse", "--verify", "--quiet", remote_ref], cwd=working_dir
+        ).returncode == 0
+        if not remote_exists:
+            raise RuntimeError(
+                f"Branch '{branch_name}' was not found locally or as "
+                f"'origin/{branch_name}'. Fetch it first (`git fetch origin "
+                f"{branch_name}`) or check the branch name."
+            )
+        argv = [
+            git, "worktree", "add", "--track", "-b", branch_name,
+            str(worktree_dir), f"origin/{branch_name}",
+        ]
+
+    result = _run_git(argv, cwd=working_dir)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Could not create worktree for branch '{branch_name}':\n{result.stderr}"
+        )
+    return worktree_dir
+
+
+def _require_branch_checked_out(active_dir: Path, branch: str) -> None:
+    """Raise unless `active_dir`'s current HEAD branch is exactly `branch`.
+
+    Guards `branch-review --no-worktree`: fixing "in place" only makes
+    sense if the branch under review is what's actually checked out there.
+    Skipped (not raised) when git is unavailable -- consistent with
+    `_is_linked_worktree`'s own "can't tell, so don't block" fallback.
+    """
+    git = shutil.which("git")
+    if not git:
+        return
+    result = _run_git([git, "rev-parse", "--abbrev-ref", "HEAD"], cwd=active_dir)
+    if result.returncode != 0:
+        return
+    current = result.stdout.strip()
+    if current != branch:
+        raise RuntimeError(
+            f"--no-worktree requires {active_dir} to already have '{branch}' "
+            f"checked out, but HEAD is on '{current}'. Check out '{branch}' "
+            "first, or drop --no-worktree to let branch-review check it out "
+            "into an isolated worktree instead."
+        )
+
+
 def _push_branch(worktree_dir: Path, branch_name: str) -> None:
     """Push a finished `meow issue` branch to `origin`."""
     git = shutil.which("git")
