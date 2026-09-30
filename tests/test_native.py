@@ -163,7 +163,7 @@ class LintTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
 
-            result = native.lint(root, root, file_path=None, fix=False)
+            result = native.lint(root, root, native.LintOptions())
 
             self.assertTrue(result["clean"])
             self.assertEqual(result["blocking"], [])
@@ -174,7 +174,7 @@ class LintTests(unittest.TestCase):
             root = make_repo(tmp)
             write_config(root, "no-such-linter-xyz")
 
-            result = native.lint(root, root, file_path="a.py", fix=False)
+            result = native.lint(root, root, native.LintOptions(file_path="a.py"))
 
             self.assertFalse(result["clean"])
             self.assertIn("Could not run lint", result["problems"][0])
@@ -184,9 +184,28 @@ class LintTests(unittest.TestCase):
             root = make_repo(tmp)
             write_config(root, "python fail.py")
 
-            result = native.lint(root, root, file_path="a.py", fix=False)
+            result = native.lint(root, root, native.LintOptions(file_path="a.py"))
 
             self.assertFalse(result["clean"])
+
+    def test_all_blocking_ignores_gate(self):
+        """lint-fix's native mode must fix every command CLI mode would,
+        not just the ones a review would gate on."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            gated = native.lint(root, root, native.LintOptions())
+            ungated = native.lint(root, root, native.LintOptions(all_blocking=True))
+
+            # Default (gated): the gate=false command's failure is
+            # informational only, so `clean` is true despite it.
+            self.assertEqual(gated["blocking"], [])
+            self.assertEqual(len(gated["informational"]), 1)
+            self.assertTrue(gated["clean"])
+            # `all_blocking=True`: the same failure now counts as blocking.
+            self.assertEqual(ungated["informational"], [])
+            self.assertEqual(ungated["blocking"], gated["informational"])
+            self.assertFalse(ungated["clean"])
 
 
 class RoundTests(unittest.TestCase):
@@ -278,3 +297,95 @@ class PromptTests(unittest.TestCase):
 
             self.assertIn("git diff contains changes", result["system_prompt"])
             self.assertTrue(result["review_file"].endswith("review.md"))
+
+
+class RolePromptDispatchTests(unittest.TestCase):
+    """Every `role_prompt` branch, not just the two exercised above --
+    a wiring bug in the `builders` dict is otherwise only caught by
+    `prompts.py`'s own unit tests, which never go through `role_prompt`."""
+
+    def test_planner_prompt_dispatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            plan = root / "docs" / "plans" / "feat.md"
+
+            result = native.role_prompt(root, root, "planner", plan_file=plan)
+
+            self.assertIn(str(plan), result["system_prompt"])
+            self.assertIsNone(result["query"])
+
+    def test_generator_prompt_dispatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            plan = root / "docs" / "plans" / "feat.md"
+
+            result = native.role_prompt(root, root, "generator", plan_file=plan)
+
+            self.assertIn(str(plan), result["system_prompt"])
+            self.assertIn("Sprint Contract", result["system_prompt"])
+
+    def test_explorer_prompt_dispatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            result = native.role_prompt(root, root, "explorer")
+
+            self.assertIn(str(root), result["system_prompt"])
+            self.assertEqual(result["model"], "haiku")
+
+    def test_review_fixer_prompt_dispatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            result = native.role_prompt(root, root, "review-fixer")
+
+            self.assertIn("fix the review findings", result["system_prompt"])
+
+    def test_lint_fixer_prompt_dispatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            result = native.role_prompt(root, root, "lint-fixer")
+
+            self.assertIn("fix lint failures", result["system_prompt"])
+
+    def test_reviewer_mr_prompt_dispatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            result = native.role_prompt(root, root, "reviewer-mr")
+
+            self.assertIn("merge request", result["system_prompt"])
+            self.assertIsNone(result["query"])
+            self.assertTrue(result["review_file"].endswith("gitlab-review.md"))
+
+
+class PushTests(unittest.TestCase):
+    def test_push_without_origin_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            with self.assertRaises(RuntimeError):
+                native.push(root, "does-not-matter")
+
+    def test_push_succeeds_against_a_real_remote(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bare = Path(tmp) / "origin.git"
+            git(Path(tmp), "init", "-q", "--bare", str(bare))
+            repo_dir = Path(tmp) / "repo"
+            repo_dir.mkdir()
+            root = make_repo(str(repo_dir))
+            git(root, "remote", "add", "origin", str(bare))
+            branch = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=root, capture_output=True, text=True,
+            ).stdout.strip()
+
+            result = native.push(root, branch)
+
+            self.assertEqual(result, {"branch": branch, "pushed": True})
+            refs = subprocess.run(
+                ["git", "branch", "--list", branch],
+                cwd=bare, capture_output=True, text=True,
+            ).stdout
+            self.assertIn(branch, refs)

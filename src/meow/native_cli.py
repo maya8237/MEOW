@@ -81,6 +81,14 @@ def _add_lint(sub) -> None:
         "--fix", action="store_true",
         help="Project-wide: apply each command's fix flag before checking.",
     )
+    parser.add_argument(
+        "--all-blocking", dest="all_blocking", action="store_true",
+        help=(
+            "Treat every configured command as blocking regardless of "
+            "`gate` (lint-fix must fix everything CLI mode would, not just "
+            "the review's gate commands)."
+        ),
+    )
 
 
 def _add_round(sub) -> None:
@@ -150,7 +158,10 @@ def _prepare(args, working_dir: Path, _active: Path) -> dict:
 
 
 def _lint(args, working_dir: Path, active: Path) -> dict:
-    return native.lint(working_dir, active, file_path=args.file, fix=args.fix)
+    options = native.LintOptions(
+        file_path=args.file, fix=args.fix, all_blocking=args.all_blocking
+    )
+    return native.lint(working_dir, active, options)
 
 
 def _round(args, working_dir: Path, active: Path) -> dict:
