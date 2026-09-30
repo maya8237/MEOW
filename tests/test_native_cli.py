@@ -149,3 +149,52 @@ class NativeCliTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertEqual(out, "")
             self.assertIn("origin", err)
+
+
+class BranchReviewNativeCliTests(unittest.TestCase):
+    def test_prepare_existing_branch_creates_worktree_on_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            git(root, "branch", "feature/x")
+
+            code, out, _ = run_native(
+                "prepare", "--existing-branch", "feature/x",
+                "--name", "br-feature-x", "--allow-dirty", "-d", str(root),
+            )
+
+            self.assertEqual(code, 0)
+            data = json.loads(out)
+            self.assertTrue(data["use_worktree"])
+            self.assertTrue(Path(data["active_dir"]).is_dir())
+
+    def test_prepare_existing_branch_that_does_not_exist_exits_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            code, out, err = run_native(
+                "prepare", "--existing-branch", "nope",
+                "--name", "br-nope", "--allow-dirty", "-d", str(root),
+            )
+
+            self.assertEqual(code, 1)
+            self.assertEqual(out, "")
+            self.assertIn("nope", err)
+
+    def test_prompt_reviewer_branch_needs_target_and_branch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            git(root, "branch", "main")
+            git(root, "branch", "feature/x")
+
+            code, out, _ = run_native(
+                "prompt", "reviewer-branch",
+                "--target", "main", "--branch", "feature/x", "-d", str(root),
+            )
+            bad_code, _, err = run_native("prompt", "reviewer-branch", "-d", str(root))
+
+            self.assertEqual(code, 0)
+            data = json.loads(out)
+            self.assertIn("'main'", data["system_prompt"])
+            self.assertIn("'feature/x'", data["system_prompt"])
+            self.assertEqual(bad_code, 1)
+            self.assertIn("--target", err)

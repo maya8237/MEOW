@@ -15,12 +15,15 @@ from pathlib import Path
 
 from meow.agents.base import ProjectContext
 from meow.agents.reviewer import (
+    BRANCH_REVIEW_FILENAME,
     MR_REVIEW_FILENAME,
     PROMPT_REVIEW_FILENAME,
+    _branch_diff,
     _git_review_context,
 )
 from meow.config import load_config
 from meow.prompts import (
+    branch_review_prompt,
     explorer_prompt,
     generator_prompt,
     lint_fixer_prompt,
@@ -39,6 +42,7 @@ PROMPT_ROLES = (
     "reviewer-plan",
     "reviewer-prompt",
     "reviewer-mr",
+    "reviewer-branch",
     "review-fixer",
     "lint-fixer",
 )
@@ -94,6 +98,25 @@ def _mr_review(context: ProjectContext) -> dict:
     return {"system_prompt": text, "query": None, "review_file": str(review_file)}
 
 
+def _branch_review(context: ProjectContext, target: str, branch: str) -> dict:
+    docs_dir = context.config["docs_dir"]
+    review_file = context.active_working_dir() / docs_dir / BRANCH_REVIEW_FILENAME
+    diff_text = _branch_diff(context.active_working_dir(), target, branch)
+    text = branch_review_prompt(
+        target,
+        branch,
+        review_file,
+        context.lint_commands(),
+        check_worktree_hygiene=context.use_worktree,
+    )
+    query = (
+        f"Diff of branch {branch!r} against target {target!r} (git diff "
+        f"{target}...{branch}, including any uncommitted changes):\n\n"
+        + (diff_text or "(no diff -- branch matches target)")
+    )
+    return {"system_prompt": text, "query": query, "review_file": str(review_file)}
+
+
 def _simple_prompt(role: str, context: ProjectContext, plan_file: Path | None) -> dict:
     active_dir = context.active_working_dir()
     if role in {"planner", "generator"} and plan_file is None:
@@ -108,6 +131,27 @@ def _simple_prompt(role: str, context: ProjectContext, plan_file: Path | None) -
     return {"system_prompt": builders[role](), "query": None}
 
 
+def _reviewer_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- mirrors the `meow native prompt` flags one to one
+    role: str,
+    context: ProjectContext,
+    plan_file: Path | None,
+    focus: str | None,
+    target: str | None,
+    branch: str | None,
+) -> dict:
+    if role == "reviewer-plan":
+        if plan_file is None:
+            raise ValueError("the reviewer-plan prompt needs --plan")
+        return _plan_review(context, plan_file, focus)
+    if role == "reviewer-prompt":
+        return _prompt_review(context, focus)
+    if role == "reviewer-mr":
+        return _mr_review(context)
+    if not target or not branch:
+        raise ValueError("the reviewer-branch prompt needs --target and --branch")
+    return _branch_review(context, target, branch)
+
+
 def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native prompt` flags one to one
     working_dir: Path,
     active_dir: Path,
@@ -116,6 +160,8 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
     plan_file: Path | None = None,
     focus: str | None = None,
     use_worktree: bool = False,
+    target: str | None = None,
+    branch: str | None = None,
 ) -> dict:
     """The exact system prompt (and task message, where there is one) the SDK
     agent for `role` would use, including project rules, so a Task subagent
@@ -123,19 +169,12 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
     if role not in PROMPT_ROLES:
         raise ValueError(f"role must be one of {PROMPT_ROLES}, got {role!r}")
     config = load_config(working_dir)
-    context = ProjectContext(active_dir, config)
-    context.use_worktree = use_worktree
-    if role == "reviewer-plan":
-        if plan_file is None:
-            raise ValueError("the reviewer-plan prompt needs --plan")
-        result = _plan_review(context, plan_file, focus)
-    elif role == "reviewer-prompt":
-        result = _prompt_review(context, focus)
-    elif role == "reviewer-mr":
-        result = _mr_review(context)
+    context = ProjectContext(active_dir, config, use_worktree=use_worktree)
+    if role.startswith("reviewer-"):
+        result = _reviewer_prompt(role, context, plan_file, focus, target, branch)
     else:
         result = _simple_prompt(role, context, plan_file)
-    rules_key = re.sub(r"-(plan|prompt|mr)$", "", role).replace("-", "_")
+    rules_key = re.sub(r"-(plan|prompt|mr|branch)$", "", role).replace("-", "_")
     prompt = result["system_prompt"]
     result["system_prompt"] = _with_rules(prompt, active_dir, rules_key)
     result["model"] = config["models"].get(rules_key)

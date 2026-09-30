@@ -51,6 +51,15 @@ def _add_prepare(sub) -> None:
         help="Create/reuse a worktree on this named branch (issue flow).",
     )
     parser.add_argument(
+        "--existing-branch", dest="existing_branch", default=None,
+        help=(
+            "Check out this EXISTING branch (local or origin's) into a "
+            "worktree, or (with --no-worktree) require it already checked "
+            "out in place -- branch-review flow. Errors if it doesn't "
+            "exist anywhere, unlike --branch."
+        ),
+    )
+    parser.add_argument(
         "--allow-dirty", dest="allow_dirty", action="store_true",
         help="Skip the uncommitted-changes check (read-only flows like plan).",
     )
@@ -113,6 +122,12 @@ def _add_prompt(sub) -> None:
         "--worktree", action="store_true",
         help="The run used an isolated worktree (enables hygiene review).",
     )
+    parser.add_argument(
+        "--target", default=None, help="Target branch (reviewer-branch role).",
+    )
+    parser.add_argument(
+        "--branch", default=None, help="Branch under review (reviewer-branch role).",
+    )
 
 
 def _add_push(sub) -> None:
@@ -152,6 +167,7 @@ def _prepare(args, working_dir: Path, _active: Path) -> dict:
         use_worktree=not args.no_worktree,
         source_branch=args.source_branch,
         branch=args.branch,
+        existing_branch=args.existing_branch,
         require_clean=not args.allow_dirty,
     )
     return native.prepare(working_dir, options)
@@ -178,6 +194,8 @@ def _prompt(args, working_dir: Path, active: Path) -> dict:
         plan_file=_resolve(args.plan, active),
         focus=args.focus,
         use_worktree=args.worktree,
+        target=args.target,
+        branch=args.branch,
     )
 
 

@@ -26,6 +26,8 @@ from meow.worktree import (
     _boot_repo,
     _ensure_branch_worktree,
     _ensure_clean_tree,
+    _ensure_existing_branch_worktree,
+    _require_branch_checked_out,
     _resolve_working_dir,
 )
 
@@ -40,6 +42,7 @@ class PrepareOptions:
     use_worktree: bool = True
     source_branch: str | None = None
     branch: str | None = None
+    existing_branch: str | None = None
     require_clean: bool = True
 
 
@@ -63,12 +66,25 @@ def _plan_paths(docs_dir: Path, name: str | None) -> tuple[Path, Path]:
 def _resolve_active_dir(
     working_dir: Path, options: PrepareOptions
 ) -> tuple[Path, bool]:
-    """Pick the directory to work in: a branch worktree (issue flow), a
-    feature worktree (run/plan), or the project itself."""
+    """Pick the directory to work in: a branch worktree (issue flow), an
+    existing-branch worktree (branch-review flow), a feature worktree
+    (run/plan), or the project itself."""
     if options.branch:
         if not options.name:
             raise ValueError("--name is required together with --branch")
         return _ensure_branch_worktree(working_dir, options.name, options.branch), True
+    if options.existing_branch:
+        if not options.use_worktree:
+            _require_branch_checked_out(working_dir, options.existing_branch)
+            return working_dir, False
+        if not options.name:
+            raise ValueError("--name is required together with --existing-branch")
+        return (
+            _ensure_existing_branch_worktree(
+                working_dir, options.name, options.existing_branch
+            ),
+            True,
+        )
     active_dir, _, is_worktree = _resolve_working_dir(
         working_dir,
         use_worktree=options.use_worktree,
