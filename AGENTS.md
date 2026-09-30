@@ -110,7 +110,9 @@ A project can declare any number of `[[lint]]` commands (see GUIDE.md for the
 ## Layout
 
 The engine is split by responsibility under `src/meow/`: `config.py`
-(`.harness.toml` loading and the lint-command model), `sprint.py` (the shared
+(`.harness.toml` loading, the lint-command model, and failing fast on a
+lint command that's a script or shell only usable on a different OS than
+the one meow is running on), `sprint.py` (the shared
 per-sprint state and `build_sprint`, which wires it up from config), `lint.py`
 (the auto-fixing per-file hook, reporting the configured lint plan, and the
 project-wide fix/check functions `lint_fix.py` uses), `worktree.py`
