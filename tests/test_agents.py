@@ -12,7 +12,7 @@ from meow.agents.generator import Generator, GeneratorAgent
 from meow.agents.lint_fixer import LintFixAgent
 from meow.agents.planner import PlannerAgent
 from meow.agents.review_fixer import ReviewFixAgent
-from meow.agents.reviewer import ReviewerAgent, _verdict_status
+from meow.agents.reviewer import ReviewerAgent, _branch_diff, _verdict_status
 from meow.config import LintCommand
 
 
@@ -433,6 +433,86 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"Write your verdict to {review_file}", options.system_prompt)
         self.assertIn("ruff check", options.system_prompt)
         self.assertIn("SOLID/SRP", options.system_prompt)
+
+    async def test_review_branch_computes_diff_and_preserves_branch_review_contract(
+        self,
+    ):
+        verdict = "SUMMARY: reviewed\nSTATUS: PASS\nconcern: PASS"
+
+        with (
+            patch.object(
+                ReviewerAgent, "run_query", new_callable=AsyncMock
+            ) as run_query,
+            patch(
+                "meow.agents.reviewer._branch_diff", return_value="diff text"
+            ) as branch_diff,
+            patch.object(Path, "read_text", return_value=verdict),
+        ):
+            status, received_verdict = await ReviewerAgent(self.context).review_branch(
+                "main", "feature/x"
+            )
+
+        self.assertEqual((status, received_verdict), ("PASS", verdict))
+        branch_diff.assert_called_once_with(
+            self.context.project_dir, "main", "feature/x"
+        )
+        prompt, options, role = run_query.await_args.args
+        self.assertIn("diff text", prompt)
+        self.assertEqual(role, "Reviewer")
+        self.assertEqual(
+            options.allowed_tools, ["Read", "Grep", "Glob", "Bash", "Write"]
+        )
+        self.assertIn("'main'", options.system_prompt)
+        self.assertIn("'feature/x'", options.system_prompt)
+
+
+class BranchDiffTests(unittest.TestCase):
+    def test_diff_includes_committed_and_uncommitted_changes_since_merge_base(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "t@example.com"], cwd=root, check=True
+            )
+            subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+            (root / "f.txt").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=root, check=True)
+            subprocess.run(["git", "branch", "main"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "checkout", "-q", "-b", "feature/x"], cwd=root, check=True
+            )
+            (root / "f.txt").write_text("committed change\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "commit", "-q", "-am", "committed"], cwd=root, check=True
+            )
+            (root / "f.txt").write_text(
+                "committed change\nuncommitted too\n", encoding="utf-8"
+            )
+
+            diff = _branch_diff(root, "main", "feature/x")
+
+            self.assertIn("committed change", diff)
+            self.assertIn("uncommitted too", diff)
+
+    def test_raises_a_clear_error_when_target_does_not_exist(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "t@example.com"], cwd=root, check=True
+            )
+            subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+            (root / "f.txt").write_text("x\n", encoding="utf-8")
+            subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=root, check=True)
+
+            with self.assertRaisesRegex(RuntimeError, "merge base"):
+                _branch_diff(root, "does-not-exist", "master")
 
 
 class RulesInjectionTests(unittest.IsolatedAsyncioTestCase):

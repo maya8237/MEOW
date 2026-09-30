@@ -49,3 +49,18 @@ class PromptTests(unittest.TestCase):
 
         self.assertIn("Do not run or reference the project's lint commands", text)
         self.assertIn("one line per concern", text)
+
+    def test_branch_review_prompt_names_target_and_branch_and_gates_lint(self):
+        text = prompts.branch_review_prompt(
+            "main",
+            "feature/x",
+            Path("branch-review.md"),
+            [LintCommand("ruff check")],
+            check_worktree_hygiene=True,
+        )
+
+        self.assertIn("'main'", text)
+        self.assertIn("'feature/x'", text)
+        self.assertIn("Write your verdict to branch-review.md", text)
+        self.assertIn("FAIL criterion: `ruff check`", text)
+        self.assertIn("worktree", text)
