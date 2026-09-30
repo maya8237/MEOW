@@ -202,7 +202,9 @@ def _ensure_feature_worktree(
         argv.append(source_branch)
 
     try:
-        subprocess.run(argv, check=True, capture_output=True, text=True)
+        subprocess.run(
+            argv, check=True, capture_output=True, text=True, encoding="utf-8"
+        )
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(
             f"Failed to create worktree at {worktree_dir}: "
@@ -213,7 +215,9 @@ def _ensure_feature_worktree(
 
 
 def _run_git(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=False)
+    return subprocess.run(
+        argv, cwd=cwd, capture_output=True, text=True, check=False, encoding="utf-8"
+    )
 
 
 def _ensure_branch_worktree(

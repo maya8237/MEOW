@@ -38,12 +38,14 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     diff = subprocess.run(
         [git, "-C", str(active_dir), "diff", "--"],
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     diff_text = diff.stdout.strip()
     review_context = (
@@ -59,12 +61,14 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
         repo_diff = subprocess.run(
             [git, "-C", str(context.repo_dir), "diff", "--"],
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
         review_context += (
             "\n\nOriginal working-directory status (must be clean while a "
@@ -112,7 +116,7 @@ class ReviewerAgent(Agent):
             else f"Review the prompt: {review_basis}\n\n{git_context}"
         )
         await self.run_query(query_prompt, options, "Reviewer")
-        verdict_text = review_file.read_text()
+        verdict_text = review_file.read_text(encoding="utf-8")
         return _verdict_status(verdict_text), verdict_text
 
     async def review_merge_request(
@@ -146,7 +150,7 @@ class ReviewerAgent(Agent):
             f"Merge request diff:\n{diff}"
         )
         await self.run_query(query_prompt, options, "Reviewer")
-        verdict_text = review_file.read_text()
+        verdict_text = review_file.read_text(encoding="utf-8")
         return _verdict_status(verdict_text), verdict_text
 
     async def review_plan(
@@ -173,7 +177,7 @@ class ReviewerAgent(Agent):
             skills=["superpowers:verification-before-completion"],
         )
         await self.run_query(f"Review {plan_file}", options, "Reviewer")
-        verdict_text = review_file.read_text()
+        verdict_text = review_file.read_text(encoding="utf-8")
         return _verdict_status(verdict_text), verdict_text
 
 

@@ -36,6 +36,18 @@ def configure_logging() -> None:
     level_name = os.environ.get(LOG_LEVEL_ENV_VAR, "INFO").upper()
     level = logging.getLevelNamesMapping().get(level_name, logging.INFO)
 
+    # Windows opens stdout/stderr with the console's codepage (cp1252/
+    # "charmap") by default, not UTF-8, so structlog rendering an em-dash or
+    # arrow -- as several role prompts do -- raises UnicodeEncodeError and
+    # kills the run. reconfigure() falls back to `errors="replace"` instead
+    # of crashing if the stream still can't represent a character. A no-op
+    # on platforms where these streams are already UTF-8, and harmless if a
+    # caller has replaced sys.stdout/stderr with something that doesn't
+    # support reconfigure (e.g. under pytest capture).
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     # stderr, not stdout: `meow issue` prints a single JSON result line to
     # stdout on success, which a caller (e.g. a Windows Scheduled Task) needs
     # to read cleanly without log lines interleaved into it.
