@@ -21,8 +21,20 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install meow (editable, with dev extras)
         run: python -m pip install -e ".[dev]"
+      # Force bash (default on Linux/macOS anyway) instead of windows-latest's
+      # default pwsh: unittest -v writes its "test ... ok" progress to stderr
+      # by design, and pwsh 7.4+'s $PSNativeCommandUseErrorActionPreference
+      # (on by default) turns any native-process stderr output into a
+      # terminating step failure under GitHub Actions' $ErrorActionPreference
+      # = Stop, regardless of the process's actual exit code.
       - name: Run the test suite
-        run: python -m unittest discover -s tests -v
+        shell: bash
+        run: python -m unittest discover -s tests -v 2>&1 | tee test-output.log
+      - name: Surface failure output as an annotation (diagnostic, temporary)
+        if: failure()
+        shell: bash
+        run: |
+          tail -n 60 test-output.log | sed 's/%/%25/g; s/\r/%0D/g' | awk '{printf "%s%%0A", $0}' | { printf '::error::'; cat; printf '\n'; }
 
   lint:
     runs-on: ubuntu-latest
