@@ -50,7 +50,7 @@ Each `[[lint]]` table (run in listed order, program resolved on `PATH` so
 | Key | Required | Default | Purpose |
 |---|---|---|---|
 | `command` | **Yes** | — | Check-only, no fix flag, e.g. `ruff check`, `npx oxlint`, `golangci-lint run`. |
-| `fix_flag` | No | none | Appended for the per-file auto-fix hook, and for `meow lint-fix`'s project-wide auto-fix pass. Commands with no `fix_flag` are checked but never auto-fixed by either. |
+| `fix_flag` | No | none | Appended for the per-file auto-fix hook, and for `meow run --lint-fix`'s project-wide auto-fix pass. Commands with no `fix_flag` are checked but never auto-fixed by either. |
 | `per_file` | No | `true` | `false` for whole-project-only analysis. |
 | `gate` | No | `true` | `false` makes it advisory — reported, never fails the sprint. |
 
@@ -58,8 +58,8 @@ A second, non-blocking `[[lint]]` entry (`gate = false`, `per_file = false`)
 is how a whole-project-only analyzer reports findings without failing the
 sprint — see `templates/harness.toml.example` for a worked example.
 
-`[jira]`/`[jira.mcp]` (for `meow issue`) and `[gitlab.mcp]` (for `meow
-gitlab-review`) are optional — see
+`[jira]`/`[jira.mcp]` (for `meow run --jira`/`meow review --jira`) and
+`[gitlab.mcp]` (for `meow review --gitlab`) are optional — see
 [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for their fields and a security
 note on `[gitlab.mcp].env`.
 
@@ -143,8 +143,8 @@ A missing `.harness.toml` or `[[lint]]` entry fails fast with
 `[[lint]]` table (often a top-level key placed after it) raises `ValueError`
 naming the entry and key; a missing architecture doc under `docs/` is not an
 error, it just leaves the reviewer's SOLID/SRP pass with nothing
-project-specific to check against. `meow issue`, `meow gitlab-review`,
-`meow branch-review`, and `meow review-fix-review` have their own failure
+project-specific to check against. `meow run --jira` and `meow review`
+(every source, and its `--review-file` resume path) have their own failure
 modes (missing MCP config, unreachable server, no MR checkout, wrong
 branch checked out, `max_rounds` exhausted, etc.) — the full error-message
 reference lives in

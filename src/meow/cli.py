@@ -238,17 +238,14 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "Fetch this Jira issue (omit KEY for the latest in "
             "[jira].project_key) and build it end to end in a pushed "
-            "worktree branch -- today's `meow issue`."
+            "worktree branch."
         ),
     )
     run_parser.add_argument(
         "--lint-fix",
         dest="lint_fix",
         action="store_true",
-        help=(
-            "Run every configured lint command and fix what it finds -- "
-            "today's `meow lint-fix`."
-        ),
+        help="Run every configured lint command and fix what it finds.",
     )
     run_parser.add_argument(
         "--report-only",

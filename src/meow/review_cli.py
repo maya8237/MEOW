@@ -1,10 +1,11 @@
 """
 meow/review_cli.py
 
-`meow run --review`'s single dispatcher: replaces the top-level CLI-facing
-functions that used to live in `review_runner.py` (`meow review`/`meow cr`),
-`gitlab_reviewer.py` (`meow gitlab-review`), `branch_reviewer.py`
-(`meow branch-review`), and `review_fix_review.py` (`meow review-fix-review`)
+`meow review`'s single dispatcher: replaces the top-level CLI-facing
+functions that used to live in `review_runner.py` (the old `meow review`/
+`meow cr`), `gitlab_reviewer.py` (the old `meow gitlab-review`),
+`branch_reviewer.py` (the old `meow branch-review`), and
+`review_fix_review.py` (the old `meow review-fix-review`)
 -- one review-and-optionally-fix operation, sourced from a free-text prompt,
 a Jira issue, a GitLab merge request, a local branch's diff against a
 target, an existing plan file (or the latest one auto-discovered), or an
@@ -199,16 +200,16 @@ async def _jira_review_prompt(working_dir: Path, config: dict, jira_key: str) ->
 
 _UNRESUMABLE_FLAVOR_MESSAGES = {
     "gitlab": (
-        "{file} is a GitLab merge request review -- `meow run --review` "
+        "{file} is a GitLab merge request review -- `meow review` "
         "can't resume it: there is no local checkout of the merge "
         "request's code, and --gitlab never creates one. Check out the "
         "MR's branch locally and review that checkout instead, or "
         "address the MR feedback directly."
     ),
     "branch": (
-        "{file} is a branch review -- `meow run --review` can't resume "
+        "{file} is a branch review -- `meow review` can't resume "
         "it from --review-file alone (it doesn't know the target branch "
-        "to re-diff against). Run `meow run --review --fix --branch "
+        "to re-diff against). Run `meow review --fix --branch "
         "<branch> --target <target>` again instead; it already loops "
         "review, fix, and re-review until it passes."
     ),
@@ -263,7 +264,7 @@ async def run_review_command(  # ruff: ignore[too-many-arguments] -- one flag pe
     review_file: Path | None = None,
     use_worktree: bool = True,
 ) -> None:
-    """`meow run --review`'s dispatcher. Exactly one of `jira_key`,
+    """`meow review`'s dispatcher. Exactly one of `jira_key`,
     `gitlab_link`, `branch`(+`target`), `plan_file`, or `review_file` may be
     given; none given falls back to `prompt` (or full auto-discovery if
     `prompt` is also `None` -- see `_plan_or_prompt_review`). `fix` toggles

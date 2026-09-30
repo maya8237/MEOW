@@ -25,7 +25,7 @@ Use **CLI mode** (bottom) only if the user explicitly asks for it.
    you don't need in full. Read the file back and confirm the task list and
    `## Sprint Contract` exist. Write no application code.
 4. Report the plan file's path. If they want it built: `/meow:sprint` (full loop)
-   or, once code exists, `/meow:meow-review`.
+   or, once code exists, `/meow:review`.
 
 ## CLI mode
 

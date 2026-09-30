@@ -2,7 +2,7 @@
 meow/branch_reviewer.py
 
 Branch-name sanitizing for `review_cli.py`'s `--branch` review source
-(`meow run --review --branch <branch> --target <target>`): the worktree
+(`meow review --branch <branch> --target <target>`): the worktree
 directory for a branch under review is named
 `branch-review-<sanitized-branch>`, stripping anything that isn't a safe,
 single path segment (slashes in `feature/x`-style branch names included).

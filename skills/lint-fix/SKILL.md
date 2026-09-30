@@ -22,7 +22,7 @@ your work and racing your edits.
    `meow native round <docs_dir>/lint-fix.md --reset`.
 3. Auto-fix pass, then check: `meow native lint --fix --all-blocking --working-dir "<project-path>"`.
    `--all-blocking` fixes every configured command unconditionally, matching
-   `meow lint-fix`'s own CLI behavior -- `gate` only controls what fails a
+   `meow run --lint-fix`'s own CLI behavior -- `gate` only controls what fails a
    *review*, not what lint-fix leaves alone.
    - `"clean": true` -> report that nothing is left and stop.
    - Otherwise each entry in `blocking` is a `$ <command>` block of raw linter

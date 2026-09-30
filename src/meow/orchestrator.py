@@ -12,7 +12,7 @@ This module holds only the engine: `_prepare_sprint` (shared sprint/config
 setup) and the three round-loop shapes (`_run_rounds`, `_run_review_rounds`,
 `_run_prompt_fix_rounds`). The CLI-facing flows that drive the engine live
 in their own modules instead -- `run_sprint`/`run_plan` in
-`sprint_runner.py`, `run_review_command` (every `meow run --review` source)
+`sprint_runner.py`, `run_review_command` (every `meow review` source)
 in `review_cli.py`, `run_issue_solver` in `issue_solver.py`, and
 `run_lint_fix` in `lint_fix.py` -- rather than folding any of them into
 this engine.
@@ -162,7 +162,7 @@ async def _run_review_rounds(
     something to fix. True if the plan ends up passing.
 
     `initial_verdict`, when given, is used as round 1's verdict instead of
-    running a fresh review -- for `meow run --review --review-file`, whose
+    running a fresh review -- for `meow review --review-file`, whose
     round 1 verdict is the existing review file it started from. `focus`, when
     given, is passed to every `review_plan` call in the loop (not just the
     first), so a requested focus doesn't drift out of scope across rounds.
@@ -236,7 +236,7 @@ async def _run_prompt_fix_rounds(
     Sprint Contract to hand a `GeneratorAgent` -- fixes with `ReviewFixAgent`
     (a generic "fix these review findings" session) and re-reviews with
     whatever `re_review` the caller supplies (a prompt-based re-review for
-    `meow run --review --fix`'s prompt/jira sources, a branch-diff
+    `meow review --fix`'s prompt/jira sources, a branch-diff
     re-review for its `--branch` source). `initial_verdict` is always required here
     (unlike `_run_review_rounds`, this has no "run a fresh review first"
     mode -- every caller already has one).
