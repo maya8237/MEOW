@@ -1,10 +1,14 @@
-# CLI Consolidation: `review`/`cr`/`gitlab-review`/`branch-review`/`review-fix-review`/`issue`/`lint-fix` → `run`
+# CLI Consolidation: `review`/`cr`/`gitlab-review`/`branch-review`/`review-fix-review`/`issue`/`lint-fix` → `run` + `review`
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace seven near-duplicate subcommands with one: `meow run`, operating in one of three peer modes — plain build (default, now also Jira-sourced), `--review` (report-only or fix-looping review, sourced from a prompt, `--jira`, `--gitlab`, `--branch`+`--target`, or `--plan-file`/auto-discovery), or `--lint-fix` (project-wide lint fix-or-report, unchanged behavior). `meow plan` is untouched.
+**REVISED 2026-09-30:** the first version of this plan put `--review` and `--lint-fix` on `meow run` as peer mode flags. After seeing the full flag surface, the user asked for `--review` to be split back out into its own `meow review` subcommand (too much crammed into one command with too many interacting validation rules); `--lint-fix` stays folded into `run` (see "Why `--lint-fix` stays on `run`" below). **This only changed `cli.py`'s subcommand wiring** — `review_cli.py`'s dispatcher (`run_review_command` and everything it calls) was already CLI-shape-agnostic (it takes plain keyword arguments, not argparse `Namespace` objects, and has no idea whether it's invoked from a flag or a subcommand), so Tasks 1–3 (the dispatcher itself and its tests) needed zero changes. Only Task 4 (CLI wiring) and Task 6 (test_cli.py's dispatch tests) were reworked; this revision documents the corrected shape those tasks actually landed in.
 
-**This is a hard removal, not a deprecation.** `review`, `cr`, `gitlab-review`, `branch-review`, `review-fix-review`, `issue`, `lint-fix` stop existing as subcommands — no aliases, no deprecation warnings. Reasoning: meow is pre-1.0 (`0.1.0`), has no documented external-consumer contract for its CLI, and the entire point of this change is fewer endpoints — keeping dead aliases around while adding the new surface doubles exactly the maintenance/test surface the user wants reduced. A clean break is the coherent choice at this version stage.
+**Goal:** Replace seven near-duplicate subcommands with four: `meow run` (plain build, or `--jira`-sourced build, or `--lint-fix` mode), `meow review` (report-only or fix-looping review, sourced from a prompt, `--jira`, `--gitlab`, `--branch`+`--target`, `--plan-file`, or `--review-file`/auto-discovery), `meow plan` (untouched), and `meow native` (untouched).
+
+**This is a hard removal, not a deprecation.** `cr`, `gitlab-review`, `branch-review`, `review-fix-review`, `issue`, `lint-fix` stop existing as subcommands (`review` survives as a *different*, consolidated command with the same name doing more) — no aliases, no deprecation warnings. Reasoning: meow is pre-1.0 (`0.1.0`), has no documented external-consumer contract for its CLI, and the entire point of this change is fewer endpoints — keeping dead aliases around while adding the new surface doubles exactly the maintenance/test surface the user wants reduced. A clean break is the coherent choice at this version stage.
+
+**Why `--lint-fix` stays on `run` instead of also splitting out:** it adds one non-interacting boolean sub-flag (`--report-only`) with no source-selection ambiguity — it doesn't recreate the complexity that motivated splitting `--review` out (five mutually-exclusive source flags, each with its own worktree/clean-tree/fix-default implications). `run --jira` already established the precedent of "`run` does variant build/maintenance operations on the project, selected by a flag"; `--lint-fix` fits that same shape. The resulting split is coherent: `run` = write code (normally, from a Jira ticket, or by fixing lint), `review` = grade/fix existing code against an external source of truth.
 
 ## Final CLI surface
 
@@ -13,40 +17,44 @@ meow run [REQUEST]
     [--name NAME | --no-worktree] [--source-branch BRANCH]
     [--plan-file PATH] [--resume-at {generate,review}] [-m]
     [--jira [KEY]]
-    [--review [--fix] [--review-file PATH]
-              [--gitlab MR-LINK] [--branch BRANCH --target TARGET]]
     [--lint-fix [--report-only]]
+    [--working-dir PATH]
+
+meow review [REQUEST]
+    [--fix] [--jira [KEY]] [--gitlab MR-LINK]
+    [--branch BRANCH --target TARGET] [--no-worktree]
+    [--plan-file PATH] [--review-file PATH]
     [--working-dir PATH]
 
 meow plan [REQUEST] --name NAME [--no-worktree] [--source-branch BRANCH]
     (unchanged)
 ```
 
-`--review` and `--lint-fix` are **peer top-level modes**, exactly like `--jira`-absent vs `--jira`-present already are within build mode: at most one of `--review`/`--lint-fix` may be given; neither given = plain build mode. `--lint-fix` takes no `REQUEST`, no worktree flags (`--name`/`--no-worktree`/`--source-branch`), no `--jira`/`--gitlab`/`--branch`/`--plan-file`/`--fix` — it operates on `--working-dir` in place, exactly like today's `lint-fix`, and any of those given alongside it is an error. Its own `--report-only` is a separate flag from `--review`'s `--fix`, deliberately: `--lint-fix`'s default is to *fix* (mirroring today's `lint-fix` default), `--report-only` turns fixing off; `--review`'s default is to *not* fix, `--fix` turns it on. Reusing one flag name for both would flip one of the two defaults' meaning depending on mode, which is more confusing than one extra flag name.
+`--jira` and `--lint-fix` are **peer modes of `run`**: at most one may be given; neither given = plain build mode. `--lint-fix` takes no `REQUEST`, no worktree flags (`--name`/`--no-worktree`/`--source-branch`/`--resume-at`/`-m`), no `--jira` — it operates on `--working-dir` in place, exactly like today's `lint-fix`, and any of those given alongside it is an error.
 
-### Build mode (`--review` not given)
+### Build mode (`meow run`, `--lint-fix` not given)
 
 - `REQUEST` positional: required, UNLESS `--jira` is given (then giving both `REQUEST` and `--jira` is an error — ambiguous, two ways to say what to build).
 - `--jira` absent: today's exact `run` — plan (unless `--plan-file`) then implement, detached worktree by default (`--name` required unless `--no-worktree`), `--source-branch`/`--resume-at`/`-m` all unchanged.
-- `--jira [KEY]` given: fetch the Jira issue (omitted `KEY` = latest in `[jira].project_key`, matching today's `meow issue [ISSUE-KEY]`), use its summary+description as `REQUEST`, build in a **real pushable branch** worktree (`<branch_prefix><KEY>`, auto-derived name — `--name`/`--no-worktree`/`--source-branch` are rejected as meaningless here, matching today's `issue` taking no worktree flags), push to `origin` on success, print `{"issue": KEY, "branch": branch}` JSON on stdout. `-m` still works (same hang-if-scheduled caveat as today). This is exactly today's `meow issue`.
+- `--jira [KEY]` given: fetch the Jira issue (omitted `KEY` = latest in `[jira].project_key`, matching today's `meow issue [ISSUE-KEY]`), use its summary+description as `REQUEST`, build in a **real pushable branch** worktree (`<branch_prefix><KEY>`, auto-derived name — `--name`/`--no-worktree`/`--source-branch`/`--resume-at`/`--plan-file` are rejected as meaningless here, matching today's `issue` taking no worktree flags), push to `origin` on success, print `{"issue": KEY, "branch": branch}` JSON on stdout. `-m` still works (same hang-if-scheduled caveat as today). This is exactly today's `meow issue`.
 
-### Review mode (`--review` given)
+### Lint-fix mode (`meow run --lint-fix`)
+
+Exactly today's `meow lint-fix`, unchanged behavior, called from `run`'s dispatch instead of through its own subcommand:
+- Default (no `--report-only`): applies each configured `[[lint]]` command's own `--fix` flag project-wide, then hands whatever's still failing to `LintFixAgent` in a loop (reusing the per-file auto-fix hook) until clean or `max_rounds`. Edits the project in place. Requires a clean working tree (same as today).
+- `--report-only`: runs the configured commands and reports; fixes nothing, starts no agent; does not require a clean tree (nothing is edited). This is the mode the lint-fix skill uses, doing the fixing itself in the calling session.
+- `src/meow/lint_fix.py`'s `run_lint_fix(working_dir, report_only)` needs **no changes at all** — only its call site moves, from its own subcommand's dispatch function into `run`'s dispatch.
+
+### `meow review` (its own top-level subcommand)
 
 - `REQUEST` positional becomes the review **prompt/basis** when given as plain text.
-- Exactly one **source** may be given: `REQUEST` (prompt text), `--jira KEY`, `--gitlab LINK`, `--branch BRANCH --target TARGET`, or `--plan-file PATH`. Giving more than one is an error.
+- Exactly one **source** may be given: `REQUEST` (prompt text), `--jira KEY`, `--gitlab LINK`, `--branch BRANCH --target TARGET`, or `--plan-file PATH`. Giving more than one is an error. This is validated entirely inside `review_cli._validate_review_flags` (called from `run_review_command`, which `cli.py`'s `_dispatch_review` calls and catches `ValueError` from) — `cli.py` itself does no source-exclusivity validation, since the dispatcher already owns it and duplicating it would risk the two drifting apart.
 - **No source given at all**: auto-discover the latest plan file in `docs_dir` (today's `meow review`'s exact default); if none exists, fall back to reviewing the git diff (or whole project if the diff is empty) exactly like today's bare `meow cr`. This composite is deliberate: it's the only way both `review`'s and `cr`'s bare-invocation defaults stay reachable through the same "give me nothing" invocation, rather than making the user remember which of two flags to add for which default. Explicitly passing `--plan-file <real path>` still fails loudly if that file doesn't exist, exactly as today.
 - `--fix` (default off): off = single report-only review pass, log PASS/FAIL, never raise (today's `cr`/`gitlab-review` shape — extended to plan/branch sources, which is a **new** report-only mode for them). On = loop review→fix→review to `max_rounds`, raise `RuntimeError` if it never passes (today's `review`/`branch-review`/`review-fix-review` shape).
-- `--gitlab LINK` + `--fix` together: **hard error**. There is no local checkout of a merge request to fix — this preserves today's `gitlab-review` being deliberately read-only (and today's `review-fix-review` rejecting a gitlab-flavor review file for the same reason) rather than inventing new scope (checking an MR branch out) nobody asked for.
+- `--gitlab LINK` + `--fix` together: **hard error**, raised by `run_review_command` itself. There is no local checkout of a merge request to fix — this preserves today's `gitlab-review` being deliberately read-only (and today's `review-fix-review` rejecting a gitlab-flavor review file for the same reason) rather than inventing new scope (checking an MR branch out) nobody asked for.
 - `--review-file PATH`: resume fixing an already-written review file instead of running a fresh initial review — today's exact `review-fix-review --review-file` capability. Auto-detects the file's flavor (plan/prompt; gitlab/branch flavors are rejected, same message as today) the same way `review-fix-review` does today, so no other source flag is needed alongside it. Giving `--review-file` implies `--fix` (resuming a review file only makes sense if you're going to act on it — there's no today-equivalent of "resume but don't fix").
-- `--branch`/`--target` source: worktree by default (auto-derived name `branch-review-<sanitized-branch>`, exactly today's `branch-review`), `--no-worktree` fixes in place (requires the branch already checked out, same guard as today). `--name` is irrelevant here (ignored) since the worktree name is derived from the branch, not user-supplied.
+- `--branch`/`--target` source: worktree by default (auto-derived name `branch-review-<sanitized-branch>`, exactly today's `branch-review`), `--no-worktree` fixes in place (requires the branch already checked out, same guard as today). `review`'s own subparser only carries `--no-worktree` (not `--name`/`--source-branch`, which are meaningless for every review source — none of them accept a user-chosen worktree name or a fresh-checkout source branch).
 - `--plan-file PATH` source (or plan auto-discovery): no worktree involved (matches today's `meow review`, which never creates one).
-
-### Lint-fix mode (`--lint-fix` given)
-
-Exactly today's `meow lint-fix`, unchanged behavior, called directly from the new dispatch instead of through its own subcommand:
-- Default (no `--report-only`): applies each configured `[[lint]]` command's own `--fix` flag project-wide, then hands whatever's still failing to `LintFixAgent` in a loop (reusing the per-file auto-fix hook) until clean or `max_rounds`. Edits the project in place. Requires a clean working tree (same as today).
-- `--report-only`: runs the configured commands and reports; fixes nothing, starts no agent; does not require a clean tree (nothing is edited). This is the mode the (also-renamed, see Task 8) lint-fix skill uses, doing the fixing itself in the calling session.
-- `src/meow/lint_fix.py`'s `run_lint_fix(working_dir, report_only)` needs **no changes at all** — only its call site moves, from its own subcommand's dispatch function into `run`'s three-way (now four-way) mode dispatch.
 
 ## Mapping table (old → new)
 
@@ -56,27 +64,43 @@ Exactly today's `meow lint-fix`, unchanged behavior, called directly from the ne
 | `meow plan REQUEST --name N` | unchanged |
 | `meow lint-fix` | `meow run --lint-fix` |
 | `meow lint-fix --report-only` | `meow run --lint-fix --report-only` |
-| `meow review` (bare) | `meow run --review --fix` |
-| `meow review --plan-file P` | `meow run --review --fix --plan-file P` |
-| `meow cr` (bare) | `meow run --review` |
-| `meow cr "prompt"` | `meow run --review "prompt"` |
-| `meow gitlab-review LINK` | `meow run --review --gitlab LINK` |
-| `meow branch-review B --target T` | `meow run --review --fix --branch B --target T` |
-| `meow branch-review B --target T --no-worktree` | `meow run --review --fix --branch B --target T --no-worktree` |
-| *(no equivalent — new)* | `meow run --review --branch B --target T` (report-only branch review) |
-| `meow review-fix-review "prompt"` | `meow run --review --fix "prompt"` |
-| `meow review-fix-review "prompt" --review-file F` | `meow run --review --review-file F` (prompt only needed if `F` turns out to be prompt-flavor and you want a *different* focus than what's in the file already implies — see Task 3 for exact semantics) |
+| `meow review` (bare) | `meow review --fix` |
+| `meow review --plan-file P` | `meow review --fix --plan-file P` |
+| `meow cr` (bare) | `meow review` |
+| `meow cr "prompt"` | `meow review "prompt"` |
+| `meow gitlab-review LINK` | `meow review --gitlab LINK` |
+| `meow branch-review B --target T` | `meow review --fix --branch B --target T` |
+| `meow branch-review B --target T --no-worktree` | `meow review --fix --branch B --target T --no-worktree` |
+| *(no equivalent — new)* | `meow review --branch B --target T` (report-only branch review) |
+| `meow review-fix-review "prompt"` | `meow review --fix "prompt"` |
+| `meow review-fix-review "prompt" --review-file F` | `meow review --review-file F` (prompt only needed if `F` turns out to be prompt-flavor and you want a *different* focus than what's in the file already implies — see Task 3 for exact semantics) |
 | `meow issue [KEY]` | `meow run --jira [KEY]` |
 | `meow issue [KEY] -m` | `meow run --jira [KEY] -m` |
-| *(no equivalent — new)* | `meow run --review --jira KEY [--fix]` (review current code against what the ticket asked for) |
+| *(no equivalent — new)* | `meow review --jira KEY [--fix]` (review current code against what the ticket asked for) |
 
 Every capability that existed is reachable. Two genuinely new capabilities fall out of making `--fix` uniform: report-only branch/plan review, and Jira-sourced review.
 
 ## Architecture
 
-New module `src/meow/review_cli.py` holds one dispatcher, `run_review_command(...)`, replacing the top-level CLI-facing functions in `review_runner.py`, `gitlab_reviewer.py`, `branch_reviewer.py`, `review_fix_review.py` (their private helpers — `_load_gitlab_config`, `_fetch_merge_request`, `_sanitize`, `_ensure_existing_branch_worktree` usage, `_detect_review_flavor`/`_latest_review_file` — stay and get imported, minimizing the diff to already-correct code). `issue_solver.py` is untouched (its `run_issue_solver` becomes `run --jira`'s build-mode implementation verbatim) except for one addition: exposing its Jira-fetch helper for review-mode's `--jira` path to reuse without duplicating the MCP preflight/fetch logic.
+New module `src/meow/review_cli.py` holds one dispatcher, `run_review_command(...)`, replacing the top-level CLI-facing functions in `review_runner.py`, `gitlab_reviewer.py`, `branch_reviewer.py`, `review_fix_review.py` (their private helpers — `_load_gitlab_config`, `_fetch_merge_request`, `_sanitize`, `_ensure_existing_branch_worktree` usage, `_detect_review_flavor`/`_latest_review_file` — stay and get imported, minimizing the diff to already-correct code). `issue_solver.py` is untouched (its `run_issue_solver` becomes `run --jira`'s build-mode implementation verbatim) except for one addition: exposing its Jira-fetch helper for `meow review --jira` to reuse without duplicating the MCP preflight/fetch logic.
+
+`run_review_command`'s signature (`working_dir, prompt, *, fix, jira_key, gitlab_link, branch, target, plan_file, review_file, use_worktree`) is plain keyword arguments, not an argparse `Namespace` — it has no idea whether its caller is a `run --review` flag or a standalone `review` subcommand, which is exactly why the subcommand-vs-flag revision below cost nothing in `review_cli.py` itself.
 
 `orchestrator.py`'s `_run_rounds`/`_run_review_rounds`/`_run_prompt_fix_rounds` need no changes — they're already source-agnostic. `lint_fix.py`'s `run_lint_fix` needs no changes at all — lint-fix mode is a straight call-site move, not a rearchitecture.
+
+## `cli.py` wiring (revised shape)
+
+Four subparsers: `run`, `review`, `plan`, `native` (`_build_arg_parser` adds all four; no more `_normalize_review_flag` — there is no `--review` flag left to imply, `review` is unambiguous by being its own subcommand).
+
+- `_add_run_parser`: `request` (`nargs="?"`), `--plan`/`--plan-file`/`-p`, `--resume-at`, `--jira` (`nargs="?"`, `const=""`), `--lint-fix`, `--report-only`, plus `_add_common_args`/`_add_feature_args`/`_add_manual_approval_arg`.
+- `_add_review_parser` (new): `request` (`nargs="?"`), `--plan`/`--plan-file`/`-p`, `--jira`, `--fix`, `--gitlab`, `--branch`, `--target`, `--review-file`/`-r`, `--no-worktree` (its only worktree-shaped flag — no `--name`, no `--source-branch`), plus `_add_common_args`.
+- `_validate_run_flags(parser, args)`: only fires for `args.command == "run"`; unchanged internal shape (`_validate_lint_fix_flags`/`_validate_build_flags` helpers, `_MISUSE_CHECKS` table) minus everything that used to gate on `args.review`/`args.gitlab`/`args.branch` — those fields don't exist on `run`'s namespace anymore. `review`'s own namespace gets no `cli.py`-level source-exclusivity validation (see above) beyond `_dispatch_review` catching `run_review_command`'s `ValueError`.
+- `_is_plain_build`/`_should_use_worktree`: `args.command == "run" and not args.lint_fix and args.jira is None` (drop the `not args.review` clause — no longer applicable).
+- `_requires_clean_tree`: `review` always returns `False` (never requires a clean tree, matching every one of the five commands it replaces); `run` unchanged (`--lint-fix` gate, `--jira` always `True`, plain build's source-branch exception).
+- `_creates_a_worktree`/`include_gitignore`: `run`'s `use_worktree` clause unchanged; `--jira` clause unchanged; the old `args.review and args.branch is not None` clause becomes `args.command == "review" and args.branch is not None and not args.no_worktree`.
+- `_dispatch`: three-way on `args.command` (`run` → `_dispatch_run`, `review` → `_dispatch_review`, `plan` → inline `run_plan` call) instead of the old two-way-plus-`_COMMAND_HANDLERS` shape.
+- `_dispatch_run`: two-way now (`--lint-fix` → `_dispatch_lint_fix`, `--jira` → `_dispatch_jira_build`, else → `_dispatch_plain_build`) — drops the `elif args.review` branch.
+- `_dispatch_review(args, working_dir)`: unchanged in substance from the old `run --review` version — resolves `--plan-file`/`--review-file` to absolute paths, calls `run_review_command` with `use_worktree=not args.no_worktree`, catches `ValueError` and exits 1 with the message printed. Only its call site (now `review`'s own dispatch, not a branch inside `_dispatch_run`) changed.
 
 ## Review Focus
 
@@ -161,13 +185,15 @@ New module `src/meow/review_cli.py` holds one dispatcher, `run_review_command(..
 
 ### Task 4: CLI wiring — `cli.py`
 
+**Superseded by the "`cli.py` wiring (revised shape)" section above** — `review` is its own subparser/dispatch function, not a `run --review` flag. The steps below are kept for their still-accurate mechanics (validation helper extraction, `_boot_repo`/`_requires_clean_tree` reasoning) but read `_add_review_parser`/`_dispatch_review` wherever this text says "`run`'s `--review` branch".
+
 **Files:**
 - Modify: `src/meow/cli.py`
 - Test: `tests/test_cli.py` (extensively rewritten — see Task 6)
 
 **Interfaces:**
-- Produces: `_add_run_parser` gains `--review`, `--fix`, `--jira` (`nargs="?"`, `const=""`, `default=None`), `--gitlab`, `--branch`, `--target`, `--review-file`, `--lint-fix`, `--report-only`; `request` becomes `nargs="?"`.
-- Produces: `_dispatch_feature`'s `run` branch splits four ways: `args.lint_fix` → `run_lint_fix(...)` (today's `_dispatch_lint_fix`, moved here); `args.review` → `run_review_command(...)`; `args.jira is not None` (and neither of the above) → `run_issue_solver(...)` (today's `_dispatch_issue`, moved here); none of the above → today's `run_sprint(...)` unchanged.
+- Produces: `_add_run_parser` gains `--jira` (`nargs="?"`, `const=""`, `default=None`), `--lint-fix`, `--report-only`; `request` becomes `nargs="?"`. `_add_review_parser` (new) carries `request` (`nargs="?"`), `--plan`/`-p`, `--jira`, `--fix`, `--gitlab`, `--branch`, `--target`, `--review-file`/`-r`, `--no-worktree`.
+- Produces: `_dispatch` is a three-way switch on `args.command` (`run`/`review`/`plan`); `_dispatch_run` is a further two-way switch (`--lint-fix` → `run_lint_fix(...)`; `--jira is not None` → `run_issue_solver(...)`; else → `run_sprint(...)`); `_dispatch_review` → `run_review_command(...)`.
 
 - [ ] **Step 1**: Add the new arguments to `_add_run_parser`. Add validation in a new `_validate_run_flags(parser, args)` (called from `cli_main` alongside the existing `_validate_feature_name_requirement`): at most one of `--review`/`--lint-fix`; `request` xor `--jira` in build mode; `--gitlab`+`--fix` together; more than one of {request, `--jira`, `--gitlab`, `--branch`} given in review mode (branch requires target and vice versa, checked here too); `--lint-fix` given alongside `request`/`--jira`/worktree flags/`--review`-only flags is an error naming what was misused; `--report-only` given without `--lint-fix` is an error.
 - [ ] **Step 2**: Scope `_validate_feature_name_requirement`/`_should_use_worktree` so `--name` is required only for plain build-mode `run` (not `--review`, not `--jira`, not `--lint-fix` — none of the three create a user-named worktree).

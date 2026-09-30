@@ -756,7 +756,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     def test_cli_logs_working_directory_once(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
         mock_sprint, mock_plan, mock_review, mock_boot, mock_logger
     ):
-        with patch("sys.argv", ["meow", "run", "--review", "--work-dir", "."]):
+        with patch("sys.argv", ["meow", "review", "--work-dir", "."]):
             cli.cli_main()
 
         mock_logger.info.assert_called_once_with(
@@ -961,7 +961,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_sprint, mock_plan, mock_review, mock_boot
     ):
         with patch(
-            "sys.argv", ["meow", "run", "--review", "--fix", "--work-dir", "."]
+            "sys.argv", ["meow", "review", "--fix", "--work-dir", "."]
         ):
             cli.cli_main()
 
@@ -1035,7 +1035,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             patch("meow.cli.run_sprint", new_callable=AsyncMock) as mock_sprint,
             patch(
                 "sys.argv",
-                ["meow", "run", "--review", "add CSV export", "--work-dir", "."],
+                ["meow", "review", "add CSV export", "--work-dir", "."],
             ),
         ):
             cli.cli_main()
@@ -1105,7 +1105,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             patch(
                 "sys.argv",
                 [
-                    "meow", "run", "--gitlab",
+                    "meow", "review", "--gitlab",
                     "https://gitlab.example.com/group/project/-/merge_requests/1",
                     "--work-dir", ".",
                 ],
@@ -1135,7 +1135,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             patch("meow.cli.run_review_command", new_callable=AsyncMock),
             patch(
                 "sys.argv",
-                ["meow", "run", "--gitlab", "https://gitlab.example.com/mr/1"],
+                ["meow", "review", "--gitlab", "https://gitlab.example.com/mr/1"],
             ),
         ):
             cli.cli_main()
@@ -1479,8 +1479,8 @@ class ResumeAtFlagTests(unittest.TestCase):
             parser.parse_args(["plan", "feature request", "--resume-at", "review"])
 
 
-class RunReviewDispatchTests(unittest.TestCase):
-    """CLI-dispatch wiring for `run --review`'s --branch/--plan-file/
+class ReviewDispatchTests(unittest.TestCase):
+    """CLI-dispatch wiring for `meow review`'s --branch/--plan-file/
     --review-file sources -- --gitlab and the bare prompt/auto-discovery
     path are covered above; all five funnel through the same
     `run_review_command` call, checked here via its kwargs rather than
@@ -1496,7 +1496,7 @@ class RunReviewDispatchTests(unittest.TestCase):
             patch(
                 "sys.argv",
                 [
-                    "meow", "run", "--branch", "feature/x",
+                    "meow", "review", "--branch", "feature/x",
                     "--target", "main", "--fix", "--work-dir", ".",
                 ],
             ),
@@ -1527,7 +1527,7 @@ class RunReviewDispatchTests(unittest.TestCase):
             patch(
                 "sys.argv",
                 [
-                    "meow", "run", "--branch", "feature/x", "--target", "main",
+                    "meow", "review", "--branch", "feature/x", "--target", "main",
                     "--no-worktree", "--work-dir", ".",
                 ],
             ),
@@ -1558,7 +1558,7 @@ class RunReviewDispatchTests(unittest.TestCase):
             patch(
                 "sys.argv",
                 [
-                    "meow", "run", "--review", "--fix",
+                    "meow", "review", "--fix",
                     "--plan-file", "docs/feature.md", "--work-dir", ".",
                 ],
             ),
@@ -1588,7 +1588,7 @@ class RunReviewDispatchTests(unittest.TestCase):
             patch(
                 "sys.argv",
                 [
-                    "meow", "run", "--review-file", "docs/feature-review.md",
+                    "meow", "review", "--review-file", "docs/feature-review.md",
                     "Check error handling", "--work-dir", ".",
                 ],
             ),
@@ -1624,7 +1624,7 @@ class RunReviewDispatchTests(unittest.TestCase):
             ),
             patch(
                 "sys.argv",
-                ["meow", "run", "--review", "--branch", "feature/x", "--work-dir", "."],
+                ["meow", "review", "--branch", "feature/x", "--work-dir", "."],
             ),
             self.assertRaises(SystemExit) as ctx,
         ):
