@@ -81,7 +81,7 @@ class GitlabFetcherAgent(Agent):
                 "No active GitLab MCP server responded. Check [gitlab.mcp] "
                 "in .harness.toml -- command/args to launch it, and "
                 "[gitlab.mcp.env] for whatever credentials it needs -- see "
-                "GUIDE.md."
+                "docs/INTEGRATIONS.md."
             )
         logger.info("gitlab_preflight_query_passed")
 

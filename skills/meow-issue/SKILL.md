@@ -19,7 +19,7 @@ user explicitly asks for the unattended, separate-process run.
    values. The `[jira.mcp]` table is **not** used here: fetch through the Jira
    MCP tools connected to this session (look for tools whose names contain
    `jira`). If none are connected, or `[jira]` is missing, say so and stop; point
-   at GUIDE.md §2/§7.
+   at docs/INTEGRATIONS.md in the meow repo.
 2. If the user gave an issue key, fetch it; otherwise fetch the most recently
    created issue in `project_key`. Need `key`, `summary`, `description`; if any is
    missing, stop and report.

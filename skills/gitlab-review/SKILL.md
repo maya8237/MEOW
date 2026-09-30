@@ -47,6 +47,6 @@ meow gitlab-review "<merge-request-url>" --working-dir "<project-path>"
 ```
 
 Needs `[gitlab.mcp]` (`command`, and `args` if required) in `.harness.toml`; see
-GUIDE.md §2. If `meow` isn't on PATH, tell the user to install it (README:
+docs/INTEGRATIONS.md in the meow repo. If `meow` isn't on PATH, tell the user to install it (README:
 `pip install -e .` in a venv, or `pipx install -e .`). Stream its progress and
 report PASS/FAIL plus the review file path (`gitlab-review.md` in `docs_dir`).

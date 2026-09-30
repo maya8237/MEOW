@@ -48,8 +48,8 @@ def _load_gitlab_config(config: dict) -> dict:
             "[gitlab.mcp.env]\n"
             'GITLAB_URL = "https://gitlab.example.com"\n'
             'GITLAB_TOKEN = "<token>"\n\n'
-            "See GUIDE.md for the [gitlab.mcp.env] field and its security "
-            "note."
+            "See docs/INTEGRATIONS.md for the [gitlab.mcp.env] field and its "
+            "security note."
         )
 
     mcp = gitlab.get("mcp")

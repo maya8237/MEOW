@@ -79,7 +79,7 @@ class IssueFetcherAgent(Agent):
                 "No active Jira MCP server responded. Check [jira.mcp] in "
                 ".harness.toml (command/args to launch it, e.g. command = "
                 '"uvx", args = ["mcp-atlassian"]) and the Jira credentials '
-                "it needs in the environment -- see GUIDE.md."
+                "it needs in the environment -- see docs/INTEGRATIONS.md."
             )
         logger.info("jira_preflight_query_passed")
 
