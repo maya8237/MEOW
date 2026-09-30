@@ -336,7 +336,7 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual((status, received_verdict), ("PASS", verdict))
-        read_text.assert_called_once_with()
+        read_text.assert_called_once_with(encoding="utf-8")
         prompt, options, role = run_query.await_args.args
         self.assertEqual(prompt, f"Review {plan_file}")
         self.assertEqual(role, "Reviewer")
@@ -408,7 +408,7 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual((status, received_verdict), ("FAIL", verdict))
         git_context.assert_called_once_with(self.context)
-        read_text.assert_called_once_with()
+        read_text.assert_called_once_with(encoding="utf-8")
         prompt, options, role = run_query.await_args.args
         self.assertEqual(prompt, "Review the prompt: Ship the feature\n\ngit context")
         self.assertEqual(role, "Reviewer")
