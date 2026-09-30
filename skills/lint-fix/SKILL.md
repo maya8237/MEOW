@@ -10,8 +10,8 @@ they report. This skill was already session-native; native mode now gets its
 facts from `meow native lint` (same runner as the other skills). Read
 [`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this
 skill's base directory) for the helper's conventions. Never run plain
-`meow lint-fix` here: that spins up meow's own fixer agent, duplicating your work
-and racing your edits.
+`meow run --lint-fix` here: that spins up meow's own fixer agent, duplicating
+your work and racing your edits.
 
 ## Native mode
 
@@ -39,7 +39,7 @@ and racing your edits.
 Report-only, then fix by hand:
 
 ```bash
-meow lint-fix --report-only --working-dir "<project-path>"
+meow run --lint-fix --report-only --working-dir "<project-path>"
 ```
 
 Exit 0 with `Lint is clean -- no issues found.` means done; otherwise fix each
