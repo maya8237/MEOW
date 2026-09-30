@@ -181,8 +181,9 @@ server (checked before anything else runs). Always uses its own worktree, on
 branch `<branch_prefix><ISSUE-KEY>` (default `issue/<ISSUE-KEY>`), which it
 pushes to `origin` once the sprint passes. On success it prints one JSON
 line — `{"issue": "PROJ-123", "branch": "issue/PROJ-123"}` — and exits 0.
-See [GUIDE.md](GUIDE.md) for the config fields and for running it from a
-Windows Scheduled Task with persistent logging (`MEOW_LOG_FILE`).
+See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for the config fields and for
+running it from a Windows Scheduled Task with persistent logging
+(`MEOW_LOG_FILE`).
 
 `issue` also accepts `--manually-approve-plan`/`-m`, with the same
 plan-then-approve-then-implement behavior as `run`. Don't combine it with a
@@ -203,7 +204,7 @@ Requires `[gitlab.mcp]` in `.harness.toml` and a reachable GitLab MCP server
 worktree, edits code, or pushes anything — it only fetches the merge
 request's title, description, and diff, grades them, and writes the verdict
 to `gitlab-review.md` in the selected working directory's `docs_dir`. See
-[GUIDE.md](GUIDE.md) for the config fields.
+[docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for the config fields.
 
 ### `meow lint-fix`
 
@@ -298,9 +299,11 @@ Copy a template from `templates/` to the target repo's root as
 `.harness.toml`: `harness.toml.example` (annotated, language-neutral),
 `harness.toml.python.example`, or `harness.toml.typescript.example`.
 
-See [GUIDE.md](GUIDE.md) for the full field reference, the recommended `docs/`
+See [GUIDE.md](GUIDE.md) for the field reference, the recommended `docs/`
 layout, and a setup checklist — it's written for a Claude session onboarding a
 different repo onto meow, generic to any language.
+[docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) covers the optional Jira/GitLab
+config, running `meow issue` on a schedule, and a full error-message reference.
 
 ## Layout
 
@@ -323,6 +326,7 @@ meow/
 │   ├── lint-fix/SKILL.md                # /meow:lint-fix -> harness lint-fix --report-only
 │   └── review-fix-review/SKILL.md       # /meow:review-fix-review -> harness review-fix-review
 ├── docs/
+│   ├── INTEGRATIONS.md                  # Jira/GitLab config, scheduling, error reference
 │   └── exec-plans/
 │       └── active/                      # meow harnessing itself writes here
 ├── templates/

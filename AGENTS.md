@@ -21,7 +21,7 @@ specific plan with `--plan-file PATH` (or `--plan PATH`).
 pushed worktree branch (needs `[jira]`/`[jira.mcp]` in `.harness.toml`).
 `meow gitlab-review "<mr-url>"` fetches a GitLab merge request's diff and
 grades it, reporting PASS/FAIL without editing anything (needs
-`[gitlab.mcp]`). See [GUIDE.md](GUIDE.md) for both config sections.
+`[gitlab.mcp]`). See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for both config sections.
 `meow lint-fix` runs every configured `[[lint]]` command and fixes what it
 finds; `meow lint-fix --report-only` only runs and reports, fixing nothing
 -- that's the mode the `lint-fix` skill uses, doing the fixing itself.

@@ -47,9 +47,9 @@ def _load_jira_config(config: dict) -> dict:
             "[jira.mcp]\n"
             'command = "uvx"\n'
             'args = ["mcp-atlassian"]\n\n'
-            "See GUIDE.md for the Jira credentials the server itself needs "
-            "in the environment (JIRA_URL, JIRA_USERNAME, JIRA_API_TOKEN, "
-            "or JIRA_PERSONAL_TOKEN)."
+            "See docs/INTEGRATIONS.md for the Jira credentials the server "
+            "itself needs in the environment (JIRA_URL, JIRA_USERNAME, "
+            "JIRA_API_TOKEN, or JIRA_PERSONAL_TOKEN)."
         )
 
     project_key = jira.get("project_key")

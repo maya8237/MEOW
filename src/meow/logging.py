@@ -13,7 +13,7 @@ through the same key=value console output.
 
 Set `MEOW_LOG_FILE` to also append every run's logs to a file -- the way to
 get logs back from a run with no attached console, such as a Windows
-Scheduled Task. See GUIDE.md's "Running on a schedule" section.
+Scheduled Task. See docs/INTEGRATIONS.md's "Running on a schedule" section.
 """
 
 import logging

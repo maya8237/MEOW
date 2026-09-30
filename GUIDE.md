@@ -5,7 +5,10 @@ wants feature work to run through **MEOW** — Management, Execution &
 Optimization of Workflows — instead of ad hoc editing. MEOW itself is
 language-agnostic — the only per-project choice is your lint command(s).
 
----
+Jira/GitLab integration, scheduled unattended runs, and a full
+error-message reference live in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+Skills and native-vs-CLI execution mode are covered in the main repo's
+[README.md](README.md).
 
 ## 1. Required
 
@@ -13,21 +16,18 @@ meow fails immediately, with a clear error, before any agent call is made, if
 any of these are missing:
 
 - **meow installed and reachable** — see this repo's README for the venv/pipx
-  install. Verify with `meow --help`; if it's a venv-local install, either
-  activate it or call it by full path.
+  install. Verify with `meow --help`; activate the venv or call it by full path.
 - **`.harness.toml` at the project root**, with at least one `[[lint]]` entry
   (or the legacy `lint_command`). Missing file → `FileNotFoundError`; zero
-  lint commands → `ValueError`. See §2 for the fields, or copy a starting
-  point from `templates/`: `harness.toml.example` (annotated, language-neutral),
+  lint commands → `ValueError`. See §2, or copy a starting point from
+  `templates/`: `harness.toml.example` (annotated, language-neutral),
   `harness.toml.python.example` (ruff + mypy), `harness.toml.typescript.example`
   (eslint + tsc).
-- **A writable `docs_dir`** — doesn't need to pre-exist (`run_planner`
-  `mkdir`s it), just needs to resolve inside the project root.
+- **A writable `docs_dir`** — doesn't need to pre-exist, just needs to resolve
+  inside the project root.
 - **Your lint command actually working** — run it by hand first. If it's
   broken or unconfigured, the per-file hook and the reviewer's gate both fail
   silently useless.
-
----
 
 ## 2. `.harness.toml` fields
 
@@ -54,56 +54,14 @@ Each `[[lint]]` table (run in listed order, program resolved on `PATH` so
 | `per_file` | No | `true` | `false` for whole-project-only analysis. |
 | `gate` | No | `true` | `false` makes it advisory — reported, never fails the sprint. |
 
-```toml
-[[lint]]                 # gate: per-file, auto-fixing, fails the sprint
-command = "npx oxlint"
-fix_flag = "--fix"
+A second, non-blocking `[[lint]]` entry (`gate = false`, `per_file = false`)
+is how a whole-project-only analyzer reports findings without failing the
+sprint — see `templates/harness.toml.example` for a worked example.
 
-[[lint]]                 # non-blocking: project-wide only, never fails the sprint
-command = "npx fallow"
-per_file = false
-gate = false
-```
-
-`[jira]`/`[jira.mcp]` are optional and only needed for `meow issue`
-(see §8):
-
-| Field | Required | Default | Notes |
-|---|---|---|---|
-| `[jira].project_key` | Only for `issue` | — | Jira project searched for "the latest issue" when no issue key is given. |
-| `[jira].branch_prefix` | No | `"issue/"` | Prefix for the branch `meow issue` creates and pushes. |
-| `[jira.mcp].command` | Only for `issue` | — | Program that launches the Jira MCP server, e.g. `"uvx"`. |
-| `[jira.mcp].args` | No | `[]` | Its arguments, e.g. `["mcp-atlassian"]`. |
-
-`[gitlab.mcp]` is optional and only needed for `meow gitlab-review` (see
-§8). Unlike `[jira]`, there is no `project_key`-style field -- the merge
-request URL is passed on the command line each time. Unlike `[jira.mcp]`
-(whose server reads its own credentials from the environment),
-`[gitlab.mcp].env` is read from `.harness.toml` itself and passed straight
-through as the launched server's environment -- see the security note
-below before using it.
-
-| Field | Required | Default | Notes |
-|---|---|---|---|
-| `[gitlab.mcp].command` | Only for `gitlab-review` | — | Program that launches a GitLab MCP server exposing merge-request read tools. |
-| `[gitlab.mcp].args` | No | `[]` | Its arguments. |
-| `[gitlab.mcp].env` | No | `{}` | Environment variables passed to the launched server -- e.g. `GITLAB_URL`, `GITLAB_TOKEN`, or whatever your chosen server expects. |
-
-**Security note on `[gitlab.mcp].env`:** `.harness.toml` is an ordinary
-project file, meant to be committed like any other config -- meow does
-not gitignore it. Putting a real GitLab access token in
-`[gitlab.mcp].env` commits that secret to your repo's history in plain
-text, readable by anyone with read access to the repo (including forks
-and CI logs) and hard to fully revoke even after rotating it. If that's
-not acceptable for your project, don't put the real value here: keep the
-token in your actual shell/CI environment and reference it however your
-chosen GitLab MCP server supports (if it does its own variable
-expansion), or gitignore `.harness.toml` (or a local override of it) if
-your project's conventions allow that. This is specific to `[gitlab.mcp]`
--- `[jira.mcp]` is unaffected and still expects its server's own
-credentials to come from the environment, not from this file.
-
----
+`[jira]`/`[jira.mcp]` (for `meow issue`) and `[gitlab.mcp]` (for `meow
+gitlab-review`) are optional — see
+[docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for their fields and a security
+note on `[gitlab.mcp].env`.
 
 ## 3. Recommended, not enforced — but do it anyway
 
@@ -111,76 +69,29 @@ No role is *required* to have any of these present — meow runs fine without
 them. When project documentation should guide a role, name it in the request
 (for example, `meow run "Add CSV export -- see docs/product-specs/reports.md"`).
 
-```
-docs/
-├── ARCHITECTURE.md          # see below — write this one first
-├── RULES.md                 # see below — injected into every role's prompt
-├── design-docs/core-beliefs.md
-├── exec-plans/{active,completed}/, tech-debt-tracker.md
-├── product-specs/
-└── references/
-```
-
 **Some file describing the architecture** (conventionally
-`docs/ARCHITECTURE.md`, but any role's docs scan will pick it up under
-whatever name or location it actually has) is the highest-value one to write
-during onboarding, not defer: on every sprint, the reviewer's SOLID/SRP pass
-looks for it and fails the sprint on violations of the module boundaries and
-dependency rules it states, on top of its generic mixed-responsibility check.
-Without it, that pass has nothing project-specific to check against — meow
-will still run, but every architecture review is a coin flip instead of a
-check against your actual design. The gap compounds as a project grows: on a
-five-file repo the explorer can infer the shape by reading everything, but on
-a real codebase with several packages/modules it can't, and an unstated
-architecture produces reviews that are inconsistent from one sprint to the
-next, or that enforce a structure nobody actually chose. Write it when you
-onboard a project, before the first `meow run`, not after the review
-quality suffers — it doesn't need to be long, just state the module
-boundaries and who's allowed to depend on whom, and it doesn't need the name
-`ARCHITECTURE.md` specifically, just to live somewhere under `docs/`.
+`docs/ARCHITECTURE.md`, picked up under any name/location by a role's docs
+scan) is the highest-value one to write during onboarding: on every sprint,
+the reviewer's SOLID/SRP pass looks for it and fails the sprint on violations
+of the module boundaries and dependency rules it states. Without it, every
+architecture review is a coin flip instead of a check against your actual
+design. It doesn't need to be long — just state the module boundaries and
+who's allowed to depend on whom.
 
-**`docs/RULES.md`** works differently from everything else under `docs/`:
-where `ARCHITECTURE.md` is only found if a role's own docs scan happens to
-look for it, `RULES.md` is read directly by meow itself and injected into
-every role's system prompt before it starts -- so a rule actually shapes
-what the agent does, not just what the reviewer catches afterward. A
-top-level section (anything before the first role heading) applies to
-all four roles; a `## Reviewer`, `## Planner`, `## Generator`, or
-`## Explorer` heading (case-insensitive) scopes everything under it to
-just that role. For example, a project that wants only the reviewer to
-exercise edge cases through Chrome DevTools, without asking the generator
-or planner to do the same, would write:
-
-```markdown
-Follow this project's existing code style and commit conventions.
-
-## Reviewer
-When testing UI changes, use Chrome DevTools (via its MCP or browser
-tools) to exercise edge cases -- empty states, long text, disabled
-controls -- not just the happy path a manual click-through would cover.
-```
-
-No `docs/RULES.md` at all is the default and needs no setup -- meow's
-prompts are completely unaffected, exactly as they are today.
-
-The rest (`completed/`, `tech-debt-tracker.md`, `core-beliefs.md`) get the
-same opportunistic treatment as everything else in `docs/`: no role goes
-looking for them specifically, but any role's docs scan picks them up when
-they're relevant to what it's doing, and a human sharing the repo reads them
-directly. Still worth setting up for the same reason: cheap now, and each one
-is a substitute for context a role would otherwise have to re-derive by
-exploring the whole repo every time it happens to matter.
-
----
+**`docs/RULES.md`** is read directly by meow and injected into every role's
+system prompt, scoped by an optional `## Reviewer`/`## Planner`/`## Generator`/
+`## Explorer` heading — see the README's "Project rules" section for the
+format and an example. No `docs/RULES.md` at all is the default and needs no
+setup.
 
 ## 4. `AGENTS.md`
 
-Purely a human/agent-facing convention — not read by `orchestrator.py`. Include
-enough here that a session can go from "nothing set up" to a running sprint
-without leaving this file: the run command, where `meow` actually comes from
-(this destination repo gets its own venv — it does not share meow's), how to
-(re)create that venv if it's missing or broken, and that no separate
-credential setup is needed.
+Purely a human/agent-facing convention — not read by meow itself. Include
+enough that a session can go from "nothing set up" to a running sprint
+without leaving this file: the run command, where `meow` comes from (this
+destination repo gets its own venv — it does not share meow's), how to
+(re)create that venv if broken, and that no separate credential setup is
+needed:
 
 ```markdown
 ## Harness
@@ -191,23 +102,16 @@ root, with this repo's own `.venv` active (or by full path,
 
     meow run "<feature description>" --name "<feature-name>"
 
-The engine itself lives in <meow repo path> and is installed into *this*
-repo's `.venv` as an editable package — `meow` is on PATH only with that venv
-active. It shells out to the `claude` CLI via the Claude Agent SDK and relies
-on that CLI's own existing authentication; no `ANTHROPIC_API_KEY` or other
-credential setup is needed.
-
-If `.venv` doesn't exist yet, or `meow --help` fails (e.g.
-`ModuleNotFoundError`), (re)create it before running anything — this is a
-local, reversible step, so just do it rather than asking:
+The engine lives in <meow repo path>, installed into *this* repo's `.venv` as
+an editable package. It shells out to the `claude` CLI via the Claude Agent
+SDK and relies on that CLI's own authentication — no `ANTHROPIC_API_KEY`
+needed. If `.venv` is missing or `meow --help` fails, recreate it:
 
     python -m venv .venv
     .venv/Scripts/python -m pip install -e "<meow repo path>"
 
 Config lives in `.harness.toml`. See <meow repo link>'s GUIDE.md for setup.
 ```
-
----
 
 ## 5. Setup checklist
 
@@ -225,8 +129,6 @@ Config lives in `.harness.toml`. See <meow repo link>'s GUIDE.md for setup.
       *your* config (not defaults), a plan + `-review.md` land in `docs_dir`,
       and it resolves to `STATUS: PASS` or a clean `max_rounds` error
 
----
-
 ## 6. Sharing across a team
 
 A local editable install is enough for one person. Beyond that: `pip install
@@ -234,88 +136,15 @@ git+<meow-repo-url>` (no local path needed) or a private package index —
 either way, pin to a tag/commit once others depend on it, rather than a
 moving branch.
 
----
+## 7. Troubleshooting
 
-## 7. Running `meow issue` on a schedule (Windows Task Scheduler)
-
-`meow issue [ISSUE-KEY]` fetches a Jira issue (or the most recently
-created one in `[jira].project_key` if you omit the key), solves it through
-the same plan/implement/review loop as `meow run`, inside its own worktree
-on branch `<branch_prefix><ISSUE-KEY>` (default `issue/<ISSUE-KEY>`), then
-pushes that branch to `origin`. On success it prints one JSON line to
-stdout — `{"issue": "PROJ-123", "branch": "issue/PROJ-123"}` — and exits 0;
-any failure (no active Jira MCP, no matching issue, the sprint not passing
-within `max_rounds`, or the push failing) raises before that line is
-printed, and the process exits non-zero.
-
-**Never pass `--manually-approve-plan`/`-m` on a scheduled run** -- it
-prompts on stdin for approval before the generator starts, and a scheduled
-task has no console attached to answer it, so the run just hangs instead of
-completing or failing cleanly.
-
-**Prerequisites beyond §1**: `[jira]`/`[jira.mcp]` set in `.harness.toml`
-(§2), a Jira MCP server reachable with those settings (this repo assumes
-[`mcp-atlassian`](https://github.com/sooperset/mcp-atlassian), installable
-with `uvx` so no separate install step is needed), its credentials in the
-environment (`JIRA_URL` plus either `JIRA_USERNAME`+`JIRA_API_TOKEN` for
-Cloud or `JIRA_PERSONAL_TOKEN` for Server/Data Center), and an `origin`
-remote the scheduled task's account can push to (e.g. an SSH key or stored
-credential, not an interactive prompt).
-
-**Persistent logs**: a scheduled task has no attached console, so set
-`MEOW_LOG_FILE` to a path before running — every run appends its
-key=value log lines there instead of only writing to stderr (`MEOW_LOG_LEVEL`
-also works the same way `meow run` uses it, e.g. `DEBUG` for more detail).
-
-**Registering the task** — from an elevated PowerShell prompt, using
-`schtasks` (adjust the venv path, working directory, issue key or omit it
-for "latest", and schedule):
-
-```powershell
-schtasks /Create /TN "meow-issue" /SC DAILY /ST 09:00 /RL LIMITED /TR (
-    '"C:\path\to\meow\.venv\Scripts\meow.exe" issue' +
-    ' --working-dir "C:\path\to\target-project"'
-)
-```
-
-`schtasks /TR` runs with a minimal environment, so set `MEOW_LOG_FILE` and
-the Jira credentials as that account's persistent user/system environment
-variables (`setx`) rather than relying on variables set in your interactive
-shell — a task's environment is not your shell's. Verify the task once with
-`schtasks /Run /TN "meow-issue"`, then `Get-Content <MEOW_LOG_FILE>
--Tail 50` to confirm it ran and to read its result.
-
----
-
-## 8. If something's missing
-
-| Missing / wrong | Result |
-|---|---|
-| `.harness.toml` | `FileNotFoundError` before any agent runs |
-| No `[[lint]]` entries or `lint_command` | `ValueError`: no lint command defined |
-| Unknown key in a `[[lint]]` table (often a top-level key placed after it) | `ValueError` naming the entry and key |
-| No architecture doc anywhere under `docs/` | No error — reviewer's SOLID/SRP pass finds nothing to Glob/Read, so it has no project-specific boundaries to check, just its generic mixed-responsibility rule |
-| Other `docs/` files (`tech-debt-tracker.md`, `core-beliefs.md`, etc.) | No error — no role goes looking for them specifically, only opportunistically via each role's docs scan |
-| `AGENTS.md` | No effect on meow — human-facing only |
-| `meow issue` run without `[jira]`/`[jira.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
-| `meow issue` run with no Jira MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__jira__*` tool call to succeed, not just a text claim of success |
-| `meow issue` run with no `origin` remote | `RuntimeError` after the sprint passes, before attempting to push |
-| `meow gitlab-review` run without `[gitlab]`/`[gitlab.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
-| `meow gitlab-review` run with no GitLab MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__gitlab__*` tool call to succeed, not just a text claim of success |
-| `meow lint-fix` (standalone, not `--report-only`) never gets lint clean within `max_rounds` | `LintFixError` including the still-failing commands' raw output |
-| `meow review-fix-review` given a GitLab MR review file | `RuntimeError` explaining there is no local checkout of the merge request's code to fix |
-| `meow review-fix-review` with `--review-file` omitted and no review file anywhere in `docs_dir` | `FileNotFoundError` naming `docs_dir` and pointing at `--review-file` |
-| `meow review-fix-review` (either flavor) never passes within `max_rounds` | `RuntimeError` naming the review file, same stop/raise shape as `meow review` |
-
-## 9. Native (in-session) skill mode
-
-When meow is installed as a Claude Code plugin, its skills run **natively** by
-default: the calling session plans and implements, and a fresh subagent
-reviews each round. Nothing extra is needed in `.harness.toml` -- `docs_dir`,
-`max_rounds`, `[[lint]]`, `models` and `docs/RULES.md` apply identically in both
-modes, and the plan/review files land in the same place, so either mode can
-continue the other's work. Only `meow` on PATH is required (for the agent-free
-`meow native ...` helper). In native mode `[jira.mcp]` and `[gitlab.mcp]` are
-not used: the session's own connected Jira/GitLab tools are used instead. Ask
-the skill for "CLI mode" to run through the Agent SDK, and use the `meow` CLI
-directly for anything unattended (scheduled tasks, terminals).
+A missing `.harness.toml` or `[[lint]]` entry fails fast with
+`FileNotFoundError`/`ValueError` before any agent runs; an unknown key in a
+`[[lint]]` table (often a top-level key placed after it) raises `ValueError`
+naming the entry and key; a missing architecture doc under `docs/` is not an
+error, it just leaves the reviewer's SOLID/SRP pass with nothing
+project-specific to check against. `meow issue`, `meow gitlab-review`, and
+`meow review-fix-review` have their own failure modes (missing MCP config,
+unreachable server, no MR checkout, `max_rounds` exhausted, etc.) — the full
+error-message reference lives in
+[docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
