@@ -50,6 +50,26 @@ SDK:
   checks of the implementation and command evidence before it writes its
   verdict.
 
+## Crash retry and error surfacing
+
+The underlying `claude` CLI subprocess the Agent SDK shells out to can crash
+outright (an abnormal termination, not a normal nonzero exit) -- most often
+seen on Windows as a fast-fail/NTSTATUS exit code such as `0xC0000409`, or on
+POSIX as being killed by a signal. `Agent.run_query` (the one-shot query path
+every role but the generator/review-fixer/lint-fixer uses, including every
+`ReviewerAgent` review) retries up to 3 attempts total with a short backoff
+when this happens -- `query()` is documented as stateless/one-shot, so
+retrying by starting a fresh query is safe, with nothing to corrupt or
+duplicate. A non-crash SDK failure (the CLI itself reporting an error) is
+never retried, but every failure -- crashed or not -- raises a `RuntimeError`
+naming the role, the exit code, the attempt count, and any captured stderr,
+instead of a bare exit code. The reviewer's own direct git calls
+(`git status`/`git diff`/`git merge-base`, used to build review context) get
+the same crash-retry treatment. The persistent, multi-turn agents (generator,
+review-fixer, lint-fixer) are deliberately not covered -- retrying mid-session
+there risks losing conversation state or duplicating edits, a different and
+harder problem than retrying a stateless one-shot query.
+
 ## Project rules
 
 A project can add a `docs/RULES.md` file to shape every role's behavior
