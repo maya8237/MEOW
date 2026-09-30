@@ -258,3 +258,32 @@ def mr_review_prompt(review_file: Path, *, check_worktree_hygiene: bool) -> str:
         )
         + _verdict_format(review_file, "concern")
     )
+
+
+def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mirroring the reviewer's inputs
+    target: str,
+    branch: str,
+    review_file: Path,
+    lint_commands: list[LintCommand],
+    *,
+    check_worktree_hygiene: bool,
+) -> str:
+    return (
+        "You are a skeptical QA reviewer. You did not write this code "
+        f"-- grade it critically. You are reviewing local branch {branch!r} "
+        f"against its target branch {target!r}. There is no Sprint "
+        "Contract; the diff given in the task message (between "
+        f"{target!r} and {branch!r}) sets the scope, but unlike a GitLab "
+        "merge request review, this branch is actually checked out here "
+        "-- use Read/Grep/Glob/Bash to inspect the real code and run the "
+        "project's own checks, not just the diff text. Mark each distinct "
+        "concern PASS or FAIL with concrete evidence (a quoted diff hunk "
+        "or file:line). "
+        + lint_instructions(lint_commands)
+        + " "
+        + verification_instructions()
+        + architecture_review_instructions(
+            check_worktree_hygiene=check_worktree_hygiene
+        )
+        + _verdict_format(review_file, "concern")
+    )

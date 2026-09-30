@@ -8,6 +8,7 @@ from pathlib import Path
 from meow.agents.base import Agent, AgentContext
 from meow.prompts import (
     architecture_review_instructions,
+    branch_review_prompt,
     mr_review_prompt,
     no_prompt_review_instructions,
     plan_review_prompt,
@@ -17,6 +18,7 @@ from meow.sprint import Sprint
 
 PROMPT_REVIEW_FILENAME = "review.md"
 MR_REVIEW_FILENAME = "gitlab-review.md"
+BRANCH_REVIEW_FILENAME = "branch-review.md"
 
 # Kept under its old private name for callers that reach it through this module.
 _architecture_review_instructions = architecture_review_instructions
@@ -78,6 +80,33 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
         )
 
     return review_context, bool(diff_text)
+
+
+def _branch_diff(active_dir: Path, target: str, branch: str) -> str:
+    """`git diff` from `target`/`branch`'s merge-base to the current working
+    tree -- includes both `branch`'s own commits since it diverged AND any
+    uncommitted edits sitting in `active_dir` (a `ReviewFixAgent` round's
+    fixes), so re-reviewing after a fix round sees it without requiring a
+    commit. Mirrors `_git_review_context`'s single-sided `git diff` (base
+    vs. working tree), just with a computed merge-base as the base instead
+    of the implicit HEAD."""
+    git = shutil.which("git")
+    if not git:
+        return ""
+    merge_base = subprocess.run(
+        [git, "-C", str(active_dir), "merge-base", target, branch],
+        check=False, capture_output=True, text=True, encoding="utf-8",
+    )
+    if merge_base.returncode != 0:
+        raise RuntimeError(
+            f"Could not find a merge base between {target!r} and "
+            f"{branch!r} in {active_dir}: {merge_base.stderr.strip()}"
+        )
+    diff = subprocess.run(
+        [git, "-C", str(active_dir), "diff", merge_base.stdout.strip()],
+        check=False, capture_output=True, text=True, encoding="utf-8",
+    )
+    return diff.stdout.strip()
 
 
 def _verdict_status(verdict_text: str) -> str:
@@ -148,6 +177,39 @@ class ReviewerAgent(Agent):
             f"Merge request title: {title}\n\n"
             f"Merge request description:\n{description}\n\n"
             f"Merge request diff:\n{diff}"
+        )
+        await self.run_query(query_prompt, options, "Reviewer")
+        verdict_text = review_file.read_text(encoding="utf-8")
+        return _verdict_status(verdict_text), verdict_text
+
+    async def review_branch(self, target: str, branch: str) -> tuple[str, str]:
+        """Grade a local branch's diff against a target branch, PASS/FAIL.
+
+        Unlike `review_merge_request` (a remote diff, no local checkout),
+        `branch` is actually checked out in the active working directory,
+        so lint commands and Read/Grep/Glob/Bash access apply the same way
+        `review_plan`/`review_prompt` do.
+        """
+        review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
+        review_dir.mkdir(parents=True, exist_ok=True)
+        review_file = review_dir / BRANCH_REVIEW_FILENAME
+        diff_text = _branch_diff(self.context.active_working_dir(), target, branch)
+        options = self.options(
+            system_prompt=branch_review_prompt(
+                target,
+                branch,
+                review_file,
+                self.context.lint_commands(),
+                check_worktree_hygiene=self.context.use_worktree,
+            ),
+            allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
+            role="reviewer",
+            skills=["superpowers:verification-before-completion"],
+        )
+        query_prompt = (
+            f"Diff of branch {branch!r} against target {target!r} "
+            f"(git diff {target}...{branch}, including any uncommitted "
+            "changes):\n\n" + (diff_text or "(no diff -- branch matches target)")
         )
         await self.run_query(query_prompt, options, "Reviewer")
         verdict_text = review_file.read_text(encoding="utf-8")
