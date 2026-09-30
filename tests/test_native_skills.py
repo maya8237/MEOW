@@ -19,6 +19,7 @@ CLI_FALLBACKS = {
     "meow-issue": "meow issue",
     "gitlab-review": "meow gitlab-review",
     "lint-fix": "meow lint-fix --report-only",
+    "branch-review": "meow branch-review",
 }
 
 
