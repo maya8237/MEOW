@@ -311,6 +311,21 @@ class JiraSourceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ResumeReviewFileTests(unittest.IsolatedAsyncioTestCase):
+    async def test_plan_flavor_raises_when_the_plan_file_is_gone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            working_dir = Path(tmp)
+            docs_dir = working_dir / "docs"
+            docs_dir.mkdir()
+            review_file = docs_dir / "feature-review.md"
+            review_file.write_text("STATUS: FAIL", encoding="utf-8")
+            with (
+                patch("meow.review_cli.load_config", return_value=_config()),
+                self.assertRaisesRegex(FileNotFoundError, "feature.md"),
+            ):
+                await review_cli.run_review_command(
+                    working_dir, None, fix=False, review_file=review_file
+                )
+
     async def test_gitlab_flavor_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             working_dir = Path(tmp)

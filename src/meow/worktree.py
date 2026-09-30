@@ -226,8 +226,8 @@ def _ensure_branch_worktree(
     """Create (or reuse) a worktree checked out on a real, pushable branch.
 
     Unlike `_ensure_feature_worktree` (detached, never pushed -- what `run`/
-    `plan` need), `meow issue` always needs a real branch to hand back to
-    its caller, so it creates its own worktree on one instead.
+    `plan` need), `meow run --jira` always needs a real branch to hand back
+    to its caller, so it creates its own worktree on one instead.
     """
     worktree_dir = working_dir / ".worktrees" / feature_name
     if worktree_dir.exists():
@@ -236,7 +236,7 @@ def _ensure_branch_worktree(
     git = shutil.which("git")
     if not git:
         raise RuntimeError(
-            "git is required for `meow issue`'s worktree/branch/push steps."
+            "git is required for `meow run --jira`'s worktree/branch/push steps."
         )
 
     (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)
@@ -264,7 +264,7 @@ def _ensure_existing_branch_worktree(
     exists rather than creating one.
 
     Unlike `_ensure_branch_worktree` (creates `branch_name` fresh when it
-    doesn't exist yet, for `meow issue`'s new pushable branch) and
+    doesn't exist yet, for `meow run --jira`'s new pushable branch) and
     `_ensure_feature_worktree` (a detached, branch-less worktree for
     `run`/`plan`), this requires `branch_name` to already exist and raises
     a clear error otherwise instead of silently creating it.
@@ -276,7 +276,7 @@ def _ensure_existing_branch_worktree(
     git = shutil.which("git")
     if not git:
         raise RuntimeError(
-            "git is required for `meow branch-review`'s worktree step."
+            "git is required for `meow run --review --branch`'s worktree step."
         )
 
     (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)
@@ -314,9 +314,9 @@ def _ensure_existing_branch_worktree(
 def _require_branch_checked_out(active_dir: Path, branch: str) -> None:
     """Raise unless `active_dir`'s current HEAD branch is exactly `branch`.
 
-    Guards `branch-review --no-worktree`: fixing "in place" only makes
-    sense if the branch under review is what's actually checked out there.
-    Skipped (not raised) when git is unavailable -- consistent with
+    Guards `run --review --branch --no-worktree`: fixing "in place" only
+    makes sense if the branch under review is what's actually checked out
+    there. Skipped (not raised) when git is unavailable -- consistent with
     `_is_linked_worktree`'s own "can't tell, so don't block" fallback.
     """
     git = shutil.which("git")
@@ -330,18 +330,18 @@ def _require_branch_checked_out(active_dir: Path, branch: str) -> None:
         raise RuntimeError(
             f"--no-worktree requires {active_dir} to already have '{branch}' "
             f"checked out, but HEAD is on '{current}'. Check out '{branch}' "
-            "first, or drop --no-worktree to let branch-review check it out "
-            "into an isolated worktree instead."
+            "first, or drop --no-worktree to review it in an isolated "
+            "worktree instead."
         )
 
 
 def _push_branch(worktree_dir: Path, branch_name: str) -> None:
-    """Push a finished `meow issue` branch to `origin`."""
+    """Push a finished `meow run --jira` branch to `origin`."""
     git = shutil.which("git")
     remotes = _run_git([git, "remote"], cwd=worktree_dir).stdout.split()
     if "origin" not in remotes:
         raise RuntimeError(
-            "No 'origin' remote configured -- `meow issue` can't push the "
+            "No 'origin' remote configured -- `meow run --jira` can't push the "
             f"finished branch '{branch_name}'. Add one with `git remote add "
             "origin <url>`, or push it yourself."
         )

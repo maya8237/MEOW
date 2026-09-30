@@ -82,7 +82,7 @@ async def run_lint_fix(working_dir: Path, *, report_only: bool) -> str | None:
     returns the raw problem text when issues remain -- that's the expected,
     routine outcome there, not a failure, so it's returned rather than
     raised. In standalone mode, unresolved issues raise `LintFixError`
-    instead, matching `run_review`'s failure convention.
+    instead, matching `run_review_command`'s failure convention.
     """
     config = load_config(working_dir)
     describe_lint_plan(config["lint"])

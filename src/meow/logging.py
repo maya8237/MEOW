@@ -48,7 +48,7 @@ def configure_logging() -> None:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
 
-    # stderr, not stdout: `meow issue` prints a single JSON result line to
+    # stderr, not stdout: `meow run --jira` prints a single JSON result line to
     # stdout on success, which a caller (e.g. a Windows Scheduled Task) needs
     # to read cleanly without log lines interleaved into it.
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
