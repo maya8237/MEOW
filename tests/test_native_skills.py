@@ -13,13 +13,8 @@ SHARED = SKILLS_DIR / "_shared" / "native-mode.md"
 CLI_FALLBACKS = {
     "sprint": "meow run",
     "meow-plan": "meow plan",
-    "meow-review": "meow review",
-    "meow-cr": "meow cr",
-    "review-fix-review": "meow review-fix-review",
-    "meow-issue": "meow issue",
-    "gitlab-review": "meow gitlab-review",
-    "lint-fix": "meow lint-fix --report-only",
-    "branch-review": "meow branch-review",
+    "review": "meow review",
+    "lint-fix": "meow run --lint-fix --report-only",
 }
 
 
