@@ -4,7 +4,7 @@ meow/gitlab_reviewer.py
 The `meow gitlab-review` flow: fetch a GitLab merge request's title,
 description, and diff through a configured GitLab MCP server, then grade
 them with the reviewer role -- the same report-only, no-generator-loop
-review `orchestrator.run_prompt_review` runs against a local working tree,
+review `review_runner.run_prompt_review` runs against a local working tree,
 but against a remote merge request's diff instead.
 
 Unlike `meow issue`, this never edits code, creates a worktree, or pushes

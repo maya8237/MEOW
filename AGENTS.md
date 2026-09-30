@@ -99,16 +99,35 @@ per-sprint state and `build_sprint`, which wires it up from config), `lint.py`
 (the auto-fixing per-file hook, reporting the configured lint plan, and the
 project-wide fix/check functions `lint_fix.py` uses), `worktree.py`
 (git/filesystem bootstrapping: `.gitignore` upkeep and creating per-feature
-worktrees), `agents/` (one module per agent role, plus a shared base),
-`orchestrator.py` (the generator <-> reviewer round loop, including
-`review-fix-review`'s variants of that loop, and the top-level `run_*`
-entry points `cli.py` dispatches into), `issue_solver.py`,
+worktrees), `rules.py` (reads `docs/RULES.md` and injects it into role system
+prompts), `logging.py` (structured, structlog-based logging setup shared by
+every module), `prompts.py` (role prompts as pure functions of plain values,
+shared by both the SDK agents and native-mode execution), `plan_files.py`
+(plan/review file naming and lookup within a project's `docs_dir`), `agents/`
+(one module per agent role, plus a shared base), `orchestrator.py` (just the
+shared generator<->reviewer round-loop engine now: `_prepare_sprint` and the
+three round-loop shapes -- `_run_rounds`, `_run_review_rounds`,
+`_run_prompt_fix_rounds`), `sprint_runner.py` (the `run_sprint`/`run_plan`
+top-level flows `cli.py` dispatches `meow run`/`meow plan` into),
+`review_runner.py` (the `run_review`/`run_prompt_review` top-level flows for
+`meow review`/`meow cr`), `review_fix_review.py` (the `run_review_fix_review`
+top-level flow for `meow review-fix-review`), `issue_solver.py`,
 `gitlab_reviewer.py`, and `lint_fix.py` (the `run_*` entry points for
-`issue`/`gitlab-review`/`lint-fix`, each its own module rather than folded
-into `orchestrator.py`, the same SOLID/SRP separation the reviewer itself
-checks for), and `cli.py` (the `meow` console-script entry point). The
-`src/` layout is deliberate: code run from the repo root reaches the
-*installed* copy, so a broken editable install is caught rather than masked.
+`issue`/`gitlab-review`/`lint-fix`) -- `sprint_runner.py`/`review_runner.py`/
+`review_fix_review.py` split `orchestrator.py`'s own former top-level flows
+out the same way `issue_solver.py`/`gitlab_reviewer.py`/`lint_fix.py` already
+did, the SOLID/SRP separation the reviewer itself checks for, so the engine
+module holds only the round loop its docstring claims -- the deterministic
+helpers behind native, in-Claude-Code-session execution -- `native_prepare.py`
+(worktree/clean-tree bootstrapping and plan/review lookup), `native_lint.py`
+(lint execution), `native_state.py` (the on-disk round counter), and
+`native_prompt.py` (prompt/agent-wiring construction), each its own module
+for the same reason -- plus `native.py` (a thin façade that re-exports their
+public names under one `from meow import native` import) and `native_cli.py`
+(the `meow native ...` argparse/JSON wrapper around it), and `cli.py` (the
+`meow` console-script entry point). The `src/` layout is deliberate: code
+run from the repo root reaches the *installed* copy, so a broken editable
+install is caught rather than masked.
 
 ## Agent structure
 

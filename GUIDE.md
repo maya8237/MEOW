@@ -40,6 +40,7 @@ unknown key by name rather than ignoring it.
 | `[[lint]]` | **Yes**, ≥1 | — | See below. |
 | `max_rounds` | No | `8` | Generator↔reviewer rounds before meow gives up. |
 | `docs_dir` | No | `docs/exec-plans/active` | Relative to project root; auto-created. |
+| `lint_timeout` | No | `60` | Seconds before a per-file lint command is killed. |
 | `[models].explorer` | No | `"haiku"` | Cheap, read-only research role. |
 | `[models].{planner,generator,reviewer}` | No | SDK default | `generator` does the heaviest work — consider pinning it explicitly. |
 

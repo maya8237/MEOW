@@ -8,7 +8,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from meow import cli, orchestrator, worktree
+from meow import cli, orchestrator, sprint_runner, worktree
 from meow import sprint as sprint_module
 from meow.agents import explorer as explorer_agent
 from meow.agents import generator as generator_agent
@@ -125,7 +125,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 mock_review_plan.return_value = ("PASS", "STATUS: PASS\n")
 
                 asyncio.run(
-                    orchestrator.run_sprint(
+                    sprint_runner.run_sprint(
                         working_dir,
                         "ship-it",
                         "Add CSV export",
@@ -167,7 +167,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                     orchestrator.PlanNotApprovedError, "was not approved"
                 ):
                     asyncio.run(
-                        orchestrator.run_sprint(
+                        sprint_runner.run_sprint(
                             working_dir,
                             "ship-it",
                             "Add CSV export",
@@ -216,7 +216,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 mock_review_plan.return_value = ("PASS", "STATUS: PASS\n")
 
                 result = asyncio.run(
-                    orchestrator.run_sprint(
+                    sprint_runner.run_sprint(
                         working_dir,
                         "ship-it",
                         "Add CSV export",
@@ -259,7 +259,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 mock_review_plan.return_value = ("PASS", "STATUS: PASS\n")
 
                 result = asyncio.run(
-                    orchestrator.run_sprint(
+                    sprint_runner.run_sprint(
                         working_dir,
                         "ship-it",
                         "Add CSV export",
@@ -302,7 +302,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 mock_review_plan.return_value = ("PASS", "STATUS: PASS\n")
 
                 result = asyncio.run(
-                    orchestrator.run_sprint(
+                    sprint_runner.run_sprint(
                         working_dir,
                         "ship-it",
                         "Add CSV export",
@@ -342,7 +342,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 self.assertRaises(orchestrator.PlanNotApprovedError),
             ):
                 asyncio.run(
-                    orchestrator.run_sprint(
+                    sprint_runner.run_sprint(
                         working_dir,
                         "ship-it",
                         "Add CSV export",
@@ -360,7 +360,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     def test_run_sprint_rejects_an_invalid_resume_at_value(self):
         with self.assertRaisesRegex(ValueError, "resume_at"):
             asyncio.run(
-                orchestrator.run_sprint(
+                sprint_runner.run_sprint(
                     Path("/project"),
                     "ship-it",
                     "Add CSV export",
@@ -389,7 +389,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 self.assertRaisesRegex(FileNotFoundError, "No plan file found"),
             ):
                 asyncio.run(
-                    orchestrator.run_sprint(
+                    sprint_runner.run_sprint(
                         working_dir,
                         "ship-it",
                         "Add CSV export",

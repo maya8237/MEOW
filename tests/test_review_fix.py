@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from meow import orchestrator
+from meow import orchestrator, review_fix_review
 
 
 class DetectReviewFlavorTests(unittest.TestCase):
@@ -82,7 +82,7 @@ class RunReviewFixReviewTests(unittest.IsolatedAsyncioTestCase):
             mock_generator.implement = AsyncMock(return_value="")
 
             with (
-                patch("meow.orchestrator.load_config", return_value=config),
+                patch("meow.review_fix_review.load_config", return_value=config),
                 patch(
                     "meow.orchestrator.Generator", return_value=mock_generator
                 ),
@@ -93,7 +93,7 @@ class RunReviewFixReviewTests(unittest.IsolatedAsyncioTestCase):
             ):
                 mock_review_plan.return_value = ("PASS", "STATUS: PASS\n")
 
-                result = await orchestrator.run_review_fix_review(
+                result = await review_fix_review.run_review_fix_review(
                     working_dir, "Check error handling", review_file
                 )
 
@@ -120,10 +120,10 @@ class RunReviewFixReviewTests(unittest.IsolatedAsyncioTestCase):
             review_file.write_text("STATUS: FAIL", encoding="utf-8")
 
             with (
-                patch("meow.orchestrator.load_config", return_value=config),
+                patch("meow.review_fix_review.load_config", return_value=config),
                 self.assertRaisesRegex(FileNotFoundError, "feature.md"),
             ):
-                await orchestrator.run_review_fix_review(
+                await review_fix_review.run_review_fix_review(
                     working_dir, "Check it", review_file
                 )
 
@@ -152,7 +152,7 @@ class RunReviewFixReviewTests(unittest.IsolatedAsyncioTestCase):
             mock_fixer.fix = AsyncMock(return_value="")
 
             with (
-                patch("meow.orchestrator.load_config", return_value=config),
+                patch("meow.review_fix_review.load_config", return_value=config),
                 patch(
                     "meow.orchestrator.ReviewFixAgent", return_value=mock_fixer
                 ),
@@ -163,7 +163,7 @@ class RunReviewFixReviewTests(unittest.IsolatedAsyncioTestCase):
             ):
                 mock_review_prompt.return_value = ("PASS", "STATUS: PASS\n")
 
-                result = await orchestrator.run_review_fix_review(
+                result = await review_fix_review.run_review_fix_review(
                     working_dir, "Check error handling", review_file
                 )
 
@@ -188,12 +188,12 @@ class RunReviewFixReviewTests(unittest.IsolatedAsyncioTestCase):
             review_file.write_text("STATUS: FAIL", encoding="utf-8")
 
             with (
-                patch("meow.orchestrator.load_config", return_value=config),
+                patch("meow.review_fix_review.load_config", return_value=config),
                 patch("meow.orchestrator.ReviewFixAgent") as mock_fixer_cls,
                 patch("meow.orchestrator.Generator") as mock_generator_cls,
                 self.assertRaisesRegex(RuntimeError, "no local checkout"),
             ):
-                await orchestrator.run_review_fix_review(
+                await review_fix_review.run_review_fix_review(
                     working_dir, "Check it", review_file
                 )
 

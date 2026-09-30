@@ -23,7 +23,10 @@ class FakeProjectContext:
         self.model_calls = []
         self.project_dir = Path("/active/project")
         self.repo_dir = self.project_dir
-        self.config: dict = {"docs_dir": "docs/exec-plans/active"}
+        self.config: dict = {
+            "docs_dir": "docs/exec-plans/active",
+            "lint_timeout": 60,
+        }
         self._lint_commands = [LintCommand(command="ruff check")]
         self.use_worktree = False
 

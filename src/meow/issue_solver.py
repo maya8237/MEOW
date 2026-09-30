@@ -3,7 +3,7 @@ meow/issue_solver.py
 
 The `meow issue` flow: fetch a Jira issue (a given key, or the most
 recently created one in a configured project), then solve it through the
-same generator<->reviewer loop `meow run` uses (`orchestrator.run_sprint`),
+same generator<->reviewer loop `meow run` uses (`sprint_runner.run_sprint`),
 inside a dedicated, named-branch worktree that gets pushed on success.
 
 Unlike `run`/`plan`'s worktrees (created detached, never pushed), this flow
@@ -21,7 +21,7 @@ from meow.agents.base import ProjectContext
 from meow.agents.issue_fetcher import IssueFetcherAgent
 from meow.config import load_config
 from meow.logging import get_logger
-from meow.orchestrator import run_sprint
+from meow.sprint_runner import run_sprint
 from meow.worktree import _ensure_branch_worktree, _push_branch
 
 logger = get_logger(__name__)
