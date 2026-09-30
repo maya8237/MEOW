@@ -107,6 +107,93 @@ class PrepareTests(unittest.TestCase):
             ).stdout.strip()
             self.assertEqual(head, "issue/X-1")
 
+    def test_existing_branch_worktree_requires_a_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            with self.assertRaises(ValueError):
+                native.prepare(root, native.PrepareOptions(existing_branch="feature/x"))
+
+    def test_existing_branch_worktree_is_created_on_the_branch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            git(root, "branch", "feature/x")
+
+            result = native.prepare(
+                root,
+                native.PrepareOptions(name="br-feature-x", existing_branch="feature/x"),
+            )
+
+            head = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=result["active_dir"], capture_output=True, text=True,
+            ).stdout.strip()
+            self.assertEqual(head, "feature/x")
+
+    def test_existing_branch_that_does_not_exist_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            with self.assertRaises(RuntimeError):
+                native.prepare(
+                    root, native.PrepareOptions(name="br-nope", existing_branch="nope")
+                )
+
+    def test_no_worktree_existing_branch_requires_it_checked_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            git(root, "branch", "feature/x")
+
+            with self.assertRaises(RuntimeError):
+                native.prepare(
+                    root,
+                    native.PrepareOptions(
+                        use_worktree=False,
+                        require_clean=False,
+                        existing_branch="feature/x",
+                    ),
+                )
+
+    def test_no_worktree_existing_branch_passes_when_already_checked_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            git(root, "checkout", "-q", "-b", "feature/x")
+
+            result = native.prepare(
+                root,
+                native.PrepareOptions(
+                    use_worktree=False,
+                    require_clean=False,
+                    existing_branch="feature/x",
+                ),
+            )
+
+            self.assertFalse(result["use_worktree"])
+            self.assertEqual(Path(result["active_dir"]), root)
+
+
+class BranchReviewPromptTests(unittest.TestCase):
+    def test_reviewer_branch_prompt_names_target_and_branch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            git(root, "branch", "main")
+            git(root, "branch", "feature/x")
+
+            result = native.role_prompt(
+                root, root, "reviewer-branch", target="main", branch="feature/x"
+            )
+
+            self.assertIn("'main'", result["system_prompt"])
+            self.assertIn("'feature/x'", result["system_prompt"])
+            self.assertTrue(result["review_file"].endswith("branch-review.md"))
+
+    def test_reviewer_branch_prompt_requires_target_and_branch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            with self.assertRaises(ValueError):
+                native.role_prompt(root, root, "reviewer-branch")
+
 
 class LookupTests(unittest.TestCase):
     def test_latest_plan_ignores_reviews_and_state(self):
