@@ -27,7 +27,9 @@ class EnsureExistingBranchWorktreeTests(unittest.TestCase):
             root = make_repo(tmp)
             git(root, "branch", "feature/x")
 
-            worktree_dir = _ensure_existing_branch_worktree(root, "br-feature-x", "feature/x")
+            worktree_dir = _ensure_existing_branch_worktree(
+                root, "br-feature-x", "feature/x"
+            )
 
             current = subprocess.run(
                 ["git", "branch", "--show-current"],
@@ -36,7 +38,10 @@ class EnsureExistingBranchWorktreeTests(unittest.TestCase):
             self.assertEqual(current, "feature/x")
 
     def test_checks_out_a_remote_only_branch(self):
-        with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
+        with (
+            tempfile.TemporaryDirectory() as tmp1,
+            tempfile.TemporaryDirectory() as tmp2,
+        ):
             origin = make_repo(tmp1)
             root = Path(tmp2) / "clone"
             git(Path(tmp2), "clone", "-q", str(origin), str(root))
@@ -79,7 +84,7 @@ class RequireBranchCheckedOutTests(unittest.TestCase):
             root = make_repo(tmp)
             git(root, "checkout", "-q", "-b", "feature/x")
 
-            _require_branch_checked_out(root, "feature/x")  # must not raise
+            self.assertIsNone(_require_branch_checked_out(root, "feature/x"))
 
     def test_raises_when_head_is_on_a_different_branch(self):
         with tempfile.TemporaryDirectory() as tmp:

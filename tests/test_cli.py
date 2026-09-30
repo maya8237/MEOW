@@ -1523,5 +1523,71 @@ class ReviewFixReviewCommandTests(unittest.TestCase):
             parser.parse_args(["review-fix-review", "--work-dir", "."])
 
 
+class BranchReviewCommandTests(unittest.TestCase):
+    @staticmethod
+    def test_branch_review_command_is_supported():
+        with (
+            patch("meow.cli._boot_repo") as mock_boot,
+            patch(
+                "meow.cli.run_branch_review", new_callable=AsyncMock
+            ) as mock_branch_review,
+            patch(
+                "sys.argv",
+                [
+                    "meow", "branch-review", "feature/x",
+                    "--target", "main", "--work-dir", ".",
+                ],
+            ),
+        ):
+            cli.cli_main()
+
+        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=True)
+        mock_branch_review.assert_awaited_once_with(
+            Path(".").resolve(), "feature/x", "main", use_worktree=True
+        )
+
+    @staticmethod
+    def test_branch_review_no_worktree_flag_skips_gitignore_boot():
+        with (
+            patch("meow.cli._boot_repo") as mock_boot,
+            patch(
+                "meow.cli.run_branch_review", new_callable=AsyncMock
+            ) as mock_branch_review,
+            patch(
+                "sys.argv",
+                [
+                    "meow", "branch-review", "feature/x",
+                    "--target", "main", "--no-worktree", "--work-dir", ".",
+                ],
+            ),
+        ):
+            cli.cli_main()
+
+        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
+        mock_branch_review.assert_awaited_once_with(
+            Path(".").resolve(), "feature/x", "main", use_worktree=False
+        )
+
+    @staticmethod
+    def test_branch_review_does_not_require_a_clean_tree():
+        with (
+            patch("meow.cli._ensure_clean_tree") as mock_clean_tree,
+            patch("meow.cli._boot_repo"),
+            patch("meow.cli.run_branch_review", new_callable=AsyncMock),
+            patch(
+                "sys.argv",
+                ["meow", "branch-review", "feature/x", "--target", "main"],
+            ),
+        ):
+            cli.cli_main()
+
+        mock_clean_tree.assert_not_called()
+
+    def test_branch_review_requires_a_target(self):
+        parser = cli._build_arg_parser()
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["branch-review", "feature/x", "--work-dir", "."])
+
+
 if __name__ == "__main__":
     unittest.main()
