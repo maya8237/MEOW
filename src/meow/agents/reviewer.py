@@ -3,9 +3,11 @@
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
-from meow.agents.base import Agent, AgentContext
+from meow.agents.base import Agent, AgentContext, _looks_like_a_crash
+from meow.logging import get_logger
 from meow.prompts import (
     architecture_review_instructions,
     branch_review_prompt,
@@ -20,9 +22,41 @@ PROMPT_REVIEW_FILENAME = "review.md"
 MR_REVIEW_FILENAME = "gitlab-review.md"
 BRANCH_REVIEW_FILENAME = "branch-review.md"
 
+_GIT_RETRY_ATTEMPTS = 3
+_GIT_RETRY_BACKOFF = 0.5
+
+logger = get_logger(__name__)
+
 # Kept under its old private name for callers that reach it through this module.
 _architecture_review_instructions = architecture_review_instructions
 _no_prompt_review_instructions = no_prompt_review_instructions
+
+
+def _run_git_retrying(argv: list[str]) -> subprocess.CompletedProcess:
+    """Run a git subprocess, retrying up to `_GIT_RETRY_ATTEMPTS` times if it
+    looks like it crashed (see `_looks_like_a_crash`) rather than exiting
+    normally with a chosen status -- a transient crash (e.g. an antivirus
+    lock on Windows) is worth a retry; a normal git failure (bad ref, not a
+    repo) is returned immediately for the caller to handle as before."""
+    delay = _GIT_RETRY_BACKOFF
+    result = subprocess.run(
+        argv, check=False, capture_output=True, text=True, encoding="utf-8"
+    )
+    for attempt in range(1, _GIT_RETRY_ATTEMPTS):
+        if not _looks_like_a_crash(result.returncode):
+            return result
+        logger.warning(
+            "git_subprocess_crash_retry",
+            argv=argv,
+            returncode=result.returncode,
+            attempt=attempt,
+        )
+        time.sleep(delay)
+        delay *= 2
+        result = subprocess.run(
+            argv, check=False, capture_output=True, text=True, encoding="utf-8"
+        )
+    return result
 
 
 def _git_review_context(context: AgentContext) -> tuple[str, bool]:
@@ -35,20 +69,10 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
         )
 
     active_dir = context.active_working_dir()
-    status = subprocess.run(
-        [git, "-C", str(active_dir), "status", "--short", "--branch"],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
+    status = _run_git_retrying(
+        [git, "-C", str(active_dir), "status", "--short", "--branch"]
     )
-    diff = subprocess.run(
-        [git, "-C", str(active_dir), "diff", "--"],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    diff = _run_git_retrying([git, "-C", str(active_dir), "diff", "--"])
     diff_text = diff.stdout.strip()
     review_context = (
         "Git status for the active worktree:\n"
@@ -58,20 +82,10 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
     )
 
     if active_dir != context.repo_dir:
-        repo_status = subprocess.run(
-            [git, "-C", str(context.repo_dir), "status", "--short", "--branch"],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
+        repo_status = _run_git_retrying(
+            [git, "-C", str(context.repo_dir), "status", "--short", "--branch"]
         )
-        repo_diff = subprocess.run(
-            [git, "-C", str(context.repo_dir), "diff", "--"],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
+        repo_diff = _run_git_retrying([git, "-C", str(context.repo_dir), "diff", "--"])
         review_context += (
             "\n\nOriginal working-directory status (must be clean while a "
             f"worktree is active):\n{repo_status.stdout.strip() or '(no status)'}\n\n"
@@ -93,18 +107,17 @@ def _branch_diff(active_dir: Path, target: str, branch: str) -> str:
     git = shutil.which("git")
     if not git:
         return ""
-    merge_base = subprocess.run(
-        [git, "-C", str(active_dir), "merge-base", target, branch],
-        check=False, capture_output=True, text=True, encoding="utf-8",
+    merge_base = _run_git_retrying(
+        [git, "-C", str(active_dir), "merge-base", target, branch]
     )
     if merge_base.returncode != 0:
         raise RuntimeError(
-            f"Could not find a merge base between {target!r} and "
-            f"{branch!r} in {active_dir}: {merge_base.stderr.strip()}"
+            f"Could not find a merge base between {target!r} and {branch!r} "
+            f"in {active_dir} (git merge-base exit code {merge_base.returncode}): "
+            f"{merge_base.stderr.strip()}"
         )
-    diff = subprocess.run(
-        [git, "-C", str(active_dir), "diff", merge_base.stdout.strip()],
-        check=False, capture_output=True, text=True, encoding="utf-8",
+    diff = _run_git_retrying(
+        [git, "-C", str(active_dir), "diff", merge_base.stdout.strip()]
     )
     return diff.stdout.strip()
 

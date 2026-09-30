@@ -4,16 +4,40 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+from claude_agent_sdk import AssistantMessage, ProcessError, ResultMessage, TextBlock
 
-from meow.agents.base import Agent, AgentContext, ProjectContext
+from meow.agents.base import Agent, AgentContext, ProjectContext, _looks_like_a_crash
 from meow.agents.explorer import ExplorerAgent
 from meow.agents.generator import Generator, GeneratorAgent
 from meow.agents.lint_fixer import LintFixAgent
 from meow.agents.planner import PlannerAgent
 from meow.agents.review_fixer import ReviewFixAgent
-from meow.agents.reviewer import ReviewerAgent, _branch_diff, _verdict_status
+from meow.agents.reviewer import (
+    ReviewerAgent,
+    _branch_diff,
+    _run_git_retrying,
+    _verdict_status,
+)
 from meow.config import LintCommand
+
+
+class LooksLikeACrashTests(unittest.TestCase):
+    def test_none_is_not_a_crash(self):
+        self.assertFalse(_looks_like_a_crash(None))
+
+    def test_normal_exit_codes_are_not_crashes(self):
+        self.assertFalse(_looks_like_a_crash(0))
+        self.assertFalse(_looks_like_a_crash(1))
+        self.assertFalse(_looks_like_a_crash(127))
+
+    def test_posix_signal_style_negative_code_is_a_crash(self):
+        self.assertTrue(_looks_like_a_crash(-11))  # SIGSEGV
+
+    def test_windows_fastfail_style_large_negative_code_is_a_crash(self):
+        self.assertTrue(_looks_like_a_crash(-1073740791))  # sign-extended 0xC0000409
+
+    def test_large_unsigned_ntstatus_style_code_is_a_crash(self):
+        self.assertTrue(_looks_like_a_crash(3221226505))  # raw 0xC0000409
 
 
 class ProjectContextTests(unittest.TestCase):
@@ -116,6 +140,72 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
 
         with patch("meow.agents.base.query", fake_query):
             await Agent.run_query("do work", object(), "Planner")
+
+    async def test_run_query_retries_on_crash_and_succeeds(self):
+        succeeds_on_attempt = 3
+        calls = {"n": 0}
+        success = ResultMessage(
+            subtype="success", duration_ms=0, duration_api_ms=0,
+            is_error=False, num_turns=1, session_id="session", result="done",
+        )
+
+        async def flaky_query(*, prompt, options):
+            calls["n"] += 1
+            await __import__("asyncio").sleep(0)
+            if calls["n"] < succeeds_on_attempt:
+                raise ProcessError(
+                    "Command failed", exit_code=-1073740791, stderr="crashed"
+                )
+                yield  # pragma: no cover -- makes this an async generator
+            yield success
+
+        with (
+            patch("meow.agents.base.query", flaky_query),
+            patch("meow.agents.base.asyncio.sleep", new=AsyncMock()),
+        ):
+            await Agent.run_query("do work", object(), "Reviewer")
+
+        self.assertEqual(calls["n"], succeeds_on_attempt)
+
+    async def test_run_query_gives_up_after_max_retries_and_raises_clearly(self):
+        calls = {"n": 0}
+
+        async def always_crashes(*, prompt, options):
+            calls["n"] += 1
+            await __import__("asyncio").sleep(0)
+            raise ProcessError(
+                "Command failed", exit_code=-1073740791, stderr="crashed hard"
+            )
+            yield  # pragma: no cover -- makes this an async generator
+
+        with (
+            patch("meow.agents.base.query", always_crashes),
+            patch("meow.agents.base.asyncio.sleep", new=AsyncMock()),
+            self.assertRaisesRegex(
+                RuntimeError, r"Reviewer.*crashed.*-1073740791.*crashed hard"
+            ) as caught,
+        ):
+            await Agent.run_query("do work", object(), "Reviewer")
+
+        self.assertIsInstance(caught.exception.__cause__, ProcessError)
+        self.assertEqual(calls["n"], 3)
+
+    async def test_run_query_does_not_retry_a_normal_process_error(self):
+        calls = {"n": 0}
+
+        async def normal_failure(*, prompt, options):
+            calls["n"] += 1
+            await __import__("asyncio").sleep(0)
+            raise ProcessError("Command failed", exit_code=1, stderr="bad prompt")
+            yield  # pragma: no cover -- makes this an async generator
+
+        with (
+            patch("meow.agents.base.query", normal_failure),
+            self.assertRaisesRegex(RuntimeError, r"Reviewer.*exit code 1.*bad prompt"),
+        ):
+            await Agent.run_query("do work", object(), "Reviewer")
+
+        self.assertEqual(calls["n"], 1)
 
 
 class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
@@ -466,6 +556,65 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("'feature/x'", options.system_prompt)
 
 
+class RunGitRetryingTests(unittest.TestCase):
+    def test_retries_on_crash_like_returncode_then_succeeds(self):
+        import subprocess
+
+        responses = [
+            subprocess.CompletedProcess(
+                args=[], returncode=-1073740791, stdout="", stderr="crash"
+            ),
+            subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="clean\n", stderr=""
+            ),
+        ]
+
+        with (
+            patch(
+                "meow.agents.reviewer.subprocess.run", side_effect=responses
+            ) as mock_run,
+            patch("meow.agents.reviewer.time.sleep") as mock_sleep,
+        ):
+            result = _run_git_retrying(["git", "status"])
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(mock_run.call_count, 2)
+        mock_sleep.assert_called_once()
+
+    def test_gives_up_after_max_attempts_and_returns_last_crashed_result(self):
+        import subprocess
+
+        crash = subprocess.CompletedProcess(
+            args=[], returncode=-11, stdout="", stderr="killed"
+        )
+
+        with (
+            patch(
+                "meow.agents.reviewer.subprocess.run", return_value=crash
+            ) as mock_run,
+            patch("meow.agents.reviewer.time.sleep"),
+        ):
+            result = _run_git_retrying(["git", "status"])
+
+        self.assertEqual(result.returncode, -11)
+        self.assertEqual(mock_run.call_count, 3)
+
+    def test_does_not_retry_a_normal_nonzero_exit(self):
+        import subprocess
+
+        normal_fail = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="not a repo"
+        )
+
+        with patch(
+            "meow.agents.reviewer.subprocess.run", return_value=normal_fail
+        ) as mock_run:
+            result = _run_git_retrying(["git", "status"])
+
+        self.assertEqual(result.returncode, 1)
+        mock_run.assert_called_once()
+
+
 class BranchDiffTests(unittest.TestCase):
     def test_diff_includes_committed_and_uncommitted_changes_since_merge_base(self):
         import subprocess
@@ -511,7 +660,7 @@ class BranchDiffTests(unittest.TestCase):
             subprocess.run(["git", "add", "-A"], cwd=root, check=True)
             subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=root, check=True)
 
-            with self.assertRaisesRegex(RuntimeError, "merge base"):
+            with self.assertRaisesRegex(RuntimeError, "merge base.*exit code"):
                 _branch_diff(root, "does-not-exist", "master")
 
 
