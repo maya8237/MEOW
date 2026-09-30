@@ -13,43 +13,53 @@ meow run "<feature description>" --name "<feature-name>"
 ```
 
 `meow plan "<feature description>" --name "<feature-name>"` writes just the sprint plan, without
-implementing it. `meow review [--plan-file PATH]` re-runs the reviewer
-against an already-implemented plan (the most recent one in `docs_dir` by
-default) and loops fixes back through the generator until it passes. Pass a
-specific plan with `--plan-file PATH` (or `--plan PATH`).
-`meow issue [ISSUE-KEY]` fetches a Jira issue and solves it end to end in a
-pushed worktree branch (needs `[jira]`/`[jira.mcp]` in `.harness.toml`).
-`meow gitlab-review "<mr-url>"` fetches a GitLab merge request's diff and
-grades it, reporting PASS/FAIL without editing anything (needs
-`[gitlab.mcp]`). See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for both config sections.
-`meow branch-review <branch> --target <target-branch>` reviews a local
-branch's diff against a target branch (plain `git diff`, no GitLab MCP or
-MR link needed), fixes what it finds, and re-reviews, looping up to
-`max_rounds` like everything else. `--target` is required. Worktree by
-default (an existing-branch worktree, reused across repeated runs);
-`--no-worktree` fixes in place and requires `branch` already checked out
-there.
-`meow lint-fix` runs every configured `[[lint]]` command and fixes what it
-finds; `meow lint-fix --report-only` only runs and reports, fixing nothing
--- that's the mode the `lint-fix` skill uses, doing the fixing itself.
+implementing it.
+`meow run --jira [ISSUE-KEY]` fetches a Jira issue and solves it end to end
+in a pushed worktree branch instead of a typed request (needs
+`[jira]`/`[jira.mcp]` in `.harness.toml`); `--name`/`--no-worktree`/
+`--source-branch`/`--resume-at`/`--plan-file` are rejected alongside it --
+it always builds its own worktree and branch.
+`meow run --lint-fix` runs every configured `[[lint]]` command and fixes
+what it finds; `meow run --lint-fix --report-only` only runs and reports,
+fixing nothing -- that's the mode the `lint-fix` skill uses, doing the
+fixing itself. It takes no request text, no `--jira`, and no worktree flags.
 `run`/`plan --source-branch BRANCH` (also `--from`/`-b`) checks a freshly
 created worktree out from that branch instead of the main checkout's
 current HEAD. `run` skips the uncommitted-changes check only when both a
 worktree is being created (not `--no-worktree`) and `--source-branch` was
 given for it; every other combination keeps the check as before.
-`run`/`issue --manually-approve-plan` (also `-m`) prints the plan after the
-planner writes it and prompts on stdin before the generator implements it;
-declining exits non-zero without running the generator. `plan` doesn't take
-it -- it never implements what it plans. Never pass it on a scheduled
-`meow issue` run: nothing is attached to answer the prompt, so it hangs.
+`run`/`run --jira --manually-approve-plan` (also `-m`) prints the plan after
+the planner writes it and prompts on stdin before the generator implements
+it; declining exits non-zero without running the generator. `plan` doesn't
+take it -- it never implements what it plans. Never pass it on a scheduled
+`meow run --jira` run: nothing is attached to answer the prompt, so it hangs.
 `run --resume-at {generate,review}` (default `generate`) picks up an
 interrupted sprint at the review stage instead of re-running the
 generator, using `--plan-file` if given or the latest plan in `docs_dir`
-otherwise; `plan` and `issue` don't take it.
-`meow review-fix-review <prompt> [--review-file PATH]` fixes an existing
-review's findings and re-reviews, looping up to `max_rounds` like `meow
-review`; the prompt is required, and a GitLab MR review file is rejected
-(no local checkout to fix).
+otherwise; `plan` and `run --jira`/`--lint-fix` don't take it.
+
+`meow review [PROMPT] [--fix] [--jira [KEY] | --gitlab MR-LINK | --branch
+BRANCH --target TARGET | --plan-file PATH | --review-file PATH]` is its own
+subcommand covering every review-and-optionally-fix operation -- report-only
+by default (single pass, PASS/FAIL, nothing edited), `--fix` loops
+review-fix-review up to `max_rounds` and raises if it never passes. Exactly
+one source may be given; none given auto-discovers the latest plan in
+`docs_dir`, falling back to a free-text/diff review if none exists (the old
+bare `meow review` and `meow cr` defaults, combined). `--gitlab` fetches a
+GitLab merge request's diff (needs `[gitlab.mcp]`) and is always read-only --
+combining it with `--fix` is rejected, there's no local checkout to fix.
+`--jira` fetches a Jira issue (needs `[jira]`/`[jira.mcp]`) and reviews the
+current code against it. `--branch`/`--target` reviews a local branch's diff
+against a target (plain `git diff`, no GitLab MCP needed); it's the only
+source that creates its own worktree (isolated by default, `--no-worktree`
+to fix in place on an already-checked-out branch). `--plan-file` reviews a
+specific plan's implementation against its Sprint Contract. `--review-file`
+resumes fixing an already-written review file instead of running a fresh
+review, auto-detecting its flavor (a GitLab or branch review file can't be
+resumed this way -- re-run with `--gitlab`/`--branch` instead). See
+[docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for the `[jira]`/`[gitlab.mcp]`
+config sections.
+
 Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
 select the project directory.
 
@@ -79,15 +89,13 @@ and `SUMMARY:`/`STATUS:` verdict format. Design:
 
 This repo is also a Claude Code plugin (`.claude-plugin/plugin.json` +
 `skills/`), so the same operations are available as skills when meow is
-installed as a plugin in a project: `/meow:sprint`, `/meow:meow-plan`,
-`/meow:meow-review`, `/meow:meow-issue`, `/meow:gitlab-review`,
-`/meow:lint-fix`, `/meow:review-fix-review`, and `/meow:branch-review`.
-Each is a thin wrapper
-that shells out to the `meow` CLI above — see `skills/*/SKILL.md` for what
-each one runs. `lint-fix` is the odd one out: it runs `meow lint-fix
---report-only` and then does the fixing itself in the calling session,
-rather than having meow spin up its own agent the way every other skill
-here does.
+installed as a plugin in a project: `/meow:sprint` (plain build, or
+`--jira`-sourced), `/meow:meow-plan`, `/meow:review` (every source), and
+`/meow:lint-fix`. Each is a thin wrapper that shells out to the `meow` CLI
+above — see `skills/*/SKILL.md` for what each one runs. `lint-fix` is the
+odd one out: it runs `meow run --lint-fix --report-only` and then does the
+fixing itself in the calling session, rather than having meow spin up its
+own agent the way every other skill here does.
 
 ## Lint
 
@@ -106,36 +114,35 @@ The engine is split by responsibility under `src/meow/`: `config.py`
 per-sprint state and `build_sprint`, which wires it up from config), `lint.py`
 (the auto-fixing per-file hook, reporting the configured lint plan, and the
 project-wide fix/check functions `lint_fix.py` uses), `worktree.py`
-(git/filesystem bootstrapping: `.gitignore` upkeep and creating per-feature
-worktrees), `rules.py` (reads `docs/RULES.md` and injects it into role system
-prompts), `logging.py` (structured, structlog-based logging setup shared by
-every module), `prompts.py` (role prompts as pure functions of plain values,
-shared by both the SDK agents and native-mode execution), `plan_files.py`
-(plan/review file naming and lookup within a project's `docs_dir`), `agents/`
-(one module per agent role, plus a shared base), `orchestrator.py` (just the
-shared generator<->reviewer round-loop engine now: `_prepare_sprint` and the
-three round-loop shapes -- `_run_rounds`, `_run_review_rounds`,
-`_run_prompt_fix_rounds`), `sprint_runner.py` (the `run_sprint`/`run_plan`
-top-level flows `cli.py` dispatches `meow run`/`meow plan` into),
-`review_runner.py` (the `run_review`/`run_prompt_review` top-level flows for
-`meow review`/`meow cr`), `review_fix_review.py` (the `run_review_fix_review`
-top-level flow for `meow review-fix-review`), `issue_solver.py`,
-`gitlab_reviewer.py`, and `lint_fix.py` (the `run_*` entry points for
-`issue`/`gitlab-review`/`lint-fix`) -- `sprint_runner.py`/`review_runner.py`/
-`review_fix_review.py` split `orchestrator.py`'s own former top-level flows
-out the same way `issue_solver.py`/`gitlab_reviewer.py`/`lint_fix.py` already
-did, the SOLID/SRP separation the reviewer itself checks for, so the engine
-module holds only the round loop its docstring claims -- the deterministic
-helpers behind native, in-Claude-Code-session execution -- `native_prepare.py`
-(worktree/clean-tree bootstrapping and plan/review lookup), `native_lint.py`
-(lint execution), `native_state.py` (the on-disk round counter), and
-`native_prompt.py` (prompt/agent-wiring construction), each its own module
-for the same reason -- plus `native.py` (a thin façade that re-exports their
-public names under one `from meow import native` import) and `native_cli.py`
-(the `meow native ...` argparse/JSON wrapper around it), and `cli.py` (the
-`meow` console-script entry point). The `src/` layout is deliberate: code
-run from the repo root reaches the *installed* copy, so a broken editable
-install is caught rather than masked.
+(git/filesystem bootstrapping: `.gitignore` upkeep and creating per-feature/
+existing-branch worktrees), `rules.py` (reads `docs/RULES.md` and injects it
+into role system prompts), `logging.py` (structured, structlog-based logging
+setup shared by every module), `prompts.py` (role prompts as pure functions
+of plain values, shared by both the SDK agents and native-mode execution),
+`plan_files.py` (plan/review file naming and lookup within a project's
+`docs_dir`), `agents/` (one module per agent role, plus a shared base),
+`orchestrator.py` (just the shared generator<->reviewer round-loop engine
+now: `_prepare_sprint` and the three round-loop shapes -- `_run_rounds`,
+`_run_review_rounds`, `_run_prompt_fix_rounds`), `sprint_runner.py` (the
+`run_sprint`/`run_plan` top-level flows `cli.py` dispatches `meow run`/`meow
+plan` into), `review_cli.py` (the `run_review_command` dispatcher for `meow
+review`'s every source -- prompt/`--jira`/`--gitlab`/`--branch`/`--plan-file`/
+`--review-file`, report-only or `--fix`), `issue_solver.py` (`meow run
+--jira`'s fetch/worktree+branch/sprint/push flow), `gitlab_reviewer.py`
+(GitLab MR config/fetch helpers `review_cli.py` uses), `branch_reviewer.py`
+(the branch-name sanitizing helper `review_cli.py` uses), and `lint_fix.py`
+(the `run_lint_fix` entry point for `meow run --lint-fix`) -- the
+deterministic helpers behind native, in-Claude-Code-session execution --
+`native_prepare.py` (worktree/clean-tree bootstrapping and plan/review
+lookup), `native_lint.py` (lint execution), `native_state.py` (the on-disk
+round counter), and `native_prompt.py` (prompt/agent-wiring construction),
+each its own module for the same reason -- plus `native.py` (a thin façade
+that re-exports their public names under one `from meow import native`
+import) and `native_cli.py` (the `meow native ...` argparse/JSON wrapper
+around it), and `cli.py` (the `meow` console-script entry point: the `run`/
+`review`/`plan`/`native` subparsers and their dispatch). The `src/` layout is
+deliberate: code run from the repo root reaches the *installed* copy, so a
+broken editable install is caught rather than masked.
 
 ## Agent structure
 
@@ -147,7 +154,7 @@ hook, declared on the narrower `GeneratorContext` protocol rather than on
 every role's context. The shared `Agent` base builds `ClaudeAgentOptions` and
 runs one-shot SDK queries consistently across roles; `Sprint` (sprint-workflow
 state) and the generic, sprint-free `ProjectContext` (config + a directory,
-used by `cr`) both satisfy `AgentContext` (`Sprint` also satisfies
+used by `meow review`) both satisfy `AgentContext` (`Sprint` also satisfies
 `GeneratorContext`), so a role class works the same way whether or not a
 sprint is in play. The explorer stays declarative — `ExplorerAgent.definition()` returns
 an `AgentDefinition` because the SDK consumes it as a nested subagent — while

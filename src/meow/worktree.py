@@ -276,7 +276,7 @@ def _ensure_existing_branch_worktree(
     git = shutil.which("git")
     if not git:
         raise RuntimeError(
-            "git is required for `meow run --review --branch`'s worktree step."
+            "git is required for `meow review --branch`'s worktree step."
         )
 
     (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)

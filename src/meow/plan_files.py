@@ -61,7 +61,7 @@ def _latest_review_file(docs_dir: Path) -> Path:
     candidates = list(docs_dir.glob("*review.md"))
     if not candidates:
         raise FileNotFoundError(
-            f"No review file found in {docs_dir}. Run `meow run --review` "
+            f"No review file found in {docs_dir}. Run `meow review` "
             "first, or pass --review-file explicitly."
         )
     return max(candidates, key=lambda path: path.stat().st_mtime)

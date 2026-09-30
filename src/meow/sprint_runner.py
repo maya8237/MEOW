@@ -54,7 +54,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
       `plan_file` is given, then run the generator first (`_run_rounds`).
     - `"review"`: skip planning; if `plan_file` wasn't given, auto-detect
       the latest plan in the active directory's `docs_dir` (the same
-      lookup `meow run --review` uses). Review the existing code first
+      lookup `meow review` uses). Review the existing code first
       (`_run_review_rounds`), and only run the generator if that review
       finds something to fix -- for continuing a sprint that was
       interrupted after the generator already produced code, without

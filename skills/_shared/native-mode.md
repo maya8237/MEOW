@@ -9,8 +9,8 @@ started. **CLI mode** (the `meow <command>` shell-out in each SKILL.md's
 ("run it headless", "use the CLI", "separate process").
 
 Both modes read the same `.harness.toml` and write the same files, so a run
-started in one can be continued in the other (`meow review-fix-review`,
-`meow run --resume-at review`, `/meow:meow-review`, ...).
+started in one can be continued in the other (`meow review --fix`,
+`meow run --resume-at review`, `/meow:review`, ...).
 
 ## The `meow native` helper
 

@@ -1,6 +1,6 @@
 """Lint-fix agent: given raw lint-command failures, edits the project to
 resolve them, in a session that survives across rounds -- the standalone-CLI
-half of `meow lint-fix`. Report-only mode (the `lint-fix` skill wrapper)
+half of `meow run --lint-fix`. Report-only mode (the `lint-fix` skill wrapper)
 never constructs this agent at all; fixing what's reported is left to the
 calling Claude session there."""
 

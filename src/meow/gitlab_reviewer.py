@@ -2,7 +2,7 @@
 meow/gitlab_reviewer.py
 
 GitLab MR config loading and fetching, used by `review_cli.py`'s
-`--gitlab` review source (`meow run --review --gitlab <mr-link>`): fetch a
+`--gitlab` review source (`meow review --gitlab <mr-link>`): fetch a
 merge request's title, description, and diff through a configured GitLab
 MCP server, then grade them with the reviewer role -- read-only, since
 this never checks the merge request's code out locally.
@@ -33,7 +33,7 @@ def _load_gitlab_config(config: dict) -> dict:
     gitlab = config.get("gitlab")
     if not isinstance(gitlab, dict):
         raise ValueError(
-            "No [gitlab] table found in .harness.toml. `meow run --review "
+            "No [gitlab] table found in .harness.toml. `meow review "
             "--gitlab` needs a [gitlab.mcp] table describing how to "
             "launch a GitLab MCP server, e.g.:\n\n"
             "[gitlab.mcp]\n"

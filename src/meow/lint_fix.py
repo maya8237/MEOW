@@ -1,7 +1,7 @@
 """
 meow/lint_fix.py
 
-The `meow lint-fix` flow: run every configured `[[lint]]` command, then
+The `meow run --lint-fix` flow: run every configured `[[lint]]` command, then
 either fix what's left or just report it, depending on how it's invoked.
 
 Standalone CLI use (the default) actually fixes things: an auto-fix pass
@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 
 class LintFixError(RuntimeError):
-    """`meow lint-fix` could not get the project's lint clean within max_rounds."""
+    """`meow run --lint-fix` couldn't get the project's lint clean within max_rounds."""
 
 
 async def _report_only(working_dir: Path, config: dict) -> str | None:
