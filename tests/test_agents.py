@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from meow.agents.base import Agent, AgentContext
+from meow.agents.base import Agent, AgentContext, ProjectContext
 from meow.agents.explorer import ExplorerAgent
 from meow.agents.generator import Generator, GeneratorAgent
 from meow.agents.lint_fixer import LintFixAgent
@@ -14,6 +14,18 @@ from meow.agents.planner import PlannerAgent
 from meow.agents.review_fixer import ReviewFixAgent
 from meow.agents.reviewer import ReviewerAgent, _verdict_status
 from meow.config import LintCommand
+
+
+class ProjectContextTests(unittest.TestCase):
+    def test_use_worktree_defaults_to_false(self):
+        context = ProjectContext(Path("/repo"), {"models": {}, "lint": []})
+        self.assertFalse(context.use_worktree)
+
+    def test_use_worktree_can_be_set_true(self):
+        context = ProjectContext(
+            Path("/repo"), {"models": {}, "lint": []}, use_worktree=True
+        )
+        self.assertTrue(context.use_worktree)
 
 
 class FakeProjectContext:

@@ -146,10 +146,10 @@ class ProjectContext:
     that don't loop a generator against a Sprint Contract, such as `cr`.
     """
 
-    def __init__(self, repo_dir: Path, config: dict):
+    def __init__(self, repo_dir: Path, config: dict, *, use_worktree: bool = False):
         self.repo_dir = repo_dir
         self.config = config
-        self.use_worktree = False
+        self.use_worktree = use_worktree
 
     def model(self, role: str) -> str | None:
         return self.config["models"][role]
