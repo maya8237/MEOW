@@ -143,8 +143,9 @@ A missing `.harness.toml` or `[[lint]]` entry fails fast with
 `[[lint]]` table (often a top-level key placed after it) raises `ValueError`
 naming the entry and key; a missing architecture doc under `docs/` is not an
 error, it just leaves the reviewer's SOLID/SRP pass with nothing
-project-specific to check against. `meow issue`, `meow gitlab-review`, and
-`meow review-fix-review` have their own failure modes (missing MCP config,
-unreachable server, no MR checkout, `max_rounds` exhausted, etc.) — the full
-error-message reference lives in
+project-specific to check against. `meow issue`, `meow gitlab-review`,
+`meow branch-review`, and `meow review-fix-review` have their own failure
+modes (missing MCP config, unreachable server, no MR checkout, wrong
+branch checked out, `max_rounds` exhausted, etc.) — the full error-message
+reference lives in
 [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).

@@ -22,6 +22,13 @@ pushed worktree branch (needs `[jira]`/`[jira.mcp]` in `.harness.toml`).
 `meow gitlab-review "<mr-url>"` fetches a GitLab merge request's diff and
 grades it, reporting PASS/FAIL without editing anything (needs
 `[gitlab.mcp]`). See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for both config sections.
+`meow branch-review <branch> --target <target-branch>` reviews a local
+branch's diff against a target branch (plain `git diff`, no GitLab MCP or
+MR link needed), fixes what it finds, and re-reviews, looping up to
+`max_rounds` like everything else. `--target` is required. Worktree by
+default (an existing-branch worktree, reused across repeated runs);
+`--no-worktree` fixes in place and requires `branch` already checked out
+there.
 `meow lint-fix` runs every configured `[[lint]]` command and fixes what it
 finds; `meow lint-fix --report-only` only runs and reports, fixing nothing
 -- that's the mode the `lint-fix` skill uses, doing the fixing itself.
@@ -74,7 +81,8 @@ This repo is also a Claude Code plugin (`.claude-plugin/plugin.json` +
 `skills/`), so the same operations are available as skills when meow is
 installed as a plugin in a project: `/meow:sprint`, `/meow:meow-plan`,
 `/meow:meow-review`, `/meow:meow-issue`, `/meow:gitlab-review`,
-`/meow:lint-fix`, and `/meow:review-fix-review`. Each is a thin wrapper
+`/meow:lint-fix`, `/meow:review-fix-review`, and `/meow:branch-review`.
+Each is a thin wrapper
 that shells out to the `meow` CLI above — see `skills/*/SKILL.md` for what
 each one runs. `lint-fix` is the odd one out: it runs `meow lint-fix
 --report-only` and then does the fixing itself in the calling session,

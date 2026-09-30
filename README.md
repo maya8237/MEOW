@@ -206,6 +206,28 @@ request's title, description, and diff, grades them, and writes the verdict
 to `gitlab-review.md` in the selected working directory's `docs_dir`. See
 [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for the config fields.
 
+### `meow branch-review`
+
+Reviews a local branch's diff against a target branch entirely locally — plain
+`git diff`, no GitLab MCP, no MR link — then fixes what it finds and
+re-reviews, looping up to `max_rounds`. Unlike `meow gitlab-review`, it always
+fixes; unlike `meow issue`, there's no Sprint Contract and nothing gets pushed:
+
+```bash
+meow branch-review "feature/add-csv-export" --target main
+```
+
+`--target` is required — never guessed — since main/dev/master varies by
+project. By default it checks out `branch` into its own isolated worktree
+(reusing it on a repeated run against the same branch, like `meow issue`'s
+worktree), leaving whatever's currently checked out untouched. `--no-worktree`
+fixes in place instead, on whatever's already checked out — which must already
+be `branch`, or it fails with a clear error rather than fixing the wrong code.
+Writes its verdict to `branch-review.md` in `docs_dir`. A leftover
+`branch-review.md` is rejected by `meow review-fix-review` (it has no target
+branch to re-diff against) — rerun `meow branch-review` instead, which already
+loops to `max_rounds` on its own.
+
 ### `meow lint-fix`
 
 Runs every command configured under `[[lint]]` and either fixes what's
@@ -264,6 +286,7 @@ skills become available in any project that also has a `.harness.toml`:
 | `/meow:gitlab-review "<mr-url>"` | `meow gitlab-review "<mr-url>"` |
 | `/meow:lint-fix` | `meow lint-fix --report-only`, then the skill fixes what it reports |
 | `/meow:review-fix-review "<prompt>"` | `meow review-fix-review "<prompt>"` |
+| `/meow:branch-review "<branch>" --target "<target>"` | `meow branch-review "<branch>" --target "<target>"` |
 
 ### Native mode vs CLI mode
 
@@ -324,7 +347,8 @@ meow/
 │   ├── gitlab-review/SKILL.md           # /meow:gitlab-review -> harness gitlab-review
 │   ├── meow-cr/SKILL.md                 # /meow:meow-cr -> harness cr
 │   ├── lint-fix/SKILL.md                # /meow:lint-fix -> harness lint-fix --report-only
-│   └── review-fix-review/SKILL.md       # /meow:review-fix-review -> harness review-fix-review
+│   ├── review-fix-review/SKILL.md       # /meow:review-fix-review -> harness review-fix-review
+│   └── branch-review/SKILL.md           # /meow:branch-review -> harness branch-review
 ├── docs/
 │   ├── INTEGRATIONS.md                  # Jira/GitLab config, scheduling, error reference
 │   └── exec-plans/
@@ -339,7 +363,7 @@ meow/
         ├── config.py                   # .harness.toml loading + lint-command model
         ├── sprint.py                   # per-sprint state shared by every role
         ├── lint.py                     # auto-fixing per-file hook + project-wide fix/check
-        ├── worktree.py                 # git/filesystem bootstrapping + per-feature worktrees
+        ├── worktree.py                 # git/filesystem bootstrapping + per-feature/existing-branch worktrees
         ├── rules.py                    # docs/RULES.md parsing, injected into role prompts
         ├── logging.py                  # structured logging setup shared by every module
         ├── plan_files.py               # plan/review file naming + lookup in docs_dir
@@ -359,6 +383,7 @@ meow/
         ├── review_fix_review.py        # `meow review-fix-review` top-level flow
         ├── issue_solver.py             # `meow issue` flow: fetch, worktree+branch, sprint, push
         ├── gitlab_reviewer.py          # `meow gitlab-review` flow: fetch MR, grade its diff
+        ├── branch_reviewer.py          # `meow branch-review` flow: local branch-vs-target diff, fix loop
         ├── lint_fix.py                 # `meow lint-fix` flow: fix-or-report, standalone vs. skill
         ├── prompts.py                  # role prompts as pure functions, shared by both modes
         ├── native_prepare.py           # native mode: worktree bootstrapping + plan/review lookup
