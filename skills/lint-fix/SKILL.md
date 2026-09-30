@@ -20,17 +20,19 @@ and racing your edits.
 2. Run `meow native prepare --no-worktree --allow-dirty --working-dir "<project-path>"`
    for `max_rounds` and `docs_dir`, then
    `meow native round <docs_dir>/lint-fix.md --reset`.
-3. Auto-fix pass, then check: `meow native lint --fix --working-dir "<project-path>"`.
-   - `"clean": true` -> report that nothing is left (mention any `informational`
-     findings) and stop.
+3. Auto-fix pass, then check: `meow native lint --fix --all-blocking --working-dir "<project-path>"`.
+   `--all-blocking` fixes every configured command unconditionally, matching
+   `meow lint-fix`'s own CLI behavior -- `gate` only controls what fails a
+   *review*, not what lint-fix leaves alone.
+   - `"clean": true` -> report that nothing is left and stop.
    - Otherwise each entry in `blocking` is a `$ <command>` block of raw linter
      output. Fix each yourself with the smallest edit that resolves it, without
      unrelated refactoring; run `meow native lint --file <path>` after each edit.
-4. Re-check with `meow native lint`; call `meow native round <docs_dir>/lint-fix.md`
-   before each further fix attempt and stop if it says `exhausted`.
+4. Re-check with `meow native lint --all-blocking`; call
+   `meow native round <docs_dir>/lint-fix.md` before each further fix attempt
+   and stop if it says `exhausted`.
 5. Report the final outcome: clean, or what is still outstanding and why (e.g. a
-   project-wide type error needing a design decision). `informational` findings
-   are non-blocking by configuration; list them, do not chase them.
+   project-wide type error needing a design decision).
 
 ## CLI mode
 

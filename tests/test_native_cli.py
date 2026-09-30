@@ -1,12 +1,13 @@
 import contextlib
 import io
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from tests.test_native import make_repo
+from tests.test_native import git, make_repo
 
 from meow import cli
 
@@ -115,3 +116,36 @@ class NativeCliTests(unittest.TestCase):
         code, _, _ = run_native("prompt", "wizard")
 
         self.assertNotEqual(code, 0)
+
+    def test_push_command_pushes_to_a_real_remote(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bare = Path(tmp) / "origin.git"
+            git(Path(tmp), "init", "-q", "--bare", str(bare))
+            repo_dir = Path(tmp) / "repo"
+            repo_dir.mkdir()
+            root = make_repo(str(repo_dir))
+            git(root, "remote", "add", "origin", str(bare))
+            branch = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=root, capture_output=True, text=True,
+            ).stdout.strip()
+
+            code, out, _ = run_native("push", branch, "-d", str(root))
+
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(out), {"branch": branch, "pushed": True})
+            refs = subprocess.run(
+                ["git", "branch", "--list", branch],
+                cwd=bare, capture_output=True, text=True,
+            ).stdout
+            self.assertIn(branch, refs)
+
+    def test_push_command_without_origin_exits_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            code, out, err = run_native("push", "does-not-matter", "-d", str(root))
+
+            self.assertEqual(code, 1)
+            self.assertEqual(out, "")
+            self.assertIn("origin", err)
