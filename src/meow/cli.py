@@ -42,11 +42,7 @@ def _add_feature_args(parser: argparse.ArgumentParser):
         "--no-worktree", "--noworktree", "-n",
         dest="no_worktree",
         action="store_true",
-        help=(
-            "Run in the main repo instead of creating/using a .worktrees "
-            "entry. For --review --branch, fixes in place instead of an "
-            "isolated worktree (requires the branch already checked out)."
-        ),
+        help="Run in the main repo instead of creating/using a .worktrees entry.",
     )
     parser.add_argument(
         "--source-branch", "--from", "-b",
@@ -99,35 +95,10 @@ def _prompt_plan_approval(plan_file: Path) -> bool:
     return answer.strip().lower() in {"y", "yes"}
 
 
-def _normalize_review_flag(args) -> None:
-    """`--gitlab`/`--branch`/`--review-file`/`--fix` are unambiguously
-    review-only flags (never meaningful in build or --lint-fix mode), so
-    giving one implies --review -- the user shouldn't have to type both.
-    `--jira` and `--plan`/`--plan-file` stay ambiguous (each is also
-    meaningful in plain build mode) and still require --review explicitly
-    to select the review-of-this-source meaning."""
-    if args.command != "run" or args.review:
-        return
-    if (
-        args.gitlab is not None
-        or args.branch is not None
-        or args.review_file is not None
-        or args.fix
-    ):
-        args.review = True
-    elif args.report_only and not args.lint_fix:
-        args.lint_fix = True
-
-
 def _is_plain_build(args) -> bool:
-    """True for `run` with none of --review/--lint-fix/--jira -- the only
-    mode that still plans+implements a brand new feature the original way."""
-    return (
-        args.command == "run"
-        and not args.review
-        and not args.lint_fix
-        and args.jira is None
-    )
+    """True for `run` with neither --lint-fix nor --jira -- the only mode
+    that still plans+implements a brand new feature the original way."""
+    return args.command == "run" and not args.lint_fix and args.jira is None
 
 
 def _validate_feature_name_requirement(parser: argparse.ArgumentParser, args) -> None:
@@ -187,14 +158,11 @@ def _validate_build_flags(parser: argparse.ArgumentParser, args) -> None:
 def _validate_run_flags(parser: argparse.ArgumentParser, args) -> None:
     if args.command != "run":
         return
-    if args.review and args.lint_fix:
-        parser.error("--review and --lint-fix can't be combined")
     if args.report_only and not args.lint_fix:
         parser.error("--report-only only makes sense with --lint-fix")
-
     if args.lint_fix:
         _validate_lint_fix_flags(parser, args)
-    elif not args.review:
+    else:
         _validate_build_flags(parser, args)
 
 
@@ -216,6 +184,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     _add_run_parser(subparsers)
+    _add_review_parser(subparsers)
     _add_plan_parser(subparsers)
     add_native_parser(subparsers)
 
@@ -227,30 +196,21 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         "run",
         help=(
             "Plan, implement, and review a feature request end to end -- "
-            "or, with --review/--lint-fix, review/fix existing code instead."
+            "or, with --jira/--lint-fix, build from a Jira issue or fix "
+            "lint instead."
         ),
     )
     run_parser.add_argument(
         "request",
         nargs="?",
         default=None,
-        help=(
-            "Build mode: feature request text (required unless --jira is "
-            "given). --review mode: a free-text review prompt/basis "
-            "(optional -- with no other source either, falls back to the "
-            "latest plan in docs_dir, then to the git diff/whole project)."
-        ),
+        help="Feature request text (required unless --jira is given).",
     )
     run_parser.add_argument(
         "--plan", "--plan-file", "-p",
         dest="plan",
         default=None,
-        help=(
-            "Build mode: use an existing plan file instead of generating a "
-            "new one. --review mode: review (and, with --fix, loop-fix) "
-            "this plan's implementation instead of auto-discovering the "
-            "latest one."
-        ),
+        help="Use an existing plan file instead of generating a new one.",
     )
     run_parser.add_argument(
         "--resume-at",
@@ -276,61 +236,9 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         metavar="KEY",
         help=(
-            "Build mode: fetch this Jira issue (omit KEY for the latest in "
+            "Fetch this Jira issue (omit KEY for the latest in "
             "[jira].project_key) and build it end to end in a pushed "
-            "worktree branch -- today's `meow issue`. --review mode: fetch "
-            "the issue and review the current code against what it asked "
-            "for instead."
-        ),
-    )
-    run_parser.add_argument(
-        "--review",
-        action="store_true",
-        help=(
-            "Review mode: report on (or, with --fix, fix) existing code "
-            "instead of building something new."
-        ),
-    )
-    run_parser.add_argument(
-        "--fix",
-        action="store_true",
-        help=(
-            "--review mode only: loop review-fix-review to max_rounds "
-            "(raising if it never passes) instead of a single report-only "
-            "pass. Implied when --review-file is given."
-        ),
-    )
-    run_parser.add_argument(
-        "--gitlab",
-        dest="gitlab",
-        default=None,
-        metavar="MR-LINK",
-        help=(
-            "--review mode: grade a GitLab merge request's diff. Always "
-            "read-only -- there is no local checkout to fix, so this can't "
-            "be combined with --fix."
-        ),
-    )
-    run_parser.add_argument(
-        "--branch",
-        dest="branch",
-        default=None,
-        help="--review mode: review this local branch's diff against --target.",
-    )
-    run_parser.add_argument(
-        "--target",
-        dest="target",
-        default=None,
-        help="--review mode: target branch for --branch (required together with it).",
-    )
-    run_parser.add_argument(
-        "--review-file", "-r",
-        dest="review_file",
-        default=None,
-        help=(
-            "--review mode: resume fixing this existing review file "
-            "instead of running a fresh review (auto-detects its flavor; "
-            "implies --fix)."
+            "worktree branch -- today's `meow issue`."
         ),
     )
     run_parser.add_argument(
@@ -338,8 +246,8 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         dest="lint_fix",
         action="store_true",
         help=(
-            "Lint-fix mode: run every configured lint command and fix "
-            "what it finds -- today's `meow lint-fix`."
+            "Run every configured lint command and fix what it finds -- "
+            "today's `meow lint-fix`."
         ),
     )
     run_parser.add_argument(
@@ -356,6 +264,98 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
     _add_common_args(run_parser)
     _add_feature_args(run_parser)
     _add_manual_approval_arg(run_parser)
+
+
+def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
+    review_parser = subparsers.add_parser(
+        "review",
+        help=(
+            "Review existing code (and, with --fix, fix it) from a "
+            "prompt, --jira, --gitlab, --branch, or a plan file."
+        ),
+    )
+    review_parser.add_argument(
+        "request",
+        nargs="?",
+        default=None,
+        help=(
+            "Free-text review prompt/basis. Optional -- with no other "
+            "source either, falls back to the latest plan in docs_dir, "
+            "then to the git diff/whole project."
+        ),
+    )
+    review_parser.add_argument(
+        "--plan", "--plan-file", "-p",
+        dest="plan",
+        default=None,
+        help=(
+            "Review (and, with --fix, loop-fix) this plan's implementation "
+            "instead of auto-discovering the latest one."
+        ),
+    )
+    review_parser.add_argument(
+        "--jira",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="KEY",
+        help=(
+            "Fetch this Jira issue (omit KEY for the latest in "
+            "[jira].project_key) and review the current code against what "
+            "it asked for."
+        ),
+    )
+    review_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help=(
+            "Loop review-fix-review to max_rounds (raising if it never "
+            "passes) instead of a single report-only pass. Implied when "
+            "--review-file is given."
+        ),
+    )
+    review_parser.add_argument(
+        "--gitlab",
+        dest="gitlab",
+        default=None,
+        metavar="MR-LINK",
+        help=(
+            "Grade a GitLab merge request's diff. Always read-only -- "
+            "there is no local checkout to fix, so this can't be combined "
+            "with --fix."
+        ),
+    )
+    review_parser.add_argument(
+        "--branch",
+        dest="branch",
+        default=None,
+        help="Review this local branch's diff against --target.",
+    )
+    review_parser.add_argument(
+        "--target",
+        dest="target",
+        default=None,
+        help="Target branch for --branch (required together with it).",
+    )
+    review_parser.add_argument(
+        "--review-file", "-r",
+        dest="review_file",
+        default=None,
+        help=(
+            "Resume fixing this existing review file instead of running a "
+            "fresh review (auto-detects its flavor; implies --fix)."
+        ),
+    )
+    review_parser.add_argument(
+        "--no-worktree", "--noworktree", "-n",
+        dest="no_worktree",
+        action="store_true",
+        help=(
+            "--branch source only: fix in place instead of an isolated "
+            "worktree (requires the branch already checked out)."
+        ),
+    )
+    _add_common_args(review_parser)
 
 
 def _add_plan_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -384,29 +384,6 @@ def _dispatch_jira_build(args, working_dir: Path) -> None:
     print(json.dumps(result))
 
 
-def _dispatch_review(args, working_dir: Path) -> None:
-    plan_file = _resolve_input_path(args.plan, working_dir)
-    review_file = _resolve_input_path(args.review_file, working_dir)
-    try:
-        asyncio.run(
-            run_review_command(
-                working_dir,
-                args.request,
-                fix=args.fix,
-                jira_key=args.jira,
-                gitlab_link=args.gitlab,
-                branch=args.branch,
-                target=args.target,
-                plan_file=plan_file,
-                review_file=review_file,
-                use_worktree=not args.no_worktree,
-            )
-        )
-    except ValueError as exc:
-        print(f"\n{exc}", file=sys.stderr)
-        raise SystemExit(1) from exc
-
-
 def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> None:
     plan_file = _resolve_input_path(args.plan, working_dir)
     approve_plan = _prompt_plan_approval if args.manually_approve_plan else None
@@ -431,17 +408,41 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
 def _dispatch_run(args, working_dir: Path, *, use_worktree: bool) -> None:
     if args.lint_fix:
         _dispatch_lint_fix(args, working_dir)
-    elif args.review:
-        _dispatch_review(args, working_dir)
     elif args.jira is not None:
         _dispatch_jira_build(args, working_dir)
     else:
         _dispatch_plain_build(args, working_dir, use_worktree=use_worktree)
 
 
+def _dispatch_review(args, working_dir: Path) -> None:
+    plan_file = _resolve_input_path(args.plan, working_dir)
+    review_file = _resolve_input_path(args.review_file, working_dir)
+    try:
+        asyncio.run(
+            run_review_command(
+                working_dir,
+                args.request,
+                fix=args.fix,
+                jira_key=args.jira,
+                gitlab_link=args.gitlab,
+                branch=args.branch,
+                target=args.target,
+                plan_file=plan_file,
+                review_file=review_file,
+                use_worktree=not args.no_worktree,
+            )
+        )
+    except ValueError as exc:
+        print(f"\n{exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+
 def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
     if args.command == "run":
         _dispatch_run(args, working_dir, use_worktree=use_worktree)
+        return
+    if args.command == "review":
+        _dispatch_review(args, working_dir)
         return
     asyncio.run(
         run_plan(
@@ -457,7 +458,7 @@ def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
 def _requires_clean_tree(args) -> bool:
     """Plain build mode and --jira always edit in place or push a real
     branch; --lint-fix only does unless --report-only, which fixes nothing
-    and is as read-only as --review (which never requires a clean tree --
+    and is as read-only as `review` (which never requires a clean tree --
     its worktree/in-place-branch guards are its own concern, matching
     today's cr/review/gitlab-review/branch-review/review-fix-review).
 
@@ -469,7 +470,7 @@ def _requires_clean_tree(args) -> bool:
     irrelevant to it. Every other combination -- no worktree, or a
     worktree with no source branch -- keeps the check exactly as before.
     """
-    if args.command != "run" or args.review:
+    if args.command != "run":
         return False
     if args.lint_fix:
         return not args.report_only
@@ -493,15 +494,15 @@ def _check_clean_tree(args, working_dir: Path) -> None:
 def _creates_a_worktree(args, *, use_worktree: bool) -> bool:
     """Every case where this invocation makes its own `.worktrees` entry --
     plain build mode (`use_worktree`), --jira's pushable branch, or
-    --review --branch's isolated checkout -- so `.gitignore` needs the
+    `review --branch`'s isolated checkout -- so `.gitignore` needs the
     entry beforehand."""
     if use_worktree:
         return True
-    if args.command != "run":
-        return False
-    if args.jira is not None:
-        return True
-    return args.review and args.branch is not None and not args.no_worktree
+    if args.command == "run":
+        return args.jira is not None
+    if args.command == "review":
+        return args.branch is not None and not args.no_worktree
+    return False
 
 
 def cli_main():
@@ -513,7 +514,6 @@ def cli_main():
         return
     working_dir = Path(args.working_dir).resolve()
     log_working_directory(working_dir)
-    _normalize_review_flag(args)
     use_worktree = _should_use_worktree(args)
 
     _validate_feature_name_requirement(parser, args)
