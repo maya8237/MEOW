@@ -25,6 +25,12 @@ class DetectReviewFlavorTests(unittest.TestCase):
             "gitlab",
         )
 
+    def test_branch_based_review_file(self):
+        self.assertEqual(
+            orchestrator._detect_review_flavor(Path("docs/branch-review.md")),
+            "branch",
+        )
+
     def test_unrecognized_file_raises_a_clear_error(self):
         with self.assertRaisesRegex(ValueError, "doesn't look like a review file"):
             orchestrator._detect_review_flavor(Path("docs/notes.md"))
@@ -192,6 +198,35 @@ class RunReviewFixReviewTests(unittest.IsolatedAsyncioTestCase):
                 patch("meow.orchestrator.ReviewFixAgent") as mock_fixer_cls,
                 patch("meow.orchestrator.Generator") as mock_generator_cls,
                 self.assertRaisesRegex(RuntimeError, "no local checkout"),
+            ):
+                await review_fix_review.run_review_fix_review(
+                    working_dir, "Check it", review_file
+                )
+
+            mock_fixer_cls.assert_not_called()
+            mock_generator_cls.assert_not_called()
+
+    async def test_branch_based_raises_a_clear_error_before_any_agent_runs(self):
+        config = {
+            "models": {},
+            "lint": [],
+            "docs_dir": "docs",
+            "max_rounds": 2,
+            "lint_timeout": 60,
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            working_dir = Path(tmpdir)
+            docs_dir = working_dir / "docs"
+            docs_dir.mkdir()
+            review_file = docs_dir / "branch-review.md"
+            review_file.write_text("STATUS: FAIL", encoding="utf-8")
+
+            with (
+                patch("meow.review_fix_review.load_config", return_value=config),
+                patch("meow.orchestrator.ReviewFixAgent") as mock_fixer_cls,
+                patch("meow.orchestrator.Generator") as mock_generator_cls,
+                self.assertRaisesRegex(RuntimeError, "meow branch-review"),
             ):
                 await review_fix_review.run_review_fix_review(
                     working_dir, "Check it", review_file

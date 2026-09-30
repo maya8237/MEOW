@@ -12,7 +12,7 @@ CLI-facing flow instead of folding it into the engine module.
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
-from meow.agents.reviewer import _verdict_status
+from meow.agents.reviewer import ReviewerAgent, _verdict_status
 from meow.config import load_config
 from meow.lint import describe_lint_plan
 from meow.logging import get_logger
@@ -62,6 +62,15 @@ async def run_review_fix_review(  # ruff: ignore[too-many-statements] -- each fl
             "checkout instead, or address the MR feedback directly."
         )
 
+    if flavor == "branch":
+        raise RuntimeError(
+            f"{resolved_review_file} is a branch review -- `meow "
+            "review-fix-review` can't resume it (it doesn't know the "
+            "target branch to re-diff against). Run `meow branch-review "
+            "<branch> --target <target>` again instead; it already loops "
+            "review, fix, and re-review until it passes."
+        )
+
     if flavor == "plan":
         plan_file = resolved_review_file.with_name(
             resolved_review_file.name.removesuffix("-review.md") + ".md"
@@ -78,7 +87,9 @@ async def run_review_fix_review(  # ruff: ignore[too-many-statements] -- each fl
     else:
         context = ProjectContext(working_dir, config)
         passed = await _run_prompt_fix_rounds(
-            context, prompt, initial_verdict=initial_verdict
+            context,
+            initial_verdict,
+            re_review=lambda: ReviewerAgent(context).review_prompt(prompt),
         )
 
     if passed:
