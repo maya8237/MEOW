@@ -26,8 +26,10 @@ class LintFixAgent(Agent):
     Sprint Contract, with no explorer subagent (the failures already say
     what and where)."""
 
-    def __init__(self, context: AgentContext, timeout: float = 60):
+    def __init__(self, context: AgentContext, timeout: float | None = None):
         super().__init__(context)
+        if timeout is None:
+            timeout = context.config["lint_timeout"]
         lint_hook = make_lint_hook(
             context.active_working_dir(), context.lint_commands(), timeout
         )

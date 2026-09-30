@@ -335,7 +335,10 @@ meow/
         ├── config.py                   # .harness.toml loading + lint-command model
         ├── sprint.py                   # per-sprint state shared by every role
         ├── lint.py                     # auto-fixing per-file hook + project-wide fix/check
+        ├── worktree.py                 # git/filesystem bootstrapping + per-feature worktrees
         ├── rules.py                    # docs/RULES.md parsing, injected into role prompts
+        ├── logging.py                  # structured logging setup shared by every module
+        ├── plan_files.py               # plan/review file naming + lookup in docs_dir
         ├── agents/
         │   ├── base.py                 # shared AgentContext/Agent base + ProjectContext
         │   ├── explorer.py             # explorer agent definition
@@ -346,12 +349,19 @@ meow/
         │   ├── gitlab_fetcher.py       # GitLab MCP preflight + MR fetch, for `meow gitlab-review`
         │   ├── lint_fixer.py           # lint-fix agent, for standalone `meow lint-fix`
         │   └── review_fixer.py         # review-fix agent, for prompt-based `meow review-fix-review`
-        ├── orchestrator.py             # generator <-> reviewer round loop, incl. review-fix-review
+        ├── orchestrator.py             # shared generator <-> reviewer round-loop engine only
+        ├── sprint_runner.py            # `meow run`/`meow plan` top-level flows
+        ├── review_runner.py            # `meow review`/`meow cr` top-level flows
+        ├── review_fix_review.py        # `meow review-fix-review` top-level flow
         ├── issue_solver.py             # `meow issue` flow: fetch, worktree+branch, sprint, push
         ├── gitlab_reviewer.py          # `meow gitlab-review` flow: fetch MR, grade its diff
         ├── lint_fix.py                 # `meow lint-fix` flow: fix-or-report, standalone vs. skill
         ├── prompts.py                  # role prompts as pure functions, shared by both modes
-        ├── native.py                   # agent-free helpers behind `meow native` (skills' native mode)
+        ├── native_prepare.py           # native mode: worktree bootstrapping + plan/review lookup
+        ├── native_lint.py              # native mode: lint execution
+        ├── native_state.py             # native mode: on-disk round counter
+        ├── native_prompt.py            # native mode: prompt/agent-wiring construction
+        ├── native.py                   # native mode: re-exports the above under one import
         ├── native_cli.py               # `meow native` argparse wiring + JSON output
         └── cli.py                      # `meow` console-script entry point
 ```

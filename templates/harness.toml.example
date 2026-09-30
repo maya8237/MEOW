@@ -16,6 +16,9 @@ max_rounds = 8
 # project's root. Must already exist as part of the project's docs/ setup.
 docs_dir = "docs/exec-plans/active"
 
+# Seconds before a per-file lint command is killed.
+# lint_timeout = 60
+
 # Optional per-role model overrides. Omit a line to use the engine's default
 # for that role.
 [models]
