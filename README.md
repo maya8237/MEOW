@@ -1,5 +1,7 @@
 # MEOW
 
+[![CI](https://github.com/maya8237/MEOW/actions/workflows/ci.yml/badge.svg)](https://github.com/maya8237/MEOW/actions/workflows/ci.yml)
+
 MEOW — Management, Execution & Optimization of Workflows.
 
 The harness engine: a planner/generator/reviewer loop built on the
