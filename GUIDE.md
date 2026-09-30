@@ -58,6 +58,15 @@ A second, non-blocking `[[lint]]` entry (`gate = false`, `per_file = false`)
 is how a whole-project-only analyzer reports findings without failing the
 sprint — see `templates/harness.toml.example` for a worked example.
 
+meow also checks every `command` against the machine it's running on before
+any agent starts: a `.bat`/`.cmd` script or `cmd.exe`/`powershell.exe`
+invoked directly fails fast off Windows, and a `.sh` script or `bash`/`sh`/
+`zsh` invoked directly fails fast on native Windows (prefix it with
+`wsl <command>` if the project genuinely runs under WSL). This only catches
+that explicit, unambiguous mismatch — a command that simply isn't installed
+yet fails normally and clearly once the lint run actually reaches it, the
+same as always.
+
 `[jira]`/`[jira.mcp]` (for `meow run --jira`/`meow review --jira`) and
 `[gitlab.mcp]` (for `meow review --gitlab`) are optional — see
 [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for their fields and a security
@@ -141,9 +150,11 @@ moving branch.
 A missing `.harness.toml` or `[[lint]]` entry fails fast with
 `FileNotFoundError`/`ValueError` before any agent runs; an unknown key in a
 `[[lint]]` table (often a top-level key placed after it) raises `ValueError`
-naming the entry and key; a missing architecture doc under `docs/` is not an
-error, it just leaves the reviewer's SOLID/SRP pass with nothing
-project-specific to check against. `meow run --jira` and `meow review`
+naming the entry and key; a `[[lint]]` `command` that's a script or shell
+only the other OS family could ever run (see §2) raises `ValueError` naming
+the command, also before any agent runs; a missing architecture doc under
+`docs/` is not an error, it just leaves the reviewer's SOLID/SRP pass with
+nothing project-specific to check against. `meow run --jira` and `meow review`
 (every source, and its `--review-file` resume path) have their own failure
 modes (missing MCP config, unreachable server, no MR checkout, wrong
 branch checked out, `max_rounds` exhausted, etc.) — the full error-message
