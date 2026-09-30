@@ -6,61 +6,21 @@ import subprocess
 from pathlib import Path
 
 from meow.agents.base import Agent, AgentContext
-from meow.config import LintCommand
+from meow.prompts import (
+    architecture_review_instructions,
+    mr_review_prompt,
+    no_prompt_review_instructions,
+    plan_review_prompt,
+    prompt_review_prompt,
+)
 from meow.sprint import Sprint
 
 PROMPT_REVIEW_FILENAME = "review.md"
 MR_REVIEW_FILENAME = "gitlab-review.md"
 
-
-def _lint_instructions(commands: list[LintCommand]) -> str:
-    """Tell the reviewer which lint commands bind it and which only inform."""
-    gates = [entry.command for entry in commands if entry.gate]
-    non_blocking = [entry.command for entry in commands if not entry.gate]
-    parts = []
-    if gates:
-        listed = ", ".join(f"`{command}`" for command in gates)
-        parts.append(
-            "Run each of these project-wide and treat any failure as a "
-            f"FAIL criterion: {listed}."
-        )
-    if non_blocking:
-        listed = ", ".join(f"`{command}`" for command in non_blocking)
-        parts.append(
-            f"Also run {listed} and summarise the findings in your review, "
-            "but do not fail the sprint on them."
-        )
-    return " ".join(parts)
-
-
-def _verification_instructions() -> str:
-    """Require independent, evidence-based verdicts without editing code."""
-    return (
-        "Use verification-before-completion: base every PASS or FAIL on "
-        "inspected code or observed command output; do not modify implementation. "
-    )
-
-
-def _architecture_review_instructions(*, check_worktree_hygiene: bool = True) -> str:
-    """Tell the reviewer to look for monolithic, SRP-breaking modules."""
-    instructions = (
-        "Also perform a SOLID/SRP review. Flag any file or class that mixes "
-        "multiple responsibilities, such as config parsing + agent wiring + "
-        "lint hooks + orchestration + CLI handling in one module. Treat any "
-        "single file that does more than one broad concern as a FAIL criterion "
-        "unless the code is clearly split into cohesive helpers or classes. "
-    )
-    if check_worktree_hygiene:
-        instructions += (
-            "If the sprint used an isolated worktree, ensure every plan change "
-            "stays inside the active worktree and that the main working "
-            "directory remains clean; any edit there is a FAIL criterion. "
-        )
-    instructions += (
-        "Use file:line evidence; do not accept 'it works' as an excuse for a "
-        "monolithic design."
-    )
-    return instructions
+# Kept under its old private name for callers that reach it through this module.
+_architecture_review_instructions = architecture_review_instructions
+_no_prompt_review_instructions = no_prompt_review_instructions
 
 
 def _git_review_context(context: AgentContext) -> tuple[str, bool]:
@@ -116,28 +76,6 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
     return review_context, bool(diff_text)
 
 
-def _no_prompt_review_instructions(*, has_diff: bool, docs_dir: str) -> str:
-    """Select the review scope when the user did not supply a prompt."""
-    exclusion = (
-        f" Do not review anything under {docs_dir!r} -- that directory holds "
-        "meow's own generated sprint plans and review verdicts, not project "
-        "code, and grading them as if they were the project under review "
-        "produces nonsensical meta-reviews."
-    )
-    if has_diff:
-        return (
-            "There is no explicit prompt and the git diff contains changes. "
-            "Review the changes shown in the git diff, using git status for "
-            "context." + exclusion
-        )
-    return (
-        "There is no explicit prompt and the git diff is empty. Review the "
-        "entire project by inspecting its source and configuration files, "
-        "looking for correctness issues and incomplete or broken behavior."
-        + exclusion
-    )
-
-
 def _verdict_status(verdict_text: str) -> str:
     status_match = re.search(r"^STATUS:\s*(PASS|FAIL)", verdict_text, re.MULTILINE)
     return status_match.group(1) if status_match else "FAIL"
@@ -154,48 +92,21 @@ class ReviewerAgent(Agent):
         review_basis = (prompt or "").strip()
         docs_dir = self.context.config["docs_dir"]
         git_context, has_diff = _git_review_context(self.context)
-        prompt_text = (
-            f"The feature is described by this prompt: {review_basis!r}. "
-            if review_basis
-            else _no_prompt_review_instructions(has_diff=has_diff, docs_dir=docs_dir)
-            + " "
-        )
-        scope_instruction = (
-            "Run `git status` and `git diff` in the working directory to "
-            "confirm the review scope. "
-            if not review_basis
-            else "Check whether the current changes satisfy each distinct "
-            "requirement implied by the task. "
-        )
         options = self.options(
-            system_prompt=(
-                "You are a skeptical QA reviewer. You did not write this code "
-                "-- grade it critically. There is no Sprint Contract for this "
-                "review; evaluate the current working tree instead. "
-                + prompt_text
-                + scope_instruction
-                + "Use the working-tree context provided in the task message "
-                "(git status and git diff output) as the source of truth. "
-                "Mark each requirement PASS or FAIL with concrete evidence "
-                "(file:line or command output). "
-                + _lint_instructions(self.context.lint_commands())
-                + " "
-                + _verification_instructions()
-                + _architecture_review_instructions(
-                    check_worktree_hygiene=self.context.use_worktree
-                )
-                + f" Write your verdict to {review_file} with the first line "
-                "starting with 'SUMMARY:' and containing a brief one- or two-"
-                "sentence summary. The next line must start with 'STATUS: PASS' "
-                "or 'STATUS: FAIL', followed by one line per requirement. "
-                "Default to FAIL when uncertain."
+            system_prompt=prompt_review_prompt(
+                review_basis,
+                review_file,
+                self.context.lint_commands(),
+                has_diff=has_diff,
+                docs_dir=docs_dir,
+                check_worktree_hygiene=self.context.use_worktree,
             ),
             allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
             role="reviewer",
             skills=["superpowers:verification-before-completion"],
         )
         query_prompt = (
-            f"{_no_prompt_review_instructions(has_diff=has_diff, docs_dir=docs_dir)}"
+            f"{no_prompt_review_instructions(has_diff=has_diff, docs_dir=docs_dir)}"
             f"\n\n{git_context}"
             if not review_basis
             else f"Review the prompt: {review_basis}\n\n{git_context}"
@@ -221,29 +132,9 @@ class ReviewerAgent(Agent):
         review_dir.mkdir(parents=True, exist_ok=True)
         review_file = review_dir / MR_REVIEW_FILENAME
         options = self.options(
-            system_prompt=(
-                "You are a skeptical QA reviewer. You did not write this "
-                "code -- grade it critically. You are reviewing a GitLab "
-                "merge request's diff, not a local working tree -- there is "
-                "no Sprint Contract and no `git diff` to run yourself. Use "
-                "only the merge request title, description, and diff given "
-                "in the task message as your source of truth; Read/Grep/Glob "
-                "the local project only for background context on the files "
-                "the diff touches, if that helps. Do not run or reference "
-                "the project's lint commands -- the local checkout may not "
-                "be at the merge request's commit, so their result would "
-                "not reflect this diff. Mark each distinct concern PASS or "
-                "FAIL with concrete evidence (a quoted diff hunk or "
-                "file:line). "
-                + _verification_instructions()
-                + _architecture_review_instructions(
-                    check_worktree_hygiene=self.context.use_worktree
-                )
-                + f" Write your verdict to {review_file} with the first line "
-                "starting with 'SUMMARY:' and containing a brief one- or "
-                "two-sentence summary. The next line must start with "
-                "'STATUS: PASS' or 'STATUS: FAIL', followed by one line per "
-                "concern. Default to FAIL when uncertain."
+            system_prompt=mr_review_prompt(
+                review_file,
+                check_worktree_hygiene=self.context.use_worktree,
             ),
             allowed_tools=["Read", "Grep", "Glob", "Write"],
             role="reviewer",
@@ -269,26 +160,13 @@ class ReviewerAgent(Agent):
         prompt argument into every round's grading, not just the first.
         """
         review_file = plan_file.with_name(plan_file.stem + "-review.md")
-        focus_instruction = f" Pay particular attention to: {focus}." if focus else ""
         options = self.options(
-            system_prompt=(
-                "You are a skeptical QA reviewer. You did not write this code "
-                f"-- grade it critically. Read the Sprint Contract in {plan_file}. "
-                "Check each criterion against the actual code and mark PASS or "
-                "FAIL with concrete evidence (file:line or command output)."
-                + focus_instruction
-                + " "
-                + _lint_instructions(self.context.lint_commands())
-                + " "
-                + _verification_instructions()
-                + _architecture_review_instructions(
-                    check_worktree_hygiene=self.context.use_worktree
-                )
-                + f" Write your verdict to {review_file} with the first line "
-                "starting with 'SUMMARY:' and containing a brief one- or two-"
-                "sentence summary. The next line must start with 'STATUS: PASS' "
-                "or 'STATUS: FAIL', followed by one line per criterion. "
-                "Default to FAIL when uncertain."
+            system_prompt=plan_review_prompt(
+                plan_file,
+                review_file,
+                self.context.lint_commands(),
+                focus=focus,
+                check_worktree_hygiene=self.context.use_worktree,
             ),
             allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
             role="reviewer",

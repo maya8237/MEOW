@@ -253,19 +253,44 @@ already is.
 This repo doubles as a Claude Code plugin: add it as a plugin source and these
 skills become available in any project that also has a `.harness.toml`:
 
-| Skill | Equivalent to |
+| Skill | CLI equivalent (CLI mode) |
 |---|---|
 | `/meow:sprint "<feature>"` | `meow run "<feature>"` |
 | `/meow:meow-plan "<feature>"` | `meow plan "<feature>"` |
 | `/meow:meow-review` | `meow review` |
+| `/meow:meow-cr ["<prompt>"]` | `meow cr ["<prompt>"]` |
 | `/meow:meow-issue [ISSUE-KEY]` | `meow issue [ISSUE-KEY]` |
 | `/meow:gitlab-review "<mr-url>"` | `meow gitlab-review "<mr-url>"` |
 | `/meow:lint-fix` | `meow lint-fix --report-only`, then the skill fixes what it reports |
 | `/meow:review-fix-review "<prompt>"` | `meow review-fix-review "<prompt>"` |
 
-Each skill is a thin wrapper — see `skills/*/SKILL.md` — that shells out to the
-same `meow` CLI, so it needs `meow` importable the same way (venv active,
-or a `pipx install -e .`/global install).
+### Native mode vs CLI mode
+
+Every skill has two execution modes. By default a skill runs **natively**, in
+the Claude Code session that invoked it: that session is the planner and
+generator (using the same superpowers skills the SDK roles use), and each
+review round is a fresh subagent, so nothing runs in a separate, invisible
+Agent SDK process. Jira and GitLab are read through the MCP tools already
+connected to the session rather than through `[jira.mcp]`/`[gitlab.mcp]`.
+Ask for "CLI mode" (or headless) and the skill shells out to `meow <command>`
+instead, exactly as before.
+
+The `meow` CLI itself is unchanged and stays the way to run anything
+unattended (terminal, scheduled task). Both modes read the same
+`.harness.toml` and write the same files (`<name>.md`, `<name>-review.md`,
+`review.md`, `gitlab-review.md`, same `SUMMARY:`/`STATUS:` verdict format), use
+the same worktree rules and `max_rounds`, so a run begun in one mode can be
+continued in the other.
+
+Native mode needs `meow` installed only for `meow native ...`, an agent-free
+helper that prints JSON for the mechanical parts: startup guards and worktree
+resolution (`prepare`), plan/review lookup (`latest-plan`, `latest-review`),
+verdict parsing (`verdict`), lint runs (`lint`), an on-disk round counter that
+enforces `max_rounds` across context compaction (`round`), pushing an issue
+branch (`push`), and the exact role prompts the SDK agents use (`prompt`, from
+the shared `src/meow/prompts.py`). The loop protocol lives in
+`skills/_shared/native-mode.md`. Per-edit lint feedback in native mode is a
+protocol step (`meow native lint --file`) rather than an SDK hook.
 
 ## Onboarding a project
 
@@ -288,11 +313,13 @@ meow/
 ├── .claude-plugin/
 │   └── plugin.json                      # Claude Code plugin manifest
 ├── skills/
+│   ├── _shared/native-mode.md           # protocol every skill follows in native mode
 │   ├── sprint/SKILL.md                  # /meow:sprint  -> harness run
 │   ├── meow-plan/SKILL.md               # /meow:meow-plan   -> harness plan
 │   ├── meow-review/SKILL.md             # /meow:meow-review -> harness review
 │   ├── meow-issue/SKILL.md              # /meow:meow-issue  -> harness issue
 │   ├── gitlab-review/SKILL.md           # /meow:gitlab-review -> harness gitlab-review
+│   ├── meow-cr/SKILL.md                 # /meow:meow-cr -> harness cr
 │   ├── lint-fix/SKILL.md                # /meow:lint-fix -> harness lint-fix --report-only
 │   └── review-fix-review/SKILL.md       # /meow:review-fix-review -> harness review-fix-review
 ├── docs/
@@ -323,5 +350,8 @@ meow/
         ├── issue_solver.py             # `meow issue` flow: fetch, worktree+branch, sprint, push
         ├── gitlab_reviewer.py          # `meow gitlab-review` flow: fetch MR, grade its diff
         ├── lint_fix.py                 # `meow lint-fix` flow: fix-or-report, standalone vs. skill
+        ├── prompts.py                  # role prompts as pure functions, shared by both modes
+        ├── native.py                   # agent-free helpers behind `meow native` (skills' native mode)
+        ├── native_cli.py               # `meow native` argparse wiring + JSON output
         └── cli.py                      # `meow` console-script entry point
 ```
