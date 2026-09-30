@@ -250,6 +250,7 @@ class BranchSourceTests(unittest.IsolatedAsyncioTestCase):
                     "meow.review_cli.ReviewerAgent.review_branch",
                     new=AsyncMock(return_value=("FAIL", "STATUS: FAIL\n")),
                 ),
+                patch("meow.orchestrator.ReviewFixAgent") as mock_fixer_cls,
                 self.assertRaisesRegex(RuntimeError, "did not pass"),
             ):
                 await review_cli.run_review_command(
@@ -260,6 +261,7 @@ class BranchSourceTests(unittest.IsolatedAsyncioTestCase):
                     target="main",
                     use_worktree=False,
                 )
+            mock_fixer_cls.assert_called_once()
 
 
 class GitlabSourceTests(unittest.IsolatedAsyncioTestCase):
