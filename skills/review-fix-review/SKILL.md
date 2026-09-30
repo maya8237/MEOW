@@ -1,47 +1,51 @@
 ---
 name: review-fix-review
-description: Fix an existing review's findings and re-review, looping until it passes (up to max_rounds). Use when a review already exists (from meow review, cr, or gitlab-review) and the findings need fixing and re-checking, not a fresh review from scratch.
+description: Fix an existing review's findings and re-review, looping until it passes (up to max_rounds). Runs natively in this Claude Code session by default. Use when a review already exists (from meow review, cr, or gitlab-review) and the findings need fixing and re-checking, not a fresh review from scratch.
 ---
 
 # review-fix-review
 
-Runs `meow review-fix-review` against the current project: starts from an
-already-written review verdict file, fixes what it found, and re-reviews,
-looping generator/fixer <-> reviewer the same way `meow review` does, up
-to `max_rounds`.
+Starts from an already-written review file, fixes what it found, and re-reviews,
+looping up to `max_rounds`. Runs **natively** by default: you fix, a fresh
+reviewer subagent re-grades. Read [`../_shared/native-mode.md`](../_shared/native-mode.md)
+(relative to this skill's base directory) first. Use **CLI mode** (bottom) only
+if explicitly asked.
 
-1. The current project must have a `.harness.toml` at its root. If it's
-   missing, tell the user and stop; point them at meow's `GUIDE.md` for
-   onboarding rather than guessing at lint commands.
-   `meow review-fix-review` accepts `--working-dir PATH` (also
-   `--work-dir` or `-d`) to select the project whose review file should be
-   fixed.
-2. The prompt is whatever text the user gave when invoking this skill,
-   describing what the re-review should focus on or check for -- this is
-   required, not optional. If none was given, ask for one before running
-   anything.
-3. If the user named a specific review file, run:
+## Native mode
 
-   ```bash
-   meow review-fix-review "<prompt>" --review-file "<path>" --working-dir "<project-path>"
-   ```
+1. The prompt is whatever text the user gave — **required**. If none, ask for
+   one before doing anything. The project needs a `.harness.toml` at its root.
+2. Pick the review file: the one the user named, else
+   `meow native latest-review --working-dir "<project-path>"` (gives `review_file`
+   and `flavor`).
+3. `flavor: gitlab` cannot be fixed here (no local checkout of the MR). Tell the
+   user to check out the MR branch and use `/meow:meow-review` / `/meow:meow-cr`
+   against it, or address the feedback directly, and stop.
+4. Read the review file (`meow native verdict <file>`). If it already says PASS,
+   report that and stop. Get `max_rounds` from
+   `meow native prepare --no-worktree --allow-dirty` (changes nothing).
+5. Anchor the counter: plan flavor -> the plan file (the review file's name
+   without `-review`); prompt flavor -> the review file itself. Run
+   `meow native round <anchor> --reset`, then `round <anchor>` once: the
+   existing review is round 1.
+6. Each further round: `round <anchor>` (stop if exhausted) -> fix the findings
+   -> project-wide lint -> fresh reviewer -> `verdict`.
+   - **Plan flavor**: fix as the plan's generator; review with
+     `prompt reviewer-plan --plan <plan> --focus "<prompt>"` (the focus stays on
+     every round).
+   - **Prompt flavor**: fix as a scoped fixer (`meow native prompt review-fixer`;
+     smallest edit per finding, no scope creep); review with
+     `prompt reviewer-prompt --focus "<prompt>"`.
+7. Report PASS, or if exhausted the review file's path for the remaining feedback.
 
-   Otherwise omit `--review-file` -- it picks the most recently modified
-   review file (from `meow review`, `cr`, or `gitlab-review`) in that
-   project's `docs_dir` on its own.
+## CLI mode
 
-   If `meow` isn't found on PATH, tell the user to install it first (this
-   repo's README: a venv with `pip install -e .`, or `pipx install -e .`
-   for a global command) -- don't guess at a path to some venv.
-4. A review file from `meow gitlab-review` (a GitLab merge request review)
-   cannot be fixed this way -- there is no local checkout of the merge
-   request's code for a generator to edit. `meow review-fix-review` reports
-   this clearly and exits; if it happens, tell the user to check out the
-   MR's branch locally and use `meow review`/`meow cr` against that
-   checkout instead, or address the MR feedback directly.
-5. This can take several rounds and prints progress as it goes
-   (`[reviewer]`, `[generator]`/`[review_fixer]` lines) -- stream that
-   output to the user rather than waiting silently for it to finish.
-6. Report the final outcome: PASS (nothing left to fix), or the review
-   file's path if it still fails after `max_rounds` so the user can inspect
-   the remaining feedback themselves.
+```bash
+meow review-fix-review "<prompt>" --review-file "<path>" --working-dir "<project-path>"
+```
+
+Omit `--review-file` to use the newest review in `docs_dir`. A GitLab MR review
+is rejected by the command with an explanation. If `meow` isn't on PATH, tell the
+user to install it (README: `pip install -e .` in a venv, or `pipx install -e .`).
+Stream `[reviewer]`/`[generator]`/`[review_fixer]` progress; report PASS or the
+review file path.

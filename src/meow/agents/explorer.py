@@ -6,6 +6,7 @@ from pathlib import Path
 from claude_agent_sdk import AgentDefinition
 
 from meow.agents.base import Agent
+from meow.prompts import explorer_prompt
 from meow.rules import load_rules
 
 
@@ -13,17 +14,7 @@ class ExplorerAgent(Agent):
     """Read-only codebase exploration available to other agents."""
 
     def definition(self) -> AgentDefinition:
-        prompt = (
-            "You are a read-only research agent. Investigate the question "
-            "you're given within this project directory: "
-            f"{self.context.active_working_dir()}. "
-            "Treat it as the project root and resolve relative paths from "
-            "it. Then return only a concise summary with "
-            "file:line references -- never dump raw file contents or full "
-            "command output unless specifically asked to. When the task is "
-            "about a bug, use systematic debugging to gather evidence and "
-            "trace likely causes; stay read-only and report findings."
-        )
+        prompt = explorer_prompt(self.context.active_working_dir())
         rules_text = load_rules(self.context.active_working_dir(), "explorer")
         if rules_text:
             prompt = f"{prompt}{rules_text}"

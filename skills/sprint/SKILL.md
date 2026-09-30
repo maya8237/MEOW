@@ -1,40 +1,53 @@
 ---
 name: sprint
-description: Run a full meow sprint for a feature request in the current project — plan it, implement it, then review and fix it in a loop until it passes. Use when the user wants meow to build a feature end to end.
+description: Run a full meow sprint for a feature request in the current project — plan it, implement it, then review and fix it in a loop until it passes. Runs natively in this Claude Code session by default. Use when the user wants meow to build a feature end to end.
 ---
 
 # sprint
 
-Runs the meow harness's full plan -> implement -> review loop (`meow run`)
-against the current project.
+Plan -> implement -> review, in a loop, for one feature request. By default
+this runs **natively**: you plan and implement, and a fresh reviewer subagent
+grades each round. Read [`../_shared/native-mode.md`](../_shared/native-mode.md)
+(relative to this skill's base directory) first — it defines the `meow native`
+helper, the roles, lint discipline, round limits and the review loop that the
+steps below refer to. Use **CLI mode** (bottom) only if the user explicitly asks
+for the headless/separate-process run.
 
-1. The feature request is whatever text the user gave when invoking this
-   skill. If none was given, ask for a one-line feature description first.
-2. The current project must have a `.harness.toml` at its root — this is the
-   project meow will harness, not necessarily the meow repo itself. If it's
-   missing, tell the user and stop; point them at meow's `GUIDE.md` for
-   onboarding rather than guessing at lint commands.
-   `meow run` accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
-   target a project outside the current directory.
-3. By default, use a safe explicit feature name from the request (for
-   example, slugify the feature, e.g. `add-csv-export`) and run, from the
-   project root:
+## Native mode
 
-   ```bash
-   meow run "<feature request>" --name "<generated-feature-name>" --working-dir "<project-path>"
-   ```
+1. The feature request is whatever text the user gave. If none, ask for a
+   one-line description first. The project must have a `.harness.toml` at its
+   root (see the shared protocol if it does not).
+2. Pick a safe feature name (slugify the request, e.g. `add-csv-export`). Run
+   `meow native prepare --name "<name>" --working-dir "<project-path>"`.
+   Add `--no-worktree` if the user wants the main repo instead of an isolated
+   worktree (then `--name` may be omitted); add `--source-branch <branch>` if
+   they named one. On a nonzero exit (e.g. uncommitted changes), report the
+   message verbatim and stop. Keep `active_dir`, `plan_file`, `review_file`,
+   `max_rounds`, `use_worktree` from the JSON; do all further work in `active_dir`.
+3. Plan (skip if the user supplied an existing plan file, or asked to resume at
+   review): `meow native round <plan_file> --reset --active-dir <active_dir>`,
+   then, as planner, write `plan_file` per the shared protocol's Planner row.
+   Read it back and confirm it has a numbered task list and a `## Sprint Contract`.
+4. If the user asked to approve the plan first, show it and ask before
+   generating; if declined, stop without implementing anything.
+5. Run the review loop from the shared protocol: generator first (or, when
+   resuming at review, review the existing code first and generate only if it
+   fails). Pass `--worktree` to `prompt reviewer-plan` when `use_worktree` is true.
+6. Report: on PASS, the plan file and review file paths; when a round comes
+   back `exhausted`, say the sprint did not pass after `max_rounds` rounds and
+   point at the review file for the last feedback.
 
-   If the user explicitly wants to operate in the main repo instead of an
-   isolated worktree, add `--no-worktree`; the feature name can then be
-   omitted. Add `--working-dir "<project-path>"` to target a project outside
-   the current directory.
+## CLI mode
 
-   If `meow` isn't found on PATH, tell the user to install meow first
-   (its README: a venv with `pip install -e .`, or `pipx install -e .` for a
-   global command) — don't guess at a path to some venv.
-4. This can take several agent rounds and prints progress as it goes
-   (`[planner]`, `[generator]`, `[reviewer]` lines) — stream that output to
-   the user rather than waiting silently for it to finish.
-5. Report the final outcome: on success, the plan file and final review file
-   paths; on failure after `max_rounds`, say so and point at the review file
-   for the last recorded feedback.
+Runs `meow run` (separate Agent SDK sessions, works headless). From the project root:
+
+```bash
+meow run "<feature request>" --name "<generated-feature-name>" --working-dir "<project-path>"
+```
+
+Add `--no-worktree` to operate in the main repo (name then optional). If `meow`
+isn't on PATH, tell the user to install it (README: `pip install -e .` in a venv,
+or `pipx install -e .`). Stream its progress (`[planner]`, `[generator]`,
+`[reviewer]`) to the user. Report the plan and review file paths on success, or
+that it failed after `max_rounds` and where the last review is.
