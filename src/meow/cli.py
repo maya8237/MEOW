@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+from meow.branch_reviewer import run_branch_review
 from meow.gitlab_reviewer import run_gitlab_review
 from meow.issue_solver import IssueUnresolvedError, run_issue_solver
 from meow.lint_fix import run_lint_fix
@@ -123,6 +124,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     _add_cr_parser(subparsers)
     _add_issue_parser(subparsers)
     _add_gitlab_review_parser(subparsers)
+    _add_branch_review_parser(subparsers)
     _add_lint_fix_parser(subparsers)
     _add_review_fix_review_parser(subparsers)
     add_native_parser(subparsers)
@@ -241,6 +243,34 @@ def _add_gitlab_review_parser(subparsers: argparse._SubParsersAction) -> None:
     _add_common_args(gitlab_review_parser)
 
 
+def _add_branch_review_parser(subparsers: argparse._SubParsersAction) -> None:
+    branch_review_parser = subparsers.add_parser(
+        "branch-review",
+        help=(
+            "Review a local branch's diff against a target branch, then "
+            "fix and re-review until it passes -- no GitLab MCP or MR "
+            "link needed."
+        ),
+    )
+    branch_review_parser.add_argument("branch", help="Local branch to review and fix.")
+    branch_review_parser.add_argument(
+        "--target",
+        required=True,
+        help="Branch to diff against, e.g. main -- required, never guessed.",
+    )
+    branch_review_parser.add_argument(
+        "--no-worktree", "--noworktree", "-n",
+        dest="no_worktree",
+        action="store_true",
+        help=(
+            "Fix in place on the current checkout instead of creating an "
+            "isolated worktree. Requires 'branch' to already be checked "
+            "out there."
+        ),
+    )
+    _add_common_args(branch_review_parser)
+
+
 def _add_lint_fix_parser(subparsers: argparse._SubParsersAction) -> None:
     lint_fix_parser = subparsers.add_parser(
         "lint-fix",
@@ -303,6 +333,14 @@ def _dispatch_gitlab_review(args, working_dir: Path) -> None:
     asyncio.run(run_gitlab_review(working_dir, args.mr_link))
 
 
+def _dispatch_branch_review(args, working_dir: Path) -> None:
+    asyncio.run(
+        run_branch_review(
+            working_dir, args.branch, args.target, use_worktree=not args.no_worktree
+        )
+    )
+
+
 def _dispatch_review(args, working_dir: Path) -> None:
     plan_file = _resolve_input_path(args.plan, working_dir)
     asyncio.run(run_review(working_dir, plan_file))
@@ -326,6 +364,7 @@ _COMMAND_HANDLERS = {
     "cr": _dispatch_cr,
     "issue": _dispatch_issue,
     "gitlab-review": _dispatch_gitlab_review,
+    "branch-review": _dispatch_branch_review,
     "lint-fix": _dispatch_lint_fix,
     "review-fix-review": _dispatch_review_fix_review,
 }
@@ -414,7 +453,12 @@ def cli_main():
             raise SystemExit(1) from exc
         logger.info("run_initialized", command=args.command)
     _boot_repo(
-        working_dir, include_gitignore=use_worktree or args.command == "issue"
+        working_dir,
+        include_gitignore=(
+            use_worktree
+            or args.command == "issue"
+            or (args.command == "branch-review" and not args.no_worktree)
+        ),
     )
     _dispatch(args, working_dir, use_worktree=use_worktree)
 
