@@ -11,7 +11,11 @@ round-loop control flow orchestrator.py's own docstring says it holds.
 
 from pathlib import Path
 
-from meow.agents.reviewer import MR_REVIEW_FILENAME, PROMPT_REVIEW_FILENAME
+from meow.agents.reviewer import (
+    BRANCH_REVIEW_FILENAME,
+    MR_REVIEW_FILENAME,
+    PROMPT_REVIEW_FILENAME,
+)
 
 
 def _latest_plan_file(docs_dir: Path) -> Path:
@@ -42,6 +46,8 @@ def _detect_review_flavor(review_file: Path) -> str:
         return "gitlab"
     if name == PROMPT_REVIEW_FILENAME:
         return "prompt"
+    if name == BRANCH_REVIEW_FILENAME:
+        return "branch"
     if name.endswith("-review.md"):
         return "plan"
     raise ValueError(

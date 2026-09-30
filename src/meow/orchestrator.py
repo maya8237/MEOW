@@ -25,6 +25,7 @@ Install (from the meow repo root):    pip install -e .
 Run (from inside a project repo):        meow run "Add CSV export"
 """
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
@@ -226,17 +227,19 @@ async def _run_review_rounds(
 
 
 async def _run_prompt_fix_rounds(
-    context: ProjectContext, prompt: str, initial_verdict: tuple[str, str]
+    context: ProjectContext,
+    initial_verdict: tuple[str, str],
+    *,
+    re_review: Callable[[], Awaitable[tuple[str, str]]],
 ) -> bool:
-    """Like `_run_review_rounds`, but for a prompt-based review with no plan
-    file or Sprint Contract to hand a `GeneratorAgent` -- fixes with
-    `ReviewFixAgent` (a generic "fix these review findings" session, the
-    prompt-based equivalent of `_run_review_rounds`' plan-scoped generator)
-    and re-reviews with `ReviewerAgent.review_prompt(prompt)` instead of
-    `review_plan`. `initial_verdict` is always required here (unlike
-    `_run_review_rounds`, this has no "run a fresh review first" mode --
-    `meow review-fix-review` is the only caller, and it always starts from
-    an existing review file).
+    """Like `_run_review_rounds`, but for a review with no plan file or
+    Sprint Contract to hand a `GeneratorAgent` -- fixes with `ReviewFixAgent`
+    (a generic "fix these review findings" session) and re-reviews with
+    whatever `re_review` the caller supplies (a prompt-based re-review for
+    `meow review-fix-review`'s prompt flavor, a branch-diff re-review for
+    `meow branch-review`). `initial_verdict` is always required here
+    (unlike `_run_review_rounds`, this has no "run a fresh review first"
+    mode -- every caller already has one).
     """
     max_rounds = context.config["max_rounds"]
     status, verdict = initial_verdict
@@ -250,7 +253,7 @@ async def _run_prompt_fix_rounds(
             )
             await fixer.fix(verdict)
 
-            status, verdict = await ReviewerAgent(context).review_prompt(prompt)
+            status, verdict = await re_review()
             logger.info(
                 "review_fix_round_finished",
                 round=round_num,
