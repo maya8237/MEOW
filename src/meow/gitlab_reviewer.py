@@ -1,15 +1,11 @@
 """
 meow/gitlab_reviewer.py
 
-The `meow gitlab-review` flow: fetch a GitLab merge request's title,
-description, and diff through a configured GitLab MCP server, then grade
-them with the reviewer role -- the same report-only, no-generator-loop
-review `review_runner.run_prompt_review` runs against a local working tree,
-but against a remote merge request's diff instead.
-
-Unlike `meow issue`, this never edits code, creates a worktree, or pushes
-anything -- it is read-only, and `--working-dir` selects only where the
-verdict file is written, not code that gets changed.
+GitLab MR config loading and fetching, used by `review_cli.py`'s
+`--gitlab` review source (`meow run --review --gitlab <mr-link>`): fetch a
+merge request's title, description, and diff through a configured GitLab
+MCP server, then grade them with the reviewer role -- read-only, since
+this never checks the merge request's code out locally.
 """
 
 import json
@@ -18,8 +14,6 @@ from pathlib import Path
 
 from meow.agents.base import ProjectContext
 from meow.agents.gitlab_fetcher import GitlabFetcherAgent
-from meow.agents.reviewer import MR_REVIEW_FILENAME, ReviewerAgent
-from meow.config import load_config
 from meow.logging import get_logger
 
 logger = get_logger(__name__)
@@ -39,9 +33,9 @@ def _load_gitlab_config(config: dict) -> dict:
     gitlab = config.get("gitlab")
     if not isinstance(gitlab, dict):
         raise ValueError(
-            "No [gitlab] table found in .harness.toml. `meow gitlab-review` "
-            "needs a [gitlab.mcp] table describing how to launch a GitLab "
-            "MCP server, e.g.:\n\n"
+            "No [gitlab] table found in .harness.toml. `meow run --review "
+            "--gitlab` needs a [gitlab.mcp] table describing how to "
+            "launch a GitLab MCP server, e.g.:\n\n"
             "[gitlab.mcp]\n"
             'command = "uvx"\n'
             'args = ["mcp-gitlab"]\n\n'
@@ -94,24 +88,3 @@ async def _fetch_merge_request(
         )
     logger.info("gitlab_fetch_finished", title=data["title"])
     return data
-
-
-async def run_gitlab_review(working_dir: Path, mr_link: str) -> None:
-    """Fetch a GitLab merge request's diff and grade it, PASS/FAIL.
-
-    Reports the verdict the same way `run_prompt_review` does -- logged and
-    written to a review file -- rather than raising on FAIL; there is no
-    Sprint Contract or generator loop to gate on here.
-    """
-    config = load_config(working_dir)
-    gitlab_config = _load_gitlab_config(config)
-    context = ProjectContext(working_dir, config)
-
-    mr = await _fetch_merge_request(working_dir, config, gitlab_config, mr_link)
-
-    logger.info("gitlab_review_started", mr_link=mr_link, title=mr["title"])
-    status, _ = await ReviewerAgent(context).review_merge_request(
-        mr["title"], mr["description"], mr["diff"]
-    )
-    review_file = context.active_working_dir() / config["docs_dir"] / MR_REVIEW_FILENAME
-    logger.info("gitlab_review_finished", status=status, review_file=str(review_file))

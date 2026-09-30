@@ -1,9 +1,9 @@
 """
 meow/issue_solver.py
 
-The `meow issue` flow: fetch a Jira issue (a given key, or the most
+The `meow run --jira` flow: fetch a Jira issue (a given key, or the most
 recently created one in a configured project), then solve it through the
-same generator<->reviewer loop `meow run` uses (`sprint_runner.run_sprint`),
+same generator<->reviewer loop plain `meow run` uses (`sprint_runner.run_sprint`),
 inside a dedicated, named-branch worktree that gets pushed on success.
 
 Unlike `run`/`plan`'s worktrees (created detached, never pushed), this flow
@@ -31,7 +31,7 @@ _BRANCH_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 class IssueUnresolvedError(RuntimeError):
-    """`meow issue` could not fetch, solve, or push the issue."""
+    """`meow run --jira` could not fetch, solve, or push the issue."""
 
 
 def _load_jira_config(config: dict) -> dict:
@@ -39,7 +39,7 @@ def _load_jira_config(config: dict) -> dict:
     jira = config.get("jira")
     if not isinstance(jira, dict):
         raise ValueError(
-            "No [jira] table found in .harness.toml. `meow issue` needs "
+            "No [jira] table found in .harness.toml. `meow run --jira` needs "
             "[jira] with 'project_key' set, and a [jira.mcp] table "
             "describing how to launch the Jira MCP server, e.g.:\n\n"
             "[jira]\n"
@@ -56,7 +56,7 @@ def _load_jira_config(config: dict) -> dict:
     if not project_key:
         raise ValueError(
             "[jira] in .harness.toml must set 'project_key' -- the project "
-            "`meow issue` searches for the latest issue when none is given."
+            "`meow run --jira` searches for the latest issue when none is given."
         )
 
     mcp = jira.get("mcp")

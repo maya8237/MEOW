@@ -235,7 +235,7 @@ class ReviewerAgent(Agent):
 
         `focus`, when given, is appended as an extra instruction so the
         reviewer pays particular attention to it in addition to the Sprint
-        Contract -- used by `meow review-fix-review` to carry its required
+        Contract -- used by `meow run --review --fix` to carry its required
         prompt argument into every round's grading, not just the first.
         """
         review_file = plan_file.with_name(plan_file.stem + "-review.md")

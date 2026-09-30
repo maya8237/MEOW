@@ -1,6 +1,6 @@
 """Review-fix agent: given review findings, edits the project to resolve
 them in a session that survives across rounds -- the prompt-based half of
-`meow review-fix-review` (no plan file/Sprint Contract to hand a
+`meow run --review --fix` (no plan file/Sprint Contract to hand a
 GeneratorAgent, unlike the plan-based half, which reuses GeneratorAgent
 via `_run_review_rounds` directly). Shaped identically to
 `agents/lint_fixer.py`'s `LintFixAgent` for the same reason: a persistent,
