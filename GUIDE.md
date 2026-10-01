@@ -159,9 +159,16 @@ naming the entry and key; a `[[lint]]` `command` that's a script or shell
 only the other OS family could ever run (see §2) raises `ValueError` naming
 the command, also before any agent runs; a missing architecture doc under
 `docs/` is not an error, it just leaves the reviewer's SOLID/SRP pass with
-nothing project-specific to check against. `meow run --jira` and `meow review`
-(every source, and its `--review-file` resume path) have their own failure
-modes (missing MCP config, unreachable server, no MR checkout, wrong
-branch checked out, `max_rounds` exhausted, etc.) — the full error-message
-reference lives in
-[docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+nothing project-specific to check against. `--name`/`--feature-name` is
+rejected up front, before any agent runs or any worktree is touched, if it's
+a Windows-reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`9`,
+`LPT1`-`9`, with or without an extension) — checked regardless of which OS
+meow happens to run on, since a name that only breaks on a teammate's
+Windows machine is still worth catching consistently. `meow run --jira` and
+`meow review` (every source, and its `--review-file` resume path) have
+their own failure modes (missing MCP config, unreachable server, no MR
+checkout, wrong branch checked out, `max_rounds` exhausted, etc.) — the full
+error-message reference lives in
+[docs/INTEGRATIONS.md](docs/INTEGRATIONS.md). Any of these (and anything
+else `run`/`plan`/`review` raise as a plain `ValueError`/`RuntimeError`)
+prints its message and exits 1 — never a raw traceback.

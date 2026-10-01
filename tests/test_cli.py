@@ -1674,5 +1674,83 @@ class ReviewDispatchTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 1)
 
 
+class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
+    """cli_main's last-resort net around `_dispatch`: a bare ValueError or
+    RuntimeError from deep in run/plan/review (a malformed .harness.toml, a
+    worktree/git failure, an unresumable review-file flavor, ...) must exit
+    1 with its message, not propagate as a raw traceback. DirtyWorkingTreeError/
+    PlanNotApprovedError/IssueUnresolvedError and review's ValueError are
+    already covered by their own closer-to-the-source tests; these cover
+    what reaching this outer net actually catches."""
+
+    def test_plain_run_runtime_error_exits_cleanly(self):
+        with (
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_sprint",
+                new=AsyncMock(
+                    side_effect=RuntimeError(
+                        "Failed to create worktree at .worktrees/x: fatal: ..."
+                    )
+                ),
+            ),
+            patch(
+                "sys.argv",
+                ["meow", "run", "do it", "--name", "x", "--work-dir", "."],
+            ),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            cli.cli_main()
+
+        self.assertEqual(ctx.exception.code, 1)
+
+    def test_plan_value_error_exits_cleanly(self):
+        with (
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_plan",
+                new=AsyncMock(
+                    side_effect=ValueError(
+                        ".harness.toml: [[lint]] entry 1 must set 'command'"
+                    )
+                ),
+            ),
+            patch(
+                "sys.argv",
+                ["meow", "plan", "do it", "--name", "x", "--work-dir", "."],
+            ),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            cli.cli_main()
+
+        self.assertEqual(ctx.exception.code, 1)
+
+    def test_review_runtime_error_exits_cleanly(self):
+        # Unlike the existing ValueError test above, this is run_review_command
+        # raising a bare RuntimeError (e.g. _resume_review_file's unresumable-
+        # flavor rejection) -- _dispatch_review only ever caught ValueError
+        # itself, so this specifically exercises cli_main's outer net.
+        with (
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_review_command",
+                new=AsyncMock(
+                    side_effect=RuntimeError(
+                        "branch-review.md is a branch review -- `meow review` "
+                        "can't resume it from --review-file alone"
+                    )
+                ),
+            ),
+            patch(
+                "sys.argv",
+                ["meow", "review", "--review-file", "r.md", "--work-dir", "."],
+            ),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            cli.cli_main()
+
+        self.assertEqual(ctx.exception.code, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

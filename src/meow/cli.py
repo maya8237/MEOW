@@ -522,7 +522,19 @@ def cli_main():
         working_dir,
         include_gitignore=_creates_a_worktree(args, use_worktree=use_worktree),
     )
-    _dispatch(args, working_dir, use_worktree=use_worktree)
+    try:
+        _dispatch(args, working_dir, use_worktree=use_worktree)
+    except (ValueError, RuntimeError) as exc:
+        # The last-resort net: a handful of specific, expected failures
+        # (DirtyWorkingTreeError, PlanNotApprovedError, IssueUnresolvedError,
+        # review's own ValueError) are already caught closer to their source
+        # with a more specific message. Anything else that reaches here --
+        # a malformed .harness.toml, a worktree/git failure, a review file
+        # in a flavor that can't be resumed, ... -- would otherwise surface
+        # as a raw traceback instead of the clear, one-line error every
+        # other failure in this CLI gets.
+        print(f"\n{exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
 
 if __name__ == "__main__":
