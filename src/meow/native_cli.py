@@ -42,6 +42,21 @@ def _add_prepare(sub) -> None:
         "--no-worktree", "-n", dest="no_worktree", action="store_true",
         help="Work in the project directory instead of a .worktrees entry.",
     )
+
+
+def _add_verify(sub) -> None:
+    parser = sub.add_parser(
+        "verify",
+        help=(
+            "Validate and report the project's MEOW configuration "
+            "without changing files."
+        ),
+    )
+    _add_dirs(parser)
+    parser.add_argument(
+        "--no-lint", action="store_true",
+        help="Validate configuration only; skip the configured lint checks.",
+    )
     parser.add_argument(
         "--source-branch", "--from", "-b", dest="source_branch", default=None,
         help="Branch a fresh worktree is created from.",
@@ -146,6 +161,7 @@ def add_native_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     sub = native_parser.add_subparsers(dest="native_command", required=True)
     _add_prepare(sub)
+    _add_verify(sub)
     _add_lookups(sub)
     _add_verdict(sub)
     _add_lint(sub)
@@ -171,6 +187,10 @@ def _prepare(args, working_dir: Path, _active: Path) -> dict:
         require_clean=not args.allow_dirty,
     )
     return native.prepare(working_dir, options)
+
+
+def _verify(args, working_dir: Path, active: Path) -> dict:
+    return native.verify(working_dir, active, run_lint=not args.no_lint)
 
 
 def _lint(args, working_dir: Path, active: Path) -> dict:
@@ -201,6 +221,7 @@ def _prompt(args, working_dir: Path, active: Path) -> dict:
 
 _HANDLERS = {
     "prepare": _prepare,
+    "verify": _verify,
     "latest-plan": lambda args, wd, active: native.latest_plan(wd, active),
     "latest-review": lambda args, wd, active: native.latest_review(wd, active),
     "verdict": lambda args, wd, active: native.verdict(
