@@ -240,6 +240,29 @@ def _normalize_lint_commands(user_config: dict) -> list[LintCommand]:
     return entries
 
 
+def _validate_max_rounds(config: dict) -> None:
+    """Reject a non-positive or non-integer `max_rounds` up front.
+
+    `max_rounds <= 0` doesn't crash on its own -- every round-loop shape
+    computes an empty `range()` and falls straight through to "didn't pass"
+    -- but that means a real planner call (and, depending on the loop
+    shape, a wasted generator/fixer session start too) runs first, only to
+    report a confusing "did not pass after 0 rounds" with no round ever
+    actually attempted. Caught here instead, before any agent runs at all.
+    """
+    max_rounds = config["max_rounds"]
+    is_valid = (
+        isinstance(max_rounds, int)
+        and not isinstance(max_rounds, bool)
+        and max_rounds >= 1
+    )
+    if not is_valid:
+        raise ValueError(
+            f"{CONFIG_FILENAME}: max_rounds must be a positive integer, got "
+            f"{max_rounds!r}."
+        )
+
+
 def load_config(working_dir: Path) -> dict:
     config_path = working_dir / CONFIG_FILENAME
     if not config_path.exists():
@@ -256,5 +279,6 @@ def load_config(working_dir: Path) -> dict:
     config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}
     config["lint"] = _normalize_lint_commands(user_config)
     _validate_os_compatibility(config["lint"])
+    _validate_max_rounds(config)
 
     return config
