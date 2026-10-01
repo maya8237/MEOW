@@ -27,11 +27,11 @@ explorer = "haiku"
 # generator = "claude-opus-5-5"
 # reviewer = "claude-opus-5-5"
 
-# Optional -- only needed for `meow issue`. Declares the Jira project
+# Optional -- only needed for `meow run --jira`. Declares the Jira project
 # to search and how to launch the Jira MCP server it talks to. The server's
 # own credentials (JIRA_URL, JIRA_USERNAME, JIRA_API_TOKEN, or
 # JIRA_PERSONAL_TOKEN for Server/Data Center) belong in the environment, not
-# here. See GUIDE.md's "Running on a schedule" section.
+# here. See docs/INTEGRATIONS.md for scheduled runs.
 # [jira]
 # project_key = "PROJ"
 # branch_prefix = "issue/"   # optional, this is the default
@@ -40,7 +40,7 @@ explorer = "haiku"
 # command = "uvx"
 # args = ["mcp-atlassian"]
 
-# Optional -- only needed for `meow gitlab-review`. Declares how to launch
+# Optional -- only needed for `meow review --gitlab`. Declares how to launch
 # the GitLab MCP server it talks to fetch a merge request's diff; unlike
 # [jira], no project key is needed since the merge request URL is passed on
 # the command line each time. There is no single de facto GitLab MCP server

@@ -1,9 +1,9 @@
 # docs/INTEGRATIONS.md — Jira, GitLab, and scheduled runs
 
-Reference material for the optional, advanced parts of onboarding a project
-onto meow. Everyday setup lives in [GUIDE.md](../GUIDE.md); come here only if
-you need `meow run --jira`, `meow review --jira`/`--gitlab`, an unattended
-scheduled run, or a full error-message reference.
+Reference material for the optional, advanced parts of setting up a project
+with meow. Start with the `/meow:onboard` skill; come here for configuration
+details about `meow run --jira`, `meow review --jira`/`--gitlab`, unattended
+scheduled runs, and the full error-message reference.
 
 ---
 
