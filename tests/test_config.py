@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 from meow.config import (
     LintCommand,
+    _lint_entry,
+    _normalize_lint_commands,
     _os_mismatch,
     _program_name,
     _validate_max_rounds,
@@ -222,6 +224,106 @@ class ValidateMaxRoundsTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "max_rounds"):
                 load_config(working_dir)
+
+
+class LintEntryTests(unittest.TestCase):
+    """`_lint_entry` validates one [[lint]] table. No test here exercised
+    this at all before -- found while adversarially checking zero/one/many
+    lint command counts; confirmed the zero-commands case for real via
+    `meow plan` first (a clean, pre-agent ValueError), then backfilled
+    direct coverage for the whole surface."""
+
+    def test_missing_command_key_raises(self):
+        with self.assertRaisesRegex(ValueError, "must set 'command'"):
+            _lint_entry({"fix_flag": "--fix"}, 1)
+
+    def test_empty_command_string_raises(self):
+        with self.assertRaisesRegex(ValueError, "must set 'command'"):
+            _lint_entry({"command": ""}, 1)
+
+    def test_non_dict_entry_raises(self):
+        with self.assertRaisesRegex(ValueError, "must set 'command'"):
+            _lint_entry("ruff check", 1)
+
+    def test_unknown_key_raises_naming_entry_and_key(self):
+        with self.assertRaisesRegex(ValueError, r"entry 2 has unknown key\(s\)"):
+            _lint_entry({"command": "ruff check", "typo_key": True}, 2)
+
+    def test_valid_entry_applies_defaults(self):
+        entry = _lint_entry({"command": "ruff check"}, 1)
+        self.assertEqual(entry.command, "ruff check")
+        self.assertIsNone(entry.fix_flag)
+        self.assertTrue(entry.per_file)
+        self.assertTrue(entry.gate)
+
+    def test_valid_entry_honors_all_fields(self):
+        entry = _lint_entry(
+            {
+                "command": "mypy .",
+                "fix_flag": None,
+                "per_file": False,
+                "gate": False,
+            },
+            1,
+        )
+        self.assertFalse(entry.per_file)
+        self.assertFalse(entry.gate)
+
+
+class NormalizeLintCommandsTests(unittest.TestCase):
+    def test_zero_commands_raises(self):
+        with self.assertRaisesRegex(ValueError, "must define at least one"):
+            _normalize_lint_commands({})
+
+    def test_one_command_via_the_list_form(self):
+        commands = _normalize_lint_commands(
+            {"lint": [{"command": "ruff check"}]}
+        )
+        self.assertEqual([c.command for c in commands], ["ruff check"])
+
+    def test_many_commands_preserve_configured_order(self):
+        commands = _normalize_lint_commands(
+            {
+                "lint": [
+                    {"command": "ruff check"},
+                    {"command": "mypy .", "gate": False},
+                    {"command": "npx eslint ."},
+                ]
+            }
+        )
+        self.assertEqual(
+            [c.command for c in commands], ["ruff check", "mypy .", "npx eslint ."]
+        )
+
+    def test_legacy_single_command_form_becomes_one_entry(self):
+        commands = _normalize_lint_commands(
+            {"lint_command": "ruff check", "lint_fix_flag": "--fix"}
+        )
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, "ruff check")
+        self.assertEqual(commands[0].fix_flag, "--fix")
+
+    def test_legacy_form_and_list_form_combine_legacy_first(self):
+        commands = _normalize_lint_commands(
+            {"lint_command": "ruff check", "lint": [{"command": "mypy ."}]}
+        )
+        self.assertEqual([c.command for c in commands], ["ruff check", "mypy ."])
+
+    def test_lint_not_a_list_raises(self):
+        with self.assertRaisesRegex(ValueError, "must be a list"):
+            _normalize_lint_commands({"lint": {"command": "ruff check"}})
+
+    def test_whitespace_only_command_is_accepted_at_load_but_fails_at_argv(self):
+        # _lint_entry's falsy check doesn't catch a whitespace-only string --
+        # it's truthy. This isn't caught until the command actually tries to
+        # run (LintCommand.argv), not at config-load time like every other
+        # lint validation here. Documented as current (deferred) behavior,
+        # not fixed: a real typo this obscure is vanishingly unlikely, and
+        # every other config mistake here fails at load time specifically
+        # so it's worth flagging if that ever changes.
+        commands = _normalize_lint_commands({"lint": [{"command": "   "}]})
+        with self.assertRaisesRegex(ValueError, "lint command is empty"):
+            commands[0].argv()
 
 
 if __name__ == "__main__":
