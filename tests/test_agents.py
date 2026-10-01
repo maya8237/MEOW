@@ -19,6 +19,7 @@ from meow.agents.reviewer import (
     _verdict_status,
 )
 from meow.config import LintCommand
+from meow.lint import LintGateEvidence
 
 
 class LooksLikeACrashTests(unittest.TestCase):
@@ -145,8 +146,13 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
         succeeds_on_attempt = 3
         calls = {"n": 0}
         success = ResultMessage(
-            subtype="success", duration_ms=0, duration_api_ms=0,
-            is_error=False, num_turns=1, session_id="session", result="done",
+            subtype="success",
+            duration_ms=0,
+            duration_api_ms=0,
+            is_error=False,
+            num_turns=1,
+            session_id="session",
+            result="done",
         )
 
         async def flaky_query(*, prompt, options):
@@ -414,6 +420,13 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self.context = FakeProjectContext()
         self.context.project_dir = Path.cwd()
         self.context.repo_dir = self.context.project_dir
+        self.lint_patch = patch.object(
+            ReviewerAgent,
+            "_lint_evidence",
+            new=AsyncMock(return_value=LintGateEvidence()),
+        )
+        self.lint_patch.start()
+        self.addCleanup(self.lint_patch.stop)
 
     def test_verdict_status_accepts_pass_fail_and_defaults_missing_status_to_fail(self):
         self.assertEqual(_verdict_status("SUMMARY: good\nSTATUS: PASS"), "PASS")
@@ -440,7 +453,8 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((status, received_verdict), ("PASS", verdict))
         read_text.assert_called_once_with(encoding="utf-8")
         prompt, options, role = run_query.await_args.args
-        self.assertEqual(prompt, f"Review {plan_file}")
+        self.assertIn(f"Review {plan_file}", prompt)
+        self.assertIn("Harness lint evidence", prompt)
         self.assertEqual(role, "Reviewer")
         self.assertEqual(options.cwd, str(self.context.project_dir))
         self.assertEqual(options.model, "model-for-reviewer")
@@ -451,6 +465,27 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"Write your verdict to {review_file}", options.system_prompt)
         self.assertIn("ruff check", options.system_prompt)
         self.assertIn("SOLID/SRP", options.system_prompt)
+
+    async def test_blocking_lint_failure_overrides_reviewer_pass(self):
+        plan_file = self.context.project_dir / "feature.md"
+        verdict = "SUMMARY: reviewed\nSTATUS: PASS"
+        self.lint_patch.stop()
+        patcher = patch.object(
+            ReviewerAgent,
+            "_lint_evidence",
+            new=AsyncMock(
+                return_value=LintGateEvidence(blocking=("$ ruff check\\nfailed",))
+            ),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        with (
+            patch.object(ReviewerAgent, "run_query", new_callable=AsyncMock),
+            patch.object(Path, "read_text", return_value=verdict),
+        ):
+            status, received = await ReviewerAgent(self.context).review_plan(plan_file)
+        self.assertEqual(status, "FAIL")
+        self.assertIn("Blocking lint failures", received)
 
     async def test_review_plan_includes_focus_text_when_given(self):
         plan_file = self.context.project_dir / "feature.md"
@@ -467,9 +502,7 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
             )
 
         _, options, _ = run_query.await_args.args
-        self.assertIn(
-            "Check error handling on the API boundary", options.system_prompt
-        )
+        self.assertIn("Check error handling on the API boundary", options.system_prompt)
 
     async def test_review_plan_omits_focus_text_by_default(self):
         plan_file = self.context.project_dir / "feature.md"
@@ -512,7 +545,8 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         git_context.assert_called_once_with(self.context)
         read_text.assert_called_once_with(encoding="utf-8")
         prompt, options, role = run_query.await_args.args
-        self.assertEqual(prompt, "Review the prompt: Ship the feature\n\ngit context")
+        self.assertIn("Review the prompt: Ship the feature\n\ngit context", prompt)
+        self.assertIn("Harness lint evidence", prompt)
         self.assertEqual(role, "Reviewer")
         self.assertEqual(options.cwd, str(self.context.project_dir))
         self.assertEqual(options.model, "model-for-reviewer")

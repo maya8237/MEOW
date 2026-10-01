@@ -103,7 +103,9 @@ class PrepareTests(unittest.TestCase):
 
             head = subprocess.run(
                 ["git", "branch", "--show-current"],
-                cwd=result["active_dir"], capture_output=True, text=True,
+                cwd=result["active_dir"],
+                capture_output=True,
+                text=True,
             ).stdout.strip()
             self.assertEqual(head, "issue/X-1")
 
@@ -126,7 +128,9 @@ class PrepareTests(unittest.TestCase):
 
             head = subprocess.run(
                 ["git", "branch", "--show-current"],
-                cwd=result["active_dir"], capture_output=True, text=True,
+                cwd=result["active_dir"],
+                capture_output=True,
+                text=True,
             ).stdout.strip()
             self.assertEqual(head, "feature/x")
 
@@ -465,7 +469,9 @@ class PushTests(unittest.TestCase):
             git(root, "remote", "add", "origin", str(bare))
             branch = subprocess.run(
                 ["git", "branch", "--show-current"],
-                cwd=root, capture_output=True, text=True,
+                cwd=root,
+                capture_output=True,
+                text=True,
             ).stdout.strip()
 
             result = native.push(root, branch)
@@ -473,6 +479,8 @@ class PushTests(unittest.TestCase):
             self.assertEqual(result, {"branch": branch, "pushed": True})
             refs = subprocess.run(
                 ["git", "branch", "--list", branch],
-                cwd=bare, capture_output=True, text=True,
+                cwd=bare,
+                capture_output=True,
+                text=True,
             ).stdout
             self.assertIn(branch, refs)

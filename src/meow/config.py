@@ -104,6 +104,14 @@ class LintCommand:
         # program still surfaces as the OS error rather than being hidden.
         return [shutil.which(argv[0]) or argv[0], *argv[1:]]
 
+    def argv_for_file(self, file_path: str) -> list[str]:
+        """The command as argv for one file, auto-fixing where supported."""
+        argv = self.argv()
+        if self.fix_flag:
+            argv.append(self.fix_flag)
+        argv.append(file_path)
+        return argv
+
     def matches_file(self, file_path: Path) -> bool:
         """Whether a repo-relative file belongs to this command's component."""
         path = Path(os.path.normpath(str(file_path).replace("\\", "/")))
