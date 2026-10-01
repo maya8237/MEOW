@@ -73,7 +73,7 @@ Design: [native execution spec](docs/superpowers/specs/2026-09-29-native-skill-e
 
 ## Claude Code plugin
 
-This repository is also a Claude Code plugin. It provides `/meow:sprint`,
+This repository is also a Claude Code plugin. It provides `/meow:run`,
 `/meow:plan`, `/meow:review`, and `/meow:lint` skills. Each wraps the matching
 CLI command except `/meow:lint`, which runs `meow run --lint-fix --report-only`
 and fixes findings in the calling session. See `skills/*/SKILL.md`.
@@ -120,3 +120,4 @@ The shared `Agent` base builds SDK options and runs one-shot queries. The
 explorer returns an `AgentDefinition` for nested use, while the generator
 keeps a persistent `ClaudeSDKClient` across feedback rounds. Thin function
 wrappers remain for compatibility with existing imports.
+

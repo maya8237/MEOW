@@ -24,7 +24,7 @@ Use **CLI mode** (bottom) only if the user explicitly asks for it.
    protocol's Planner row. Use an explorer subagent for any codebase research
    you don't need in full. Read the file back and confirm the task list and
    `## Sprint Contract` exist. Write no application code.
-4. Report the plan file's path. If they want it built: `/meow:sprint` (full loop)
+4. Report the plan file's path. If they want it built: `/meow:run` (full loop)
    or, once code exists, `/meow:review`.
 
 ## CLI mode
@@ -36,3 +36,4 @@ meow plan "<feature request>" --name "<generated-feature-name>" --working-dir "<
 Add `--no-worktree` to use the main repo instead of an isolated worktree. If
 `meow` isn't on PATH, tell the user to install it (README: `pip install -e .`
 in a venv, or `pipx install -e .`). Report the plan file's path.
+

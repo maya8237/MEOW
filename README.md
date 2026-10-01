@@ -58,7 +58,7 @@ review sources, worktree and resume options, native mode, and unattended runs.
 
 ## Claude Code skills
 
-This repository is also a Claude Code plugin. It provides `/meow:sprint`,
+This repository is also a Claude Code plugin. It provides `/meow:run`,
 `/meow:plan`, `/meow:review`, `/meow:lint`, and `/meow:onboard` skills.
 They run natively in the calling session by default; ask for CLI mode to use
 the `meow` command instead. Both modes share configuration and output formats.
@@ -71,3 +71,4 @@ the `meow` command instead. Both modes share configuration and output formats.
 - [Architecture](ARCHITECTURE.md): workflow, module responsibilities, and agent
   contracts.
 - [Project instructions](AGENTS.md): repository-specific development rules.
+
