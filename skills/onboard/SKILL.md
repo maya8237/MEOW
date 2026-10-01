@@ -85,12 +85,27 @@ part of the user's project.
 ## 3. Verify and report
 
 Run `meow --help`, then run `meow native verify --working-dir <project-root>`
-from the MEOW installation. Require a successful exit and `"valid": true` in
-its JSON output before considering `.harness.toml` valid. By default this also
-runs the configured blocking lint gates and reports their result in
-`lint_result`/`lint_passed`; inspect that output and report any failing check.
-Run any configured non-gate lint check separately. Do not launch a feature
-sprint as a setup smoke test unless
+from the MEOW installation. Treat its output as diagnostics, not as a gate on
+onboarding. If it exits non-zero, returns `"valid": false`, or reports any
+failed check, capture the exact error and continue with every independent
+setup step. Defer only a specific dependent action that the failure makes
+unsafe or impossible; do not abandon unrelated setup. After independent setup
+is complete, show the user the failed components and ask: **“Is it okay to
+leave these verification failures for you to fix, or would you like me to fix
+them component by component?”** If they accept leaving them, summarize the
+exact failures and next steps. If they want fixes, address each failed
+component separately, preserve unrelated project settings, and rerun verify
+after each repair where practical and once at the end. Do not silently skip a
+failed component. This checks core
+settings, each lint entry, model overrides, Jira/GitLab table shape, MCP
+launcher availability, required environment values, and unresolved environment
+references. It reports connection testing separately: a configured MCP is
+`ready_unchecked` until a real MCP tool call succeeds, and verify never claims
+remote connectivity from config alone. By default it also runs the configured
+blocking lint gates and reports their result in `lint_result`/`lint_passed`;
+inspect that output and report any failing check without letting it block other
+setup work. Run any configured non-gate lint check separately. Do not launch a
+feature sprint as a setup smoke test unless
 the user explicitly asks; it can modify the project. If a check cannot run,
 report the exact blocker and leave the setup files available for correction.
 

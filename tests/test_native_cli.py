@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from tests.test_native import git, make_repo
 
-from meow import cli
+from meow import cli, native
 
 
 def run_native(*argv: str) -> tuple[int, str, str]:
@@ -26,6 +26,31 @@ def run_native(*argv: str) -> tuple[int, str, str]:
         except SystemExit as exc:
             code = exc.code if isinstance(exc.code, int) else 1
     return code, out.getvalue(), err.getvalue()
+
+
+class NativeVerifyTests(unittest.TestCase):
+    def test_reports_optional_integrations_as_unconfigured(self):
+        result = native._verify_jira({})
+        self.assertEqual(result["status"], "not_configured")
+        self.assertFalse(result["mcp"]["connection_tested"])
+        self.assertEqual(native._verify_gitlab({})["status"], "not_configured")
+
+    def test_checks_mcp_command_and_environment_without_exposing_values(self):
+        with patch("meow.native.shutil.which", return_value="/usr/bin/uvx"):
+            result = native._verify_jira({
+                "jira": {
+                    "project_key": "MEOW",
+                    "mcp": {"command": "uvx", "args": ["mcp-atlassian"]},
+                }
+            })
+
+        self.assertEqual(result["status"], "missing_environment")
+        self.assertTrue(result["project_key_configured"])
+        self.assertEqual(
+            result["mcp"]["required_environment_missing"], ["JIRA_URL"]
+        )
+        self.assertNotIn("environment_values", result["mcp"])
+        self.assertFalse(result["mcp"]["connection_tested"])
 
 
 class NativeCliTests(unittest.TestCase):
