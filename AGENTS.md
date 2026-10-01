@@ -66,9 +66,10 @@ select the project directory.
 Config lives in `.harness.toml`. Sprint plans, contracts, and reviews are
 written to `docs/exec-plans/active/`.
 
-To onboard a *different* repo onto meow, see [GUIDE.md](GUIDE.md) — it's
-written for a Claude session working in that other repo, and covers what's
-strictly required versus merely recommended, generic to any language.
+To onboard a different repo onto meow, use the `/meow:onboard` Claude Code
+skill. It inspects the project, configures its harness, and asks which optional
+integrations or project-specific features to set up using yes/no/later choices.
+Integration configuration details live in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
 ## Native (in-session) skill execution
 
@@ -104,8 +105,9 @@ own agent the way every other skill here does.
 generator touches, and runs `ruff check` unmodified project-wide as part of the
 reviewer's verdict. Rule selection lives in `pyproject.toml`.
 
-A project can declare any number of `[[lint]]` commands (see GUIDE.md for the
-`per_file`/`gate` fields); meow itself only needs one.
+A project can declare any number of `[[lint]]` commands; see the annotated
+example in `templates/harness.toml.example` for the `per_file`/`gate` fields.
+MEOW itself only needs one.
 
 ## Layout
 
