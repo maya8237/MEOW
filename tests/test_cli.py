@@ -1751,6 +1751,57 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, 1)
 
+    def test_missing_harness_toml_exits_cleanly(self):
+        # By far the most likely first mistake a new user makes: running
+        # meow before creating .harness.toml at all. load_config raises
+        # FileNotFoundError, a type cli_main's net didn't originally cover.
+        with (
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_plan",
+                new=AsyncMock(
+                    side_effect=FileNotFoundError(
+                        "No .harness.toml found in /some/project. Create one "
+                        "before running the harness."
+                    )
+                ),
+            ),
+            patch(
+                "sys.argv",
+                ["meow", "plan", "do it", "--name", "x", "--work-dir", "."],
+            ),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            cli.cli_main()
+
+        self.assertEqual(ctx.exception.code, 1)
+
+    def test_resume_at_review_with_no_plan_file_exits_cleanly(self):
+        with (
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_sprint",
+                new=AsyncMock(
+                    side_effect=FileNotFoundError(
+                        "No plan file found in docs/exec-plans/active. Run "
+                        '`meow plan "<feature>"` first, or pass --plan-file '
+                        "explicitly."
+                    )
+                ),
+            ),
+            patch(
+                "sys.argv",
+                [
+                    "meow", "run", "do it", "--resume-at", "review",
+                    "--no-worktree", "--work-dir", ".",
+                ],
+            ),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            cli.cli_main()
+
+        self.assertEqual(ctx.exception.code, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

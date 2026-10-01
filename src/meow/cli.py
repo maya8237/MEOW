@@ -524,15 +524,18 @@ def cli_main():
     )
     try:
         _dispatch(args, working_dir, use_worktree=use_worktree)
-    except (ValueError, RuntimeError) as exc:
+    except (ValueError, RuntimeError, FileNotFoundError) as exc:
         # The last-resort net: a handful of specific, expected failures
         # (DirtyWorkingTreeError, PlanNotApprovedError, IssueUnresolvedError,
         # review's own ValueError) are already caught closer to their source
         # with a more specific message. Anything else that reaches here --
-        # a malformed .harness.toml, a worktree/git failure, a review file
-        # in a flavor that can't be resumed, ... -- would otherwise surface
-        # as a raw traceback instead of the clear, one-line error every
-        # other failure in this CLI gets.
+        # a missing or malformed .harness.toml, a worktree/git failure, a
+        # review file in a flavor that can't be resumed, no plan file to
+        # resume a review at, ... -- would otherwise surface as a raw
+        # traceback instead of the clear, one-line error every other
+        # failure in this CLI gets. FileNotFoundError is here specifically
+        # for a missing .harness.toml/plan file -- far and away the most
+        # likely first mistake a new user makes.
         print(f"\n{exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
