@@ -13,7 +13,12 @@ from meow.native_cli import add_native_parser, run_native
 from meow.orchestrator import PlanNotApprovedError, log_working_directory
 from meow.review_cli import run_review_command
 from meow.sprint_runner import run_plan, run_sprint
-from meow.worktree import DirtyWorkingTreeError, _boot_repo, _ensure_clean_tree
+from meow.worktree import (
+    DirtyWorkingTreeError,
+    _boot_repo,
+    _ensure_clean_tree,
+    _is_linked_worktree,
+)
 
 logger = get_logger(__name__)
 
@@ -101,10 +106,19 @@ def _is_plain_build(args) -> bool:
     return args.command == "run" and not args.lint_fix and args.jira is None
 
 
-def _validate_feature_name_requirement(parser: argparse.ArgumentParser, args) -> None:
+def _validate_feature_name_requirement(
+    parser: argparse.ArgumentParser, args, working_dir: Path
+) -> None:
     requires_name = (
-        args.command == "plan" or _is_plain_build(args)
-    ) and not args.no_worktree
+        (args.command == "plan" or _is_plain_build(args))
+        and not args.no_worktree
+        # --working-dir already pointing at a linked worktree means "work
+        # here", not "nest another worktree inside it" -- _resolve_working_dir
+        # treats this exactly like --no-worktree, so the upfront requirement
+        # must too, or a --name that will be silently ignored is demanded
+        # for no reason.
+        and not _is_linked_worktree(working_dir)
+    )
     if requires_name and args.feature_name is None:
         parser.error(
             "--name/--feature-name/-f is required unless "
@@ -515,7 +529,7 @@ def cli_main():
     log_working_directory(working_dir)
     use_worktree = _should_use_worktree(args)
 
-    _validate_feature_name_requirement(parser, args)
+    _validate_feature_name_requirement(parser, args, working_dir)
     _validate_run_flags(parser, args)
     _check_clean_tree(args, working_dir)
     _boot_repo(
