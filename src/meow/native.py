@@ -113,13 +113,13 @@ def _verify_tester(config: dict, active_dir: Path) -> dict:
     mcp = []
     for entry in tester["mcp"]:
         command = entry["command"]
+        unresolved = _unresolved_env(entry["env"])
         mcp.append({
             "name": entry["name"],
             "command": command,
             "args": entry["args"],
-            "status": (
-                "ready_unchecked" if shutil.which(command) else "command_unavailable"
-            ),
+            "status": _launcher_status(command, unresolved),
+            "unresolved_environment": unresolved,
         })
 
     architecture_paths = [
@@ -149,6 +149,13 @@ def _verify_tester(config: dict, active_dir: Path) -> dict:
         "dev_servers": servers,
         "mcp": mcp,
         "test_dirs": [str(path) for path in tester["test_dirs"]],
+        "test_directories": [
+            {
+                "path": str(path),
+                "exists": (active_dir / path).is_dir(),
+            }
+            for path in tester["test_dirs"]
+        ],
         "base_url": tester["base_url"],
         "architecture": architecture,
         "architecture_available": any(item["readable"] for item in architecture),
@@ -158,11 +165,12 @@ def _verify_tester(config: dict, active_dir: Path) -> dict:
 
 def _verify_command(command, active_dir: Path) -> dict:
     """Check command cwd and launcher without starting the command."""
+    unresolved = _unresolved_env(command.env or {})
     try:
         cwd = resolve_command_cwd(active_dir, command.cwd)
         executable = shlex.split(command.command, posix=os.name != "nt")[0]
         available = bool(shutil.which(executable))
-        status = "ready_unchecked" if available else "command_unavailable"
+        status = _launcher_status(executable, unresolved)
     except (OSError, ValueError) as exc:
         cwd = active_dir / command.cwd
         available = False
@@ -176,12 +184,30 @@ def _verify_command(command, active_dir: Path) -> dict:
         "args": list(command.args),
         "launcher_available": available,
         "status": status,
+        "unresolved_environment": unresolved,
     }
     if error:
         result["error"] = error
     if hasattr(command, "gate"):
         result["gate"] = command.gate
     return result
+
+
+def _unresolved_env(environment: dict[str, str]) -> list[str]:
+    """List missing variable names without returning configured values."""
+    return [
+        key
+        for value in environment.values()
+        if value.startswith("$")
+        for key in [value[1:].strip("{}")]
+        if not os.environ.get(key)
+    ]
+
+
+def _launcher_status(command: str, unresolved: list[str]) -> str:
+    if not shutil.which(command):
+        return "command_unavailable"
+    return "missing_environment" if unresolved else "ready_unchecked"
 
 
 def _read_user_config(working_dir: Path) -> dict:

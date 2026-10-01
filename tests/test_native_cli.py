@@ -47,10 +47,12 @@ class NativeVerifyTests(unittest.TestCase):
             tester_toml = """
 [tester]
 architecture_files = ["docs/OPTIONAL.md"]
+test_dirs = ["apps/web/tests", "services/api/tests"]
 
 [[tester.tests]]
 cwd = "apps/web"
 command = "python -m unittest"
+env = {PRIVATE_TOKEN = "actual-secret-do-not-print", MISSING = "$MEOW_MISSING"}
 
 [[tester.tests]]
 cwd = "services/api"
@@ -69,6 +71,7 @@ ready_url = "http://localhost:8000"
 [[tester.mcp]]
 name = "browser"
 command = "missing-tester-mcp"
+env = {TOKEN = "actual-secret-do-not-print"}
 """
             (root / ".harness.toml").write_text(TOML + tester_toml, encoding="utf-8")
 
@@ -82,7 +85,14 @@ command = "missing-tester-mcp"
             self.assertEqual(len(tester["tests"]), 2)
             self.assertEqual(len(tester["dev_servers"]), 2)
             self.assertEqual(tester["mcp"][0]["status"], "command_unavailable")
+            self.assertEqual(
+                tester["tests"][0]["unresolved_environment"],
+                ["MEOW_MISSING"],
+            )
+            self.assertEqual(tester["tests"][0]["status"], "missing_environment")
+            self.assertNotIn("actual-secret-do-not-print", json.dumps(tester))
             self.assertTrue(tester["architecture_available"])
+            self.assertEqual(len(tester["test_directories"]), 2)
             optional_doc = next(
                 item
                 for item in tester["architecture"]
