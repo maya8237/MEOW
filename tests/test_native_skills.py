@@ -12,9 +12,9 @@ SHARED = SKILLS_DIR / "_shared" / "native-mode.md"
 # skill directory -> the CLI command its "CLI mode" section must keep
 CLI_FALLBACKS = {
     "sprint": "meow run",
-    "meow-plan": "meow plan",
+    "plan": "meow plan",
     "review": "meow review",
-    "lint-fix": "meow run --lint-fix --report-only",
+    "lint": "meow run --lint-fix --report-only",
 }
 
 

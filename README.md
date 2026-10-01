@@ -299,9 +299,9 @@ skills become available in any project that also has a `.harness.toml`:
 |---|---|
 | `/meow:sprint "<feature>"` | `meow run "<feature>"` |
 | `/meow:sprint --jira [ISSUE-KEY]` | `meow run --jira [ISSUE-KEY]` |
-| `/meow:meow-plan "<feature>"` | `meow plan "<feature>"` |
+| `/meow:plan "<feature>"` | `meow plan "<feature>"` |
 | `/meow:review [...]` | `meow review [...]` — every source (prompt/`--jira`/`--gitlab`/`--branch`/`--plan-file`/`--review-file`), see "`meow review`" above |
-| `/meow:lint-fix` | `meow run --lint-fix --report-only`, then the skill fixes what it reports |
+| `/meow:lint` | `meow run --lint-fix --report-only`, then the skill fixes what it reports |
 
 ### Native mode vs CLI mode
 
@@ -356,9 +356,9 @@ meow/
 ├── skills/
 │   ├── _shared/native-mode.md           # protocol every skill follows in native mode
 │   ├── sprint/SKILL.md                  # /meow:sprint -> harness run (plain or --jira)
-│   ├── meow-plan/SKILL.md               # /meow:meow-plan -> harness plan
+│   ├── plan/SKILL.md                    # /meow:plan -> harness plan
 │   ├── review/SKILL.md                  # /meow:review -> harness review (every source)
-│   └── lint-fix/SKILL.md                # /meow:lint-fix -> harness run --lint-fix --report-only
+│   └── lint/SKILL.md                    # /meow:lint -> harness run --lint-fix --report-only
 ├── docs/
 │   ├── INTEGRATIONS.md                  # Jira/GitLab config, scheduling, error reference
 │   └── exec-plans/

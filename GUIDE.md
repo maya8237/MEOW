@@ -60,12 +60,17 @@ sprint — see `templates/harness.toml.example` for a worked example.
 
 meow also checks every `command` against the machine it's running on before
 any agent starts: a `.bat`/`.cmd` script or `cmd.exe`/`powershell.exe`
-invoked directly fails fast off Windows, and a `.sh` script or `bash`/`sh`/
-`zsh` invoked directly fails fast on native Windows (prefix it with
-`wsl <command>` if the project genuinely runs under WSL). This only catches
-that explicit, unambiguous mismatch — a command that simply isn't installed
-yet fails normally and clearly once the lint run actually reaches it, the
-same as always.
+invoked directly fails fast off Windows, and a bare `.sh` script fails fast
+on native Windows (Windows has no shebang support, so it can't exec a `.sh`
+file directly either way). `bash`/`sh`/`zsh` invoked explicitly (e.g. `bash
+scripts/lint.sh`) are different: they only fail fast on Windows if none of
+them actually resolve on PATH — Git for Windows puts a real `bash.exe`
+there, so a project that invokes it explicitly this way genuinely works on
+most Windows dev machines. Prefix a command with `wsl <command>` if the
+project genuinely runs under WSL instead. This only catches an explicit,
+unambiguous mismatch — a command that simply isn't installed yet fails
+normally and clearly once the lint run actually reaches it, the same as
+always.
 
 `[jira]`/`[jira.mcp]` (for `meow run --jira`/`meow review --jira`) and
 `[gitlab.mcp]` (for `meow review --gitlab`) are optional — see

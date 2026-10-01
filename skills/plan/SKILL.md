@@ -1,9 +1,9 @@
 ---
-name: meow-plan
+name: plan
 description: Have meow write a sprint plan (with a testable Sprint Contract) for a feature request, without implementing it. Runs natively in this Claude Code session by default. Use when the user wants a plan to review before any code gets written.
 ---
 
-# meow-plan
+# plan
 
 Writes a numbered task list and a Sprint Contract, implements nothing. Runs
 **natively** by default: you are the planner. Read

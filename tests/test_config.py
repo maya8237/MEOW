@@ -45,13 +45,18 @@ class WindowsOnlyMarkerTests(unittest.TestCase):
 
 
 class UnixOnlyMarkerTests(unittest.TestCase):
-    def test_shell_script_flagged_on_windows(self):
-        problem = _os_mismatch("lint.sh --check", "Windows")
+    def test_bare_shell_script_always_flagged_on_windows(self):
+        # Windows has no shebang support -- a bare .sh filename can't be
+        # exec'd directly even with a real bash on PATH, unlike `bash
+        # script.sh`, which explicitly names its interpreter.
+        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+            problem = _os_mismatch("lint.sh --check", "Windows")
         self.assertIsNotNone(problem)
         self.assertIn("Unix shell", problem)
 
-    def test_bash_flagged_on_windows(self):
-        problem = _os_mismatch("bash scripts/lint.sh", "Windows")
+    def test_bash_flagged_on_windows_when_no_interpreter_resolves(self):
+        with patch("meow.config.shutil.which", return_value=None):
+            problem = _os_mismatch("bash scripts/lint.sh", "Windows")
         self.assertIsNotNone(problem)
 
     def test_wsl_launcher_is_never_flagged_on_windows(self):
@@ -61,6 +66,46 @@ class UnixOnlyMarkerTests(unittest.TestCase):
     def test_shell_script_is_fine_on_linux_and_macos(self):
         self.assertIsNone(_os_mismatch("lint.sh --check", "Linux"))
         self.assertIsNone(_os_mismatch("bash scripts/lint.sh", "Darwin"))
+
+
+class GitBashExemptionTests(unittest.TestCase):
+    """bash/sh/zsh invoked explicitly (not a bare .sh filename) are only
+    flagged on Windows if no such interpreter actually resolves on PATH --
+    Git for Windows (an extremely common install) puts a real bash.exe
+    there, and a command that explicitly invokes it genuinely works."""
+
+    def test_bash_on_path_is_not_flagged_on_windows(self):
+        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+            self.assertIsNone(_os_mismatch("bash scripts/lint.sh", "Windows"))
+
+    def test_sh_on_path_is_not_flagged_on_windows(self):
+        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\sh.exe"):
+            self.assertIsNone(_os_mismatch("sh scripts/lint.sh", "Windows"))
+
+    def test_zsh_on_path_is_not_flagged_on_windows(self):
+        with patch("meow.config.shutil.which", return_value="/usr/bin/zsh"):
+            self.assertIsNone(_os_mismatch("zsh scripts/lint.sh", "Windows"))
+
+    def test_bash_not_on_path_is_still_flagged_on_windows(self):
+        with patch("meow.config.shutil.which", return_value=None):
+            problem = _os_mismatch("bash scripts/lint.sh", "Windows")
+        self.assertIsNotNone(problem)
+        self.assertIn("Unix shell", problem)
+
+    def test_bare_sh_extension_is_flagged_even_with_bash_on_path(self):
+        # `lint.sh` alone (no explicit `bash`/`sh` in front) still can't be
+        # exec'd directly by Windows, no matter what's on PATH.
+        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+            problem = _os_mismatch("lint.sh --check", "Windows")
+        self.assertIsNotNone(problem)
+
+    def test_path_is_only_consulted_on_windows(self):
+        # The PATH check is specifically about whether Windows can run a
+        # bash/sh/zsh command at all; it has nothing to say on a platform
+        # where these are never flagged in the first place.
+        with patch("meow.config.shutil.which", return_value=None) as which:
+            self.assertIsNone(_os_mismatch("bash scripts/lint.sh", "Linux"))
+        which.assert_not_called()
 
 
 class NoFalsePositiveTests(unittest.TestCase):

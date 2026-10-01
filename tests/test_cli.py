@@ -1188,6 +1188,47 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_lint_fix.assert_awaited_once_with(Path(".").resolve(), report_only=True)
 
     @staticmethod
+    def test_lint_fix_report_only_prints_the_report_when_problems_remain():
+        report_text = "$ ruff check\nF401 'os' imported but unused"
+        buffer = io.StringIO()
+        with (
+            patch("meow.cli._ensure_clean_tree"),
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_lint_fix",
+                new_callable=AsyncMock,
+                return_value=report_text,
+            ),
+            patch(
+                "sys.argv",
+                ["meow", "run", "--lint-fix", "--report-only", "--work-dir", "."],
+            ),
+            redirect_stdout(buffer),
+        ):
+            cli.cli_main()
+
+        assert buffer.getvalue().strip() == report_text
+
+    @staticmethod
+    def test_lint_fix_report_only_prints_clean_when_nothing_remains():
+        buffer = io.StringIO()
+        with (
+            patch("meow.cli._ensure_clean_tree"),
+            patch("meow.cli._boot_repo"),
+            patch(
+                "meow.cli.run_lint_fix", new_callable=AsyncMock, return_value=None
+            ),
+            patch(
+                "sys.argv",
+                ["meow", "run", "--lint-fix", "--report-only", "--work-dir", "."],
+            ),
+            redirect_stdout(buffer),
+        ):
+            cli.cli_main()
+
+        assert buffer.getvalue().strip() == "Lint is clean -- no issues found."
+
+    @staticmethod
     @patch("meow.cli._ensure_clean_tree")
     @patch("meow.cli._boot_repo")
     @patch("meow.cli.run_review_command", new_callable=AsyncMock)
