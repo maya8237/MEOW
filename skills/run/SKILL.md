@@ -1,9 +1,9 @@
 ---
-name: sprint
+name: run
 description: Run a full meow sprint for a feature request in the current project — plan it, implement it, then review and fix it in a loop until it passes. Optionally sourced from a Jira issue instead of typed text, built in a pushed branch. Runs natively in this Claude Code session by default. Use when the user wants meow to build a feature end to end.
 ---
 
-# sprint
+# run
 
 Plan -> implement -> review, in a loop, for one feature request -- either
 typed directly, or fetched from a Jira issue. By default this runs
@@ -78,3 +78,4 @@ in a venv, or `pipx install -e .`). Stream its progress (`[planner]`, `[generato
 `[reviewer]`) to the user. Report the plan and review file paths on success
 (or, for `--jira`, the printed `{"issue": ..., "branch": ...}` JSON line), or
 that it failed after `max_rounds` and where the last review is.
+
