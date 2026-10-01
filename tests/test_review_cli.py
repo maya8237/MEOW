@@ -4,13 +4,17 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from meow import review_cli
+from meow.orchestrator import ReviewTestResult
 from meow.review_cli import _validate_review_flags
 
 
 def _config(**overrides):
     base = {
         "models": {
-            "reviewer": "x", "review_fixer": "x", "explorer": "x", "generator": "x",
+            "reviewer": "x",
+            "review_fixer": "x",
+            "explorer": "x",
+            "generator": "x",
         },
         "lint": [],
         "docs_dir": "docs",
@@ -54,14 +58,20 @@ class ValidateReviewFlagsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not both"):
             _validate_review_flags("text", None, "link", None, None, None, None)
 
+    def test_test_requires_an_explicit_plan_file(self):
+        with self.assertRaisesRegex(ValueError, "explicit --plan-file"):
+            _validate_review_flags(None, None, None, None, None, None, None, test=True)
+
+    def test_test_rejects_other_review_sources_before_loading_config(self):
+        with self.assertRaisesRegex(ValueError, "explicit --plan-file"):
+            _validate_review_flags(None, "KEY", None, None, None, None, None, test=True)
+
 
 class GitlabFixRejectionTests(unittest.IsolatedAsyncioTestCase):
     async def test_gitlab_and_fix_together_raises_before_fetching(self):
         with (
             patch("meow.review_cli.load_config", return_value=_config()),
-            patch(
-                "meow.review_cli._gitlab_review", new=AsyncMock()
-            ) as mock_gitlab,
+            patch("meow.review_cli._gitlab_review", new=AsyncMock()) as mock_gitlab,
             self.assertRaisesRegex(ValueError, "--gitlab.*--fix"),
         ):
             await review_cli.run_review_command(
@@ -121,6 +131,51 @@ class PromptSourceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PlanSourceTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    async def test_explicit_plan_test_runs_once_in_report_only_mode():
+        with tempfile.TemporaryDirectory() as tmp:
+            working_dir = Path(tmp)
+            plan_file = working_dir / "feature.md"
+            sprint = object()
+            with (
+                patch("meow.review_cli.load_config", return_value=_config()),
+                patch("meow.review_cli.build_sprint", return_value=sprint),
+                patch(
+                    "meow.review_cli.review_then_test",
+                    new=AsyncMock(
+                        return_value=ReviewTestResult(
+                            "FAIL", "Tester feedback", "PASS", "FAIL"
+                        )
+                    ),
+                ) as gate,
+                patch("meow.review_cli._run_review_rounds", new=AsyncMock()) as rounds,
+            ):
+                await review_cli.run_review_command(
+                    working_dir, None, fix=False, plan_file=plan_file, test=True
+                )
+            gate.assert_awaited_once_with(sprint, plan_file, 1)
+            rounds.assert_not_awaited()
+
+    @staticmethod
+    async def test_explicit_plan_test_fix_uses_shared_round_budget():
+        with tempfile.TemporaryDirectory() as tmp:
+            working_dir = Path(tmp)
+            plan_file = working_dir / "feature.md"
+            with (
+                patch("meow.review_cli.load_config", return_value=_config()),
+                patch("meow.review_cli.build_sprint", return_value=object()),
+                patch(
+                    "meow.review_cli._run_review_rounds",
+                    new=AsyncMock(return_value=True),
+                ) as rounds,
+            ):
+                await review_cli.run_review_command(
+                    working_dir, None, fix=True, plan_file=plan_file, test=True
+                )
+            rounds.assert_awaited_once_with(
+                rounds.await_args.args[0], plan_file, test=True
+            )
+
     async def test_explicit_plan_file_report_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             working_dir = Path(tmp)
@@ -405,9 +460,7 @@ class ResumeReviewFileTests(unittest.IsolatedAsyncioTestCase):
             )
             with (
                 patch("meow.review_cli.load_config", return_value=_config()),
-                patch(
-                    "meow.orchestrator.ReviewFixAgent"
-                ) as mock_fixer_cls,
+                patch("meow.orchestrator.ReviewFixAgent") as mock_fixer_cls,
                 patch(
                     "meow.orchestrator.ReviewerAgent.review_prompt",
                     new=AsyncMock(return_value=("PASS", "STATUS: PASS\n")),

@@ -26,7 +26,9 @@ Run (from inside a project repo):        meow run "Add CSV export"
 """
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from meow.agents.base import ProjectContext
 from meow.agents.explorer import make_explorer_agent
@@ -38,6 +40,7 @@ from meow.agents.reviewer import (
     run_prompt_reviewer,
     run_reviewer,
 )
+from meow.agents.tester import TesterAgent
 from meow.config import load_config
 from meow.logging import get_logger
 from meow.plan_files import (
@@ -46,6 +49,7 @@ from meow.plan_files import (
     _latest_review_file,
 )
 from meow.sprint import Sprint, build_sprint
+from meow.test_runner import TesterSetupError, prepared_test_stage
 from meow.worktree import _resolve_working_dir
 
 assert run_prompt_reviewer  # re-exported for compatibility
@@ -55,6 +59,51 @@ assert _detect_review_flavor and _latest_plan_file  # re-exported for compatibil
 assert _latest_review_file  # re-exported for compatibility
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class ReviewTestResult:
+    status: Literal["PASS", "FAIL"]
+    feedback: str
+    reviewer_status: str
+    tester_status: str | None = None
+
+
+async def review_then_test(
+    sprint: Sprint,
+    plan_file: Path,
+    round_num: int,
+    *,
+    initial_verdict: tuple[str, str] | None = None,
+) -> ReviewTestResult:
+    """Run review and deterministic tests, then exploratory testing on PASS."""
+    logger.info("review_test_gate_started", round=round_num, plan_file=str(plan_file))
+    if initial_verdict is None:
+        review_status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
+    else:
+        review_status, verdict = initial_verdict
+    if review_status != "PASS":
+        label = "Lint" if "Blocking lint failures" in verdict else "Reviewer"
+        return ReviewTestResult("FAIL", f"{label} feedback:\n{verdict}", review_status)
+
+    try:
+        async with prepared_test_stage(
+            sprint.active_working_dir(), sprint.config
+        ) as evidence:
+            tester_status, tester_verdict = await TesterAgent(sprint).test_plan(
+                plan_file, evidence
+            )
+    except TesterSetupError as exc:
+        report = plan_file.with_name(plan_file.stem + "-test.md")
+        raise RuntimeError(
+            f"Tester stage setup failed for {plan_file}: {exc}. "
+            f"Tester report path: {report}"
+        ) from exc
+    if tester_status != "PASS" or evidence.blocking_failed:
+        return ReviewTestResult(
+            "FAIL", f"Tester feedback:\n{tester_verdict}", review_status, tester_status
+        )
+    return ReviewTestResult("PASS", tester_verdict, review_status, tester_status)
 
 
 class PlanNotApprovedError(RuntimeError):
@@ -98,7 +147,8 @@ def _prepare_sprint(
 # Orchestration
 # ---------------------------------------------------------------------------
 
-async def _run_rounds(sprint: Sprint, plan_file: Path) -> bool:
+
+async def _run_rounds(sprint: Sprint, plan_file: Path, *, test: bool = False) -> bool:
     """Loop generator -> reviewer. True if the sprint passed."""
     max_rounds = sprint.config["max_rounds"]
 
@@ -113,7 +163,11 @@ async def _run_rounds(sprint: Sprint, plan_file: Path) -> bool:
             logger.info(
                 "reviewer_round_started", round=round_num, max_rounds=max_rounds
             )
-            status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
+            if test:
+                gate = await review_then_test(sprint, plan_file, round_num)
+                status, verdict = gate.status, gate.feedback
+            else:
+                status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
             summary = "\n".join(
                 line.strip()
                 for line in verdict.splitlines()
@@ -130,7 +184,9 @@ async def _run_rounds(sprint: Sprint, plan_file: Path) -> bool:
                 return True
 
             instruction = (
-                "The reviewer found issues. Fix them, then stop. "
+                f"Fix the findings, then stop.\n{verdict}"
+                if test
+                else "The reviewer found issues. Fix them, then stop. "
                 f"Reviewer feedback:\n{verdict}"
             )
 
@@ -148,12 +204,13 @@ def _review_summary(verdict: str) -> str | None:
     )
 
 
-async def _run_review_rounds(
+async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-arguments, too-many-branches, too-many-statements]
     sprint: Sprint,
     plan_file: Path,
     *,
     initial_verdict: tuple[str, str] | None = None,
     focus: str | None = None,
+    test: bool = False,
 ) -> bool:
     """Loop reviewer -> generator, reviewing the existing code first.
 
@@ -169,7 +226,12 @@ async def _run_review_rounds(
     """
     max_rounds = sprint.config["max_rounds"]
 
-    if initial_verdict is None:
+    if test:
+        gate = await review_then_test(
+            sprint, plan_file, 1, initial_verdict=initial_verdict
+        )
+        status, verdict = gate.status, gate.feedback
+    elif initial_verdict is None:
         logger.info("reviewer_round_started", round=1, max_rounds=max_rounds)
         status, verdict = await ReviewerAgent(sprint).review_plan(
             plan_file, focus=focus
@@ -200,9 +262,13 @@ async def _run_review_rounds(
             logger.info(
                 "reviewer_round_started", round=round_num, max_rounds=max_rounds
             )
-            status, verdict = await ReviewerAgent(sprint).review_plan(
-                plan_file, focus=focus
-            )
+            if test:
+                gate = await review_then_test(sprint, plan_file, round_num)
+                status, verdict = gate.status, gate.feedback
+            else:
+                status, verdict = await ReviewerAgent(sprint).review_plan(
+                    plan_file, focus=focus
+                )
             summary = "\n".join(
                 line.strip()
                 for line in verdict.splitlines()
@@ -219,7 +285,9 @@ async def _run_review_rounds(
                 return True
 
             instruction = (
-                "The reviewer found issues. Fix them, then stop. "
+                f"Fix the findings, then stop.\n{verdict}"
+                if test
+                else "The reviewer found issues. Fix them, then stop. "
                 f"Reviewer feedback:\n{verdict}"
             )
 
