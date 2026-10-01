@@ -98,7 +98,9 @@ async def _fetch_issue(
         data = json.loads(output_file.read_text(encoding="utf-8"))
 
     missing = [
-        field for field in ("key", "summary", "description") if not data.get(field)
+        field
+        for field in ("key", "summary", "description")
+        if field not in data or data[field] is None
     ]
     if missing:
         raise RuntimeError(f"Jira issue-fetcher output is missing {missing}: {data}")

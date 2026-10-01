@@ -80,7 +80,9 @@ async def _fetch_merge_request(
         data = json.loads(output_file.read_text(encoding="utf-8"))
 
     missing = [
-        field for field in ("title", "description", "diff") if not data.get(field)
+        field
+        for field in ("title", "description", "diff")
+        if field not in data or data[field] is None
     ]
     if missing:
         raise RuntimeError(

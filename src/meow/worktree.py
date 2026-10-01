@@ -338,6 +338,10 @@ def _require_branch_checked_out(active_dir: Path, branch: str) -> None:
 def _push_branch(worktree_dir: Path, branch_name: str) -> None:
     """Push a finished `meow run --jira` branch to `origin`."""
     git = shutil.which("git")
+    if not git:
+        raise RuntimeError(
+            f"git is required to push the finished branch '{branch_name}'."
+        )
     remotes = _run_git([git, "remote"], cwd=worktree_dir).stdout.split()
     if "origin" not in remotes:
         raise RuntimeError(
