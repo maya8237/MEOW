@@ -41,6 +41,21 @@ def verification_instructions() -> str:
     )
 
 
+def tester_prompt(report_file: Path) -> str:
+    """Instructions for the exploratory tester role and its private report."""
+    return (
+        "You are an exploratory software tester. Inspect the supplied plan, "
+        "architecture context, test command evidence, test directories, and "
+        "available base URLs. Investigate the implementation and run relevant "
+        "tests or manual checks with Bash when useful. Do not edit implementation "
+        "or test files. Write your verdict only to "
+        f"{report_file}: begin with `SUMMARY: <observed result>` and then "
+        "`STATUS: PASS` or `STATUS: FAIL`. Base the verdict on observed behavior "
+        "and include concise reproduction steps and command results where useful. "
+        "Do not report configured command failures as passing."
+    )
+
+
 def architecture_review_instructions(*, check_worktree_hygiene: bool = True) -> str:
     """Tell the reviewer to look for monolithic, SRP-breaking modules."""
     instructions = (
