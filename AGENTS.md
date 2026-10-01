@@ -90,9 +90,9 @@ and `SUMMARY:`/`STATUS:` verdict format. Design:
 This repo is also a Claude Code plugin (`.claude-plugin/plugin.json` +
 `skills/`), so the same operations are available as skills when meow is
 installed as a plugin in a project: `/meow:sprint` (plain build, or
-`--jira`-sourced), `/meow:meow-plan`, `/meow:review` (every source), and
-`/meow:lint-fix`. Each is a thin wrapper that shells out to the `meow` CLI
-above — see `skills/*/SKILL.md` for what each one runs. `lint-fix` is the
+`--jira`-sourced), `/meow:plan`, `/meow:review` (every source), and
+`/meow:lint`. Each is a thin wrapper that shells out to the `meow` CLI
+above — see `skills/*/SKILL.md` for what each one runs. `lint` is the
 odd one out: it runs `meow run --lint-fix --report-only` and then does the
 fixing itself in the calling session, rather than having meow spin up its
 own agent the way every other skill here does.

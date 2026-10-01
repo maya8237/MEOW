@@ -1,9 +1,9 @@
 ---
-name: lint-fix
+name: lint
 description: Run the current project's configured lint commands and fix whatever they report, using your own Edit/Bash tools. Use when the user wants lint issues found and fixed in the current session, not via a separate meow agent run.
 ---
 
-# lint-fix
+# lint
 
 Runs the project's `[[lint]]` commands and has **you** — this session — fix what
 they report. This skill was already session-native; native mode now gets its
@@ -23,7 +23,7 @@ your work and racing your edits.
 3. Auto-fix pass, then check: `meow native lint --fix --all-blocking --working-dir "<project-path>"`.
    `--all-blocking` fixes every configured command unconditionally, matching
    `meow run --lint-fix`'s own CLI behavior -- `gate` only controls what fails a
-   *review*, not what lint-fix leaves alone.
+   *review*, not what this skill leaves alone.
    - `"clean": true` -> report that nothing is left and stop.
    - Otherwise each entry in `blocking` is a `$ <command>` block of raw linter
      output. Fix each yourself with the smallest edit that resolves it, without

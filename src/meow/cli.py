@@ -366,7 +366,9 @@ def _add_plan_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _dispatch_lint_fix(args, working_dir: Path) -> None:
-    asyncio.run(run_lint_fix(working_dir, report_only=args.report_only))
+    report = asyncio.run(run_lint_fix(working_dir, report_only=args.report_only))
+    if args.report_only:
+        print(report if report else "Lint is clean -- no issues found.")
 
 
 def _dispatch_jira_build(args, working_dir: Path) -> None:

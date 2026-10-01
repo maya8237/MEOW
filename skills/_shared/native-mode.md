@@ -26,7 +26,7 @@ and stop; do not guess at a venv path. Flags shared by every command:
 | `prepare [--name N] [--no-worktree] [--source-branch B] [--branch BR] [--allow-dirty]` | Startup guards + worktree; returns `active_dir`, `docs_dir`, `plan_file`, `review_file`, `max_rounds`, `models`, `lint`, `rules` |
 | `latest-plan` / `latest-review` | Newest plan / review file in `docs_dir` (`latest-review` also gives its `flavor`: plan, prompt or gitlab) |
 | `verdict FILE` | `{status: PASS\|FAIL, summary}` of a review file |
-| `lint [--file F] [--fix] [--all-blocking]` | Per-file (auto-fixing) or project-wide lint run. `--all-blocking` ignores `gate` and treats every command as blocking (what `lint-fix` needs; everything else wants the default gate/informational split) |
+| `lint [--file F] [--fix] [--all-blocking]` | Per-file (auto-fixing) or project-wide lint run. `--all-blocking` ignores `gate` and treats every command as blocking (what the `lint` skill needs; everything else wants the default gate/informational split) |
 | `round PLAN [--reset\|--show]` | On-disk round counter; default advances it |
 | `prompt ROLE [--plan F] [--focus T] [--worktree]` | Exact SDK system prompt (+ task message, model) for a role |
 | `push BRANCH` | Push a named branch to origin |
