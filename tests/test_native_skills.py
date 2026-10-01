@@ -11,7 +11,7 @@ SHARED = SKILLS_DIR / "_shared" / "native-mode.md"
 
 # skill directory -> the CLI command its "CLI mode" section must keep
 CLI_FALLBACKS = {
-    "sprint": "meow run",
+    "run": "meow run",
     "plan": "meow plan",
     "review": "meow review",
     "lint": "meow run --lint-fix --report-only",
@@ -62,7 +62,7 @@ class SkillStructureTests(unittest.TestCase):
             path.parent.name for path in SKILLS_DIR.glob("*/SKILL.md")
         }
 
-        self.assertEqual(actual, set(CLI_FALLBACKS))
+        self.assertEqual(actual, set(CLI_FALLBACKS) | {"onboard"})
 
     def test_each_skill_keeps_native_and_cli_sections(self):
         for name, command in CLI_FALLBACKS.items():

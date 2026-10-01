@@ -21,7 +21,6 @@ from meow.plan_files import (
     _latest_plan_file,
     _latest_review_file,
 )
-from meow.rules import load_rules
 from meow.worktree import (
     _boot_repo,
     _ensure_branch_worktree,
@@ -30,8 +29,6 @@ from meow.worktree import (
     _require_branch_checked_out,
     _resolve_working_dir,
 )
-
-RULE_ROLES = ("explorer", "planner", "generator", "reviewer")
 
 
 @dataclass(frozen=True)
@@ -122,9 +119,6 @@ def prepare(working_dir: Path, options: PrepareOptions) -> dict:
         "lint_timeout": config["lint_timeout"],
         "models": config["models"],
         "lint": _lint_plan(config["lint"]),
-        "rules": {
-            role: load_rules(active_dir, role) for role in RULE_ROLES
-        },
     }
 
 

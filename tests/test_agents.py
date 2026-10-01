@@ -720,7 +720,7 @@ class RulesInjectionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(without_rules.system_prompt, "base prompt")
 
-    def test_options_appends_global_and_role_rules_for_the_given_role(self):
+    def test_options_does_not_inject_rules_md(self):
         self._write_rules(
             "Write tests first.\n\n## Reviewer\nUse Chrome DevTools to test "
             "edge cases.\n"
@@ -732,11 +732,9 @@ class RulesInjectionTests(unittest.IsolatedAsyncioTestCase):
             role="reviewer",
         )
 
-        self.assertTrue(options.system_prompt.startswith("base prompt"))
-        self.assertIn("Write tests first.", options.system_prompt)
-        self.assertIn("Use Chrome DevTools", options.system_prompt)
+        self.assertEqual(options.system_prompt, "base prompt")
 
-    def test_options_omits_another_roles_section(self):
+    def test_options_ignores_role_sections_in_rules_md(self):
         self._write_rules("## Reviewer\nUse Chrome DevTools to test edge cases.\n")
 
         options = Agent(self.context).options(
@@ -747,17 +745,17 @@ class RulesInjectionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(options.system_prompt, "base prompt")
 
-    def test_explorer_definition_includes_global_and_role_rules(self):
+    def test_explorer_definition_does_not_inject_rules_md(self):
         self._write_rules(
             "Write tests first.\n\n## Explorer\nAlways check test coverage.\n"
         )
 
         definition = ExplorerAgent(self.context).definition()
 
-        self.assertIn("Write tests first.", definition.prompt)
-        self.assertIn("Always check test coverage.", definition.prompt)
+        self.assertNotIn("Write tests first.", definition.prompt)
+        self.assertNotIn("Always check test coverage.", definition.prompt)
 
-    async def test_planner_explorer_subagent_definition_carries_rules_too(self):
+    async def test_planner_explorer_subagent_definition_ignores_rules_md(self):
         self._write_rules("## Explorer\nAlways check test coverage.\n")
         observed = {}
 
@@ -777,7 +775,7 @@ class RulesInjectionTests(unittest.IsolatedAsyncioTestCase):
         with patch("meow.agents.base.query", fake_query):
             await PlannerAgent(self.context).run("ship-it", "Add CSV export")
 
-        self.assertIn(
+        self.assertNotIn(
             "Always check test coverage.",
             observed["options"].agents["explorer"].prompt,
         )
