@@ -64,11 +64,17 @@ for the headless/separate-process run.
 
 ## CLI mode
 
+When the user requests `--test`, use CLI mode so MEOW owns configured test
+commands and keeps configured development servers running throughout the
+tester agent. Pass `--test` through to `meow run` (including Jira and
+`--resume-at review` flows). Without `--test`, preserve native mode.
+
 Runs `meow run` (separate Agent SDK sessions, works headless). From the project root:
 
 ```bash
 meow run "<feature request>" --name "<generated-feature-name>" --working-dir "<project-path>"
 meow run --jira [ISSUE-KEY] --working-dir "<project-path>"   # Jira-sourced, pushed branch
+meow run "<feature request>" --name "<generated-feature-name>" --test --working-dir "<project-path>"
 ```
 
 Add `--no-worktree` to operate in the main repo (name then optional; not

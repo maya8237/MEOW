@@ -139,6 +139,12 @@ locally first). Resuming from a review file always fixes (there's no
 
 ## CLI mode
 
+When the user requests tester mode for an explicit plan, pass `--test` to
+`meow review --plan-file PATH --test` (optionally with `--fix`). This uses the
+CLI orchestration so configured servers remain available to the tester agent.
+Tester mode is not available for implicit plan discovery or other review
+sources. Without `--test`, keep the native flow above.
+
 ```bash
 meow review "<prompt>" --working-dir "<project-path>"              # prompt source, report-only
 meow review --fix "<prompt>" --working-dir "<project-path>"        # prompt source, loop to max_rounds
@@ -146,6 +152,7 @@ meow review --jira [KEY] [--fix] --working-dir "<project-path>"
 meow review --gitlab "<mr-url>" --working-dir "<project-path>"     # always report-only
 meow review --branch "<branch>" --target "<target>" [--fix] [--no-worktree] --working-dir "<project-path>"
 meow review --plan-file "<path>" [--fix] --working-dir "<project-path>"   # omit for auto-discovery
+meow review --plan-file "<path>" --test [--fix] --working-dir "<project-path>"
 meow review --review-file "<path>" ["<focus prompt>"] --working-dir "<project-path>"  # always fixes
 ```
 
