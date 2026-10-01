@@ -42,21 +42,6 @@ def _add_prepare(sub) -> None:
         "--no-worktree", "-n", dest="no_worktree", action="store_true",
         help="Work in the project directory instead of a .worktrees entry.",
     )
-
-
-def _add_verify(sub) -> None:
-    parser = sub.add_parser(
-        "verify",
-        help=(
-            "Validate and report the project's MEOW configuration "
-            "without changing files."
-        ),
-    )
-    _add_dirs(parser)
-    parser.add_argument(
-        "--no-lint", action="store_true",
-        help="Validate configuration only; skip the configured lint checks.",
-    )
     parser.add_argument(
         "--source-branch", "--from", "-b", dest="source_branch", default=None,
         help="Branch a fresh worktree is created from.",
@@ -77,6 +62,21 @@ def _add_verify(sub) -> None:
     parser.add_argument(
         "--allow-dirty", dest="allow_dirty", action="store_true",
         help="Skip the uncommitted-changes check (read-only flows like plan).",
+    )
+
+
+def _add_verify(sub) -> None:
+    parser = sub.add_parser(
+        "verify",
+        help=(
+            "Validate and report the project's MEOW configuration "
+            "without changing files."
+        ),
+    )
+    _add_dirs(parser)
+    parser.add_argument(
+        "--no-lint", action="store_true",
+        help="Validate configuration only; skip the configured lint checks.",
     )
 
 
