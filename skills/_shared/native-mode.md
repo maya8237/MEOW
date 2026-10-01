@@ -23,7 +23,8 @@ and stop; do not guess at a venv path. Flags shared by every command:
 
 | Command | Purpose |
 |---|---|
-| `prepare [--name N] [--no-worktree] [--source-branch B] [--branch BR] [--allow-dirty]` | Startup guards + worktree; returns `active_dir`, `docs_dir`, `plan_file`, `review_file`, `max_rounds`, `models`, `lint`, `rules` |
+| `prepare [--name N] [--no-worktree] [--source-branch B] [--branch BR] [--allow-dirty]` | Startup guards + worktree; returns `active_dir`, `docs_dir`, `plan_file`, `review_file`, `max_rounds`, `models`, `lint` |
+| `verify [--no-lint]` | Validate config and report lint, tester, and integration readiness without starting agents, servers, or MCP connections |
 | `latest-plan` / `latest-review` | Newest plan / review file in `docs_dir` (`latest-review` also gives its `flavor`: plan, prompt or gitlab) |
 | `verdict FILE` | `{status: PASS\|FAIL, summary}` of a review file |
 | `lint [--file F] [--fix] [--all-blocking]` | Per-file (auto-fixing) or project-wide lint run. `--all-blocking` ignores `gate` and treats every command as blocking (what the `lint` skill needs; everything else wants the default gate/informational split) |
@@ -33,6 +34,19 @@ and stop; do not guess at a venv path. Flags shared by every command:
 
 `prompt` roles: `planner`, `generator`, `explorer`, `reviewer-plan`,
 `reviewer-prompt`, `reviewer-mr`, `review-fixer`, `lint-fixer`.
+
+`verify` reports tester test commands, dev-server and MCP launcher readiness,
+test directories, and architecture document availability. `ready_unchecked`
+means the local launcher exists; it does not prove that tests pass or a remote
+connection works. Secret environment values are never included. Missing
+architecture files are optional context.
+
+## Tester mode
+
+`/meow:run --test` and `/meow:review --plan-file PATH --test` use the matching
+CLI flow so configured servers stay alive during the tester agent's run.
+Without `--test`, native skill behavior is unchanged. Review accepts `--test`
+only with an explicit plan file and rejects other sources and `--review-file`.
 
 ## Roles
 

@@ -23,10 +23,11 @@ other callers keep a single `from meow import native` import and a stable
 """
 
 import os
+import shlex
 import shutil
 from pathlib import Path
 
-from meow.config import load_config, tomllib
+from meow.config import load_config, resolve_command_cwd, tomllib
 from meow.native_lint import LintOptions, lint
 from meow.native_prepare import (
     PrepareOptions,
@@ -90,6 +91,7 @@ def verify(
             for command in config["lint"]
         ],
         "models": config["models"],
+        "tester": _verify_tester(config, active_dir or working_dir),
         "integrations": integrations,
     }
     if run_lint:
@@ -100,6 +102,85 @@ def verify(
         )
         result["lint_result"] = lint_result
         result["lint_passed"] = bool(lint_result.get("clean", False))
+    return result
+
+
+def _verify_tester(config: dict, active_dir: Path) -> dict:
+    """Report tester config and local launch prerequisites without execution."""
+    tester = config["tester"]
+    tests = [_verify_command(item, active_dir) for item in tester["tests"]]
+    servers = [_verify_command(item, active_dir) for item in tester["dev_server"]]
+    mcp = []
+    for entry in tester["mcp"]:
+        command = entry["command"]
+        mcp.append({
+            "name": entry["name"],
+            "command": command,
+            "args": entry["args"],
+            "status": (
+                "ready_unchecked" if shutil.which(command) else "command_unavailable"
+            ),
+        })
+
+    architecture_paths = [
+        active_dir / "docs" / "ARCHITECTURE.md",
+        active_dir / "ARCHITECTURE.md",
+        *(active_dir / path for path in tester["architecture_files"]),
+    ]
+    unique_paths = list(dict.fromkeys(path.resolve() for path in architecture_paths))
+    architecture = []
+    for path in unique_paths:
+        exists = path.is_file()
+        architecture.append({
+            "path": str(path),
+            "exists": exists,
+            "readable": exists and os.access(path, os.R_OK),
+        })
+    return {
+        "configured": bool(
+            tests
+            or servers
+            or mcp
+            or tester["test_dirs"]
+            or tester["base_url"]
+            or tester["architecture_files"]
+        ),
+        "tests": tests,
+        "dev_servers": servers,
+        "mcp": mcp,
+        "test_dirs": [str(path) for path in tester["test_dirs"]],
+        "base_url": tester["base_url"],
+        "architecture": architecture,
+        "architecture_available": any(item["readable"] for item in architecture),
+        "connection_tested": False,
+    }
+
+
+def _verify_command(command, active_dir: Path) -> dict:
+    """Check command cwd and launcher without starting the command."""
+    try:
+        cwd = resolve_command_cwd(active_dir, command.cwd)
+        executable = shlex.split(command.command, posix=os.name != "nt")[0]
+        available = bool(shutil.which(executable))
+        status = "ready_unchecked" if available else "command_unavailable"
+    except (OSError, ValueError) as exc:
+        cwd = active_dir / command.cwd
+        available = False
+        status = "invalid_cwd"
+        error = str(exc)
+    else:
+        error = None
+    result = {
+        "cwd": str(cwd),
+        "command": command.command,
+        "args": list(command.args),
+        "launcher_available": available,
+        "status": status,
+    }
+    if error:
+        result["error"] = error
+    if hasattr(command, "gate"):
+        result["gate"] = command.gate
     return result
 
 

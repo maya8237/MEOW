@@ -78,6 +78,25 @@ class SkillStructureTests(unittest.TestCase):
     def test_shared_protocol_exists(self):
         self.assertTrue(SHARED.is_file())
 
+    def test_test_mode_routes_run_and_explicit_plan_review_through_cli(self):
+        run = (SKILLS_DIR / "run" / "SKILL.md").read_text(encoding="utf-8")
+        review = (SKILLS_DIR / "review" / "SKILL.md").read_text(encoding="utf-8")
+        shared = SHARED.read_text(encoding="utf-8")
+
+        self.assertIn("--test", run)
+        self.assertIn("CLI mode", run)
+        self.assertIn("meow review --plan-file PATH --test", review)
+        self.assertIn("Without `--test`, keep the native flow", review)
+        self.assertIn("configured servers stay alive", shared)
+
+    def test_onboarding_treats_tester_as_optional_and_no_longer_offers_rules_file(self):
+        onboard = (SKILLS_DIR / "onboard" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("Tester mode", onboard)
+        self.assertIn("yes/no/later", onboard)
+        self.assertIn("Do not offer to create", onboard)
+        self.assertNotIn("`docs/RULES.md` is optional", onboard)
+
     def test_every_cited_native_command_exists(self):
         known = native_commands()
         cited = set()
