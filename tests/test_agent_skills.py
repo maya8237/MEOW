@@ -20,6 +20,7 @@ def make_sprint(tmp_path: Path) -> Sprint:
             "lint": [],
             "docs_dir": "docs/exec-plans/active",
             "max_rounds": 1,
+            "lint_timeout": 60,
         },
         explorer=explorer.make_explorer_agent(
             {"models": {"explorer": "test-model"}}, tmp_path
