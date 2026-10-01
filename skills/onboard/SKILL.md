@@ -84,9 +84,13 @@ part of the user's project.
 
 ## 3. Verify and report
 
-Run `meow --help` and each configured lint check from the project root. Confirm
-the configuration parses using an available MEOW command or a non-mutating
-configuration check. Do not launch a feature sprint as a setup smoke test unless
+Run `meow --help`, then run `meow native verify --working-dir <project-root>`
+from the MEOW installation. Require a successful exit and `"valid": true` in
+its JSON output before considering `.harness.toml` valid. By default this also
+runs the configured blocking lint gates and reports their result in
+`lint_result`/`lint_passed`; inspect that output and report any failing check.
+Run any configured non-gate lint check separately. Do not launch a feature
+sprint as a setup smoke test unless
 the user explicitly asks; it can modify the project. If a check cannot run,
 report the exact blocker and leave the setup files available for correction.
 

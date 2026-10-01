@@ -24,6 +24,7 @@ other callers keep a single `from meow import native` import and a stable
 
 from pathlib import Path
 
+from meow.config import load_config
 from meow.native_lint import LintOptions, lint
 from meow.native_prepare import (
     PrepareOptions,
@@ -48,9 +49,47 @@ __all__ = [
     "role_prompt",
     "round_state",
     "verdict",
+    "verify",
 ]
 
 
 def push(active_dir: Path, branch: str) -> dict:
     _push_branch(active_dir, branch)
     return {"branch": branch, "pushed": True}
+
+
+def verify(
+    working_dir: Path,
+    active_dir: Path | None = None,
+    *,
+    run_lint: bool = True,
+) -> dict:
+    """Validate .harness.toml and run its blocking gates read-only."""
+    config = load_config(working_dir)
+    result = {
+        "valid": True,
+        "project_dir": str(working_dir.resolve()),
+        "config_file": str((working_dir / ".harness.toml").resolve()),
+        "docs_dir": config["docs_dir"],
+        "max_rounds": config["max_rounds"],
+        "lint_timeout": config["lint_timeout"],
+        "lint": [
+            {
+                "command": command.command,
+                "fix_flag": command.fix_flag,
+                "per_file": command.per_file,
+                "gate": command.gate,
+            }
+            for command in config["lint"]
+        ],
+        "models": config["models"],
+    }
+    if run_lint:
+        lint_result = lint(
+            working_dir,
+            active_dir or working_dir,
+            LintOptions(all_blocking=False),
+        )
+        result["lint_result"] = lint_result
+        result["lint_passed"] = bool(lint_result.get("clean", False))
+    return result
