@@ -1803,5 +1803,58 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 1)
 
 
+class FeatureNameRequirementTests(unittest.TestCase):
+    """No test anywhere exercised _validate_feature_name_requirement before
+    -- found while adversarially checking worktree-mode edge cases. Confirmed
+    for real first: `meow run "..." --working-dir <path already a linked
+    worktree>` (no --name, no --no-worktree) demanded --name anyway, even
+    though _resolve_working_dir would have silently ignored it and used that
+    directory in place regardless -- a --name with no effect, required for
+    no reason."""
+
+    def test_plain_run_without_name_or_no_worktree_is_rejected(self):
+        with (
+            patch("meow.cli._is_linked_worktree", return_value=False),
+            patch("meow.cli._ensure_clean_tree"),
+            patch("sys.argv", ["meow", "run", "do it", "--work-dir", "."]),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            cli.cli_main()
+
+        self.assertEqual(ctx.exception.code, 2)
+
+    @staticmethod
+    def test_plain_run_with_no_worktree_flag_does_not_require_a_name():
+        with (
+            patch("meow.cli._is_linked_worktree", return_value=False),
+            patch("meow.cli._ensure_clean_tree"),
+            patch("meow.cli._boot_repo"),
+            patch("meow.cli.run_sprint", new_callable=AsyncMock) as mock_run,
+            patch(
+                "sys.argv",
+                ["meow", "run", "do it", "--no-worktree", "--work-dir", "."],
+            ),
+        ):
+            cli.cli_main()
+
+        mock_run.assert_awaited_once()
+
+    @staticmethod
+    def test_working_dir_already_a_linked_worktree_does_not_require_a_name():
+        # The fix: --working-dir pointing at an existing worktree means
+        # "work here", same as --no-worktree would, so --name must not be
+        # demanded just because that flag itself wasn't also passed.
+        with (
+            patch("meow.cli._is_linked_worktree", return_value=True),
+            patch("meow.cli._ensure_clean_tree"),
+            patch("meow.cli._boot_repo"),
+            patch("meow.cli.run_sprint", new_callable=AsyncMock) as mock_run,
+            patch("sys.argv", ["meow", "run", "do it", "--work-dir", "."]),
+        ):
+            cli.cli_main()
+
+        mock_run.assert_awaited_once()
+
+
 if __name__ == "__main__":
     unittest.main()
