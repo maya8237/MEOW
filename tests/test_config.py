@@ -7,6 +7,7 @@ from meow.config import (
     LintCommand,
     _os_mismatch,
     _program_name,
+    _validate_max_rounds,
     _validate_os_compatibility,
     load_config,
 )
@@ -174,6 +175,53 @@ class LoadConfigOsValidationTests(unittest.TestCase):
             )
             config = load_config(working_dir)  # no raise, on whatever host OS
             self.assertEqual(config["lint"][0].command, "ruff check")
+
+
+class ValidateMaxRoundsTests(unittest.TestCase):
+    """max_rounds <= 0 doesn't crash in any round-loop shape -- every one
+    computes an empty range() and falls straight through to "didn't pass"
+    -- but that means a real planner call (and sometimes a wasted
+    generator/fixer session start) runs first, only to report a confusing
+    "did not pass after 0 rounds" with no round ever actually attempted.
+    Confirmed via a real `meow run` with max_rounds=0: the planner ran for
+    real, then the sprint failed immediately with the generator never
+    invoked. These catch it at config load instead."""
+
+    def test_rejects_zero(self):
+        with self.assertRaisesRegex(ValueError, "max_rounds"):
+            _validate_max_rounds({"max_rounds": 0})
+
+    def test_rejects_negative(self):
+        with self.assertRaisesRegex(ValueError, "max_rounds"):
+            _validate_max_rounds({"max_rounds": -1})
+
+    def test_rejects_a_boolean(self):
+        # bool is a subclass of int in Python -- True would otherwise pass
+        # an isinstance(..., int) check and even satisfy >= 1.
+        with self.assertRaisesRegex(ValueError, "max_rounds"):
+            _validate_max_rounds({"max_rounds": True})
+
+    def test_rejects_a_non_integer(self):
+        with self.assertRaisesRegex(ValueError, "max_rounds"):
+            _validate_max_rounds({"max_rounds": "8"})
+
+    @staticmethod
+    def test_accepts_one():
+        _validate_max_rounds({"max_rounds": 1})  # no raise
+
+    @staticmethod
+    def test_accepts_the_default():
+        _validate_max_rounds({"max_rounds": 8})  # no raise
+
+    def test_load_config_rejects_max_rounds_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            working_dir = Path(tmp)
+            (working_dir / ".harness.toml").write_text(
+                'max_rounds = 0\n[[lint]]\ncommand = "ruff check"\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "max_rounds"):
+                load_config(working_dir)
 
 
 if __name__ == "__main__":
