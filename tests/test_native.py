@@ -64,6 +64,7 @@ class PrepareTests(unittest.TestCase):
             self.assertTrue(result["review_file"].endswith("feat-review.md"))
             self.assertEqual(result["max_rounds"], 2)
             self.assertEqual(len(result["lint"]), 2)
+            self.assertNotIn("rules", result)
             self.assertIn(".worktrees/", (root / ".gitignore").read_text())
 
     def test_dirty_tree_is_refused_like_the_cli(self):
@@ -358,7 +359,7 @@ class PromptTests(unittest.TestCase):
             self.assertEqual(result["query"], f"Review {plan}")
             self.assertTrue(result["review_file"].endswith("feat-review.md"))
 
-    def test_rules_are_appended(self):
+    def test_rules_md_is_not_appended(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
             (root / "docs" / "RULES.md").write_text("global\n## reviewer\nbe strict\n")
@@ -366,7 +367,7 @@ class PromptTests(unittest.TestCase):
 
             result = native.role_prompt(root, root, "reviewer-plan", plan_file=plan)
 
-            self.assertIn("be strict", result["system_prompt"])
+            self.assertNotIn("be strict", result["system_prompt"])
 
     def test_generator_needs_a_plan(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -47,11 +47,15 @@ Offer the options that fit the project and request:
 - **GitLab** — configure GitLab merge request review (`[gitlab.mcp]`).
 - **Scheduled Jira runs** — configure the optional unattended Jira workflow,
   only when Jira is wanted and the project has the required schedule setup.
-- **Additional design docs and project rules** — suggest useful design docs
-  based on the project and request. Ask yes/no/later before creating them.
-  `docs/RULES.md` is optional; ask before adding project rules, and base them on
-  existing evidence or explicit user direction. The required architecture
-  document is created regardless of this optional choice.
+- **Additional design docs** — suggest useful design docs based on the project
+  and request. Ask yes/no/later before creating them. Do not offer to create
+  `docs/RULES.md`: MEOW no longer reads or injects that file. Keep any existing
+  copy on disk. The required architecture document is created regardless.
+- **Tester mode** — offer yes/no/later unless already requested. Discover
+  existing test commands and suite directories, architecture documentation,
+  optional dev servers, and useful MCP tools. Configure only entries supported
+  by the project; never add secrets to `.harness.toml`. Explain `--test` runs
+  configured command gates and the exploratory tester after review passes.
 - **Other MEOW feature named by the user** — identify the relevant feature and
   ask yes/no/later if the request does not already authorize it.
 
@@ -97,8 +101,9 @@ exact failures and next steps. If they want fixes, address each failed
 component separately, preserve unrelated project settings, and rerun verify
 after each repair where practical and once at the end. Do not silently skip a
 failed component. This checks core
-settings, each lint entry, model overrides, Jira/GitLab table shape, MCP
-launcher availability, required environment values, and unresolved environment
+settings, each lint entry, tester commands/servers/MCP launchers and optional
+architecture context, model overrides, Jira/GitLab table shape, MCP launcher
+availability, required environment values, and unresolved environment
 references. It reports connection testing separately: a configured MCP is
 `ready_unchecked` until a real MCP tool call succeeds, and verify never claims
 remote connectivity from config alone. By default it also runs the configured
