@@ -20,14 +20,15 @@ def lint_instructions(commands: list[LintCommand]) -> str:
     if gates:
         listed = ", ".join(f"`{command}`" for command in gates)
         parts.append(
-            "Run each of these project-wide and treat any failure as a "
-            f"FAIL criterion: {listed}."
+            "Meow runs these project-wide before review and provides the "
+            "observed output below. Do not run them a second time. Treat "
+            f"any listed failure as a FAIL criterion: {listed}."
         )
     if non_blocking:
         listed = ", ".join(f"`{command}`" for command in non_blocking)
         parts.append(
-            f"Also run {listed} and summarise the findings in your review, "
-            "but do not fail the sprint on them."
+            f"Meow also runs {listed} and provides its observed output. "
+            "Summarise advisory findings, but do not fail the sprint on them."
         )
     return " ".join(parts)
 
@@ -79,8 +80,7 @@ def no_prompt_review_instructions(*, has_diff: bool, docs_dir: str) -> str:
     return (
         "There is no explicit prompt and the git diff is empty. Review the "
         "entire project by inspecting its source and configuration files, "
-        "looking for correctness issues and incomplete or broken behavior."
-        + exclusion
+        "looking for correctness issues and incomplete or broken behavior." + exclusion
     )
 
 
@@ -207,8 +207,7 @@ def prompt_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
     prompt_text = (
         f"The feature is described by this prompt: {review_basis!r}. "
         if review_basis
-        else no_prompt_review_instructions(has_diff=has_diff, docs_dir=docs_dir)
-        + " "
+        else no_prompt_review_instructions(has_diff=has_diff, docs_dir=docs_dir) + " "
     )
     scope_instruction = (
         "Run `git status` and `git diff` in the working directory to "

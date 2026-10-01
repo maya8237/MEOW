@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from meow.agents.base import Agent, AgentContext, _looks_like_a_crash
+from meow.lint import LintGateEvidence, check_lint_evidence
 from meow.logging import get_logger
 from meow.prompts import (
     architecture_review_instructions,
@@ -69,9 +70,14 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
         )
 
     active_dir = context.active_working_dir()
-    status = _run_git_retrying(
-        [git, "-C", str(active_dir), "status", "--short", "--branch"]
-    )
+    status = _run_git_retrying([
+        git,
+        "-C",
+        str(active_dir),
+        "status",
+        "--short",
+        "--branch",
+    ])
     diff = _run_git_retrying([git, "-C", str(active_dir), "diff", "--"])
     diff_text = diff.stdout.strip()
     review_context = (
@@ -82,9 +88,14 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
     )
 
     if active_dir != context.repo_dir:
-        repo_status = _run_git_retrying(
-            [git, "-C", str(context.repo_dir), "status", "--short", "--branch"]
-        )
+        repo_status = _run_git_retrying([
+            git,
+            "-C",
+            str(context.repo_dir),
+            "status",
+            "--short",
+            "--branch",
+        ])
         repo_diff = _run_git_retrying([git, "-C", str(context.repo_dir), "diff", "--"])
         review_context += (
             "\n\nOriginal working-directory status (must be clean while a "
@@ -107,18 +118,27 @@ def _branch_diff(active_dir: Path, target: str, branch: str) -> str:
     git = shutil.which("git")
     if not git:
         return ""
-    merge_base = _run_git_retrying(
-        [git, "-C", str(active_dir), "merge-base", target, branch]
-    )
+    merge_base = _run_git_retrying([
+        git,
+        "-C",
+        str(active_dir),
+        "merge-base",
+        target,
+        branch,
+    ])
     if merge_base.returncode != 0:
         raise RuntimeError(
             f"Could not find a merge base between {target!r} and {branch!r} "
             f"in {active_dir} (git merge-base exit code {merge_base.returncode}): "
             f"{merge_base.stderr.strip()}"
         )
-    diff = _run_git_retrying(
-        [git, "-C", str(active_dir), "diff", merge_base.stdout.strip()]
-    )
+    diff = _run_git_retrying([
+        git,
+        "-C",
+        str(active_dir),
+        "diff",
+        merge_base.stdout.strip(),
+    ])
     return diff.stdout.strip()
 
 
@@ -130,6 +150,21 @@ def _verdict_status(verdict_text: str) -> str:
 class ReviewerAgent(Agent):
     """Review plans and working trees through a generic project context."""
 
+    async def _lint_evidence(self) -> LintGateEvidence:
+        return await check_lint_evidence(
+            self.context.active_working_dir(),
+            self.context.lint_commands(),
+            self.context.config["lint_timeout"],
+        )
+
+    @staticmethod
+    def _apply_lint_gate(status: str, verdict: str, evidence: LintGateEvidence):
+        if evidence.blocking_failed:
+            return "FAIL", f"{verdict}\n\n{evidence.report()}"
+        if evidence.informational:
+            return status, f"{verdict}\n\n{evidence.report()}"
+        return status, verdict
+
     async def review_prompt(self, prompt: str | None) -> tuple[str, str]:
         """Grade the working tree against a free-text prompt, or the git diff."""
         review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
@@ -138,6 +173,7 @@ class ReviewerAgent(Agent):
         review_basis = (prompt or "").strip()
         docs_dir = self.context.config["docs_dir"]
         git_context, has_diff = _git_review_context(self.context)
+        lint_evidence = await self._lint_evidence()
         options = self.options(
             system_prompt=prompt_review_prompt(
                 review_basis,
@@ -157,9 +193,12 @@ class ReviewerAgent(Agent):
             if not review_basis
             else f"Review the prompt: {review_basis}\n\n{git_context}"
         )
+        query_prompt += f"\n\nHarness lint evidence:\n{lint_evidence.report()}"
         await self.run_query(query_prompt, options, "Reviewer")
         verdict_text = review_file.read_text(encoding="utf-8")
-        return _verdict_status(verdict_text), verdict_text
+        return self._apply_lint_gate(
+            _verdict_status(verdict_text), verdict_text, lint_evidence
+        )
 
     async def review_merge_request(
         self, title: str, description: str, diff: str
@@ -207,6 +246,7 @@ class ReviewerAgent(Agent):
         review_dir.mkdir(parents=True, exist_ok=True)
         review_file = review_dir / BRANCH_REVIEW_FILENAME
         diff_text = _branch_diff(self.context.active_working_dir(), target, branch)
+        lint_evidence = await self._lint_evidence()
         options = self.options(
             system_prompt=branch_review_prompt(
                 target,
@@ -224,9 +264,12 @@ class ReviewerAgent(Agent):
             f"(git diff {target}...{branch}, including any uncommitted "
             "changes):\n\n" + (diff_text or "(no diff -- branch matches target)")
         )
+        query_prompt += f"\n\nHarness lint evidence:\n{lint_evidence.report()}"
         await self.run_query(query_prompt, options, "Reviewer")
         verdict_text = review_file.read_text(encoding="utf-8")
-        return _verdict_status(verdict_text), verdict_text
+        return self._apply_lint_gate(
+            _verdict_status(verdict_text), verdict_text, lint_evidence
+        )
 
     async def review_plan(
         self, plan_file: Path, *, focus: str | None = None
@@ -239,6 +282,7 @@ class ReviewerAgent(Agent):
         prompt argument into every round's grading, not just the first.
         """
         review_file = plan_file.with_name(plan_file.stem + "-review.md")
+        lint_evidence = await self._lint_evidence()
         options = self.options(
             system_prompt=plan_review_prompt(
                 plan_file,
@@ -251,14 +295,18 @@ class ReviewerAgent(Agent):
             role="reviewer",
             skills=["superpowers:verification-before-completion"],
         )
-        await self.run_query(f"Review {plan_file}", options, "Reviewer")
+        await self.run_query(
+            f"Review {plan_file}\n\nHarness lint evidence:\n{lint_evidence.report()}",
+            options,
+            "Reviewer",
+        )
         verdict_text = review_file.read_text(encoding="utf-8")
-        return _verdict_status(verdict_text), verdict_text
+        return self._apply_lint_gate(
+            _verdict_status(verdict_text), verdict_text, lint_evidence
+        )
 
 
-async def run_prompt_reviewer(
-    sprint: Sprint, prompt: str | None
-) -> tuple[str, str]:
+async def run_prompt_reviewer(sprint: Sprint, prompt: str | None) -> tuple[str, str]:
     """Compatibility entry point for prompt reviews."""
     return await ReviewerAgent(sprint).review_prompt(prompt)
 
