@@ -1,4 +1,5 @@
 import argparse
+import ast
 import re
 import unittest
 from pathlib import Path
@@ -8,10 +9,11 @@ from meow.native_cli import add_native_parser
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 SHARED = SKILLS_DIR / "_shared" / "native-mode.md"
+PROJECT_ROOT = SKILLS_DIR.parent
 
 # skill directory -> the CLI command its "CLI mode" section must keep
 CLI_FALLBACKS = {
-    "sprint": "meow run",
+    "run": "meow run",
     "plan": "meow plan",
     "review": "meow review",
     "lint": "meow run --lint-fix --report-only",
@@ -39,6 +41,16 @@ def all_markdown() -> dict[Path, str]:
     }
 
 
+def configured_cli_skills() -> set[str]:
+    skills = set()
+    for path in (PROJECT_ROOT / "src" / "meow" / "agents").glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.keyword) and node.arg == "skills":
+                skills.update(ast.literal_eval(node.value))
+    return skills
+
+
 def frontmatter(text: str) -> dict[str, str]:
     match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
     assert match, "missing frontmatter"
@@ -62,7 +74,7 @@ class SkillStructureTests(unittest.TestCase):
             path.parent.name for path in SKILLS_DIR.glob("*/SKILL.md")
         }
 
-        self.assertEqual(actual, set(CLI_FALLBACKS))
+        self.assertEqual(actual - {"onboard"}, set(CLI_FALLBACKS))
 
     def test_each_skill_keeps_native_and_cli_sections(self):
         for name, command in CLI_FALLBACKS.items():
@@ -77,6 +89,32 @@ class SkillStructureTests(unittest.TestCase):
 
     def test_shared_protocol_exists(self):
         self.assertTrue(SHARED.is_file())
+
+    def test_shared_protocol_covers_cli_skills_and_every_native_prompt_role(self):
+        text = SHARED.read_text(encoding="utf-8")
+        cli_skills = configured_cli_skills()
+
+        for skill in cli_skills:
+            with self.subTest(skill=skill):
+                self.assertIn(skill, text)
+
+        for role in native.PROMPT_ROLES:
+            with self.subTest(role=role):
+                self.assertIn(f"`{role}`", text)
+
+        for native_role in (
+            "Review fixer",
+            "Lint fixer",
+            "Jira issue fetcher",
+            "GitLab merge-request fetcher",
+        ):
+            with self.subTest(native_role=native_role):
+                self.assertIn(native_role, text)
+
+    def test_lint_skill_uses_the_shared_lint_fixer_prompt(self):
+        text = (SKILLS_DIR / "lint" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("meow native prompt lint-fixer", text)
 
     def test_every_cited_native_command_exists(self):
         known = native_commands()

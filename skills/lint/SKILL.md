@@ -26,8 +26,12 @@ your work and racing your edits.
    *review*, not what this skill leaves alone.
    - `"clean": true` -> report that nothing is left and stop.
    - Otherwise each entry in `blocking` is a `$ <command>` block of raw linter
-     output. Fix each yourself with the smallest edit that resolves it, without
-     unrelated refactoring; run `meow native lint --file <path>` after each edit.
+     output. Before editing, run `meow native prompt lint-fixer --active-dir
+     <active_dir>` and follow its returned `system_prompt`, just as the CLI
+     lint-fixer role follows `lint_fixer_prompt`. Fix each finding yourself
+     with the smallest edit that resolves it, without unrelated refactoring;
+     run `meow native lint --file <path> --active-dir <active_dir>` after each
+     edit. Do not launch another agent.
 4. Re-check with `meow native lint --all-blocking`; call
    `meow native round <docs_dir>/lint-fix.md` before each further fix attempt
    and stop if it says `exhausted`.
