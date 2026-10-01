@@ -42,6 +42,36 @@ class _LegacyExplorerContext:
 class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     unittest.TestCase
 ):
+    def test_test_flag_is_permitted_for_plain_jira_and_explicit_plan_flows(self):
+        parser = cli._build_arg_parser()
+        plain = parser.parse_args(["run", "build", "--no-worktree", "--test"])
+        jira = parser.parse_args(["run", "--jira", "ABC-1", "--test"])
+        review = parser.parse_args(["review", "--plan-file", "plan.md", "--test"])
+        cli._validate_run_flags(parser, plain)
+        cli._validate_run_flags(parser, jira)
+        self.assertTrue(review.test)
+
+    def test_run_test_flag_rejects_lint_fix_before_dispatch(self):
+        parser = cli._build_arg_parser()
+        args = parser.parse_args(["run", "--lint-fix", "--test"])
+        with self.assertRaises(SystemExit):
+            cli._validate_run_flags(parser, args)
+
+    @staticmethod
+    @patch("meow.cli._boot_repo")
+    @patch("meow.cli.run_issue_solver", new_callable=AsyncMock)
+    def test_jira_test_flag_reaches_issue_solver(mock_solver, mock_boot):
+        mock_solver.return_value = {"issue": "PROJ-1", "branch": "issue/PROJ-1"}
+        with patch(
+            "sys.argv",
+            ["meow", "run", "--jira", "PROJ-1", "--test", "--work-dir", "."],
+        ):
+            cli.cli_main()
+        mock_solver.assert_awaited_once_with(
+            Path(".").resolve(), "PROJ-1", approve_plan=None, test=True
+        )
+        mock_boot.assert_called_once()
+
     # unittest gives every `test_*` a public method; splitting this fixture
     # class across files to satisfy max-public-methods would scatter closely
     # related CLI-dispatch coverage without adding clarity.
@@ -785,18 +815,22 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     def test_run_command_requires_worktree_when_not_disabled(
         self, mock_sprint, mock_plan, mock_review, mock_boot
     ):
-        with patch(
-            "sys.argv",
-            [
-                "meow",
-                "run",
-                "ship-it",
-                "--work-dir",
-                ".",
-                "--plan",
-                "docs/exec-plans/active/ship-it.md",
-            ],
-        ), self.assertRaises(SystemExit):
+        with (
+            patch("meow.cli._is_linked_worktree", return_value=False),
+            patch(
+                "sys.argv",
+                [
+                    "meow",
+                    "run",
+                    "ship-it",
+                    "--work-dir",
+                    ".",
+                    "--plan",
+                    "docs/exec-plans/active/ship-it.md",
+                ],
+            ),
+            self.assertRaises(SystemExit),
+        ):
             cli.cli_main()
 
         mock_boot.assert_not_called()
@@ -989,6 +1023,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         self, mock_sprint, mock_plan, mock_review, mock_boot
     ):
         with (
+            patch("meow.cli._is_linked_worktree", return_value=False),
             patch("sys.argv", ["meow", "plan", "ship-it", "--work-dir", "."]),
             self.assertRaises(SystemExit),
         ):

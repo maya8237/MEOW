@@ -32,7 +32,11 @@ from meow.gitlab_reviewer import _fetch_merge_request, _load_gitlab_config
 from meow.issue_solver import _fetch_issue, _load_jira_config
 from meow.lint import describe_lint_plan
 from meow.logging import get_logger
-from meow.orchestrator import _run_prompt_fix_rounds, _run_review_rounds
+from meow.orchestrator import (
+    _run_prompt_fix_rounds,
+    _run_review_rounds,
+    review_then_test,
+)
 from meow.plan_files import _detect_review_flavor, _latest_plan_file
 from meow.sprint import build_sprint
 from meow.worktree import _ensure_existing_branch_worktree, _require_branch_checked_out
@@ -66,6 +70,8 @@ def _validate_review_flags(  # ruff: ignore[too-many-arguments, too-many-positio
     target: str | None,
     plan_file: Path | None,
     review_file: Path | None,
+    *,
+    test: bool = False,
 ) -> None:
     """Enforce "at most one review source", with `--review-file` (resuming
     an existing verdict) as the one case where `prompt` is a modifier
@@ -82,6 +88,12 @@ def _validate_review_flags(  # ruff: ignore[too-many-arguments, too-many-positio
         raise ValueError(f"--review-file can't be combined with {other_sources[0]}")
     if prompt and other_sources:
         raise ValueError(f"Give either a prompt or {other_sources[0]}, not both")
+    test_has_other_source = any((prompt, jira_key, gitlab_link, branch, review_file))
+    if test and (plan_file is None or test_has_other_source):
+        raise ValueError(
+            "--test requires an explicit --plan-file and cannot be used "
+            "with other review sources"
+        )
 
 
 def _raise_if_not_passed(passed: bool, config: dict, label: str) -> None:
@@ -111,15 +123,24 @@ async def _prompt_review(
     _raise_if_not_passed(passed, config, "review-fix of the prompt")
 
 
-async def _plan_review(
-    working_dir: Path, config: dict, plan_file: Path, *, fix: bool
+async def _plan_review(  # ruff: ignore[too-many-arguments]
+    working_dir: Path, config: dict, plan_file: Path, *, fix: bool, test: bool = False
 ) -> None:
     sprint = build_sprint(working_dir, config)
     if not fix:
-        status, _ = await ReviewerAgent(sprint).review_plan(plan_file)
-        logger.info("plan_review_finished", plan_file=str(plan_file), status=status)
+        if test:
+            result = await review_then_test(sprint, plan_file, 1)
+            logger.info(
+                "plan_review_finished",
+                plan_file=str(plan_file),
+                status=result.reviewer_status,
+                tester_status=result.tester_status,
+            )
+        else:
+            status, _ = await ReviewerAgent(sprint).review_plan(plan_file)
+            logger.info("plan_review_finished", plan_file=str(plan_file), status=status)
         return
-    passed = await _run_review_rounds(sprint, plan_file)
+    passed = await _run_review_rounds(sprint, plan_file, test=test)
     _raise_if_not_passed(passed, config, f"Review of {plan_file}")
 
 
@@ -130,6 +151,7 @@ async def _plan_or_prompt_review(  # ruff: ignore[too-many-arguments] -- pass-th
     plan_file: Path | None,
     *,
     fix: bool,
+    test: bool = False,
 ) -> None:
     """No explicit source given: auto-discover the latest plan (today's
     `meow review` default); if none exists, fall back to a prompt-based
@@ -144,7 +166,7 @@ async def _plan_or_prompt_review(  # ruff: ignore[too-many-arguments] -- pass-th
             resolved_plan_file = None
 
     if resolved_plan_file is not None:
-        await _plan_review(working_dir, config, resolved_plan_file, fix=fix)
+        await _plan_review(working_dir, config, resolved_plan_file, fix=fix, test=test)
     else:
         await _prompt_review(working_dir, config, prompt, fix=fix)
 
@@ -263,6 +285,7 @@ async def run_review_command(  # ruff: ignore[too-many-arguments] -- one flag pe
     plan_file: Path | None = None,
     review_file: Path | None = None,
     use_worktree: bool = True,
+    test: bool = False,
 ) -> None:
     """`meow review`'s dispatcher. Exactly one of `jira_key`,
     `gitlab_link`, `branch`(+`target`), `plan_file`, or `review_file` may be
@@ -276,7 +299,7 @@ async def run_review_command(  # ruff: ignore[too-many-arguments] -- one flag pe
     fix.
     """
     _validate_review_flags(
-        prompt, jira_key, gitlab_link, branch, target, plan_file, review_file
+        prompt, jira_key, gitlab_link, branch, target, plan_file, review_file, test=test
     )
     if gitlab_link is not None and fix:
         raise ValueError(
@@ -299,4 +322,11 @@ async def run_review_command(  # ruff: ignore[too-many-arguments] -- one flag pe
         jira_prompt = await _jira_review_prompt(working_dir, config, jira_key)
         await _prompt_review(working_dir, config, jira_prompt, fix=fix)
     else:
-        await _plan_or_prompt_review(working_dir, config, prompt, plan_file, fix=fix)
+        await _plan_or_prompt_review(
+            working_dir,
+            config,
+            prompt,
+            plan_file,
+            fix=fix,
+            **({"test": True} if test else {}),
+        )
