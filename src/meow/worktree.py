@@ -29,6 +29,36 @@ class DirtyWorkingTreeError(RuntimeError):
     """The git working tree has uncommitted changes meow refuses to build on."""
 
 
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {f"com{i}" for i in range(1, 10)}
+    | {f"lpt{i}" for i in range(1, 10)}
+)
+
+
+def _reject_reserved_name(feature_name: str) -> None:
+    """Raise if `feature_name` is a Windows-reserved device name.
+
+    Windows refuses to create a file or directory named CON, PRN, AUX, NUL,
+    COM1-9, or LPT1-9 (with or without an extension) as any path component,
+    not just the last one -- `git worktree add .worktrees/con` fails deep
+    inside git's own `.git/worktrees/con` bookkeeping with a bare "fatal:
+    could not create directory ...: Invalid argument", which doesn't explain
+    why. Checked unconditionally, regardless of the host OS actually running
+    meow right now: a feature name that only breaks on a teammate's Windows
+    machine is still worth rejecting up front, consistently, everywhere.
+    """
+    stem = feature_name.split(".", 1)[0].lower()
+    if stem in _WINDOWS_RESERVED_NAMES:
+        raise RuntimeError(
+            f"{feature_name!r} is a reserved Windows device name (CON, PRN, "
+            "AUX, NUL, COM1-9, LPT1-9, with or without an extension) and "
+            "can't be used as a worktree/branch name -- Windows refuses to "
+            "create a file or directory with this name, regardless of the "
+            "OS meow happens to run on. Pick a different --name."
+        )
+
+
 def _is_linked_worktree(path: Path) -> bool:
     """True if `path` is a linked git worktree rather than the main checkout.
 
@@ -165,6 +195,7 @@ def _ensure_feature_worktree(
     function entirely, using it in place instead of nesting another one
     inside it.
     """
+    _reject_reserved_name(feature_name)
     worktrees_dir = working_dir / ".worktrees"
     worktree_dir = worktrees_dir / feature_name
     git = shutil.which("git")
@@ -229,6 +260,7 @@ def _ensure_branch_worktree(
     `plan` need), `meow run --jira` always needs a real branch to hand back
     to its caller, so it creates its own worktree on one instead.
     """
+    _reject_reserved_name(feature_name)
     worktree_dir = working_dir / ".worktrees" / feature_name
     if worktree_dir.exists():
         return worktree_dir
@@ -269,6 +301,7 @@ def _ensure_existing_branch_worktree(
     `run`/`plan`), this requires `branch_name` to already exist and raises
     a clear error otherwise instead of silently creating it.
     """
+    _reject_reserved_name(feature_name)
     worktree_dir = working_dir / ".worktrees" / feature_name
     if worktree_dir.exists():
         return worktree_dir
