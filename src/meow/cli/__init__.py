@@ -1,3 +1,5 @@
+from builtins import input as input
+
 from .core import (
     _MISUSE_CHECKS as _MISUSE_CHECKS,
 )
@@ -181,13 +183,14 @@ from .core import (
 from .core import (
     run_sprint as run_sprint,
 )
-from builtins import input as input
+
 _ORIGINAL_PROMPT_PLAN_APPROVAL = _prompt_plan_approval
 
 
 def _prompt_plan_approval(plan_file):
     """Facade wrapper that keeps the public input patch point working."""
     import builtins
+
     from . import core as _core
 
     _core.input = input if input is not builtins.input else builtins.input
@@ -217,8 +220,12 @@ def cli_main(*args, **kwargs):
     import importlib
 
     _orchestrator_core = importlib.import_module("meow.orchestrator.core")
-    _orchestrator_core.logger = __import__("meow.orchestrator", fromlist=["logger"]).logger
+    _orchestrator_core.logger = __import__(
+        "meow.orchestrator", fromlist=["logger"]
+    ).logger
     return _core.cli_main(*args, **kwargs)
+
+
 from .core import (
     select_findings as select_findings,
 )

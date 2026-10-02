@@ -189,14 +189,18 @@ def test_ci_reviewer_grants_only_read_tools(checkout):
     from meow.agents.reviewer import ReviewerAgent
 
     repo, _, _, env = checkout
-    context = prepare_ci_review(repo, env | {
-        "CI_PIPELINE_SOURCE": "merge_request_event",
-        "CI_MERGE_REQUEST_EVENT_TYPE": "detached",
-        "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME": "feature/x",
-        "CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "dev",
-        "CI_MERGE_REQUEST_DESCRIPTION": "Must preserve the old behavior.",
-        "CI_MERGE_REQUEST_DESCRIPTION_IS_TRUNCATED": "true",
-    })
+    context = prepare_ci_review(
+        repo,
+        env
+        | {
+            "CI_PIPELINE_SOURCE": "merge_request_event",
+            "CI_MERGE_REQUEST_EVENT_TYPE": "detached",
+            "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME": "feature/x",
+            "CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "dev",
+            "CI_MERGE_REQUEST_DESCRIPTION": "Must preserve the old behavior.",
+            "CI_MERGE_REQUEST_DESCRIPTION_IS_TRUNCATED": "true",
+        },
+    )
     agent = ReviewerAgent(ProjectContext(repo, {"models": {"reviewer": None}}))
 
     async def sdk_stream(*, prompt, options):  # ruff: ignore[unused-async] -- SDK async iterator seam

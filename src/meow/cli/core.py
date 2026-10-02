@@ -625,7 +625,7 @@ def _dispatch_review(args, working_dir: Path) -> None:
         raise SystemExit(1) from exc
 
 
-def _dispatch(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements, too-many-return-statements]
+def _dispatch(  # ruff: ignore[too-many-statements, too-many-return-statements]
     args, working_dir: Path, *, use_worktree: bool
 ) -> None:
     if args.command == "knowledge":
@@ -743,7 +743,7 @@ def _creates_a_worktree(args, *, use_worktree: bool) -> bool:
     return False
 
 
-def cli_main():  # ruff: ignore[complex-structure, too-many-statements, too-many-branches] -- command dispatch
+def cli_main():  # ruff: ignore[too-many-statements] -- command dispatch
     configure_logging()
     parser = _build_arg_parser()
     args = parser.parse_args()

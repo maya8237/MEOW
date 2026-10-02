@@ -1,8 +1,8 @@
 from .core import (
-    BrowserEvidence as BrowserEvidence,
+    MAX_OUTPUT_CHARS as MAX_OUTPUT_CHARS,
 )
 from .core import (
-    MAX_OUTPUT_CHARS as MAX_OUTPUT_CHARS,
+    BrowserEvidence as BrowserEvidence,
 )
 from .core import (
     DevServerCommand as DevServerCommand,
@@ -21,9 +21,6 @@ from .core import (
 )
 from .core import (
     TestStageEvidence as TestStageEvidence,
-)
-from .core import (
-    normalize_browser_result as normalize_browser_result,
 )
 from .core import (
     _argv as _argv,
@@ -60,6 +57,9 @@ from .core import (
 )
 from .core import (
     dataclass as dataclass,
+)
+from .core import (
+    normalize_browser_result as normalize_browser_result,
 )
 from .core import (
     os as os,

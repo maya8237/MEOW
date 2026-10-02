@@ -88,9 +88,14 @@ def evaluate_run(
         if not compatible:
             comparison["reason"] = "revision, branch, or configuration evidence differs"
     return EvaluationReport(
-        record.id, str(results.get("verdict", record.phase)), observed, judgments,
-        _record_evidence(record), tuple(unavailable), comparison,
+        record.id,
+        str(results.get("verdict", record.phase)),
+        observed,
+        judgments,
+        _record_evidence(record),
+        tuple(unavailable),
+        comparison,
     )
 
 
-__all__ = ["EvaluationReport", "evaluate_run", "RunStateError"]
+__all__ = ["EvaluationReport", "RunStateError", "evaluate_run"]

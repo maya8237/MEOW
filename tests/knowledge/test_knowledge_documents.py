@@ -34,4 +34,4 @@ def test_unknown_or_duplicate_selection_fails_before_writes(tmp_path):
         except ValueError:
             pass
         else:
-            assert False
+            raise AssertionError("expected missing selection to be rejected")

@@ -19,7 +19,8 @@ def test_audit_reports_missing_and_broken_evidence_without_writing(tmp_path: Pat
     assert before == after
     assert any(f.kind == "missing" for f in audit.findings)
     broken = [f for f in audit.findings if f.kind == "broken_link"]
-    assert len(broken) == 2 and all(
+    expected_broken_links = 2
+    assert len(broken) == expected_broken_links and all(
         not f.advisory and "guide.md:1" in f.evidence[0] for f in broken
     )
 

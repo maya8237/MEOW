@@ -32,7 +32,7 @@ from typing import Literal
 
 from meow.agents.base import ProjectContext
 from meow.agents.explorer import make_explorer_agent
-from meow.agents.generator import Generator
+from meow.agents.generator import Generator  # ruff: ignore[unused-import]
 from meow.agents.planner import run_planner
 from meow.agents.review_fixer import ReviewFixAgent
 from meow.agents.reviewer import (
@@ -51,7 +51,7 @@ from meow.plan_files import (
 )
 from meow.shaping import ShapeContext
 from meow.sprint import Sprint, build_sprint
-from meow.test_runner import TesterSetupError, prepared_test_stage
+from meow.test_runner import TesterSetupError, prepared_test_stage  # ruff: ignore[unused-import]
 from meow.worktree import _resolve_working_dir
 
 assert run_prompt_reviewer  # re-exported for compatibility
@@ -207,7 +207,7 @@ def _prepare_sprint(
 # ---------------------------------------------------------------------------
 
 
-async def _run_rounds(  # ruff: ignore[too-many-statements]
+async def _run_rounds(
     sprint: Sprint, plan_file: Path, *, test: bool = False
 ) -> bool:
     """Loop generator -> reviewer. True if the sprint passed."""
@@ -294,7 +294,7 @@ def _review_summary(verdict: str) -> str | None:
     )
 
 
-async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-arguments, too-many-branches, too-many-statements]
+async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-arguments, too-many-branches]
     sprint: Sprint,
     plan_file: Path,
     *,

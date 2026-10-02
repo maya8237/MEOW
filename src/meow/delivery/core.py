@@ -37,7 +37,9 @@ def _linked_worktree(directory: Path) -> bool:
     return Path(git_dir).resolve() != Path(common.stdout.strip()).resolve()
 
 
-def _branch_and_remote(directory: Path, fallback_branch: str | None = None) -> tuple[str, str]:
+def _branch_and_remote(
+    directory: Path, fallback_branch: str | None = None
+) -> tuple[str, str]:
     branch = _git(directory, "branch", "--show-current").stdout.strip()
     if not branch:
         if not fallback_branch:
@@ -49,7 +51,7 @@ def _branch_and_remote(directory: Path, fallback_branch: str | None = None) -> t
     return branch, "origin"
 
 
-def deliver_verified_run(  # ruff: ignore[complex-structure, too-many-statements]
+def deliver_verified_run(  # ruff: ignore[too-many-statements]
     store: RunStore, run_id: str, *, unattended: bool = False
 ) -> bool:
     """Deliver after verified checks, from a linked worktree or unattended run.
@@ -68,17 +70,25 @@ def deliver_verified_run(  # ruff: ignore[complex-structure, too-many-statements
         previous = record.delivery
         if previous.get("pushed") and previous.get("commit"):
             return True
-        store.transition(run_id, "delivery_started", delivery={
-            **previous, "branch": branch, "remote": remote
-        })
+        store.transition(
+            run_id,
+            "delivery_started",
+            delivery={**previous, "branch": branch, "remote": remote},
+        )
         _git(active, "add", "-A")
         _git(active, "reset", "-q", "--", ".meow", check=False)
         if _git(active, "diff", "--cached", "--quiet", check=False).returncode:
             _git(active, "commit", "-m", f"MEOW run {run_id}: {record.request[:72]}")
         commit = _git(active, "rev-parse", "HEAD").stdout.strip()
-        store.transition(run_id, "committed", delivery={
-            **store.load(run_id).delivery, "commit": commit, "committed": True
-        })
+        store.transition(
+            run_id,
+            "committed",
+            delivery={
+                **store.load(run_id).delivery,
+                "commit": commit,
+                "committed": True,
+            },
+        )
         _git(active, "push", "-u", remote, branch)
         store.transition(
             run_id,

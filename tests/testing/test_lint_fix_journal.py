@@ -13,9 +13,10 @@ def test_lint_fix_failure_keeps_run_record(tmp_path):
     with (
         patch("meow.lint_fix.load_config", return_value={"lint": []}),
         patch("meow.lint_fix.describe_lint_plan"),
-        patch("meow.lint_fix._fix_until_clean", new=AsyncMock(
-            side_effect=RuntimeError("fix failed")
-        )),
+        patch(
+            "meow.lint_fix._fix_until_clean",
+            new=AsyncMock(side_effect=RuntimeError("fix failed")),
+        ),
         pytest.raises(RuntimeError, match="fix failed"),
     ):
         asyncio.run(run_lint_fix(tmp_path, report_only=False))

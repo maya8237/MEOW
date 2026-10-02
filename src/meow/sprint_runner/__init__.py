@@ -1,3 +1,5 @@
+# Keep facade-level patching working for integrations and legacy callers.
+from . import core as _core
 from .core import (
     Callable as Callable,
 )
@@ -68,9 +70,6 @@ from .core import (
     run_sprint as run_sprint,
 )
 
-# Keep facade-level patching working for integrations and legacy callers.
-from . import core as _core
-
 _run_sprint_impl = _core.run_sprint
 
 
@@ -89,6 +88,8 @@ async def run_sprint(*args, **kwargs):
         if hasattr(facade, name):
             setattr(_core, name, getattr(facade, name))
     return await _run_sprint_impl(*args, **kwargs)
+
+
 from .core import (
     subprocess as subprocess,
 )

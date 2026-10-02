@@ -289,7 +289,7 @@ def _command_fields(
     return cwd, command, args, env
 
 
-def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[complex-structure, too-many-branches, too-many-locals, too-many-statements]
+def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[too-many-locals]
     raw = user_config.get("tester", {})
     if not isinstance(raw, dict):
         raise ValueError(f"{CONFIG_FILENAME}: [tester] must be a table")
@@ -393,20 +393,38 @@ def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[complex
     if browser is not None:
         if not isinstance(browser, dict):
             raise ValueError(f"{CONFIG_FILENAME}: [tester.browser] must be a table")
-        allowed = {"kind", "name", "entrypoint", "inputs", "outputs", "permissions", "required"}
+        allowed = {
+            "kind",
+            "name",
+            "entrypoint",
+            "inputs",
+            "outputs",
+            "permissions",
+            "required",
+        }
         unknown = sorted(set(browser) - allowed)
         if unknown:
-            raise ValueError(f"{CONFIG_FILENAME}: [tester.browser] has unknown key(s) {unknown}")
+            raise ValueError(
+                f"{CONFIG_FILENAME}: [tester.browser] has unknown key(s) {unknown}"
+            )
         if browser.get("kind") not in {"skill", "mcp"}:
-            raise ValueError(f"{CONFIG_FILENAME}: [tester.browser] kind must be 'skill' or 'mcp'")
+            raise ValueError(
+                f"{CONFIG_FILENAME}: [tester.browser] kind must be 'skill' or 'mcp'"
+            )
         for key in ("name", "entrypoint"):
             if not isinstance(browser.get(key), str) or not browser[key].strip():
-                raise ValueError(f"{CONFIG_FILENAME}: [tester.browser] requires {key!r}")
+                raise ValueError(
+                    f"{CONFIG_FILENAME}: [tester.browser] requires {key!r}"
+                )
         for key in ("inputs", "outputs", "permissions"):
             if key in browser and not isinstance(browser[key], (dict, list)):
-                raise ValueError(f"{CONFIG_FILENAME}: [tester.browser] {key!r} must be a table or list")
+                raise ValueError(
+                    f"{CONFIG_FILENAME}: [tester.browser] {key!r} must be a table or list"
+                )
         browser = dict(browser)
-        browser["required"] = _typed_bool(browser, "required", False, "[tester.browser]", 1)
+        browser["required"] = _typed_bool(
+            browser, "required", False, "[tester.browser]", 1
+        )
     return {
         "tests": tests,
         "dev_server": servers,
@@ -638,9 +656,7 @@ def load_config(working_dir: Path) -> dict:
 
     config = {**DEFAULT_CONFIG, **user_config}
     config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}
-    config["lint"] = (
-        [] if not user_config else _normalize_lint_commands(user_config)
-    )
+    config["lint"] = [] if not user_config else _normalize_lint_commands(user_config)
     _validate_os_compatibility(config["lint"])
     config["tester"] = _normalize_tester_config(user_config)
     config["build"] = normalize_build(user_config.get("build", []))

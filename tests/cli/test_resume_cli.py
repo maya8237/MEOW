@@ -58,7 +58,10 @@ def test_planned_run_resumes_at_generate(tmp_path):
 def test_lint_fix_checkpoint_does_not_start_feature_agent(tmp_path, capsys):
     subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
     record = RunStore(tmp_path).create(
-        source="lint-fix", request="", repo=tmp_path, worktree=tmp_path,
+        source="lint-fix",
+        request="",
+        repo=tmp_path,
+        worktree=tmp_path,
         branch="dev",
     )
     with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
