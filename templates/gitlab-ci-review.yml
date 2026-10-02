@@ -1,0 +1,19 @@
+# Include this job in a GitLab project whose merge requests target dev.
+meow_review:
+  image: python:3.11
+  stage: test
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev" && $CI_MERGE_REQUEST_EVENT_TYPE == "detached"'
+      when: on_success
+    - when: never
+  variables:
+    GIT_DEPTH: "0"
+  before_script:
+    - python -m pip install -e .
+    - git fetch --no-tags origin refs/heads/dev:refs/remotes/origin/dev
+  script:
+    - meow review --ci --artifact-dir "$CI_PROJECT_DIR/.meow-ci-artifacts"
+  artifacts:
+    when: always
+    paths:
+      - .meow-ci-artifacts/

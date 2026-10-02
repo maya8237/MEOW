@@ -393,14 +393,6 @@ def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[complex
         "architecture_files": architecture,
     }
 
-    def argv_for_file(self, file_path: str) -> list[str]:
-        """The command as argv for one file, auto-fixing where supported."""
-        argv = self.argv()
-        if self.fix_flag:
-            argv.append(self.fix_flag)
-        argv.append(file_path)
-        return argv
-
 
 def _lint_entry(raw: object, position: int) -> LintCommand:
     """Validate one [[lint]] table from the config file."""

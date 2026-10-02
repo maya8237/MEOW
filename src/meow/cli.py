@@ -3,9 +3,12 @@
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
+from meow.ci_review import CiReviewError, run_ci_review
+from meow.config import load_config
 from meow.issue_solver import IssueUnresolvedError, run_issue_solver
 from meow.lint_fix import run_lint_fix
 from meow.logging import configure_logging, get_logger
@@ -293,6 +296,18 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     review_parser.add_argument(
+        "--ci", action="store_true",
+        help="Review the exact GitLab pipeline checkout and emit CI artifacts.",
+    )
+    review_parser.add_argument(
+        "--target-ref", default=None,
+        help="CI target Git ref (default: refs/remotes/origin/dev).",
+    )
+    review_parser.add_argument(
+        "--artifact-dir", default=None,
+        help="CI artifact directory (default: .meow-ci-artifacts).",
+    )
+    review_parser.add_argument(
         "request",
         nargs="?",
         default=None,
@@ -379,6 +394,24 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     _add_common_args(review_parser)
+
+
+def _validate_ci_flags(parser: argparse.ArgumentParser, args) -> None:
+    if not args.ci:
+        if args.target_ref or args.artifact_dir:
+            parser.error("--target-ref and --artifact-dir require --ci")
+        return
+    incompatible = [
+        name for name, active in (
+            ("prompt", args.request), ("--fix", args.fix),
+            ("--jira", args.jira is not None), ("--gitlab", args.gitlab),
+            ("--branch", args.branch), ("--target", args.target),
+            ("--review-file", args.review_file),
+            ("--no-worktree", args.no_worktree), ("--test", args.test),
+        ) if active
+    ]
+    if incompatible:
+        parser.error("--ci cannot be combined with " + ", ".join(incompatible))
 
 
 def _add_plan_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -537,7 +570,7 @@ def _creates_a_worktree(args, *, use_worktree: bool) -> bool:
     return False
 
 
-def cli_main():
+def cli_main():  # ruff: ignore[complex-structure, too-many-statements] -- command dispatch
     configure_logging()
     parser = _build_arg_parser()
     args = parser.parse_args()
@@ -546,6 +579,26 @@ def cli_main():
         return
     working_dir = Path(args.working_dir).resolve()
     log_working_directory(working_dir)
+    if args.command == "review":
+        _validate_ci_flags(parser, args)
+        if args.ci:
+            plan_file = _resolve_input_path(args.plan, working_dir)
+            if plan_file is not None and not plan_file.is_file():
+                parser.error("--plan-file must name an existing file")
+            artifact_dir = _resolve_input_path(
+                args.artifact_dir or ".meow-ci-artifacts", working_dir
+            )
+            try:
+                result = run_ci_review(
+                    working_dir, load_config(working_dir), os.environ,
+                    args.target_ref or "refs/remotes/origin/dev", artifact_dir,
+                    plan_file,
+                )
+            except (CiReviewError, ValueError, OSError) as exc:
+                print(f"CI review failed: {exc}", file=sys.stderr)
+                raise SystemExit(2) from exc
+            print(f"CI review {result.verdict}: {result.report_path}")
+            raise SystemExit(result.exit_code)
     use_worktree = _should_use_worktree(args)
 
     _validate_feature_name_requirement(parser, args, working_dir)
