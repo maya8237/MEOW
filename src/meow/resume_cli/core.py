@@ -124,7 +124,10 @@ async def resume(  # ruff: ignore[too-many-return-statements]
             for step in record.transitions
         )
     )
-    await run_sprint(
+    import sys as _sys
+
+    runner = getattr(_sys.modules.get("meow.resume_cli"), "run_sprint", run_sprint)
+    await runner(
         Path(record.worktree),
         None,
         record.request,

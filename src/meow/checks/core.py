@@ -221,7 +221,13 @@ def completion_ready(  # ruff: ignore[too-many-arguments, too-many-positional-ar
 
 async def run_final_checks(repo: Path, config: dict) -> list[CheckResult]:
     """Run current gates after the last edit, reusing the managed test stage."""
-    checks = configured_checks(config)
+    # Resolve through the public package when available.  Besides keeping the
+    # package API as the extension point, this lets callers replace the check
+    # resolver without reaching into this implementation module.
+    import sys
+
+    resolver = getattr(sys.modules.get("meow.checks"), "configured_checks", configured_checks)
+    checks = resolver(config)
     for _attempt in range(3):
         results = await _run_check_batch(repo, config, checks)
         revision = code_revision(repo)
