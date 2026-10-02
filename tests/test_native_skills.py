@@ -59,7 +59,7 @@ def frontmatter(text: str) -> dict[str, str]:
     )
 
 
-class SkillStructureTests(unittest.TestCase):
+class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-methods]
     def test_every_expected_skill_exists_with_matching_frontmatter(self):
         for name in CLI_FALLBACKS:
             with self.subTest(skill=name):
