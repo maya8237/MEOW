@@ -102,6 +102,11 @@ class TesterAgent(Agent):
         base_urls = [*evidence.server_urls]
         if tester_config.get("base_url"):
             base_urls.append(tester_config["base_url"])
+        browser = "\n".join(
+            f"provider: {item.provider} ({item.kind})\nstatus: {item.status}\n"
+            f"required: {item.required}\nreason: {item.reason}\noutput:\n{item.output}"
+            for item in evidence.browser
+        ) or "(no browser provider evidence)"
         prompt = (
             f"Plan file: {plan_file}\nPlan content:\n{plan}\n\n"
             f"Active worktree: {active_dir}\n\nArchitecture context:\n"
@@ -109,6 +114,7 @@ class TesterAgent(Agent):
             f"Configured test directories: "
             f"{', '.join(map(str, configured_dirs)) or '(none)'}\n"
             f"Base URLs: {', '.join(base_urls) or '(none)'}\n\n"
+            f"Browser provider results:\n{browser}\n\n"
             "Configured test command results:\n"
             + ("\n\n".join(results) if results else "(no configured test commands)")
         )

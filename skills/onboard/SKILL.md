@@ -1,6 +1,6 @@
 ---
 name: onboard
-description: Set up MEOW in another repository from the user's request. Inspect the target project, configure and verify MEOW, and ask which optional integrations or project-specific features to set up using yes/no/later choices. Use when a user asks to install, initialize, onboard, or configure MEOW in a project.
+description: Set up MEOW in another repository from the user's request. Inspect the target project, configure and verify MEOW, and ask which optional integrations or project-specific features to set up using yes/no choices. Use when a user asks to install, initialize, onboard, or configure MEOW in a project.
 ---
 
 # Set up MEOW in a project
@@ -13,7 +13,7 @@ repository instructions. Make focused changes and preserve existing settings.
 ## 1. Inspect the project and clarify the requested setup
 
 After identifying the project root, run the report-only `meow knowledge audit`
-and show its evidence-backed findings. Ask separately (yes/no/later) before
+and show its evidence-backed findings. Ask separately (yes/no) before
 creating any selected knowledge documents; audit findings never block feature
 runs.
 
@@ -31,12 +31,32 @@ that environment from the repository source. Then verify the environment's
 
 If the user's request leaves a material setup choice open, ask concise questions
 before changing project files. In particular, ask about the optional features
-below in a single, easy-to-answer menu. Each choice must be **yes**, **no**, or
-**later**. Interpret yes as configure it now, no as skip it, and later as leave
-it unconfigured and mention how to return to it. Never treat silence as yes.
-Honor features the user already explicitly requested without asking again.
+below in a single, easy-to-answer menu. Each choice must be **yes** or **no**.
+Interpret yes as configure it now and no as skip it. Never treat silence as
+yes. Honor features the user already explicitly requested without asking again.
 
-Architecture documentation is required for every onboarding: use a subagent to
+Delegate work that is time-consuming, exploratory, or has a distinct role from
+the main onboarding flow. Before dispatching each optional delegated task, ask
+one explicit yes/no question that names the task and its purpose. Keep the main
+context focused on coordination and review. Every delegated task must return a
+concise summary, files changed, checks run, unresolved blockers, and its
+recommended next step. Review its changes against the target repository before
+accepting them.
+
+Ask this dedicated question when the target's testing foundation is absent,
+unclear, or needs review: **“Should I send a background subagent to assess and
+set up the testing infrastructure now? (yes/no)”** If yes, dispatch a focused
+testing-infrastructure subagent with the target root, repository instructions,
+detected language/package manager, existing test commands, and the user's goal.
+The subagent decides automatically whether to create, repair, or redesign the
+test infrastructure. It works without MEOW's `--test` stage because that stage
+is not useful until test commands and directories exist. It may add or update
+tests, test configuration, fixtures, and documentation, but must not enable
+tester mode or rewrite unrelated application code. After it finishes, review
+its result and run the tests directly before offering or configuring `--test`.
+
+Architecture documentation is required for every onboarding: use a background
+subagent to
 inspect the target project's source and existing documentation, then create or
 update `docs/ARCHITECTURE.md` with evidence-based module boundaries, major
 components, and dependency direction. Keep it concise and specific to the actual
@@ -45,23 +65,37 @@ the source does not establish an important design decision. Review the draft
 against the repository yourself before accepting it. The subagent must make
 documentation changes only and must not modify application code or setup files.
 
-Offer the options that fit the project and request:
+Offer the options that fit the project and request. Each optional item below is
+a separate yes/no decision and, when accepted, is handled by a focused
+background subagent rather than the main onboarding context:
 
 - **Jira** — configure Jira issue sourcing/review (`[jira]`) and Jira MCP
   connectivity (`[jira.mcp]`) for `meow run --jira` / `meow review --jira`.
 - **GitLab** — configure GitLab merge request review (`[gitlab.mcp]`).
+- **GitLab CI review** — ask yes/no before setting up the headless
+  `meow review --ci` pipeline job. If yes, dispatch a focused background
+  subagent to add or update the CI template/job and verify its checkout and
+  artifact requirements. Tell the user that the job needs a masked GitLab
+  CI/CD variable named `ANTHROPIC_API_KEY`; GitLab's `CI_*` variables are
+  supplied automatically, and GitLab MCP variables are not needed for this
+  local-checkout review path.
 - **Scheduled Jira runs** — configure the optional unattended Jira workflow,
   only when Jira is wanted and the project has the required schedule setup.
 - **Additional design docs** — suggest useful design docs based on the project
-  and request. Ask yes/no/later before creating them. The required architecture
+  and request. Ask yes/no before creating them. The required architecture
   document is created regardless.
-- **Tester mode** — offer yes/no/later unless already requested. Discover
-  existing test commands and suite directories, architecture documentation,
-  optional dev servers, and useful MCP tools. Configure only entries supported
-  by the project; never add secrets to `.harness.toml`. Explain `--test` runs
-  configured command gates and the exploratory tester after review passes.
+- **Testing infrastructure** — use the dedicated testing-infrastructure
+  question above. Do not confuse this with enabling tester mode: the subagent
+  first creates, repairs, or redesigns the test foundation without `--test`.
+- **Tester mode** — after testing infrastructure has been directly verified,
+  ask yes/no before configuring `--test`. A focused subagent discovers existing
+  test commands and suite directories, optional dev servers, and useful MCP
+  tools, then configures only entries supported by the project. Never add
+  secrets to `.harness.toml`. Explain that `--test` runs configured command
+  gates and the exploratory tester after review passes.
 - **Other MEOW feature named by the user** — identify the relevant feature and
-  ask yes/no/later if the request does not already authorize it.
+  ask yes/no if the request does not already authorize it; delegate substantial
+  setup to a focused background subagent.
 
 Use `docs/INTEGRATIONS.md` from the MEOW installation/repository as the source
 of truth for integration fields, MCP setup, and scheduling. MCP connection or
@@ -120,6 +154,5 @@ report the exact blocker and leave the setup files available for correction.
 
 Summarize the files changed, including the required `docs/ARCHITECTURE.md`,
 features configured, checks that succeeded, and any integration steps the user
-still needs to complete. For each "later"
-choice, say how to resume setup and point to the applicable section in
-`docs/INTEGRATIONS.md`.
+still needs to complete. For each declined choice, say how to resume setup and
+point to the applicable section in `docs/INTEGRATIONS.md` when relevant.

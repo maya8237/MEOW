@@ -39,6 +39,7 @@ TESTER_KEYS = frozenset({
     "test_dirs",
     "base_url",
     "architecture_files",
+    "browser",
 })
 TEST_ENTRY_KEYS = frozenset({"cwd", "command", "args", "timeout", "env", "gate"})
 
@@ -388,6 +389,24 @@ def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[complex
         raise ValueError(
             f"{CONFIG_FILENAME}: [tester] 'base_url' must be a non-empty string"
         )
+    browser = raw.get("browser")
+    if browser is not None:
+        if not isinstance(browser, dict):
+            raise ValueError(f"{CONFIG_FILENAME}: [tester.browser] must be a table")
+        allowed = {"kind", "name", "entrypoint", "inputs", "outputs", "permissions", "required"}
+        unknown = sorted(set(browser) - allowed)
+        if unknown:
+            raise ValueError(f"{CONFIG_FILENAME}: [tester.browser] has unknown key(s) {unknown}")
+        if browser.get("kind") not in {"skill", "mcp"}:
+            raise ValueError(f"{CONFIG_FILENAME}: [tester.browser] kind must be 'skill' or 'mcp'")
+        for key in ("name", "entrypoint"):
+            if not isinstance(browser.get(key), str) or not browser[key].strip():
+                raise ValueError(f"{CONFIG_FILENAME}: [tester.browser] requires {key!r}")
+        for key in ("inputs", "outputs", "permissions"):
+            if key in browser and not isinstance(browser[key], (dict, list)):
+                raise ValueError(f"{CONFIG_FILENAME}: [tester.browser] {key!r} must be a table or list")
+        browser = dict(browser)
+        browser["required"] = _typed_bool(browser, "required", False, "[tester.browser]", 1)
     return {
         "tests": tests,
         "dev_server": servers,
@@ -395,6 +414,7 @@ def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[complex
         "test_dirs": test_dirs,
         "base_url": base_url,
         "architecture_files": architecture,
+        "browser": browser,
     }
 
 
