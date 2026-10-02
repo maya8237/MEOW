@@ -114,6 +114,15 @@ fix_flag = "--fix"
 # gate = true
 # timeout = 300
 
+# Optional project-owned browser integration. MEOW validates this declaration
+# and records bounded evidence; the skill or MCP server owns browser actions.
+# [tester.browser]
+# kind = "skill"                 # "skill" or "mcp"
+# name = "project-browser"
+# entrypoint = "check"
+# permissions = ["read_browser"]
+# required = false
+
 # Build checks are separate from tests and lint. Omit if no build is needed.
 # required = true is the default; false records an advisory failure.
 # [[build]]

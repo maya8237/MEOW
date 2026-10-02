@@ -9,6 +9,7 @@ from pathlib import Path
 
 from meow.ci_review import CiReviewError, run_ci_review
 from meow.config import load_config
+from meow.evaluation import evaluate_run
 from meow.hooks.claude import install_claude_hooks, uninstall_claude_hooks
 from meow.issue_solver import IssueUnresolvedError, run_issue_solver
 from meow.knowledge import audit_project, select_findings, structural_check
@@ -236,6 +237,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     status_parser.add_argument("run_id", nargs="?")
     status_parser.add_argument("--verbose", "-v", action="store_true")
     _add_common_args(status_parser)
+    evaluate_parser = subparsers.add_parser(
+        "evaluate", help="Evaluate a saved run without changing it."
+    )
+    evaluate_parser.add_argument("run_id", nargs="?")
+    evaluate_parser.add_argument("--compare", action="append", default=[])
+    evaluate_parser.add_argument("--verbose", "-v", action="store_true")
+    _add_common_args(evaluate_parser)
     resume_parser = subparsers.add_parser(
         "resume", help="Inspect or continue a saved run."
     )
@@ -742,6 +750,14 @@ def cli_main():  # ruff: ignore[complex-structure, too-many-statements, too-many
     log_working_directory(working_dir)
     if args.command == "status":
         raise SystemExit(status(working_dir, args.run_id, args.verbose))
+    if args.command == "evaluate":
+        try:
+            report = evaluate_run(working_dir, args.run_id, tuple(args.compare))
+        except (ValueError, OSError) as exc:
+            print(f"Evaluation unavailable: {exc}", file=sys.stderr)
+            raise SystemExit(2) from exc
+        print(report.render(args.verbose))
+        return
     if args.command == "resume":
         raise SystemExit(
             asyncio.run(

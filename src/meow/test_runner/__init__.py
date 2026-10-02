@@ -1,4 +1,7 @@
 from .core import (
+    BrowserEvidence as BrowserEvidence,
+)
+from .core import (
     MAX_OUTPUT_CHARS as MAX_OUTPUT_CHARS,
 )
 from .core import (
@@ -18,6 +21,9 @@ from .core import (
 )
 from .core import (
     TestStageEvidence as TestStageEvidence,
+)
+from .core import (
+    normalize_browser_result as normalize_browser_result,
 )
 from .core import (
     _argv as _argv,
