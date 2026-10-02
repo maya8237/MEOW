@@ -158,9 +158,26 @@ class ReviewerAgent(Agent):
         )
 
     @staticmethod
-    def _apply_lint_gate(status: str, verdict: str, evidence: LintGateEvidence):
+    def _apply_lint_gate(
+        status: str,
+        verdict: str,
+        evidence: LintGateEvidence,
+        review_file: Path | None = None,
+    ):
         if evidence.blocking_failed:
-            return "FAIL", f"{verdict}\n\n{evidence.report()}"
+            failed_verdict = re.sub(
+                r"^STATUS:\s*PASS\s*$",
+                "STATUS: FAIL",
+                verdict,
+                count=1,
+                flags=re.MULTILINE,
+            )
+            if _verdict_status(failed_verdict) != "FAIL":
+                failed_verdict = f"{failed_verdict.rstrip()}\nSTATUS: FAIL"
+            failed_verdict = f"{failed_verdict.rstrip()}\n\n{evidence.report()}"
+            if review_file is not None:
+                review_file.write_text(failed_verdict, encoding="utf-8")
+            return "FAIL", failed_verdict
         if evidence.informational:
             return status, f"{verdict}\n\n{evidence.report()}"
         return status, verdict
@@ -197,7 +214,7 @@ class ReviewerAgent(Agent):
         await self.run_query(query_prompt, options, "Reviewer")
         verdict_text = review_file.read_text(encoding="utf-8")
         return self._apply_lint_gate(
-            _verdict_status(verdict_text), verdict_text, lint_evidence
+            _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
         )
 
     async def review_merge_request(
@@ -268,7 +285,7 @@ class ReviewerAgent(Agent):
         await self.run_query(query_prompt, options, "Reviewer")
         verdict_text = review_file.read_text(encoding="utf-8")
         return self._apply_lint_gate(
-            _verdict_status(verdict_text), verdict_text, lint_evidence
+            _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
         )
 
     async def review_plan(
@@ -302,7 +319,7 @@ class ReviewerAgent(Agent):
         )
         verdict_text = review_file.read_text(encoding="utf-8")
         return self._apply_lint_gate(
-            _verdict_status(verdict_text), verdict_text, lint_evidence
+            _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
         )
 
 

@@ -1,6 +1,8 @@
 import json
+import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -201,6 +203,18 @@ class BranchReviewPromptTests(unittest.TestCase):
 
 
 class LookupTests(unittest.TestCase):
+    def test_latest_plan_ignores_tester_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            docs = root / "docs" / "plans"
+            report = docs / "feat-test.md"
+            report.write_text("STATUS: PASS\n")
+            os.utime(report, (time.time() + 5, time.time() + 5))
+
+            result = native.latest_plan(root, root)
+
+            self.assertTrue(result["plan_file"].endswith("feat.md"))
+
     def test_latest_plan_ignores_reviews_and_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)

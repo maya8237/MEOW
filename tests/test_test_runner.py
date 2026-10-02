@@ -1,4 +1,5 @@
 import asyncio
+import os
 import socket
 import sys
 import tempfile
@@ -6,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from meow.config import DevServerCommand, TestCommand
-from meow.test_runner import TesterSetupError, prepared_test_stage
+from meow.test_runner import TesterSetupError, _argv, prepared_test_stage
 
 
 def _port() -> int:
@@ -15,13 +16,20 @@ def _port() -> int:
         return sock.getsockname()[1]
 
 
-class TestRunnerTests(unittest.IsolatedAsyncioTestCase):
+class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-many-public-methods]
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         (self.root / "apps" / "web").mkdir(parents=True)
         (self.root / "services" / "api").mkdir(parents=True)
+
+    def test_quoted_executable_path_is_parsed(self):
+        if os.name != "nt":
+            self.skipTest("Windows command quoting only")
+        argv = _argv(f'"{sys.executable}" -c "pass"', ())
+        self.assertEqual(Path(argv[0]), Path(sys.executable))
+        self.assertEqual(argv[1:], ["-c", "pass"])
 
     async def test_test_commands_run_in_component_directories_with_env(self):
         marker = self.root / "runs.txt"
@@ -185,6 +193,29 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):
                 self.fail("missing test executable should be a setup error")
         self.assertFalse(await asyncio.to_thread(_reachable, ready))
 
+    @unittest.skipIf(os.name == "nt", "POSIX process groups")
+    async def test_posix_server_wrapper_exit_still_stops_child_process(self):
+        port = _port()
+        ready = f"http://127.0.0.1:{port}/"
+        child = self.root / "server-child.py"
+        child.write_text(
+            "import subprocess, sys\n"
+            f"subprocess.Popen([sys.executable, '-m', 'http.server', '{port}', "
+            "'--bind', '127.0.0.1'])\n",
+            encoding="utf-8",
+        )
+        server = DevServerCommand(
+            Path("."),
+            f"{sys.executable} {child}",
+            ready_url=ready,
+            startup_timeout=2,
+        )
+        config = {"tester": {"tests": [], "dev_server": [server], "base_url": None}}
+        with self.assertRaises(TesterSetupError):
+            async with prepared_test_stage(self.root, config):
+                pass
+        self.assertFalse(await asyncio.to_thread(_reachable, ready))
+
     async def test_missing_executable_is_setup_error_without_env_values(self):
         secret = "do-not-print-this"
         config = {
@@ -217,6 +248,29 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):
         async with prepared_test_stage(self.root, config) as evidence:
             self.assertEqual(evidence.server_urls, (ready,))
             self.assertTrue(await asyncio.to_thread(_reachable, ready))
+        self.assertFalse(await asyncio.to_thread(_reachable, ready))
+
+    @unittest.skipUnless(os.name == "nt", "Windows process-tree ownership")
+    async def test_server_wrapper_exit_still_stops_child_process(self):
+        port = _port()
+        ready = f"http://127.0.0.1:{port}/"
+        child = (
+            "import subprocess,sys; "
+            f"subprocess.Popen([sys.executable,'-m','http.server','{port}',"
+            "'--bind','127.0.0.1'])"
+        )
+        server = DevServerCommand(
+            Path("."),
+            f'{sys.executable} -c "{child}"',
+            ready_url=ready,
+            startup_timeout=5,
+        )
+        config = {"tester": {"tests": [], "dev_server": [server], "base_url": None}}
+        try:
+            async with prepared_test_stage(self.root, config):
+                self.assertTrue(await asyncio.to_thread(_reachable, ready))
+        except TesterSetupError:
+            pass  # The wrapper exited; cleanup still owns its child server.
         self.assertFalse(await asyncio.to_thread(_reachable, ready))
 
     async def test_cancellation_cleans_owned_server(self):

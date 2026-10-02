@@ -84,6 +84,19 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
         status, _, _, _ = await self._run_tester("SUMMARY: incomplete")
         self.assertEqual(status, "FAIL")
 
+    async def test_stale_report_is_not_accepted_without_a_fresh_verdict(self):
+        plan = self.root / "feature.md"
+        plan.write_text("Plan body", encoding="utf-8")
+        report = self.root / "feature-test.md"
+        report.write_text("SUMMARY: stale pass\nSTATUS: PASS\n", encoding="utf-8")
+        with patch.object(TesterAgent, "run_query", new=AsyncMock()):
+            status, text = await TesterAgent(self.context).test_plan(
+                plan, TestStageEvidence()
+            )
+        self.assertEqual(status, "FAIL")
+        self.assertIn("did not produce", text)
+        self.assertIn("stale pass", report.read_text(encoding="utf-8"))
+
     async def test_mcp_config_passes_through_and_absent_mcp_adds_none(self):
         config = dict(self.context.config)
         config["tester"] = dict(config["tester"])

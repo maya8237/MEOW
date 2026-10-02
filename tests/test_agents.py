@@ -482,9 +482,11 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(ReviewerAgent, "run_query", new_callable=AsyncMock),
             patch.object(Path, "read_text", return_value=verdict),
+            patch.object(Path, "write_text") as write_text,
         ):
             status, received = await ReviewerAgent(self.context).review_plan(plan_file)
         self.assertEqual(status, "FAIL")
+        self.assertIn("STATUS: FAIL", write_text.call_args.args[0])
         self.assertIn("Blocking lint failures", received)
 
     async def test_review_plan_includes_focus_text_when_given(self):
