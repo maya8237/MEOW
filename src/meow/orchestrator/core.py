@@ -220,7 +220,13 @@ async def _run_rounds(  # ruff: ignore[too-many-statements]
     run_planner = public_orchestrator.run_planner
     run_reviewer = public_orchestrator.run_reviewer
     review_then_test = public_orchestrator.review_then_test
-    max_rounds = sprint.config["max_rounds"]
+    import meow.orchestrator as public_orchestrator
+
+    global Generator, ReviewerAgent, review_then_test
+    Generator = public_orchestrator.Generator
+    ReviewerAgent = public_orchestrator.ReviewerAgent
+    review_then_test = public_orchestrator.review_then_test
+    max_rounds = sprint.config.get("max_rounds", 3)
 
     async with Generator(sprint, plan_file) as generator:
         instruction = f"Implement the tasks in {plan_file}."
@@ -314,7 +320,13 @@ async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-argume
     given, is passed to every `review_plan` call in the loop (not just the
     first), so a requested focus doesn't drift out of scope across rounds.
     """
-    max_rounds = sprint.config["max_rounds"]
+    import meow.orchestrator as public_orchestrator
+
+    global Generator, ReviewerAgent, review_then_test
+    Generator = public_orchestrator.Generator
+    ReviewerAgent = public_orchestrator.ReviewerAgent
+    review_then_test = public_orchestrator.review_then_test
+    max_rounds = sprint.config.get("max_rounds", 3)
 
     if test:
         _journal(sprint, "reviewer_started", round=1)
