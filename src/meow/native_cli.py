@@ -8,6 +8,7 @@ stderr and exits 1 (logs also go to stderr, so stdout stays parseable).
 """
 
 import argparse
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -18,7 +19,9 @@ from meow.config import load_config
 
 def _add_dirs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--working-dir", "--work-dir", "-d",
+        "--working-dir",
+        "--work-dir",
+        "-d",
         dest="working_dir",
         default=".",
         help="Project root holding .harness.toml (default: current directory).",
@@ -39,19 +42,29 @@ def _add_prepare(sub) -> None:
     _add_dirs(parser)
     parser.add_argument("--name", default=None, help="Feature name.")
     parser.add_argument(
-        "--no-worktree", "-n", dest="no_worktree", action="store_true",
+        "--no-worktree",
+        "-n",
+        dest="no_worktree",
+        action="store_true",
         help="Work in the project directory instead of a .worktrees entry.",
     )
     parser.add_argument(
-        "--source-branch", "--from", "-b", dest="source_branch", default=None,
+        "--source-branch",
+        "--from",
+        "-b",
+        dest="source_branch",
+        default=None,
         help="Branch a fresh worktree is created from.",
     )
     parser.add_argument(
-        "--branch", default=None,
+        "--branch",
+        default=None,
         help="Create/reuse a worktree on this named branch (issue flow).",
     )
     parser.add_argument(
-        "--existing-branch", dest="existing_branch", default=None,
+        "--existing-branch",
+        dest="existing_branch",
+        default=None,
         help=(
             "Check out this EXISTING branch (local or origin's) into a "
             "worktree, or (with --no-worktree) require it already checked "
@@ -60,7 +73,9 @@ def _add_prepare(sub) -> None:
         ),
     )
     parser.add_argument(
-        "--allow-dirty", dest="allow_dirty", action="store_true",
+        "--allow-dirty",
+        dest="allow_dirty",
+        action="store_true",
         help="Skip the uncommitted-changes check (read-only flows like plan).",
     )
 
@@ -75,7 +90,8 @@ def _add_verify(sub) -> None:
     )
     _add_dirs(parser)
     parser.add_argument(
-        "--no-lint", action="store_true",
+        "--no-lint",
+        action="store_true",
         help="Validate configuration only; skip the configured lint checks.",
     )
 
@@ -98,15 +114,20 @@ def _add_lint(sub) -> None:
     parser = sub.add_parser("lint", help="Run the configured lint plan.")
     _add_dirs(parser)
     parser.add_argument(
-        "--file", dest="file", default=None,
+        "--file",
+        dest="file",
+        default=None,
         help="Lint (and auto-fix) just this file, like the SDK post-edit hook.",
     )
     parser.add_argument(
-        "--fix", action="store_true",
+        "--fix",
+        action="store_true",
         help="Project-wide: apply each command's fix flag before checking.",
     )
     parser.add_argument(
-        "--all-blocking", dest="all_blocking", action="store_true",
+        "--all-blocking",
+        dest="all_blocking",
+        action="store_true",
         help=(
             "Treat every configured command as blocking regardless of "
             "`gate` (lint-fix must fix everything CLI mode would, not just "
@@ -124,31 +145,84 @@ def _add_round(sub) -> None:
     mode.add_argument("--show", action="store_true", help="Read without advancing.")
 
 
+def _add_checkpoint(sub) -> None:
+    parser = sub.add_parser("checkpoint", help="Write a durable native run phase.")
+    _add_dirs(parser)
+    parser.add_argument("phase")
+    parser.add_argument("--run-id")
+    parser.add_argument("--request", default="")
+    parser.add_argument("--plan")
+    parser.add_argument("--review")
+    parser.add_argument("--round", type=int)
+    parser.add_argument("--reviewer", choices=("PASS", "FAIL"))
+    parser.add_argument("--tester", choices=("PASS", "FAIL"))
+    finish = sub.add_parser(
+        "finalize", help="Run current gates and finish a native run."
+    )
+    _add_dirs(finish)
+    finish.add_argument("run_id")
+
+
 def _add_prompt(sub) -> None:
     parser = sub.add_parser("prompt", help="Print a role's system prompt as JSON.")
     _add_dirs(parser)
     parser.add_argument("role", choices=native.PROMPT_ROLES)
     parser.add_argument("--plan", default=None, help="Sprint plan file.")
     parser.add_argument(
-        "--focus", default=None,
+        "--focus",
+        default=None,
         help="Review focus (reviewer-plan) or free-text prompt (reviewer-prompt).",
     )
     parser.add_argument(
-        "--worktree", action="store_true",
+        "--worktree",
+        action="store_true",
         help="The run used an isolated worktree (enables hygiene review).",
     )
     parser.add_argument(
-        "--target", default=None, help="Target branch (reviewer-branch role).",
+        "--target",
+        default=None,
+        help="Target branch (reviewer-branch role).",
     )
     parser.add_argument(
-        "--branch", default=None, help="Branch under review (reviewer-branch role).",
+        "--branch",
+        default=None,
+        help="Branch under review (reviewer-branch role).",
     )
+    parser.add_argument("--shape", default=None, help="Accepted shape artifact path.")
 
 
 def _add_push(sub) -> None:
     parser = sub.add_parser("push", help="Push a named branch to origin.")
     _add_dirs(parser)
     parser.add_argument("branch", help="Branch to push.")
+
+
+def _add_knowledge(sub) -> None:
+    parser = sub.add_parser(
+        "knowledge-audit", help="Report-only project knowledge audit."
+    )
+    _add_dirs(parser)
+    parser = sub.add_parser(
+        "knowledge-check", help="Run deterministic structural knowledge checks."
+    )
+    _add_dirs(parser)
+    parser = sub.add_parser(
+        "knowledge-create", help="Create explicitly selected knowledge documents."
+    )
+    _add_dirs(parser)
+    parser.add_argument("--finding", action="append", required=True)
+    parser.add_argument("--overwrite", action="store_true")
+    parser = sub.add_parser(
+        "shape-assess", help="Assess whether optional shaping is useful."
+    )
+    parser.add_argument("request")
+    parser = sub.add_parser("shape-create", help="Persist a shape artifact from JSON.")
+    _add_dirs(parser)
+    parser.add_argument("path")
+    parser.add_argument("--json", required=True)
+    parser = sub.add_parser("shape-reflect", help="Reflect on a breadboard artifact.")
+    _add_dirs(parser)
+    parser.add_argument("path")
 
 
 def add_native_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -166,8 +240,10 @@ def add_native_parser(subparsers: argparse._SubParsersAction) -> None:
     _add_verdict(sub)
     _add_lint(sub)
     _add_round(sub)
+    _add_checkpoint(sub)
     _add_prompt(sub)
     _add_push(sub)
+    _add_knowledge(sub)
 
 
 def _resolve(path: str | None, base: Path) -> Path | None:
@@ -206,6 +282,21 @@ def _round(args, working_dir: Path, active: Path) -> dict:
     return native.round_state(_resolve(args.plan, active), max_rounds, mode)
 
 
+def _checkpoint(args, working_dir: Path, active: Path) -> dict:
+    return native.checkpoint(
+        working_dir,
+        active,
+        args.phase,
+        run_id=args.run_id,
+        request=args.request,
+        plan_file=_resolve(args.plan, active),
+        review_file=_resolve(args.review, active),
+        round_num=args.round,
+        reviewer=args.reviewer,
+        tester=args.tester,
+    )
+
+
 def _prompt(args, working_dir: Path, active: Path) -> dict:
     return native.role_prompt(
         working_dir,
@@ -216,6 +307,7 @@ def _prompt(args, working_dir: Path, active: Path) -> dict:
         use_worktree=args.worktree,
         target=args.target,
         branch=args.branch,
+        shape_path=_resolve(args.shape, active),
     )
 
 
@@ -229,8 +321,24 @@ _HANDLERS = {
     ),
     "lint": _lint,
     "round": _round,
+    "checkpoint": _checkpoint,
+    "finalize": lambda args, wd, active: asyncio.run(
+        native.finalize(wd, active, args.run_id)
+    ),
     "prompt": _prompt,
     "push": lambda args, wd, active: native.push(active, args.branch),
+    "knowledge-audit": lambda args, wd, active: native.knowledge_audit(active),
+    "knowledge-check": lambda args, wd, active: native.knowledge_check(active),
+    "knowledge-create": lambda args, wd, active: native.knowledge_create(
+        active, args.finding, overwrite=args.overwrite
+    ),
+    "shape-assess": lambda args, wd, active: native.shape_assess(args.request),
+    "shape-create": lambda args, wd, active: native.shape_create(
+        _resolve(args.path, active), json.loads(args.json)
+    ),
+    "shape-reflect": lambda args, wd, active: native.shape_reflect(
+        _resolve(args.path, active)
+    ),
 }
 
 

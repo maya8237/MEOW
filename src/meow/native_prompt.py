@@ -32,6 +32,17 @@ from meow.prompts import (
     prompt_review_prompt,
     review_fixer_prompt,
 )
+from meow.shaping import ShapeContext, load_shape_artifact
+
+
+def _load_shape_context(path: Path | None) -> ShapeContext | None:
+    if path is None or not path.is_file():
+        return None
+    artifact = load_shape_artifact(path)
+    if not hasattr(artifact, "chosen_approach"):
+        return None
+    return ShapeContext(str(path), artifact.chosen_approach, artifact.assumptions)
+
 
 PROMPT_ROLES = (
     "planner",
@@ -47,7 +58,10 @@ PROMPT_ROLES = (
 
 
 def _plan_review(
-    context: ProjectContext, plan_file: Path, focus: str | None
+    context: ProjectContext,
+    plan_file: Path,
+    focus: str | None,
+    shape_context: ShapeContext | None = None,
 ) -> dict:
     review_file = plan_file.with_name(plan_file.stem + "-review.md")
     text = plan_review_prompt(
@@ -56,6 +70,7 @@ def _plan_review(
         context.lint_commands(),
         focus=focus,
         check_worktree_hygiene=context.use_worktree,
+        shape_context=shape_context,
     )
     return {
         "system_prompt": text,
@@ -111,12 +126,17 @@ def _branch_review(context: ProjectContext, target: str, branch: str) -> dict:
     return {"system_prompt": text, "query": query, "review_file": str(review_file)}
 
 
-def _simple_prompt(role: str, context: ProjectContext, plan_file: Path | None) -> dict:
+def _simple_prompt(
+    role: str,
+    context: ProjectContext,
+    plan_file: Path | None,
+    shape_context: ShapeContext | None = None,
+) -> dict:
     active_dir = context.active_working_dir()
     if role in {"planner", "generator"} and plan_file is None:
         raise ValueError(f"the {role} prompt needs --plan")
     builders = {
-        "planner": lambda: planner_prompt(plan_file),
+        "planner": lambda: planner_prompt(plan_file, shape_context),
         "generator": lambda: generator_prompt(plan_file),
         "explorer": lambda: explorer_prompt(active_dir),
         "review-fixer": review_fixer_prompt,
@@ -132,11 +152,12 @@ def _reviewer_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-ar
     focus: str | None,
     target: str | None,
     branch: str | None,
+    shape_context: ShapeContext | None = None,
 ) -> dict:
     if role == "reviewer-plan":
         if plan_file is None:
             raise ValueError("the reviewer-plan prompt needs --plan")
-        return _plan_review(context, plan_file, focus)
+        return _plan_review(context, plan_file, focus, shape_context)
     if role == "reviewer-prompt":
         return _prompt_review(context, focus)
     if role == "reviewer-mr":
@@ -156,6 +177,7 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
     use_worktree: bool = False,
     target: str | None = None,
     branch: str | None = None,
+    shape_path: Path | None = None,
 ) -> dict:
     """The exact system prompt (and task message, where there is one) the SDK
     agent for `role` would use, so a Task subagent launched with it behaves
@@ -164,10 +186,13 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
         raise ValueError(f"role must be one of {PROMPT_ROLES}, got {role!r}")
     config = load_config(working_dir)
     context = ProjectContext(active_dir, config, use_worktree=use_worktree)
+    shape_context = _load_shape_context(shape_path)
     if role.startswith("reviewer-"):
-        result = _reviewer_prompt(role, context, plan_file, focus, target, branch)
+        result = _reviewer_prompt(
+            role, context, plan_file, focus, target, branch, shape_context
+        )
     else:
-        result = _simple_prompt(role, context, plan_file)
+        result = _simple_prompt(role, context, plan_file, shape_context)
     model_role = role.split("-", 1)[0] if role.startswith("reviewer-") else role
     rules_key = model_role.replace("-", "_")
     result["model"] = config["models"].get(rules_key)

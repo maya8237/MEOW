@@ -10,12 +10,18 @@ from pathlib import Path
 from meow.ci_review import CiReviewError, run_ci_review
 from meow.config import load_config
 from meow.issue_solver import IssueUnresolvedError, run_issue_solver
+from meow.knowledge import audit_project, select_findings, structural_check
+from meow.knowledge_documents import EvidenceDocumentWriter, create_selected_documents
 from meow.lint_fix import run_lint_fix
 from meow.logging import configure_logging, get_logger
+from meow.native import shape_create
 from meow.native_cli import add_native_parser, run_native
 from meow.orchestrator import PlanNotApprovedError, log_working_directory
+from meow.resume_cli import resume
 from meow.review_cli import run_review_command
+from meow.shaping import assess_request, load_shape_artifact, reflect_breadboard
 from meow.sprint_runner import run_plan, run_sprint
+from meow.status_cli import status
 from meow.worktree import (
     DirtyWorkingTreeError,
     _boot_repo,
@@ -28,7 +34,9 @@ logger = get_logger(__name__)
 
 def _add_common_args(parser: argparse.ArgumentParser):
     parser.add_argument(
-        "--working-dir", "--work-dir", "-d",
+        "--working-dir",
+        "--work-dir",
+        "-d",
         dest="working_dir",
         default=".",
         help="Working directory for the harness (default: current directory).",
@@ -37,7 +45,11 @@ def _add_common_args(parser: argparse.ArgumentParser):
 
 def _add_feature_args(parser: argparse.ArgumentParser):
     parser.add_argument(
-        "--name", "--feature-name", "-f", dest="feature_name", default=None,
+        "--name",
+        "--feature-name",
+        "-f",
+        dest="feature_name",
+        default=None,
         help=(
             "Feature name used for generated files and as the worktree name "
             "when worktrees are enabled. Required for plain build mode "
@@ -47,13 +59,17 @@ def _add_feature_args(parser: argparse.ArgumentParser):
         ),
     )
     parser.add_argument(
-        "--no-worktree", "--noworktree", "-n",
+        "--no-worktree",
+        "--noworktree",
+        "-n",
         dest="no_worktree",
         action="store_true",
         help="Run in the main repo instead of creating/using a .worktrees entry.",
     )
     parser.add_argument(
-        "--source-branch", "--from", "-b",
+        "--source-branch",
+        "--from",
+        "-b",
         dest="source_branch",
         default=None,
         help=(
@@ -72,7 +88,8 @@ def _add_feature_args(parser: argparse.ArgumentParser):
 
 def _add_manual_approval_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--manually-approve-plan", "-m",
+        "--manually-approve-plan",
+        "-m",
         dest="manually_approve_plan",
         action="store_true",
         help=(
@@ -124,8 +141,7 @@ def _validate_feature_name_requirement(
     )
     if requires_name and args.feature_name is None:
         parser.error(
-            "--name/--feature-name/-f is required unless "
-            "--no-worktree/-n is supplied"
+            "--name/--feature-name/-f is required unless --no-worktree/-n is supplied"
         )
 
 
@@ -205,7 +221,48 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     _add_run_parser(subparsers)
     _add_review_parser(subparsers)
     _add_plan_parser(subparsers)
+    status_parser = subparsers.add_parser("status", help="Inspect a saved run.")
+    status_parser.add_argument("run_id", nargs="?")
+    status_parser.add_argument("--verbose", "-v", action="store_true")
+    _add_common_args(status_parser)
+    resume_parser = subparsers.add_parser(
+        "resume", help="Inspect or continue a saved run."
+    )
+    resume_parser.add_argument("run_id", nargs="?")
+    resume_parser.add_argument("--continue", dest="continue_run", action="store_true")
+    resume_parser.add_argument("--auto-resume", action="store_true")
+    _add_common_args(resume_parser)
     add_native_parser(subparsers)
+    knowledge = subparsers.add_parser("knowledge", help="Inspect project knowledge.")
+    knowledge_sub = knowledge.add_subparsers(dest="knowledge_command", required=True)
+    for name, help_text in (
+        ("audit", "Report-only knowledge audit."),
+        ("check", "Deterministic structural knowledge check."),
+    ):
+        child = knowledge_sub.add_parser(name, help=help_text)
+        _add_common_args(child)
+    create = knowledge_sub.add_parser(
+        "create", help="Create explicitly selected documents."
+    )
+    _add_common_args(create)
+    create.add_argument("--finding", action="append", required=True)
+    create.add_argument("--overwrite", action="store_true")
+    shape = subparsers.add_parser("shape", help="Optionally shape uncertain work.")
+    shape_sub = shape.add_subparsers(dest="shape_command", required=True)
+    assess = shape_sub.add_parser("assess", help="Assess a request.")
+    _add_common_args(assess)
+    assess.add_argument("request")
+    create_shape = shape_sub.add_parser(
+        "create", help="Persist an explicitly accepted shape artifact."
+    )
+    _add_common_args(create_shape)
+    create_shape.add_argument("path")
+    create_shape.add_argument("--json", required=True)
+    reflect_shape = shape_sub.add_parser(
+        "reflect", help="Reflect on a breadboard artifact."
+    )
+    _add_common_args(reflect_shape)
+    reflect_shape.add_argument("path")
 
     return parser
 
@@ -226,10 +283,15 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Feature request text (required unless --jira is given).",
     )
     run_parser.add_argument(
-        "--plan", "--plan-file", "-p",
+        "--plan",
+        "--plan-file",
+        "-p",
         dest="plan",
         default=None,
         help="Use an existing plan file instead of generating a new one.",
+    )
+    run_parser.add_argument(
+        "--shape", default=None, help="Accepted shape artifact path."
     )
     run_parser.add_argument(
         "--resume-at",
@@ -296,15 +358,18 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     review_parser.add_argument(
-        "--ci", action="store_true",
+        "--ci",
+        action="store_true",
         help="Review the exact GitLab pipeline checkout and emit CI artifacts.",
     )
     review_parser.add_argument(
-        "--target-ref", default=None,
+        "--target-ref",
+        default=None,
         help="CI target Git ref (default: refs/remotes/origin/dev).",
     )
     review_parser.add_argument(
-        "--artifact-dir", default=None,
+        "--artifact-dir",
+        default=None,
         help="CI artifact directory (default: .meow-ci-artifacts).",
     )
     review_parser.add_argument(
@@ -318,7 +383,9 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     review_parser.add_argument(
-        "--plan", "--plan-file", "-p",
+        "--plan",
+        "--plan-file",
+        "-p",
         dest="plan",
         default=None,
         help=(
@@ -376,7 +443,8 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Target branch for --branch (required together with it).",
     )
     review_parser.add_argument(
-        "--review-file", "-r",
+        "--review-file",
+        "-r",
         dest="review_file",
         default=None,
         help=(
@@ -385,7 +453,9 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     review_parser.add_argument(
-        "--no-worktree", "--noworktree", "-n",
+        "--no-worktree",
+        "--noworktree",
+        "-n",
         dest="no_worktree",
         action="store_true",
         help=(
@@ -402,13 +472,19 @@ def _validate_ci_flags(parser: argparse.ArgumentParser, args) -> None:
             parser.error("--target-ref and --artifact-dir require --ci")
         return
     incompatible = [
-        name for name, active in (
-            ("prompt", args.request), ("--fix", args.fix),
-            ("--jira", args.jira is not None), ("--gitlab", args.gitlab),
-            ("--branch", args.branch), ("--target", args.target),
+        name
+        for name, active in (
+            ("prompt", args.request),
+            ("--fix", args.fix),
+            ("--jira", args.jira is not None),
+            ("--gitlab", args.gitlab),
+            ("--branch", args.branch),
+            ("--target", args.target),
             ("--review-file", args.review_file),
-            ("--no-worktree", args.no_worktree), ("--test", args.test),
-        ) if active
+            ("--no-worktree", args.no_worktree),
+            ("--test", args.test),
+        )
+        if active
     ]
     if incompatible:
         parser.error("--ci cannot be combined with " + ", ".join(incompatible))
@@ -420,6 +496,9 @@ def _add_plan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Write a sprint plan for a feature request, without implementing it.",
     )
     plan_parser.add_argument("request", help="Feature request text.")
+    plan_parser.add_argument(
+        "--shape", default=None, help="Accepted shape artifact path."
+    )
     _add_common_args(plan_parser)
     _add_feature_args(plan_parser)
 
@@ -461,6 +540,7 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
                 source_branch=args.source_branch,
                 approve_plan=approve_plan,
                 resume_at=args.resume_at,
+                shape_path=_resolve_input_path(args.shape, working_dir),
                 **({"test": True} if args.test else {}),
             )
         )
@@ -503,6 +583,38 @@ def _dispatch_review(args, working_dir: Path) -> None:
 
 
 def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
+    if args.command == "knowledge":
+        if args.knowledge_command == "audit":
+            print(json.dumps(audit_project(working_dir).to_dict()))
+        elif args.knowledge_command == "check":
+            print(json.dumps(structural_check(working_dir)))
+        else:
+            audit = audit_project(working_dir)
+            findings = select_findings(audit, args.finding)
+            result = create_selected_documents(
+                working_dir,
+                findings,
+                writer=EvidenceDocumentWriter(),
+                overwrite=args.overwrite,
+            )
+            print(json.dumps(result.__dict__))
+        return
+    if args.command == "shape":
+        if args.shape_command == "assess":
+            print(json.dumps(assess_request(args.request).__dict__))
+        elif args.shape_command == "create":
+            path = _resolve_input_path(args.path, working_dir)
+            print(json.dumps(shape_create(path, json.loads(args.json))))
+        else:
+            artifact = load_shape_artifact(_resolve_input_path(args.path, working_dir))
+            print(
+                json.dumps({
+                    "findings": list(reflect_breadboard(artifact))
+                    if hasattr(artifact, "places")
+                    else []
+                })
+            )
+        return
     if args.command == "run":
         _dispatch_run(args, working_dir, use_worktree=use_worktree)
         return
@@ -516,6 +628,7 @@ def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
             args.request,
             use_worktree=use_worktree,
             source_branch=args.source_branch,
+            shape_path=_resolve_input_path(args.shape, working_dir),
         )
     )
 
@@ -570,7 +683,7 @@ def _creates_a_worktree(args, *, use_worktree: bool) -> bool:
     return False
 
 
-def cli_main():  # ruff: ignore[complex-structure, too-many-statements] -- command dispatch
+def cli_main():  # ruff: ignore[complex-structure, too-many-statements, too-many-branches] -- command dispatch
     configure_logging()
     parser = _build_arg_parser()
     args = parser.parse_args()
@@ -579,6 +692,22 @@ def cli_main():  # ruff: ignore[complex-structure, too-many-statements] -- comma
         return
     working_dir = Path(args.working_dir).resolve()
     log_working_directory(working_dir)
+    if args.command == "status":
+        raise SystemExit(status(working_dir, args.run_id, args.verbose))
+    if args.command == "resume":
+        raise SystemExit(
+            asyncio.run(
+                resume(
+                    working_dir,
+                    args.run_id,
+                    continue_run=args.continue_run,
+                    auto_resume=args.auto_resume,
+                )
+            )
+        )
+    if args.command in {"knowledge", "shape"}:
+        _dispatch(args, working_dir, use_worktree=False)
+        return
     if args.command == "review":
         _validate_ci_flags(parser, args)
         if args.ci:
@@ -590,8 +719,11 @@ def cli_main():  # ruff: ignore[complex-structure, too-many-statements] -- comma
             )
             try:
                 result = run_ci_review(
-                    working_dir, load_config(working_dir), os.environ,
-                    args.target_ref or "refs/remotes/origin/dev", artifact_dir,
+                    working_dir,
+                    load_config(working_dir),
+                    os.environ,
+                    args.target_ref or "refs/remotes/origin/dev",
+                    artifact_dir,
                     plan_file,
                 )
             except (CiReviewError, ValueError, OSError) as exc:
