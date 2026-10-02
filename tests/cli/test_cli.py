@@ -648,7 +648,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
             self.assertEqual(
                 (project_root / ".gitignore").read_text(encoding="utf-8"),
-                "venv\n.worktrees/\n.meow/\n.meow-ci-artifacts/\n",
+                "venv\n.worktrees/\n.meow/\n.meow-ci-artifacts/\n.claude/settings.local.json\n",
             )
 
     @staticmethod
