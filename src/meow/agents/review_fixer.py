@@ -31,7 +31,7 @@ class ReviewFixAgent(Agent):
     def __init__(self, context: AgentContext, timeout: float | None = None):
         super().__init__(context)
         if timeout is None:
-            timeout = context.config["lint_timeout"]
+            timeout = context.config.get("lint_timeout", 60)
         lint_hook = make_lint_hook(
             context.active_working_dir(), context.lint_commands(), timeout
         )
