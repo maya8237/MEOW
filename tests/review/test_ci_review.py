@@ -74,7 +74,7 @@ def test_missing_target_history_fails(checkout):
         prepare_ci_review(repo, env, "missing")
 
 
-def test_merge_request_pipeline_is_rejected(checkout):
+def test_merge_request_description_is_review_context(checkout):
     repo, _, _, env = checkout
     env = {
         **env,
@@ -82,18 +82,34 @@ def test_merge_request_pipeline_is_rejected(checkout):
         "CI_MERGE_REQUEST_EVENT_TYPE": "detached",
         "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME": "feature/x",
         "CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "dev",
+        "CI_MERGE_REQUEST_DESCRIPTION": "Must preserve the old behavior.",
+        "CI_MERGE_REQUEST_DESCRIPTION_IS_TRUNCATED": "false",
         "CI_COMMIT_BRANCH": "",
     }
-    with pytest.raises(CiReviewError):
-        prepare_ci_review(repo, env)
+    context = prepare_ci_review(repo, env)
+    assert context.mr_description == "Must preserve the old behavior."
+    assert not context.mr_description_truncated
 
 
-def test_example_job_runs_only_for_branch_pipelines():
+def test_truncated_merge_request_description_is_flagged(checkout):
+    repo, _, _, env = checkout
+    env |= {
+        "CI_PIPELINE_SOURCE": "merge_request_event",
+        "CI_MERGE_REQUEST_EVENT_TYPE": "detached",
+        "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME": "feature/x",
+        "CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "dev",
+        "CI_MERGE_REQUEST_DESCRIPTION": "Partial brief",
+        "CI_MERGE_REQUEST_DESCRIPTION_IS_TRUNCATED": "true",
+    }
+    assert prepare_ci_review(repo, env).mr_description_truncated
+
+
+def test_example_job_runs_for_merge_request_pipelines():
     root = Path(__file__).resolve().parents[2]
     example = (root / "templates/gitlab-ci-review.yml").read_text()
     assert "templates/gitlab-ci-review.yml" in (root / ".gitlab-ci.yml").read_text()
-    assert 'CI_PIPELINE_SOURCE == "push"' in example
-    assert 'CI_COMMIT_BRANCH != "dev"' in example
+    assert 'CI_PIPELINE_SOURCE == "merge_request_event"' in example
+    assert 'CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"' in example
     assert "- when: never" in example
     assert "image: python:3.12" in example
     assert 'python -m pip install "$MEOW_INSTALL_SPEC"' in example
@@ -173,7 +189,14 @@ def test_ci_reviewer_grants_only_read_tools(checkout):
     from meow.agents.reviewer import ReviewerAgent
 
     repo, _, _, env = checkout
-    context = prepare_ci_review(repo, env)
+    context = prepare_ci_review(repo, env | {
+        "CI_PIPELINE_SOURCE": "merge_request_event",
+        "CI_MERGE_REQUEST_EVENT_TYPE": "detached",
+        "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME": "feature/x",
+        "CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "dev",
+        "CI_MERGE_REQUEST_DESCRIPTION": "Must preserve the old behavior.",
+        "CI_MERGE_REQUEST_DESCRIPTION_IS_TRUNCATED": "true",
+    })
     agent = ReviewerAgent(ProjectContext(repo, {"models": {"reviewer": None}}))
 
     async def sdk_stream(*, prompt, options):  # ruff: ignore[unused-async] -- SDK async iterator seam
@@ -182,6 +205,8 @@ def test_ci_reviewer_grants_only_read_tools(checkout):
         assert options.strict_mcp_config is True
         assert options.permission_mode == "dontAsk"
         assert "feature edit" in prompt
+        assert "Must preserve the old behavior." in prompt
+        assert "truncated" in prompt
         from claude_agent_sdk import ResultMessage
 
         yield ResultMessage(
