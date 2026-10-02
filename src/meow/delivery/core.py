@@ -37,10 +37,13 @@ def _linked_worktree(directory: Path) -> bool:
     return Path(git_dir).resolve() != Path(common.stdout.strip()).resolve()
 
 
-def _branch_and_remote(directory: Path) -> tuple[str, str]:
+def _branch_and_remote(directory: Path, fallback_branch: str | None = None) -> tuple[str, str]:
     branch = _git(directory, "branch", "--show-current").stdout.strip()
     if not branch:
-        raise RuntimeError("Automatic delivery requires a checked-out branch")
+        if not fallback_branch:
+            raise RuntimeError("Automatic delivery requires a checked-out branch")
+        _git(directory, "switch", "-c", fallback_branch)
+        branch = fallback_branch
     if "origin" not in _git(directory, "remote").stdout.splitlines():
         raise RuntimeError("No origin remote configured for automatic push")
     return branch, "origin"
@@ -61,7 +64,7 @@ def deliver_verified_run(  # ruff: ignore[complex-structure, too-many-statements
     if not (unattended or _linked_worktree(active)):
         return False
     try:
-        branch, remote = _branch_and_remote(active)
+        branch, remote = _branch_and_remote(active, f"meow/{run_id}")
         previous = record.delivery
         if previous.get("pushed") and previous.get("commit"):
             return True
