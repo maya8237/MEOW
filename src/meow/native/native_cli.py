@@ -15,6 +15,7 @@ from pathlib import Path
 
 from meow import native
 from meow.config import load_config
+from meow.hooks.handlers import HANDLERS
 
 
 def _add_dirs(parser: argparse.ArgumentParser) -> None:
@@ -212,6 +213,12 @@ def _add_knowledge(sub) -> None:
     _add_dirs(parser)
     parser.add_argument("--finding", action="append", required=True)
     parser.add_argument("--overwrite", action="store_true")
+
+
+def _add_hook(sub) -> None:
+    parser = sub.add_parser("hook", help="Run a Claude Code JSON hook handler.")
+    _add_dirs(parser)
+    parser.add_argument("name", choices=tuple(HANDLERS))
     parser = sub.add_parser(
         "shape-assess", help="Assess whether optional shaping is useful."
     )
@@ -244,6 +251,7 @@ def add_native_parser(subparsers: argparse._SubParsersAction) -> None:
     _add_prompt(sub)
     _add_push(sub)
     _add_knowledge(sub)
+    _add_hook(sub)
 
 
 def _resolve(path: str | None, base: Path) -> Path | None:
@@ -339,6 +347,7 @@ _HANDLERS = {
     "shape-reflect": lambda args, wd, active: native.shape_reflect(
         _resolve(args.path, active)
     ),
+    "hook": lambda args, wd, active: HANDLERS[args.name](json.load(sys.stdin)),
 }
 
 
