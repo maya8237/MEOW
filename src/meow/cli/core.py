@@ -9,6 +9,7 @@ from pathlib import Path
 
 from meow.ci_review import CiReviewError, run_ci_review
 from meow.config import load_config
+from meow.hooks.claude import install_claude_hooks, uninstall_claude_hooks
 from meow.issue_solver import IssueUnresolvedError, run_issue_solver
 from meow.knowledge import audit_project, select_findings, structural_check
 from meow.knowledge_documents import EvidenceDocumentWriter, create_selected_documents
@@ -218,7 +219,7 @@ def _resolve_input_path(path: str | None, working_dir: Path) -> Path | None:
     return (candidate if candidate.is_absolute() else working_dir / candidate).resolve()
 
 
-def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-statements]
+def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-statements, too-many-locals]
     parser = argparse.ArgumentParser(prog="meow")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -267,6 +268,22 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     )
     _add_common_args(reflect_shape)
     reflect_shape.add_argument("path")
+    hooks = subparsers.add_parser("hooks", help="Manage optional host hooks.")
+    hooks_sub = hooks.add_subparsers(dest="hooks_command", required=True)
+    install = hooks_sub.add_parser("install", help="Install selected Claude hooks.")
+    install.add_argument("host", choices=("claude",))
+    install.add_argument(
+        "--only",
+        action="append",
+        choices=("lint", "shaping", "plan_capture", "plan_stop"),
+    )
+    install.add_argument("--dry-run", action="store_true")
+    _add_common_args(install)
+    uninstall = hooks_sub.add_parser(
+        "uninstall", help="Remove MEOW-owned Claude hooks."
+    )
+    uninstall.add_argument("host", choices=("claude",))
+    _add_common_args(uninstall)
 
     return parser
 
@@ -592,7 +609,7 @@ def _dispatch_review(args, working_dir: Path) -> None:
         raise SystemExit(1) from exc
 
 
-def _dispatch(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+def _dispatch(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements, too-many-return-statements]
     args, working_dir: Path, *, use_worktree: bool
 ) -> None:
     if args.command == "knowledge":
@@ -626,6 +643,19 @@ def _dispatch(  # ruff: ignore[complex-structure, too-many-branches, too-many-st
                     else []
                 })
             )
+        return
+    if args.command == "hooks":
+        if args.host != "claude":
+            raise ValueError("unsupported host")
+        if args.hooks_command == "install":
+            selected = args.only or ["lint", "shaping", "plan_capture", "plan_stop"]
+            print(
+                json.dumps(
+                    install_claude_hooks(working_dir, selected, dry_run=args.dry_run)
+                )
+            )
+        else:
+            print(json.dumps(uninstall_claude_hooks(working_dir)))
         return
     if args.command == "run":
         _dispatch_run(args, working_dir, use_worktree=use_worktree)
@@ -717,7 +747,7 @@ def cli_main():  # ruff: ignore[complex-structure, too-many-statements, too-many
                 )
             )
         )
-    if args.command in {"knowledge", "shape"}:
+    if args.command in {"knowledge", "shape", "hooks"}:
         _dispatch(args, working_dir, use_worktree=False)
         return
     if args.command == "review":
