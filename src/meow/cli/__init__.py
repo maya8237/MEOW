@@ -181,6 +181,43 @@ from .core import (
 from .core import (
     run_sprint as run_sprint,
 )
+from builtins import input as input
+_ORIGINAL_PROMPT_PLAN_APPROVAL = _prompt_plan_approval
+
+
+def _prompt_plan_approval(plan_file):
+    """Facade wrapper that keeps the public input patch point working."""
+    import builtins
+    from . import core as _core
+
+    _core.input = input if input is not builtins.input else builtins.input
+    return _ORIGINAL_PROMPT_PLAN_APPROVAL(plan_file)
+
+
+def cli_main(*args, **kwargs):
+    """Run the CLI while keeping the package facade patchable.
+
+    The public ``meow.cli`` module re-exports the command dependencies.  Sync
+    the core module's references at call time so callers patching those public
+    names (as supported by the existing API and tests) affect dispatch too.
+    """
+    from . import core as _core
+
+    _core.run_ci_review = run_ci_review
+    _core._boot_repo = _boot_repo
+    _core._prompt_plan_approval = _prompt_plan_approval
+    _core.run_review_command = run_review_command
+    _core.run_plan = run_plan
+    _core.run_sprint = run_sprint
+    _core.run_lint_fix = run_lint_fix
+    _core.load_config = load_config
+    _core._ensure_clean_tree = _ensure_clean_tree
+    _core.run_issue_solver = run_issue_solver
+    import importlib
+
+    _orchestrator_core = importlib.import_module("meow.orchestrator.core")
+    _orchestrator_core.logger = __import__("meow.orchestrator", fromlist=["logger"]).logger
+    return _core.cli_main(*args, **kwargs)
 from .core import (
     select_findings as select_findings,
 )

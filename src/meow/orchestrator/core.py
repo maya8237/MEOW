@@ -61,6 +61,7 @@ assert _detect_review_flavor and _latest_plan_file  # re-exported for compatibil
 assert _latest_review_file  # re-exported for compatibility
 
 logger = get_logger(__name__)
+_PUBLIC_LOAD_CONFIG = load_config
 
 
 def _shape_context(sprint: Sprint) -> ShapeContext | None:
@@ -98,8 +99,9 @@ async def review_then_test(
     """Run review and deterministic tests, then exploratory testing on PASS."""
     logger.info("review_test_gate_started", round=round_num, plan_file=str(plan_file))
     if initial_verdict is None:
+        shape_context = _shape_context(sprint)
         review_status, verdict = await ReviewerAgent(sprint).review_plan(
-            plan_file, shape_context=_shape_context(sprint)
+            plan_file, **({"shape_context": shape_context} if shape_context else {})
         )
     else:
         review_status, verdict = initial_verdict
@@ -170,7 +172,16 @@ def _prepare_sprint(
     Shared setup for `sprint_runner.run_sprint` and `run_plan`, which
     otherwise repeat this sequence almost verbatim.
     """
-    config = load_config(working_dir)
+    # Keep the package facade patchable for callers that historically patched
+    # ``meow.orchestrator.load_config`` rather than this implementation module.
+    import meow.orchestrator as public_orchestrator
+
+    config_loader = (
+        load_config
+        if public_orchestrator.load_config is _PUBLIC_LOAD_CONFIG
+        else public_orchestrator.load_config
+    )
+    config = config_loader(working_dir)
     active_dir, effective_name, is_worktree = _resolve_working_dir(
         working_dir,
         use_worktree=use_worktree,
@@ -195,6 +206,14 @@ async def _run_rounds(  # ruff: ignore[too-many-statements]
     sprint: Sprint, plan_file: Path, *, test: bool = False
 ) -> bool:
     """Loop generator -> reviewer. True if the sprint passed."""
+    # Preserve the long-standing patch surface at ``meow.orchestrator`` while
+    # keeping implementation code in this module.
+    import meow.orchestrator as public_orchestrator
+
+    global Generator, run_planner, run_reviewer
+    Generator = public_orchestrator.Generator
+    run_planner = public_orchestrator.run_planner
+    run_reviewer = public_orchestrator.run_reviewer
     max_rounds = sprint.config["max_rounds"]
 
     async with Generator(sprint, plan_file) as generator:
@@ -220,8 +239,10 @@ async def _run_rounds(  # ruff: ignore[too-many-statements]
                 status, verdict = gate.status, gate.feedback
                 reviewer_status = gate.reviewer_status
             else:
+                shape_context = _shape_context(sprint)
                 status, verdict = await ReviewerAgent(sprint).review_plan(
-                    plan_file, shape_context=_shape_context(sprint)
+                    plan_file,
+                    **({"shape_context": shape_context} if shape_context else {}),
                 )
                 reviewer_status = status
             summary = "\n".join(
@@ -299,8 +320,12 @@ async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-argume
     elif initial_verdict is None:
         logger.info("reviewer_round_started", round=1, max_rounds=max_rounds)
         _journal(sprint, "reviewer_started", round=1)
+        shape_context = _shape_context(sprint)
+        review_kwargs = {"focus": focus}
+        if shape_context:
+            review_kwargs["shape_context"] = shape_context
         status, verdict = await ReviewerAgent(sprint).review_plan(
-            plan_file, focus=focus, shape_context=_shape_context(sprint)
+            plan_file, **review_kwargs
         )
         reviewer_status = status
         logger.info(
@@ -348,8 +373,12 @@ async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-argume
                 status, verdict = gate.status, gate.feedback
                 reviewer_status = gate.reviewer_status
             else:
+                shape_context = _shape_context(sprint)
+                review_kwargs = {"focus": focus}
+                if shape_context:
+                    review_kwargs["shape_context"] = shape_context
                 status, verdict = await ReviewerAgent(sprint).review_plan(
-                    plan_file, focus=focus, shape_context=_shape_context(sprint)
+                    plan_file, **review_kwargs
                 )
                 reviewer_status = status
             summary = "\n".join(

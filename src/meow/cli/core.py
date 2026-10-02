@@ -569,6 +569,8 @@ def _dispatch_jira_build(args, working_dir: Path) -> None:
 def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> None:
     plan_file = _resolve_input_path(args.plan, working_dir)
     approve_plan = _prompt_plan_approval if args.manually_approve_plan else None
+    shape_path = _resolve_input_path(args.shape, working_dir)
+    optional_shape = {"shape_path": shape_path} if shape_path is not None else {}
     try:
         asyncio.run(
             run_sprint(
@@ -580,7 +582,7 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
                 source_branch=args.source_branch,
                 approve_plan=approve_plan,
                 resume_at=args.resume_at,
-                shape_path=_resolve_input_path(args.shape, working_dir),
+                **optional_shape,
                 **({"unattended": True} if args.unattended else {}),
                 **({"test": True} if args.test else {}),
             )
@@ -677,6 +679,8 @@ def _dispatch(  # ruff: ignore[complex-structure, too-many-branches, too-many-st
     if args.command == "review":
         _dispatch_review(args, working_dir)
         return
+    shape_path = _resolve_input_path(args.shape, working_dir)
+    optional_shape = {"shape_path": shape_path} if shape_path is not None else {}
     asyncio.run(
         run_plan(
             working_dir,
@@ -684,7 +688,7 @@ def _dispatch(  # ruff: ignore[complex-structure, too-many-branches, too-many-st
             args.request,
             use_worktree=use_worktree,
             source_branch=args.source_branch,
-            shape_path=_resolve_input_path(args.shape, working_dir),
+            **optional_shape,
         )
     )
 
