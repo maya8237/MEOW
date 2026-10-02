@@ -105,3 +105,18 @@ fix_flag = "--fix"
 #   lint_command = "ruff check"
 #   lint_fix_flag = "--fix"
 # ---------------------------------------------------------------------------
+
+# Configured tests use the managed tester stage and may run with dev servers.
+# gate = true is the default; gate = false makes one test advisory.
+# [tester]
+# [[tester.tests]]
+# command = "python -m pytest -q"
+# gate = true
+# timeout = 300
+
+# Build checks are separate from tests and lint. Omit if no build is needed.
+# required = true is the default; false records an advisory failure.
+# [[build]]
+# command = "python -m compileall src"
+# required = true
+# timeout = 300

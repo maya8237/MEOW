@@ -12,6 +12,17 @@ Both modes read the same `.harness.toml` and write the same files, so a run
 started in one can be continued in the other (`meow review --fix`,
 `meow run --resume-at review`, `/meow:review`, ...).
 
+Release 2 run checkpoints are stored in `.meow/runs/`. Inspect one with
+`meow status [RUN_ID] [--verbose]` or `meow resume [RUN_ID]`. The latter only
+inspects until `--continue` or `--auto-resume` is supplied. Native execution
+must write a checkpoint before and after planner, generator, reviewer, tester,
+and required check phases; an interrupted generator turn is marked as a
+possible mutation. Inspect and review the actual worktree against the saved
+plan before another edit. Do not clean up failed or interrupted worktrees.
+Completion requires current passing required lint, test, and build checks,
+reviewer PASS, and enabled tester PASS. SDK usage missing from evidence is
+`unavailable`.
+
 ## The `meow native` helper
 
 `meow native <command>` prints one JSON document on stdout (failures: message
@@ -29,6 +40,8 @@ and stop; do not guess at a venv path. Flags shared by every command:
 | `verdict FILE` | `{status: PASS\|FAIL, summary}` of a review file |
 | `lint [--file F] [--fix] [--all-blocking]` | Per-file (auto-fixing) or project-wide lint run. `--all-blocking` ignores `gate` and treats every command as blocking (what the `lint` skill needs; everything else wants the default gate/informational split) |
 | `round PLAN [--reset\|--show]` | On-disk round counter; default advances it |
+| `checkpoint PHASE [--run-id ID] [--request TEXT] [--plan FILE] [--review FILE] [--round N] [--reviewer PASS\|FAIL] [--tester PASS\|FAIL]` | Atomic run journal transition; omit `--run-id` only to create a native run, then reuse the returned ID |
+| `finalize RUN_ID` | Run current required lint, test, and build gates and finish only when reviewer and enabled tester evidence pass |
 | `prompt ROLE [--plan F] [--focus T] [--worktree]` | Exact SDK system prompt (+ task message, model) for a role |
 | `push BRANCH` | Push a named branch to origin |
 
@@ -122,8 +135,9 @@ then stop." plus the full review text (same wording as the CLI).
 - Prompt review: `review.md`. Merge request review: `gitlab-review.md`.
 - Verdict format: line 1 `SUMMARY: ...`, line 2 `STATUS: PASS` or `STATUS: FAIL`,
   then one line per criterion.
-- Never edit files under `docs_dir` other than the plan and the review verdicts,
-  and never commit unless the user asks (the issue flow's push is the exception).
+- Never edit files under `docs_dir` other than the plan and the review verdicts.
+  Native `finalize` commits and pushes only after verification in a separate
+  linked worktree; in-place native runs do not deliver automatically.
 - Worktree hygiene: when `use_worktree` is true, every change goes in `active_dir`;
   the main checkout must stay untouched.
 - If a `.harness.toml` is missing at the project root, tell the user and point

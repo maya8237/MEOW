@@ -60,9 +60,8 @@ Native `/meow:run` and `/meow:review` use the CLI flow when `--test` is
 requested so MEOW can own server lifecycle during tester work. Normal native
 behavior is unchanged when tester mode is off.
 
-MEOW no longer reads `docs/RULES.md` or injects it into role prompts. Existing
-project-owned files remain on disk. Use the project's normal agent instruction
-files for persistent guidance; `docs/ARCHITECTURE.md` describes architecture.
+Use the project's normal agent instruction files for persistent guidance;
+`docs/ARCHITECTURE.md` describes architecture.
 
 ## Reviewer architecture check
 

@@ -14,13 +14,16 @@ meow run "<feature description>" --name "<feature-name>"
 `meow plan "<feature description>" --name "<feature-name>"` writes the sprint
 plan only. See [docs/CLI.md](docs/CLI.md) for full command behavior.
 
-- **Jira:** `meow run --jira [ISSUE-KEY]` fetches an issue, runs in its own
-  worktree, and pushes the branch. It requires `[jira]`/`[jira.mcp]` and
+- **Jira:** `meow run --jira [ISSUE-KEY]` fetches an issue and runs in its own
+  worktree, committing and pushing after verification. It requires `[jira]`/`[jira.mcp]` and
   rejects `--name`, `--no-worktree`, `--source-branch`, `--resume-at`, and
   `--plan-file`.
 - **Lint:** `meow run --lint-fix` runs configured linters and fixes findings.
   `--report-only` reports without editing; the `lint-fix` skill uses this mode.
   Lint-fix takes no request text, Jira, or worktree options.
+- **Delivery:** A verified feature run in a separate linked worktree commits
+  and pushes to `origin`. `run --unattended` enables this for an in-place run.
+  Delivery failures retain the worktree and run checkpoint.
 - **Source branch:** `run` and `plan --source-branch BRANCH` (also `--from` or
   `-b`) create a worktree from that branch. The uncommitted-changes check is
   skipped only when creating a worktree from an explicit source branch.

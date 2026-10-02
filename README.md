@@ -50,7 +50,7 @@ copy a template from `templates/` to its root as `.harness.toml`, then use the
 - `meow plan "<feature>" --name "<name>"` writes a plan without implementing it.
 - `meow review` reviews the latest plan, or the code diff if no plan exists.
 - `meow run --jira [ISSUE-KEY]` solves a Jira issue in a worktree and pushes
-  its branch; configure the optional Jira integration first.
+  its verified branch; configure the optional Jira integration first.
 - `meow run --lint-fix` runs configured project-wide linters and fixes findings.
 
 All commands accept `--working-dir PATH`. The [CLI guide](docs/CLI.md) covers
@@ -75,8 +75,7 @@ component `include` and `exclude` path prefixes. See
 [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md#monorepo-lint-and-tester).
 
 MEOW reads architecture context from `docs/ARCHITECTURE.md` or
-`ARCHITECTURE.md`. Existing `docs/RULES.md` files are no longer loaded into
-agent prompts; MEOW leaves project-owned copies untouched.
+`ARCHITECTURE.md`.
 
 ## Documentation
 

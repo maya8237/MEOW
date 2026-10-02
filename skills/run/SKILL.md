@@ -1,6 +1,6 @@
 ---
 name: run
-description: Run a full meow sprint for a feature request in the current project — plan it, implement it, then review and fix it in a loop until it passes. Optionally sourced from a Jira issue instead of typed text, built in a pushed branch. Runs natively in this Claude Code session by default. Use when the user wants meow to build a feature end to end.
+description: Run a full meow sprint for a feature request in the current project — plan it, implement it, then review and fix it in a loop until it passes. Optionally sourced from a Jira issue instead of typed text, built in a retained branch. Runs natively in this Claude Code session by default. Use when the user wants meow to build a feature end to end.
 ---
 
 # run
@@ -34,11 +34,10 @@ for the headless/separate-process run.
    outside `A-Za-z0-9._-` turned into `-`. Branch:
    `<branch_prefix><KEY>`. Run `meow native prepare --name "<feature>"
    --branch "<branch>" --working-dir "<project-path>"` instead of step 2's
-   `prepare` call, and skip straight to step 3 -- do not pass
+   `prepare` call, then perform step 2's checkpoint and continue at step 3 -- do not pass
    `--worktree` when dispatching reviewers in this flow (CLI parity). On
-   PASS (step 5), run `meow native push "<branch>" --active-dir
-   <active_dir>` (needs an `origin` remote; report its error verbatim
-   otherwise), then report one line: `{"issue": "<key>", "branch":
+   PASS (step 5), finalize commits and pushes the branch; report one line:
+   `{"issue": "<key>", "branch":
    "<branch>"}` instead of step 5's normal report.
 2. Pick a safe feature name (slugify the request, e.g. `add-csv-export`). Run
    `meow native prepare --name "<name>" --working-dir "<project-path>"`.
@@ -47,20 +46,34 @@ for the headless/separate-process run.
    they named one. On a nonzero exit (e.g. uncommitted changes), report the
    message verbatim and stop. Keep `active_dir`, `plan_file`, `review_file`,
    `max_rounds`, `use_worktree` from the JSON; do all further work in `active_dir`.
+   Immediately call `meow native checkpoint preparing --request "<request>"
+   --working-dir "<project-path>" --active-dir "<active_dir>"` and keep its
+   `run_id`. Reuse `--run-id <run_id>` for every later checkpoint.
 3. Plan (skip if the user supplied an existing plan file, or asked to resume at
    review): `meow native round <plan_file> --reset --active-dir <active_dir>`,
    then, as planner, write `plan_file` per the shared protocol's Planner row.
    Read it back and confirm it has a numbered task list and a `## Sprint Contract`.
+   Write a `planned` checkpoint with `--plan <plan_file>`.
 4. If the user asked to approve the plan first, show it and ask before
    generating; if declined, stop without implementing anything.
 5. Run the review loop from the shared protocol: generator first (or, when
    resuming at review, review the existing code first and generate only if it
    fails). Pass `--worktree` to `prompt reviewer-plan` when `use_worktree` is
    true (never for the Jira-sourced flow -- see step 1a).
+   Before a generator turn, write `generator_started` with `--round N`; after
+   it returns, write `generator_finished`. If it stops unexpectedly, write
+   `interrupted_mutation` and inspect the worktree before another edit.
+   Record `reviewer_started` before dispatch and `reviewer_finished
+   --review <review_file> --reviewer PASS|FAIL` after reading the verdict.
+   Record an enabled tester verdict separately with `tester_finished
+   --tester PASS|FAIL`. On final PASS, call `meow native finalize <run_id>
+   --working-dir "<project-path>" --active-dir "<active_dir>"`; report success
+   only when its JSON says `"complete": true`.
 6. Report: on PASS, the plan file and review file paths (or, for a
    Jira-sourced build, step 1a's JSON report instead); when a round comes
    back `exhausted`, say the sprint did not pass after `max_rounds` rounds and
-   point at the review file for the last feedback (Jira-sourced: do not push).
+   point at the review file for the last feedback. A successful finalize in a
+   separate worktree commits and pushes its branch.
 
 ## CLI mode
 
@@ -73,7 +86,7 @@ Runs `meow run` (separate Agent SDK sessions, works headless). From the project 
 
 ```bash
 meow run "<feature request>" --name "<generated-feature-name>" --working-dir "<project-path>"
-meow run --jira [ISSUE-KEY] --working-dir "<project-path>"   # Jira-sourced, pushed branch
+meow run --jira [ISSUE-KEY] --working-dir "<project-path>"   # Jira-sourced, retained branch
 meow run "<feature request>" --name "<generated-feature-name>" --test --working-dir "<project-path>"
 ```
 
