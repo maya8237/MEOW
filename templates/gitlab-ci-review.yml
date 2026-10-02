@@ -2,10 +2,6 @@
 #
 # Required project-level CI/CD variable (set in GitLab, masked; do not commit it):
 #   ANTHROPIC_API_KEY - Claude API key used by the Claude Agent SDK.
-#
-# The CI_* variables used below are GitLab predefined variables and are supplied
-# automatically by GitLab. No GitLab MCP variables are needed for `meow review
-# --ci`; the job reviews the local pipeline checkout and fetches origin/dev.
 meow_review:
   image: python:3.12
   stage: test
