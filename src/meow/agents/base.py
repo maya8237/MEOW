@@ -229,7 +229,8 @@ class ProjectContext:
         self.use_worktree = use_worktree
 
     def model(self, role: str) -> str | None:
-        return self.config["models"][role]
+        models = self.config["models"]
+        return models.get(role, models.get("reviewer"))
 
     def lint_commands(self) -> list[LintCommand]:
         return self.config["lint"]
