@@ -29,6 +29,9 @@ class CiReviewContext:
     merge_base: str
     diff: str
     plan_text: str = ""
+    mr_title: str = ""
+    mr_description: str = ""
+    mr_description_truncated: bool = False
 
 
 @dataclass(frozen=True)
@@ -88,7 +91,20 @@ def prepare_ci_review(  # ruff: ignore[complex-structure, too-many-statements, t
     except CiReviewError as exc:
         raise CiReviewError("target comparison history unavailable") from exc
     diff = _git(repo, "diff", "--no-ext-diff", base, head, "--")
-    return CiReviewContext(head, branch, target_ref, target_sha, base, diff)
+    return CiReviewContext(
+        head,
+        branch,
+        target_ref,
+        target_sha,
+        base,
+        diff,
+        mr_title=env.get("CI_MERGE_REQUEST_TITLE", "") if source == "merge_request_event" else "",
+        mr_description=env.get("CI_MERGE_REQUEST_DESCRIPTION", "") if source == "merge_request_event" else "",
+        mr_description_truncated=(
+            env.get("CI_MERGE_REQUEST_DESCRIPTION_IS_TRUNCATED") == "true"
+            if source == "merge_request_event" else False
+        ),
+    )
 
 
 def _snapshot(repo: Path) -> tuple[str, str]:

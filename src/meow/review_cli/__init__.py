@@ -103,3 +103,22 @@ from .core import (
 from .core import (
     subprocess as subprocess,
 )
+
+from . import core as _core
+
+_run_review_command_impl = _core.run_review_command
+
+
+async def run_review_command(*args, **kwargs):
+    import sys
+
+    facade = sys.modules[__name__]
+    for name in (
+        "load_config", "ReviewerAgent", "_fetch_issue", "_fetch_merge_request",
+        "_ensure_existing_branch_worktree", "_run_review_rounds", "review_then_test",
+        "build_sprint", "Generator", "run_final_checks",
+        "_require_branch_checked_out", "_prompt_review", "_plan_review",
+    ):
+        if hasattr(facade, name):
+            setattr(_core, name, getattr(facade, name))
+    return await _run_review_command_impl(*args, **kwargs)

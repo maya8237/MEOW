@@ -638,7 +638,9 @@ def load_config(working_dir: Path) -> dict:
 
     config = {**DEFAULT_CONFIG, **user_config}
     config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}
-    config["lint"] = _normalize_lint_commands(user_config)
+    config["lint"] = (
+        [] if not user_config else _normalize_lint_commands(user_config)
+    )
     _validate_os_compatibility(config["lint"])
     config["tester"] = _normalize_tester_config(user_config)
     config["build"] = normalize_build(user_config.get("build", []))
