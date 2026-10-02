@@ -1,16 +1,22 @@
-# Include this job in a GitLab project with branch pipelines.
+# Include this job in a GitLab project whose merge requests target dev.
+#
+# Required project-level CI/CD variable (set in GitLab, masked; do not commit it):
+#   ANTHROPIC_API_KEY - Claude API key used by the Claude Agent SDK.
+#
+# The CI_* variables used below are GitLab predefined variables and are supplied
+# automatically by GitLab. No GitLab MCP variables are needed for `meow review
+# --ci`; the job reviews the local pipeline checkout and fetches origin/dev.
 meow_review:
   image: python:3.12
   stage: test
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "dev"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev" && $CI_MERGE_REQUEST_EVENT_TYPE == "detached"'
       when: on_success
     - when: never
   variables:
     GIT_DEPTH: "0"
-    MEOW_INSTALL_SPEC: "meow"
   before_script:
-    - python -m pip install "$MEOW_INSTALL_SPEC"
+    - python -m pip install meow
     - git fetch --no-tags origin refs/heads/dev:refs/remotes/origin/dev
   script:
     - meow review --ci --artifact-dir "$CI_PROJECT_DIR/.meow-ci-artifacts"
