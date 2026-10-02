@@ -44,6 +44,9 @@ and stop; do not guess at a venv path. Flags shared by every command:
 | `finalize RUN_ID` | Run current required lint, test, and build gates and finish only when reviewer and enabled tester evidence pass |
 | `prompt ROLE [--plan F] [--focus T] [--worktree]` | Exact SDK system prompt (+ task message, model) for a role |
 | `push BRANCH` | Push a named branch to origin |
+| `knowledge-audit` / `knowledge-check` / `knowledge-create` | Audit, validate, or create selected project knowledge documents |
+| `shape-assess` / `shape-create` / `shape-reflect` | Assess, create, or reflect on requirements shaping artifacts |
+| `hook` | Run an optional configured lifecycle hook |
 
 `prompt` roles: `planner`, `generator`, `explorer`, `reviewer-plan`,
 `reviewer-prompt`, `reviewer-mr`, `reviewer-branch`, `review-fixer`,

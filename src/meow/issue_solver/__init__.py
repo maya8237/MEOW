@@ -58,3 +58,22 @@ from .core import (
 from .core import (
     tempfile as tempfile,
 )
+
+from . import core as _core
+
+_run_issue_solver_impl = _core.run_issue_solver
+
+
+async def run_issue_solver(*args, **kwargs):
+    import sys
+
+    facade = sys.modules[__name__]
+    for name in (
+        "load_config",
+        "_fetch_issue",
+        "_ensure_branch_worktree",
+        "run_sprint",
+    ):
+        if hasattr(facade, name):
+            setattr(_core, name, getattr(facade, name))
+    return await _run_issue_solver_impl(*args, **kwargs)

@@ -67,6 +67,28 @@ from .core import (
 from .core import (
     run_sprint as run_sprint,
 )
+
+# Keep facade-level patching working for integrations and legacy callers.
+from . import core as _core
+
+_run_sprint_impl = _core.run_sprint
+
+
+async def run_sprint(*args, **kwargs):
+    import sys
+
+    facade = sys.modules[__name__]
+    for name in (
+        "_prepare_sprint",
+        "_run_review_rounds",
+        "_run_rounds",
+        "PlannerAgent",
+        "run_final_checks",
+        "deliver_verified_run",
+    ):
+        if hasattr(facade, name):
+            setattr(_core, name, getattr(facade, name))
+    return await _run_sprint_impl(*args, **kwargs)
 from .core import (
     subprocess as subprocess,
 )

@@ -8,11 +8,14 @@ meow_review:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev" && $CI_MERGE_REQUEST_EVENT_TYPE == "detached"'
       when: on_success
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != "dev"'
+      when: on_success
     - when: never
   variables:
     GIT_DEPTH: "0"
+    MEOW_INSTALL_SPEC: "meow"
   before_script:
-    - python -m pip install meow
+    - python -m pip install "$MEOW_INSTALL_SPEC"
     - git fetch --no-tags origin refs/heads/dev:refs/remotes/origin/dev
   script:
     - meow review --ci --artifact-dir "$CI_PROJECT_DIR/.meow-ci-artifacts"

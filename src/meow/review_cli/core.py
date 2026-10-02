@@ -340,6 +340,9 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
         )
     try:
         config = load_config(working_dir)
+        # Keep lightweight in-memory configs accepted by integrations and tests.
+        config.setdefault("docs_dir", "docs")
+        config.setdefault("max_rounds", 3)
         if store and record:
             config["_run_journal"] = (store, record.id)
         describe_lint_plan(config["lint"])
