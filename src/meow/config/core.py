@@ -87,6 +87,10 @@ DEFAULT_CONFIG = {
         "review_fixer": None,
         "tester": None,
     },
+    "delivery": {
+        "target_branch": "dev",
+        "gitlab": {"enabled": False},
+    },
 }
 
 
@@ -618,6 +622,21 @@ def load_config(working_dir: Path) -> dict:
     _validate_os_compatibility(config["lint"])
     config["tester"] = _normalize_tester_config(user_config)
     config["build"] = normalize_build(user_config.get("build", []))
+    delivery = user_config.get("delivery", {})
+    if not isinstance(delivery, dict):
+        raise ValueError(f"{CONFIG_FILENAME}: [delivery] must be a table")
+    target = delivery.get("target_branch", "dev")
+    if not isinstance(target, str) or not target or target.startswith("-"):
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [delivery].target_branch must be a branch name"
+        )
+    gitlab = delivery.get("gitlab", {})
+    if not isinstance(gitlab, dict):
+        raise ValueError(f"{CONFIG_FILENAME}: [delivery.gitlab] must be a table")
+    config["delivery"] = {
+        "target_branch": target,
+        "gitlab": {"enabled": bool(gitlab.get("enabled", False))},
+    }
     for table_name, commands in (
         ("[[tester.tests]]", config["tester"]["tests"]),
         ("[[tester.dev_server]]", config["tester"]["dev_server"]),
