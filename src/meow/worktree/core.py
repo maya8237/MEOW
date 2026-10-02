@@ -136,6 +136,8 @@ def _boot_repo(working_dir: Path, *, include_gitignore: bool = True) -> None:
     """Run working-directory boot checks every meow command needs."""
     if include_gitignore:
         _ensure_gitignore_entry(working_dir)
+        for entry in (".meow/", ".meow-ci-artifacts/"):
+            _ensure_gitignore_entry(working_dir, entry)
 
 
 def _resolve_working_dir(
