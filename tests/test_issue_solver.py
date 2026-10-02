@@ -61,6 +61,35 @@ class SanitizeTests(unittest.TestCase):
 
 
 class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
+    async def test_jira_test_failure_is_passed_into_sprint_and_never_pushes(self):
+        working_dir = Path("/project")
+        config = {
+            "jira": {
+                "project_key": "PROJ",
+                "mcp": {"command": "uvx", "args": []},
+            }
+        }
+        issue = {"key": "PROJ-2", "summary": "Fix thing", "description": "Details."}
+        with (
+            patch("meow.issue_solver.load_config", return_value=config),
+            patch("meow.issue_solver._fetch_issue", new=AsyncMock(return_value=issue)),
+            patch(
+                "meow.issue_solver._ensure_branch_worktree",
+                return_value=Path("/project/wt"),
+            ),
+            patch(
+                "meow.issue_solver.run_sprint",
+                new=AsyncMock(side_effect=RuntimeError("Tester stage failed")),
+            ) as sprint,
+            patch("meow.issue_solver._push_branch") as push,
+            self.assertRaisesRegex(
+                issue_solver.IssueUnresolvedError, "Tester stage failed"
+            ),
+        ):
+            await issue_solver.run_issue_solver(working_dir, "PROJ-2", test=True)
+        self.assertTrue(sprint.await_args.kwargs["test"])
+        push.assert_not_called()
+
     async def test_fetches_solves_and_pushes_then_returns_issue_and_branch(self):
         working_dir = Path("/project")
         config = {
@@ -80,18 +109,21 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
                 "meow.issue_solver._ensure_branch_worktree",
                 return_value=Path("/project/.worktrees/issue-proj-1"),
             ) as mock_worktree,
-            patch(
-                "meow.issue_solver.run_sprint", new=AsyncMock()
-            ) as mock_sprint,
+            patch("meow.issue_solver.run_sprint", new=AsyncMock()) as mock_sprint,
             patch("meow.issue_solver._push_branch") as mock_push,
         ):
             result = await issue_solver.run_issue_solver(working_dir, "PROJ-1")
 
-        mock_fetch.assert_awaited_once_with(working_dir, config, {
-            "project_key": "PROJ",
-            "branch_prefix": "issue/",
-            "mcp": {"command": "uvx", "args": []},
-        }, "PROJ-1")
+        mock_fetch.assert_awaited_once_with(
+            working_dir,
+            config,
+            {
+                "project_key": "PROJ",
+                "branch_prefix": "issue/",
+                "mcp": {"command": "uvx", "args": []},
+            },
+            "PROJ-1",
+        )
         mock_worktree.assert_called_once_with(
             working_dir, "issue-proj-1", "issue/PROJ-1"
         )
@@ -120,9 +152,7 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("meow.issue_solver.load_config", return_value=config),
-            patch(
-                "meow.issue_solver._fetch_issue", new=AsyncMock(return_value=issue)
-            ),
+            patch("meow.issue_solver._fetch_issue", new=AsyncMock(return_value=issue)),
             patch(
                 "meow.issue_solver._ensure_branch_worktree",
                 return_value=Path("/project/.worktrees/issue-proj-1"),

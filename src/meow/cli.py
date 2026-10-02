@@ -145,6 +145,8 @@ def _misused_flags(args, checks) -> list[str]:
 def _validate_lint_fix_flags(parser: argparse.ArgumentParser, args) -> None:
     if args.request or args.jira is not None:
         parser.error("--lint-fix takes no request text and no --jira")
+    if getattr(args, "test", False):
+        parser.error("--test cannot be combined with --lint-fix")
     checks = (
         *_MISUSE_CHECKS,
         ("-m/--manually-approve-plan", lambda a: a.manually_approve_plan),
@@ -256,6 +258,11 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     run_parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Run configured tests and exploratory testing after a passing review.",
+    )
+    run_parser.add_argument(
         "--lint-fix",
         dest="lint_fix",
         action="store_true",
@@ -326,6 +333,11 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     review_parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Run tests after an explicit plan-file review.",
+    )
+    review_parser.add_argument(
         "--gitlab",
         dest="gitlab",
         default=None,
@@ -389,7 +401,12 @@ def _dispatch_jira_build(args, working_dir: Path) -> None:
     approve_plan = _prompt_plan_approval if args.manually_approve_plan else None
     try:
         result = asyncio.run(
-            run_issue_solver(working_dir, args.jira or None, approve_plan=approve_plan)
+            run_issue_solver(
+                working_dir,
+                args.jira or None,
+                approve_plan=approve_plan,
+                **({"test": True} if args.test else {}),
+            )
         )
     except IssueUnresolvedError as exc:
         print(f"\nWARNING: could not resolve the issue: {exc}", file=sys.stderr)
@@ -411,6 +428,7 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
                 source_branch=args.source_branch,
                 approve_plan=approve_plan,
                 resume_at=args.resume_at,
+                **({"test": True} if args.test else {}),
             )
         )
     except PlanNotApprovedError as exc:
@@ -443,6 +461,7 @@ def _dispatch_review(args, working_dir: Path) -> None:
                 plan_file=plan_file,
                 review_file=review_file,
                 use_worktree=not args.no_worktree,
+                **({"test": True} if args.test else {}),
             )
         )
     except ValueError as exc:

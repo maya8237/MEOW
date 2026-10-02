@@ -34,9 +34,7 @@ class LintHookTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {})
 
     async def test_failing_command_reports_output_as_additional_context(self):
-        script = _write_script(
-            self.scripts_dir, "fail.py", "raise SystemExit(1)\n"
-        )
+        script = _write_script(self.scripts_dir, "fail.py", "raise SystemExit(1)\n")
         command = LintCommand(command=f"{sys.executable} {script}")
         hook = make_lint_hook(self.working_dir, [command], timeout=5)
 
@@ -91,8 +89,7 @@ class ProjectWideLintTests(unittest.IsolatedAsyncioTestCase):
         script = _write_script(
             self.scripts_dir,
             "record_argv.py",
-            "import sys\n"
-            f"open(r'{marker}', 'w').write(' '.join(sys.argv[1:]))\n",
+            f"import sys\nopen(r'{marker}', 'w').write(' '.join(sys.argv[1:]))\n",
         )
         command = LintCommand(command=f"{sys.executable} {script}", fix_flag="--fix")
 
@@ -138,6 +135,107 @@ class ProjectWideLintTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(problems), 1)
         self.assertIn("Timed out", problems[0])
+
+    async def test_per_file_routes_by_component_filters_and_passes_relative_path(self):
+        root = self.scripts_dir / "repo"
+        web = root / "apps" / "web"
+        api = root / "services" / "api"
+        web.mkdir(parents=True)
+        api.mkdir(parents=True)
+        marker = self.scripts_dir / "web-path.txt"
+        script = _write_script(
+            self.scripts_dir,
+            "capture.py",
+            "import os,sys\n"
+            f"open(r'{marker}', 'w').write(os.getcwd()+'|'+sys.argv[-1])\n",
+        )
+        entry = LintCommand(
+            command=f"{sys.executable} {script}",
+            cwd=Path("apps/web"),
+            include=(Path("apps/web/src"),),
+            exclude=(Path("apps/web/src/generated"),),
+        )
+        hook = make_lint_hook(root, [entry], timeout=5)
+        await hook(
+            {"tool_name": "Write", "tool_input": {"file_path": r"apps\web\src\a.py"}},
+            "id",
+            None,
+        )
+        self.assertEqual(marker.read_text(), str(web.resolve()) + "|src\\a.py")
+        marker.unlink()
+        await hook(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": "apps/website/src/a.py"},
+            },
+            "id",
+            None,
+        )
+        await hook(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": "apps/web/src/generated/a.py"},
+            },
+            "id",
+            None,
+        )
+        await hook(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": "services/api/src/a.py"},
+            },
+            "id",
+            None,
+        )
+        self.assertFalse(marker.exists())
+
+    async def test_project_wide_commands_use_component_cwd_env_and_entry_timeout(self):
+        root = self.scripts_dir / "repo"
+        (root / "apps" / "web").mkdir(parents=True)
+        (root / "services" / "api").mkdir(parents=True)
+        marker = self.scripts_dir / "runs.txt"
+        script = _write_script(
+            self.scripts_dir,
+            "record.py",
+            "import os\n"
+            + (
+                f"open(r'{marker}', 'a').write("
+                "os.getcwd()+'|'+os.getenv('COMPONENT','')+'\\n')\n"
+            ),
+        )
+        commands = [
+            LintCommand(
+                command=f"{sys.executable} {script}",
+                cwd=Path("apps/web"),
+                env={"COMPONENT": "web"},
+                timeout=2,
+            ),
+            LintCommand(
+                command=f"{sys.executable} {script}",
+                cwd=Path("services/api"),
+                env={"COMPONENT": "api"},
+                timeout=2,
+            ),
+        ]
+        self.assertEqual(await check_lint_commands(root, commands, timeout=20), [])
+        self.assertEqual(
+            marker.read_text(encoding="utf-8").splitlines(),
+            [
+                str((root / "apps/web").resolve()) + "|web",
+                str((root / "services/api").resolve()) + "|api",
+            ],
+        )
+
+    async def test_check_only_does_not_append_fix_flag(self):
+        marker = self.scripts_dir / "argv.txt"
+        script = _write_script(
+            self.scripts_dir,
+            "record.py",
+            "import sys\n" + f"open(r'{marker}', 'w').write(' '.join(sys.argv[1:]))\n",
+        )
+        command = LintCommand(command=f"{sys.executable} {script}", fix_flag="--fix")
+        await check_lint_commands(self.working_dir, [command], timeout=5)
+        self.assertEqual(marker.read_text(), "")
 
 
 if __name__ == "__main__":

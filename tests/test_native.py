@@ -1,6 +1,8 @@
 import json
+import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -64,6 +66,7 @@ class PrepareTests(unittest.TestCase):
             self.assertTrue(result["review_file"].endswith("feat-review.md"))
             self.assertEqual(result["max_rounds"], 2)
             self.assertEqual(len(result["lint"]), 2)
+            self.assertNotIn("rules", result)
             self.assertIn(".worktrees/", (root / ".gitignore").read_text())
 
     def test_dirty_tree_is_refused_like_the_cli(self):
@@ -103,7 +106,9 @@ class PrepareTests(unittest.TestCase):
 
             head = subprocess.run(
                 ["git", "branch", "--show-current"],
-                cwd=result["active_dir"], capture_output=True, text=True,
+                cwd=result["active_dir"],
+                capture_output=True,
+                text=True,
             ).stdout.strip()
             self.assertEqual(head, "issue/X-1")
 
@@ -126,7 +131,9 @@ class PrepareTests(unittest.TestCase):
 
             head = subprocess.run(
                 ["git", "branch", "--show-current"],
-                cwd=result["active_dir"], capture_output=True, text=True,
+                cwd=result["active_dir"],
+                capture_output=True,
+                text=True,
             ).stdout.strip()
             self.assertEqual(head, "feature/x")
 
@@ -196,6 +203,18 @@ class BranchReviewPromptTests(unittest.TestCase):
 
 
 class LookupTests(unittest.TestCase):
+    def test_latest_plan_ignores_tester_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            docs = root / "docs" / "plans"
+            report = docs / "feat-test.md"
+            report.write_text("STATUS: PASS\n")
+            os.utime(report, (time.time() + 5, time.time() + 5))
+
+            result = native.latest_plan(root, root)
+
+            self.assertTrue(result["plan_file"].endswith("feat.md"))
+
     def test_latest_plan_ignores_reviews_and_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
@@ -354,7 +373,7 @@ class PromptTests(unittest.TestCase):
             self.assertEqual(result["query"], f"Review {plan}")
             self.assertTrue(result["review_file"].endswith("feat-review.md"))
 
-    def test_rules_are_appended(self):
+    def test_rules_md_is_not_appended(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
             (root / "docs" / "RULES.md").write_text("global\n## reviewer\nbe strict\n")
@@ -362,7 +381,7 @@ class PromptTests(unittest.TestCase):
 
             result = native.role_prompt(root, root, "reviewer-plan", plan_file=plan)
 
-            self.assertIn("be strict", result["system_prompt"])
+            self.assertNotIn("be strict", result["system_prompt"])
 
     def test_generator_needs_a_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -465,7 +484,9 @@ class PushTests(unittest.TestCase):
             git(root, "remote", "add", "origin", str(bare))
             branch = subprocess.run(
                 ["git", "branch", "--show-current"],
-                cwd=root, capture_output=True, text=True,
+                cwd=root,
+                capture_output=True,
+                text=True,
             ).stdout.strip()
 
             result = native.push(root, branch)
@@ -473,6 +494,8 @@ class PushTests(unittest.TestCase):
             self.assertEqual(result, {"branch": branch, "pushed": True})
             refs = subprocess.run(
                 ["git", "branch", "--list", branch],
-                cwd=bare, capture_output=True, text=True,
+                cwd=bare,
+                capture_output=True,
+                text=True,
             ).stdout
             self.assertIn(branch, refs)
