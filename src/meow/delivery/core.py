@@ -1,9 +1,19 @@
 """Commit and push a verified run from an eligible checkout."""
 
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from meow.run_state import RunStore
+
+
+@dataclass(frozen=True)
+class DeliveryResult:
+    status: str
+    branch: str
+    commit: str | None = None
+    remote: str = "origin"
+    message: str = ""
 
 
 def _git(
@@ -27,6 +37,15 @@ def _linked_worktree(directory: Path) -> bool:
     return Path(git_dir).resolve() != Path(common.stdout.strip()).resolve()
 
 
+def _branch_and_remote(directory: Path) -> tuple[str, str]:
+    branch = _git(directory, "branch", "--show-current").stdout.strip()
+    if not branch:
+        raise RuntimeError("Automatic delivery requires a checked-out branch")
+    if "origin" not in _git(directory, "remote").stdout.splitlines():
+        raise RuntimeError("No origin remote configured for automatic push")
+    return branch, "origin"
+
+
 def deliver_verified_run(  # ruff: ignore[complex-structure, too-many-statements]
     store: RunStore, run_id: str, *, unattended: bool = False
 ) -> bool:
@@ -42,24 +61,26 @@ def deliver_verified_run(  # ruff: ignore[complex-structure, too-many-statements
     if not (unattended or _linked_worktree(active)):
         return False
     try:
-        remotes = _git(active, "remote").stdout.splitlines()
-        if "origin" not in remotes:
-            raise RuntimeError("No origin remote configured for automatic push")
-        branch = _git(active, "branch", "--show-current").stdout.strip()
-        if not branch:
-            branch = f"meow/{run_id}"
-            _git(active, "switch", "-c", branch)
-        store.transition(run_id, "delivering", branch=branch)
+        branch, remote = _branch_and_remote(active)
+        previous = record.delivery
+        if previous.get("pushed") and previous.get("commit"):
+            return True
+        store.transition(run_id, "delivery_started", delivery={
+            **previous, "branch": branch, "remote": remote
+        })
         _git(active, "add", "-A")
         _git(active, "reset", "-q", "--", ".meow", check=False)
         if _git(active, "diff", "--cached", "--quiet", check=False).returncode:
             _git(active, "commit", "-m", f"MEOW run {run_id}: {record.request[:72]}")
         commit = _git(active, "rev-parse", "HEAD").stdout.strip()
-        _git(active, "push", "-u", "origin", branch)
+        store.transition(run_id, "committed", delivery={
+            **store.load(run_id).delivery, "commit": commit, "committed": True
+        })
+        _git(active, "push", "-u", remote, branch)
         store.transition(
             run_id,
             "delivered",
-            delivery={"branch": branch, "commit": commit, "remote": "origin"},
+            delivery={**store.load(run_id).delivery, "pushed": True},
         )
         return True
     except (OSError, RuntimeError) as exc:
