@@ -2,6 +2,7 @@
 .worktrees/
 docs/exec-plans/
 docs/superpowers/
+.meow-ci-artifacts/
 *.lock
 # Byte-compiled / optimized / DLL files
 __pycache__/
