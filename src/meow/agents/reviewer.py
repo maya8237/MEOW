@@ -202,7 +202,7 @@ class ReviewerAgent(Agent):
         return await check_lint_evidence(
             self.context.active_working_dir(),
             self.context.lint_commands(),
-            self.context.config["lint_timeout"],
+            self.context.config.get("lint_timeout", 60),
         )
 
     @staticmethod
