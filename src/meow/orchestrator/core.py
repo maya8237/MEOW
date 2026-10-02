@@ -215,10 +215,11 @@ async def _run_rounds(  # ruff: ignore[too-many-statements]
     # keeping implementation code in this module.
     import meow.orchestrator as public_orchestrator
 
-    global Generator, run_planner, run_reviewer
+    global Generator, run_planner, run_reviewer, review_then_test
     Generator = public_orchestrator.Generator
     run_planner = public_orchestrator.run_planner
     run_reviewer = public_orchestrator.run_reviewer
+    review_then_test = public_orchestrator.review_then_test
     max_rounds = sprint.config["max_rounds"]
 
     async with Generator(sprint, plan_file) as generator:
@@ -433,7 +434,7 @@ async def _run_prompt_fix_rounds(
     (unlike `_run_review_rounds`, this has no "run a fresh review first"
     mode -- every caller already has one).
     """
-    max_rounds = context.config["max_rounds"]
+    max_rounds = context.config.get("max_rounds", 3)
     status, verdict = initial_verdict
     if status == "PASS":
         return True
