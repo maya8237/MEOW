@@ -10,7 +10,6 @@ from directory bootstrapping (`native_prepare.py`), lint execution
 (`native_lint.py`), or round-counter persistence (`native_state.py`).
 """
 
-import re
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
@@ -33,7 +32,6 @@ from meow.prompts import (
     prompt_review_prompt,
     review_fixer_prompt,
 )
-from meow.rules import load_rules
 
 PROMPT_ROLES = (
     "planner",
@@ -46,10 +44,6 @@ PROMPT_ROLES = (
     "review-fixer",
     "lint-fixer",
 )
-
-
-def _with_rules(text: str, active_dir: Path, role: str) -> str:
-    return text + (load_rules(active_dir, role) or "")
 
 
 def _plan_review(
@@ -164,8 +158,8 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
     branch: str | None = None,
 ) -> dict:
     """The exact system prompt (and task message, where there is one) the SDK
-    agent for `role` would use, including project rules, so a Task subagent
-    launched with it behaves like the SDK role."""
+    agent for `role` would use, so a Task subagent launched with it behaves
+    like the SDK role."""
     if role not in PROMPT_ROLES:
         raise ValueError(f"role must be one of {PROMPT_ROLES}, got {role!r}")
     config = load_config(working_dir)
@@ -174,8 +168,7 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
         result = _reviewer_prompt(role, context, plan_file, focus, target, branch)
     else:
         result = _simple_prompt(role, context, plan_file)
-    rules_key = re.sub(r"-(plan|prompt|mr|branch)$", "", role).replace("-", "_")
-    prompt = result["system_prompt"]
-    result["system_prompt"] = _with_rules(prompt, active_dir, rules_key)
+    model_role = role.split("-", 1)[0] if role.startswith("reviewer-") else role
+    rules_key = model_role.replace("-", "_")
     result["model"] = config["models"].get(rules_key)
     return result

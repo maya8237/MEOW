@@ -26,7 +26,7 @@ import os
 import shutil
 from pathlib import Path
 
-from meow.config import load_config, tomllib
+from meow.config import load_config, resolve_command_cwd, split_command, tomllib
 from meow.native_lint import LintOptions, lint
 from meow.native_prepare import (
     PrepareOptions,
@@ -90,6 +90,7 @@ def verify(
             for command in config["lint"]
         ],
         "models": config["models"],
+        "tester": _verify_tester(config, active_dir or working_dir),
         "integrations": integrations,
     }
     if run_lint:
@@ -101,6 +102,111 @@ def verify(
         result["lint_result"] = lint_result
         result["lint_passed"] = bool(lint_result.get("clean", False))
     return result
+
+
+def _verify_tester(config: dict, active_dir: Path) -> dict:
+    """Report tester config and local launch prerequisites without execution."""
+    tester = config["tester"]
+    tests = [_verify_command(item, active_dir) for item in tester["tests"]]
+    servers = [_verify_command(item, active_dir) for item in tester["dev_server"]]
+    mcp = []
+    for entry in tester["mcp"]:
+        command = entry["command"]
+        unresolved = _unresolved_env(entry["env"])
+        mcp.append({
+            "name": entry["name"],
+            "command": command,
+            "args": entry["args"],
+            "status": _launcher_status(command, unresolved),
+            "unresolved_environment": unresolved,
+        })
+
+    architecture_paths = [
+        active_dir / "docs" / "ARCHITECTURE.md",
+        active_dir / "ARCHITECTURE.md",
+        *(active_dir / path for path in tester["architecture_files"]),
+    ]
+    unique_paths = list(dict.fromkeys(path.resolve() for path in architecture_paths))
+    architecture = []
+    for path in unique_paths:
+        exists = path.is_file()
+        architecture.append({
+            "path": str(path),
+            "exists": exists,
+            "readable": exists and os.access(path, os.R_OK),
+        })
+    return {
+        "configured": bool(
+            tests
+            or servers
+            or mcp
+            or tester["test_dirs"]
+            or tester["base_url"]
+            or tester["architecture_files"]
+        ),
+        "tests": tests,
+        "dev_servers": servers,
+        "mcp": mcp,
+        "test_dirs": [str(path) for path in tester["test_dirs"]],
+        "test_directories": [
+            {
+                "path": str(path),
+                "exists": (active_dir / path).is_dir(),
+            }
+            for path in tester["test_dirs"]
+        ],
+        "base_url": tester["base_url"],
+        "architecture": architecture,
+        "architecture_available": any(item["readable"] for item in architecture),
+        "connection_tested": False,
+    }
+
+
+def _verify_command(command, active_dir: Path) -> dict:
+    """Check command cwd and launcher without starting the command."""
+    unresolved = _unresolved_env(command.env or {})
+    try:
+        cwd = resolve_command_cwd(active_dir, command.cwd)
+        executable = split_command(command.command)[0]
+        available = bool(shutil.which(executable))
+        status = _launcher_status(executable, unresolved)
+    except (OSError, ValueError) as exc:
+        cwd = active_dir / command.cwd
+        available = False
+        status = "invalid_cwd"
+        error = str(exc)
+    else:
+        error = None
+    result = {
+        "cwd": str(cwd),
+        "command": command.command,
+        "args": list(command.args),
+        "launcher_available": available,
+        "status": status,
+        "unresolved_environment": unresolved,
+    }
+    if error:
+        result["error"] = error
+    if hasattr(command, "gate"):
+        result["gate"] = command.gate
+    return result
+
+
+def _unresolved_env(environment: dict[str, str]) -> list[str]:
+    """List missing variable names without returning configured values."""
+    return [
+        key
+        for value in environment.values()
+        if value.startswith("$")
+        for key in [value[1:].strip("{}")]
+        if not os.environ.get(key)
+    ]
+
+
+def _launcher_status(command: str, unresolved: list[str]) -> str:
+    if not shutil.which(command):
+        return "command_unavailable"
+    return "missing_environment" if unresolved else "ready_unchecked"
 
 
 def _read_user_config(working_dir: Path) -> dict:

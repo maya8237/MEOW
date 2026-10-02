@@ -21,13 +21,13 @@ from meow.agents.reviewer import (
 def _latest_plan_file(docs_dir: Path) -> Path:
     """The most recently modified sprint plan in docs_dir, excluding reviews.
 
-    Excludes both `<plan>-review.md` verdicts and `cr`'s own free-standing
-    `review.md` report -- neither is a Sprint Contract, so picking either up
-    here would hand the reviewer a review to grade as if it were a plan.
+    Excludes `<plan>-review.md` verdicts, `<plan>-test.md` tester verdicts,
+    and `cr`'s own free-standing `review.md` report -- none is a Sprint
+    Contract, so picking one up here would hand it back as if it were a plan.
     """
     candidates = [
         path for path in docs_dir.glob("*.md")
-        if not path.name.endswith("review.md")
+        if not path.name.endswith(("review.md", "-test.md"))
     ]
     if not candidates:
         raise FileNotFoundError(

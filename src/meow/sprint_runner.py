@@ -27,7 +27,7 @@ from meow.plan_files import _latest_plan_file
 logger = get_logger(__name__)
 
 
-async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would change cli.py's call site
+async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -- reducing args would change cli.py's call site
     working_dir: Path,
     feature_name: str | None,
     request: str,
@@ -37,6 +37,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
     source_branch: str | None = None,
     approve_plan: Callable[[Path], bool] | None = None,
     resume_at: str = "generate",
+    test: bool = False,
 ):
     """Plan (unless `plan_file` is given) then implement it in a round loop.
 
@@ -61,9 +62,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
       re-running it on code that's already there.
     """
     if resume_at not in {"generate", "review"}:
-        raise ValueError(
-            f"resume_at must be 'generate' or 'review', got {resume_at!r}"
-        )
+        raise ValueError(f"resume_at must be 'generate' or 'review', got {resume_at!r}")
 
     sprint, effective_name, active_dir = _prepare_sprint(
         working_dir,
@@ -88,12 +87,16 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
     if approve_plan is not None and not approve_plan(plan_file):
         logger.warning("plan_not_approved", plan_file=str(plan_file))
         raise PlanNotApprovedError(
-            f"Plan {plan_file} was not approved -- stopping before the "
-            "generator runs."
+            f"Plan {plan_file} was not approved -- stopping before the generator runs."
         )
 
     run_rounds = _run_review_rounds if resume_at == "review" else _run_rounds
-    if await run_rounds(sprint, plan_file):
+    passed = (
+        await run_rounds(sprint, plan_file, test=True)
+        if test
+        else await run_rounds(sprint, plan_file)
+    )
+    if passed:
         logger.info("sprint_complete", feature_name=feature_name)
         return
 
@@ -106,7 +109,12 @@ async def run_sprint(  # ruff: ignore[too-many-arguments] -- reducing args would
         f"Sprint{f' {feature_name!r}' if feature_name else ''} did not pass "
         f"after {sprint.config['max_rounds']} "
         "rounds -- stopping instead of looping forever. Inspect the review "
-        "file."
+        f"file {plan_file.with_name(plan_file.stem + '-review.md')}"
+        + (
+            f" and tester file {plan_file.with_name(plan_file.stem + '-test.md')}"
+            if test
+            else "."
+        )
     )
 
 

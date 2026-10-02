@@ -93,7 +93,7 @@ uses one command.
 
 The engine is split by responsibility under `src/meow/`:
 
-- `config.py`, `sprint.py`, `lint.py`, `worktree.py`, `rules.py`, `logging.py`,
+- `config.py`, `sprint.py`, `lint.py`, `test_runner.py`, `worktree.py`, `logging.py`,
   and `plan_files.py` handle project settings and shared workflow support.
 - `agents/` contains the explorer, planner, generator, reviewer, and fixer
   roles, built on the shared agent base.

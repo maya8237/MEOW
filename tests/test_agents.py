@@ -19,6 +19,7 @@ from meow.agents.reviewer import (
     _verdict_status,
 )
 from meow.config import LintCommand
+from meow.lint import LintGateEvidence
 
 
 class LooksLikeACrashTests(unittest.TestCase):
@@ -145,8 +146,13 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
         succeeds_on_attempt = 3
         calls = {"n": 0}
         success = ResultMessage(
-            subtype="success", duration_ms=0, duration_api_ms=0,
-            is_error=False, num_turns=1, session_id="session", result="done",
+            subtype="success",
+            duration_ms=0,
+            duration_api_ms=0,
+            is_error=False,
+            num_turns=1,
+            session_id="session",
+            result="done",
         )
 
         async def flaky_query(*, prompt, options):
@@ -414,6 +420,13 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self.context = FakeProjectContext()
         self.context.project_dir = Path.cwd()
         self.context.repo_dir = self.context.project_dir
+        self.lint_patch = patch.object(
+            ReviewerAgent,
+            "_lint_evidence",
+            new=AsyncMock(return_value=LintGateEvidence()),
+        )
+        self.lint_patch.start()
+        self.addCleanup(self.lint_patch.stop)
 
     def test_verdict_status_accepts_pass_fail_and_defaults_missing_status_to_fail(self):
         self.assertEqual(_verdict_status("SUMMARY: good\nSTATUS: PASS"), "PASS")
@@ -440,7 +453,8 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((status, received_verdict), ("PASS", verdict))
         read_text.assert_called_once_with(encoding="utf-8")
         prompt, options, role = run_query.await_args.args
-        self.assertEqual(prompt, f"Review {plan_file}")
+        self.assertIn(f"Review {plan_file}", prompt)
+        self.assertIn("Harness lint evidence", prompt)
         self.assertEqual(role, "Reviewer")
         self.assertEqual(options.cwd, str(self.context.project_dir))
         self.assertEqual(options.model, "model-for-reviewer")
@@ -451,6 +465,29 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"Write your verdict to {review_file}", options.system_prompt)
         self.assertIn("ruff check", options.system_prompt)
         self.assertIn("SOLID/SRP", options.system_prompt)
+
+    async def test_blocking_lint_failure_overrides_reviewer_pass(self):
+        plan_file = self.context.project_dir / "feature.md"
+        verdict = "SUMMARY: reviewed\nSTATUS: PASS"
+        self.lint_patch.stop()
+        patcher = patch.object(
+            ReviewerAgent,
+            "_lint_evidence",
+            new=AsyncMock(
+                return_value=LintGateEvidence(blocking=("$ ruff check\\nfailed",))
+            ),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        with (
+            patch.object(ReviewerAgent, "run_query", new_callable=AsyncMock),
+            patch.object(Path, "read_text", return_value=verdict),
+            patch.object(Path, "write_text") as write_text,
+        ):
+            status, received = await ReviewerAgent(self.context).review_plan(plan_file)
+        self.assertEqual(status, "FAIL")
+        self.assertIn("STATUS: FAIL", write_text.call_args.args[0])
+        self.assertIn("Blocking lint failures", received)
 
     async def test_review_plan_includes_focus_text_when_given(self):
         plan_file = self.context.project_dir / "feature.md"
@@ -467,9 +504,7 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
             )
 
         _, options, _ = run_query.await_args.args
-        self.assertIn(
-            "Check error handling on the API boundary", options.system_prompt
-        )
+        self.assertIn("Check error handling on the API boundary", options.system_prompt)
 
     async def test_review_plan_omits_focus_text_by_default(self):
         plan_file = self.context.project_dir / "feature.md"
@@ -512,7 +547,8 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         git_context.assert_called_once_with(self.context)
         read_text.assert_called_once_with(encoding="utf-8")
         prompt, options, role = run_query.await_args.args
-        self.assertEqual(prompt, "Review the prompt: Ship the feature\n\ngit context")
+        self.assertIn("Review the prompt: Ship the feature\n\ngit context", prompt)
+        self.assertIn("Harness lint evidence", prompt)
         self.assertEqual(role, "Reviewer")
         self.assertEqual(options.cwd, str(self.context.project_dir))
         self.assertEqual(options.model, "model-for-reviewer")
@@ -686,7 +722,7 @@ class RulesInjectionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(without_rules.system_prompt, "base prompt")
 
-    def test_options_appends_global_and_role_rules_for_the_given_role(self):
+    def test_options_does_not_inject_rules_md(self):
         self._write_rules(
             "Write tests first.\n\n## Reviewer\nUse Chrome DevTools to test "
             "edge cases.\n"
@@ -698,11 +734,9 @@ class RulesInjectionTests(unittest.IsolatedAsyncioTestCase):
             role="reviewer",
         )
 
-        self.assertTrue(options.system_prompt.startswith("base prompt"))
-        self.assertIn("Write tests first.", options.system_prompt)
-        self.assertIn("Use Chrome DevTools", options.system_prompt)
+        self.assertEqual(options.system_prompt, "base prompt")
 
-    def test_options_omits_another_roles_section(self):
+    def test_options_ignores_role_sections_in_rules_md(self):
         self._write_rules("## Reviewer\nUse Chrome DevTools to test edge cases.\n")
 
         options = Agent(self.context).options(
@@ -713,17 +747,17 @@ class RulesInjectionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(options.system_prompt, "base prompt")
 
-    def test_explorer_definition_includes_global_and_role_rules(self):
+    def test_explorer_definition_does_not_inject_rules_md(self):
         self._write_rules(
             "Write tests first.\n\n## Explorer\nAlways check test coverage.\n"
         )
 
         definition = ExplorerAgent(self.context).definition()
 
-        self.assertIn("Write tests first.", definition.prompt)
-        self.assertIn("Always check test coverage.", definition.prompt)
+        self.assertNotIn("Write tests first.", definition.prompt)
+        self.assertNotIn("Always check test coverage.", definition.prompt)
 
-    async def test_planner_explorer_subagent_definition_carries_rules_too(self):
+    async def test_planner_explorer_subagent_definition_ignores_rules_md(self):
         self._write_rules("## Explorer\nAlways check test coverage.\n")
         observed = {}
 
@@ -743,7 +777,7 @@ class RulesInjectionTests(unittest.IsolatedAsyncioTestCase):
         with patch("meow.agents.base.query", fake_query):
             await PlannerAgent(self.context).run("ship-it", "Add CSV export")
 
-        self.assertIn(
+        self.assertNotIn(
             "Always check test coverage.",
             observed["options"].agents["explorer"].prompt,
         )

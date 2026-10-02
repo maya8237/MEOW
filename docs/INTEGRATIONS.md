@@ -1,9 +1,68 @@
 # docs/INTEGRATIONS.md — Jira, GitLab, and scheduled runs
 
-Reference material for the optional, advanced parts of setting up a project
-with meow. Start with the `/meow:onboard` skill; come here for configuration
-details about `meow run --jira`, `meow review --jira`/`--gitlab`, unattended
-scheduled runs, and the full error-message reference.
+Reference material for optional project setup. Start with `/meow:onboard`;
+this guide covers monorepo lint/test configuration, tester mode, integrations,
+scheduled Jira runs, and error messages.
+
+---
+
+## Monorepo lint and tester
+
+Each `[[lint]]` entry may set `cwd`, `include`, `exclude`, `args`, `env`, and
+`timeout`. `include` and `exclude` are repository-relative path prefixes. A
+per-file lint command runs only for edits inside its `cwd` and included paths;
+project-wide lint runs every configured entry. `gate` defaults to `true`.
+`lint_timeout` (60 seconds by default) supplies the timeout unless the entry
+sets its own `timeout`.
+
+`meow run --test` enables configured tests and exploratory testing after a
+passing plan review. `meow review --plan-file PATH --test` performs one
+report-only pass; add `--fix` to use the shared round budget. Tester mode is
+not available for other review sources or `--review-file`. Without configured
+tests, the tester can inspect and run documented project tests.
+
+```toml
+[models]
+tester = "haiku"
+
+[tester]
+test_dirs = ["apps/web/tests", "services/api/tests"]
+# `architecture_files` is optional; default lookup is docs/ARCHITECTURE.md,
+# then ARCHITECTURE.md.
+architecture_files = ["docs/architecture/backend.md"]
+
+[[tester.tests]]
+cwd = "apps/web"
+command = "npm test"
+timeout = 300
+gate = true
+
+[[tester.dev_server]]
+cwd = "apps/web"
+command = "npm run dev"
+ready_url = "http://127.0.0.1:3000/health"
+startup_timeout = 30
+
+[[tester.mcp]]
+name = "browser"
+command = "npx"
+args = ["PROJECT_CHOSEN_MCP_PACKAGE"]
+```
+
+Test command timeout defaults to 300 seconds; dev-server readiness defaults
+to 30 seconds. Relative command `cwd` paths must exist within the active
+checkout/worktree. `env` may hold non-secret overrides; keep credentials in
+the process environment. `meow native verify` reports local launcher and
+configuration readiness without running tests, servers, agents, or MCP calls;
+`ready_unchecked` does not mean the command or connection has succeeded.
+
+Native `/meow:run` and `/meow:review` use the CLI flow when `--test` is
+requested so MEOW can own server lifecycle during tester work. Normal native
+behavior is unchanged when tester mode is off.
+
+MEOW no longer reads `docs/RULES.md` or injects it into role prompts. Existing
+project-owned files remain on disk. Use the project's normal agent instruction
+files for persistent guidance; `docs/ARCHITECTURE.md` describes architecture.
 
 ---
 

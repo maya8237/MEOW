@@ -113,6 +113,7 @@ async def run_issue_solver(
     issue_key: str | None = None,
     *,
     approve_plan: Callable[[Path], bool] | None = None,
+    test: bool = False,
 ) -> dict:
     """Fetch a Jira issue, solve it in a worktree, push the branch, return it.
 
@@ -128,12 +129,15 @@ async def run_issue_solver(
 
     try:
         return await _solve_issue(
-            working_dir, config, jira_config, issue_key, approve_plan
+            working_dir,
+            config,
+            jira_config,
+            issue_key,
+            approve_plan,
+            **({"test": True} if test else {}),
         )
     except Exception as exc:
-        logger.warning(
-            "issue_unresolved", issue=issue_key or "latest", reason=str(exc)
-        )
+        logger.warning("issue_unresolved", issue=issue_key or "latest", reason=str(exc))
         raise IssueUnresolvedError(str(exc)) from exc
 
 
@@ -143,6 +147,7 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
     jira_config: dict,
     issue_key: str | None,
     approve_plan: Callable[[Path], bool] | None,
+    test: bool = False,
 ) -> dict:
     issue = await _fetch_issue(working_dir, config, jira_config, issue_key)
 
@@ -163,6 +168,7 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
         request,
         use_worktree=False,
         approve_plan=approve_plan,
+        **({"test": True} if test else {}),
     )
     logger.info("issue_solver_sprint_finished", issue=issue["key"], branch=branch_name)
 

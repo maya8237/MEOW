@@ -21,7 +21,6 @@ from claude_agent_sdk import (
 
 from meow.config import LintCommand
 from meow.logging import get_logger
-from meow.rules import load_rules
 
 logger = get_logger(__name__)
 
@@ -158,9 +157,6 @@ class Agent:
         **extra_options,
     ) -> ClaudeAgentOptions:
         """Build SDK options from project context and agent-specific values."""
-        rules_text = load_rules(self.context.active_working_dir(), role)
-        if rules_text:
-            system_prompt = f"{system_prompt}{rules_text}"
         return ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=allowed_tools,

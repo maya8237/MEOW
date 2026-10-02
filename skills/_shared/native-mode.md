@@ -23,18 +23,31 @@ and stop; do not guess at a venv path. Flags shared by every command:
 
 | Command | Purpose |
 |---|---|
-| `prepare [--name N] [--no-worktree] [--source-branch B] [--branch BR] [--existing-branch BR] [--allow-dirty]` | Startup guards + worktree; returns `active_dir`, `docs_dir`, `plan_file`, `review_file`, `max_rounds`, `models`, `lint`, `rules` |
-| `verify [--no-lint]` | Validate project configuration and optionally run blocking lint checks; does not modify files |
+| `prepare [--name N] [--no-worktree] [--source-branch B] [--branch BR] [--existing-branch BR] [--allow-dirty]` | Startup guards + worktree; returns `active_dir`, `docs_dir`, `plan_file`, `review_file`, `max_rounds`, `models`, `lint` |
+| `verify [--no-lint]` | Validate config and report lint, tester, and integration readiness without starting agents, servers, or MCP connections |
 | `latest-plan` / `latest-review` | Newest plan / review file in `docs_dir` (`latest-review` also gives its `flavor`: plan, prompt or gitlab) |
 | `verdict FILE` | `{status: PASS\|FAIL, summary}` of a review file |
 | `lint [--file F] [--fix] [--all-blocking]` | Per-file (auto-fixing) or project-wide lint run. `--all-blocking` ignores `gate` and treats every command as blocking (what the `lint` skill needs; everything else wants the default gate/informational split) |
 | `round PLAN [--reset\|--show]` | On-disk round counter; default advances it |
-| `prompt ROLE [--plan F] [--focus T] [--worktree] [--target BR] [--branch BR]` | Exact SDK system prompt (+ task message, model) for a role |
+| `prompt ROLE [--plan F] [--focus T] [--worktree]` | Exact SDK system prompt (+ task message, model) for a role |
 | `push BRANCH` | Push a named branch to origin |
 
 `prompt` roles: `planner`, `generator`, `explorer`, `reviewer-plan`,
 `reviewer-prompt`, `reviewer-mr`, `reviewer-branch`, `review-fixer`,
 `lint-fixer`.
+
+`verify` reports tester test commands, dev-server and MCP launcher readiness,
+test directories, and architecture document availability. `ready_unchecked`
+means the local launcher exists; it does not prove that tests pass or a remote
+connection works. Secret environment values are never included. Missing
+architecture files are optional context.
+
+## Tester mode
+
+`/meow:run --test` and `/meow:review --plan-file PATH --test` use the matching
+CLI flow so configured servers stay alive during the tester agent's run.
+Without `--test`, native skill behavior is unchanged. Review accepts `--test`
+only with an explicit plan file and rejects other sources and `--review-file`.
 
 ## Roles
 
@@ -43,16 +56,18 @@ and stop; do not guess at a venv path. Flags shared by every command:
 | Orchestrator | You, following the skill |
 | Planner | You. Invoke `superpowers:writing-plans`, but meow's constraints win: write the plan to the `plan_file` from `prepare`, include a `## Sprint Contract` of concrete pass/fail criteria, do not use the skill's default location, do not stop for its execution-method handoff. Run `meow native prompt planner --plan <plan_file>` and honour it. |
 | Generator | You. Invoke `superpowers:executing-plans`, `superpowers:test-driven-development`, `superpowers:systematic-debugging` (on unexpected failures), `superpowers:receiving-code-review` (before acting on findings) and `superpowers:verification-before-completion`. Follow `meow native prompt generator --plan <plan_file>`: stay inside the Sprint Contract, do not commit, do not grade your own work. |
-| Reviewer (`reviewer-plan`, `reviewer-prompt`, `reviewer-mr`, `reviewer-branch`) | **A fresh subagent every review** (Agent tool, `general-purpose`), never you: it must not share your context. Invoke `superpowers:verification-before-completion`. Use the matching `meow native prompt reviewer-plan`, `reviewer-prompt`, `reviewer-mr`, or `reviewer-branch` role and follow its returned `system_prompt`, `query`, `review_file`, and `model`. See below. |
-| Explorer | Optional read-only subagent (Agent tool, `Explore` or `general-purpose`) for research whose raw output you do not need in full. Invoke `superpowers:systematic-debugging` when investigating a bug. Use `meow native prompt explorer` as its instructions and `models.explorer` as its model. |
-| Review fixer | The CLI role receives no additional skill metadata; it uses a scoped fixer prompt and a post-edit lint hook. In native review fix flows, run `meow native prompt review-fixer`, use its `system_prompt` as the fix instructions, verify findings before editing, make the smallest in-scope correction, and run per-file lint after edits. |
-| Lint fixer | The CLI role receives no additional skill metadata; it uses a lint-specific prompt and a post-edit lint hook. In the native lint skill, run `meow native prompt lint-fixer`, use its `system_prompt` while fixing the reported linter output, and run per-file lint after edits. Do not start a second agent. |
-| Jira issue fetcher | CLI mode reads through the configured Jira MCP server. Native run/review skills use the already-connected Jira MCP tools directly, fetch only the issue fields those skills request, and pass the issue text to the planner or reviewer; there is no `meow native prompt` role for fetching. |
-| GitLab merge-request fetcher | CLI mode reads through the configured GitLab MCP server. Native review uses already-connected GitLab MCP tools directly to fetch the title, description, and diff, then dispatches `reviewer-mr`; there is no `meow native prompt` role for fetching. |
+| Reviewer | **A fresh subagent every round** (Agent tool, `general-purpose`), never you: it must not share your context. See below. |
+| Explorer | Optional read-only subagent (Agent tool, `Explore` or `general-purpose`) for research whose raw output you do not need in full. Use `meow native prompt explorer` as its instructions and `models.explorer` as its model. |
+| Review fixer | The CLI role receives no additional skill metadata; it uses a scoped fixer prompt and a post-edit lint hook. In native review fix flows, run `meow native prompt review-fixer`, verify findings before editing, make the smallest in-scope correction, and run per-file lint after edits. |
+| Lint fixer | The CLI role receives no additional skill metadata; it uses a lint-specific prompt and a post-edit lint hook. In the native lint skill, run `meow native prompt lint-fixer` and run per-file lint after edits. Do not start a second agent. |
+| Jira issue fetcher | CLI mode reads through the configured Jira MCP server. Native run/review skills use the already-connected Jira MCP tools directly and pass the issue text to the planner or reviewer. |
+| GitLab merge-request fetcher | CLI mode reads through the configured GitLab MCP server. Native review uses the already-connected GitLab MCP tools directly to fetch the title, description, and diff, then dispatches `reviewer-mr`. |
 
 ### Dispatching the reviewer
 
-1. Run the matching helper: `meow native prompt reviewer-plan --plan <plan_file> [--focus "<text>"] [--worktree]`, `reviewer-prompt [--focus "<basis>"]`, `reviewer-mr`, or `reviewer-branch --target <target> --branch <branch> [--worktree]` (see each skill). Pass `--worktree` when `prepare` reported `use_worktree: true`. Add `--active-dir` when working in a worktree.
+1. Run `meow native prompt reviewer-plan --plan <plan_file> [--focus "<text>"] [--worktree]`
+   (or `reviewer-prompt` / `reviewer-mr`; see each skill). Pass `--worktree` when
+   `prepare` reported `use_worktree: true`. Add `--active-dir` when working in a worktree.
 2. Launch one Agent-tool subagent. Its prompt is the JSON's `system_prompt`
    followed by a blank line and the `query`. Tell it the working directory
    (`active_dir`) and that it must write its verdict to the `review_file` from

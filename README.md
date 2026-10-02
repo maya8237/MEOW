@@ -63,6 +63,21 @@ This repository is also a Claude Code plugin. It provides `/meow:run`,
 They run natively in the calling session by default; ask for CLI mode to use
 the `meow` command instead. Both modes share configuration and output formats.
 
+### Configured tests and exploratory review
+
+Tester mode is opt-in with `meow run --test` or
+`meow review --plan-file PATH --test`. After a passing plan review, MEOW runs
+configured test commands and then an exploratory tester agent. Failed blocking
+commands or tester findings feed the next generation round; `max_rounds`
+counts the combined review/test rounds. In a monorepo, each `[[lint]]` and
+`[[tester.tests]]` entry may set its own `cwd`; lint entries also support
+component `include` and `exclude` path prefixes. See
+[`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md#monorepo-lint-and-tester).
+
+MEOW reads architecture context from `docs/ARCHITECTURE.md` or
+`ARCHITECTURE.md`. Existing `docs/RULES.md` files are no longer loaded into
+agent prompts; MEOW leaves project-owned copies untouched.
+
 ## Documentation
 
 - [CLI guide](docs/CLI.md): command options and execution modes.
