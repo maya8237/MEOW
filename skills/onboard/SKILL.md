@@ -76,7 +76,9 @@ background subagent rather than the main onboarding context:
   `meow review --ci` pipeline job. If yes, dispatch a focused background
   subagent to add or update the CI template/job and verify its checkout and
   artifact requirements. The subagent must ensure the target repository's
-  `.gitignore` contains `.meow-ci-artifacts/`, preserving existing ignore rules
+  `.gitignore` contains `.meow/` and `.meow-ci-artifacts/`, preserving existing
+  ignore rules. These directories hold MEOW checkpoints, hook state, and CI
+  review artifacts and should not be committed.
   and adding the entry only when missing. Tell the user that the job needs a masked GitLab
   CI/CD variable named `ANTHROPIC_API_KEY`; GitLab's `CI_*` variables are
   supplied automatically, and GitLab MCP variables are not needed for this
