@@ -226,7 +226,7 @@ class ValidateMaxRoundsTests(unittest.TestCase):
                 load_config(working_dir)
 
 
-class LintEntryTests(unittest.TestCase):
+class LintEntryTests(unittest.TestCase):  # ruff: ignore[too-many-public-methods]
     """`_lint_entry` validates one [[lint]] table. No test here exercised
     this at all before -- found while adversarially checking zero/one/many
     lint command counts; confirmed the zero-commands case for real via
@@ -339,6 +339,20 @@ class LintEntryTests(unittest.TestCase):
             entry = _lint_entry({"command": "ruff check", "cwd": "apps/web"}, 1)
             self.assertTrue(entry.matches_file(Path("apps/web/src/a.py")))
             self.assertFalse(entry.matches_file(Path("apps/website/src/a.py")))
+
+    def test_component_include_and_exclude_use_repo_relative_paths(self):
+        entry = _lint_entry(
+            {
+                "command": "ruff check",
+                "cwd": "apps/web",
+                "include": ["apps/web/src"],
+                "exclude": ["apps/web/src/generated"],
+            },
+            1,
+        )
+        self.assertTrue(entry.matches_file(Path("apps/web/src/app.py")))
+        self.assertFalse(entry.matches_file(Path("apps/web/src/generated/code.py")))
+        self.assertFalse(entry.matches_file(Path("apps/website/src/app.py")))
 
 
 class TesterConfigTests(unittest.TestCase):

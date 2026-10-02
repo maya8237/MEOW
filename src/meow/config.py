@@ -8,6 +8,7 @@ wiring and orchestration that consume them.
 
 import os
 import platform
+import shlex
 import shutil
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -40,6 +41,8 @@ TESTER_KEYS = frozenset({
     "architecture_files",
 })
 TEST_ENTRY_KEYS = frozenset({"cwd", "command", "args", "timeout", "env", "gate"})
+
+
 SERVER_ENTRY_KEYS = frozenset({
     "cwd",
     "command",
@@ -50,6 +53,22 @@ SERVER_ENTRY_KEYS = frozenset({
 })
 MCP_ENTRY_KEYS = frozenset({"name", "command", "args", "env"})
 _DRIVE_PREFIX_LENGTH = 2
+
+
+def split_command(command: str) -> list[str]:
+    """Split a configured command consistently for launch and readiness checks."""
+    argv = shlex.split(command, posix=os.name != "nt")
+    if os.name == "nt":
+        argv = [
+            value[1:-1]
+            if len(value) > 1 and value[0] == value[-1] and value[0] in "\"'"
+            else value
+            for value in argv
+        ]
+        if argv:
+            argv[0] = argv[0].replace("\\", "/")
+    return argv
+
 
 DEFAULT_CONFIG = {
     "lint_command": None,  # legacy single-command form
@@ -117,14 +136,14 @@ class LintCommand:
         path = Path(os.path.normpath(str(file_path).replace("\\", "/")))
         cwd = self.cwd
         try:
-            relative = path.relative_to(cwd) if cwd != Path(".") else path
+            path.relative_to(cwd) if cwd != Path(".") else path
         except ValueError:
             return False
         if self.include and not any(
-            _is_path_prefix(relative, item) for item in self.include
+            _is_path_prefix(path, item) for item in self.include
         ):
             return False
-        return not any(_is_path_prefix(relative, item) for item in self.exclude)
+        return not any(_is_path_prefix(path, item) for item in self.exclude)
 
 
 @dataclass(frozen=True)

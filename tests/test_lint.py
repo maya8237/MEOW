@@ -152,8 +152,8 @@ class ProjectWideLintTests(unittest.IsolatedAsyncioTestCase):
         entry = LintCommand(
             command=f"{sys.executable} {script}",
             cwd=Path("apps/web"),
-            include=(Path("src"),),
-            exclude=(Path("src/generated"),),
+            include=(Path("apps/web/src"),),
+            exclude=(Path("apps/web/src/generated"),),
         )
         hook = make_lint_hook(root, [entry], timeout=5)
         await hook(

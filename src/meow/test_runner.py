@@ -2,17 +2,22 @@
 
 import asyncio
 import os
-import shlex
 import shutil
 import signal
 import subprocess
+import threading
 import urllib.error
 import urllib.request
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
-from meow.config import DevServerCommand, TestCommand, resolve_command_cwd
+from meow.config import (
+    DevServerCommand,
+    TestCommand,
+    resolve_command_cwd,
+    split_command,
+)
 
 MAX_OUTPUT_CHARS = 8000
 
@@ -25,6 +30,89 @@ class TesterSetupError(RuntimeError):
         self.cwd = cwd
         self.cause = cause
         super().__init__(f"Could not set up command {command!r} in {cwd}: {cause}")
+
+
+@dataclass
+class _OwnedProcess:
+    process: asyncio.subprocess.Process
+    job: object | None = None
+
+
+def _spawn_windows_job_process(  # ruff: ignore[too-many-statements]
+    argv, cwd: Path, env: dict[str, str], loop
+):
+    """Launch suspended, attach the process tree to a job, then resume it."""
+    import win32api
+    import win32job
+    import win32process
+
+    startup = win32process.STARTUPINFO()
+    process_handle, thread_handle, pid, _ = win32process.CreateProcess(
+        argv[0],
+        subprocess.list2cmdline(argv),
+        None,
+        None,
+        False,
+        win32process.CREATE_SUSPENDED | win32process.CREATE_NEW_PROCESS_GROUP,
+        env,
+        str(cwd),
+        startup,
+    )
+    job = None
+    try:
+        job = win32job.CreateJobObject(None, "")
+        info = win32job.QueryInformationJobObject(
+            job, win32job.JobObjectExtendedLimitInformation
+        )
+        info["BasicLimitInformation"]["LimitFlags"] |= (
+            win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        )
+        win32job.SetInformationJobObject(
+            job, win32job.JobObjectExtendedLimitInformation, info
+        )
+        win32job.AssignProcessToJobObject(job, process_handle)
+        win32process.ResumeThread(thread_handle)
+    except BaseException:
+        if job is not None:
+            job.Close()
+        with suppress(Exception):
+            win32api.TerminateProcess(process_handle, 1)
+        process_handle.Close()
+        raise
+    finally:
+        thread_handle.Close()
+    async_process = _WindowsOwnedProcess(pid, process_handle, loop)
+    return async_process, job
+
+
+class _WindowsOwnedProcess:
+    def __init__(self, pid: int, handle, loop):
+        self.pid = pid
+        self.handle = handle
+        self.returncode = None
+        self._event = asyncio.Event()
+        self._loop = loop
+        threading.Thread(target=self._watch, daemon=True).start()
+
+    def _watch(self):
+        import win32event
+        import win32process
+
+        win32event.WaitForSingleObject(self.handle, win32event.INFINITE)
+        code = win32process.GetExitCodeProcess(self.handle)
+        self.returncode = code if code < (1 << 31) else code - (1 << 32)
+        if not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._event.set)
+
+    async def wait(self):
+        if self.returncode is None:
+            await self._event.wait()
+        return self.returncode
+
+    def kill(self):
+        import win32api
+
+        win32api.TerminateProcess(self.handle, 1)
 
 
 @dataclass(frozen=True)
@@ -51,7 +139,7 @@ class TestStageEvidence:
 
 
 def _argv(command: str, args: tuple[str, ...]) -> list[str]:
-    argv = shlex.split(command, posix=os.name != "nt") + list(args)
+    argv = split_command(command) + list(args)
     if argv:
         argv[0] = shutil.which(argv[0]) or argv[0]
     return argv
@@ -64,10 +152,16 @@ def _decode(data: bytes) -> str:
     return output
 
 
-async def _terminate(  # ruff: ignore[too-many-branches]
-    process: asyncio.subprocess.Process,
+async def _terminate(  # ruff: ignore[too-many-branches, complex-structure, too-many-statements]
+    owned: asyncio.subprocess.Process | _OwnedProcess,
 ) -> None:
-    if process.returncode is not None:
+    process = owned.process if isinstance(owned, _OwnedProcess) else owned
+    if isinstance(owned, _OwnedProcess) and owned.job is not None:
+        owned.job.Close()
+        owned.job = None
+        if process.returncode is None:
+            with suppress(Exception):
+                await asyncio.wait_for(process.wait(), timeout=2)
         return
     if os.name == "nt":
         taskkill = shutil.which("taskkill")
@@ -148,7 +242,7 @@ def _reachable(url: str) -> bool:
         return False
 
 
-async def _start_server(  # ruff: ignore[complex-structure, too-many-statements]
+async def _start_server(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches]
     active_dir: Path, server: DevServerCommand
 ):
     try:
@@ -163,19 +257,33 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements]
         )
     argv = _argv(server.command, server.args)
     try:
-        process = await asyncio.create_subprocess_exec(
-            *argv,
-            cwd=cwd,
-            env={**os.environ, **(server.env or {})},
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-            start_new_session=os.name != "nt",
-            creationflags=(
-                subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
-            ),
-        )
-    except (OSError, ValueError) as exc:
+        if os.name == "nt":
+            process, job = await asyncio.to_thread(
+                _spawn_windows_job_process,
+                argv,
+                cwd,
+                {**os.environ, **(server.env or {})},
+                asyncio.get_running_loop(),
+            )
+        else:
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                cwd=cwd,
+                env={**os.environ, **(server.env or {})},
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            job = None
+    except Exception as exc:
         raise TesterSetupError(server.command, cwd, exc) from exc
+    try:
+        owned = _OwnedProcess(process, job)
+    except Exception as exc:
+        await _terminate(process)
+        raise TesterSetupError(
+            server.command, cwd, f"could not own process tree: {exc}"
+        ) from exc
     deadline = asyncio.get_running_loop().time() + server.startup_timeout
     try:
         while asyncio.get_running_loop().time() < deadline:
@@ -187,7 +295,7 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements]
                     f"{server.ready_url} became ready",
                 )
             if await asyncio.to_thread(_reachable, server.ready_url):
-                return process
+                return owned
             await asyncio.sleep(0.1)
         raise TesterSetupError(
             server.command,
@@ -195,7 +303,7 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements]
             f"timed out after {server.startup_timeout}s waiting for {server.ready_url}",
         )
     except BaseException:
-        await _terminate(process)
+        await _terminate(owned)
         raise
 
 
@@ -203,7 +311,7 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements]
 async def prepared_test_stage(active_dir: Path, config: dict):
     """Run configured suites and keep owned servers alive for the caller."""
     tester = config.get("tester", {})
-    servers: list[asyncio.subprocess.Process] = []
+    servers: list[_OwnedProcess] = []
     try:
         for server in tester.get("dev_server", []):
             servers.append(await _start_server(active_dir, server))

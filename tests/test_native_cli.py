@@ -1,7 +1,9 @@
 import contextlib
 import io
 import json
+import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,6 +31,18 @@ def run_native(*argv: str) -> tuple[int, str, str]:
 
 
 class NativeVerifyTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Windows executable quoting")
+    def test_verify_recognizes_quoted_windows_launcher(self):
+        from meow.config import TestCommand
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            command = TestCommand(Path("."), f'"{sys.executable}" -c "pass"')
+            with patch("meow.native.shutil.which", return_value=sys.executable):
+                result = native._verify_command(command, root)
+        self.assertTrue(result["launcher_available"])
+        self.assertEqual(result["status"], "ready_unchecked")
+
     def test_verify_reports_unconfigured_tester_without_running_checks(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
@@ -38,7 +52,9 @@ class NativeVerifyTests(unittest.TestCase):
             self.assertFalse(result["tester"]["connection_tested"])
             self.assertFalse(result["tester"]["architecture_available"])
 
-    def test_verify_reports_component_commands_and_optional_architecture(self):
+    def test_verify_reports_component_commands_and_optional_architecture(  # ruff: ignore[too-many-statements]
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
             (root / "apps" / "web").mkdir(parents=True)

@@ -23,11 +23,10 @@ other callers keep a single `from meow import native` import and a stable
 """
 
 import os
-import shlex
 import shutil
 from pathlib import Path
 
-from meow.config import load_config, resolve_command_cwd, tomllib
+from meow.config import load_config, resolve_command_cwd, split_command, tomllib
 from meow.native_lint import LintOptions, lint
 from meow.native_prepare import (
     PrepareOptions,
@@ -168,7 +167,7 @@ def _verify_command(command, active_dir: Path) -> dict:
     unresolved = _unresolved_env(command.env or {})
     try:
         cwd = resolve_command_cwd(active_dir, command.cwd)
-        executable = shlex.split(command.command, posix=os.name != "nt")[0]
+        executable = split_command(command.command)[0]
         available = bool(shutil.which(executable))
         status = _launcher_status(executable, unresolved)
     except (OSError, ValueError) as exc:

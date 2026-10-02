@@ -73,7 +73,7 @@ class TesterAgent(Agent):
             **extra,
         )
 
-    async def test_plan(  # ruff: ignore[too-many-statements]
+    async def test_plan(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches]
         self, plan_file: Path, evidence: TestStageEvidence
     ) -> tuple[str, str]:
         report_file = plan_file.with_name(plan_file.stem + TESTER_REPORT_SUFFIX)
@@ -112,10 +112,24 @@ class TesterAgent(Agent):
             "Configured test command results:\n"
             + ("\n\n".join(results) if results else "(no configured test commands)")
         )
-        await self.run_query(prompt, self._options(report_file), "Tester")
+        try:
+            previous_report = report_file.read_bytes()
+        except FileNotFoundError:
+            previous_report = None
+        except OSError as exc:
+            return "FAIL", f"Could not prepare tester verdict at {report_file}: {exc}"
+        try:
+            report_file.unlink(missing_ok=True)
+            await self.run_query(prompt, self._options(report_file), "Tester")
+        except BaseException:
+            if previous_report is not None and not report_file.exists():
+                report_file.write_bytes(previous_report)
+            raise
         try:
             verdict = report_file.read_text(encoding="utf-8")
         except (OSError, UnicodeError):
+            if previous_report is not None and not report_file.exists():
+                report_file.write_bytes(previous_report)
             return (
                 "FAIL",
                 f"SUMMARY: Tester did not produce a readable verdict at "
