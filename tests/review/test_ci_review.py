@@ -74,8 +74,8 @@ def test_missing_target_history_fails(checkout):
         prepare_ci_review(repo, env, "missing")
 
 
-def test_detached_merge_request_pipeline_to_dev(checkout):
-    repo, _, source, env = checkout
+def test_merge_request_pipeline_is_rejected(checkout):
+    repo, _, _, env = checkout
     env = {
         **env,
         "CI_PIPELINE_SOURCE": "merge_request_event",
@@ -84,29 +84,19 @@ def test_detached_merge_request_pipeline_to_dev(checkout):
         "CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "dev",
         "CI_COMMIT_BRANCH": "",
     }
-    assert prepare_ci_review(repo, env).source_sha == source
     with pytest.raises(CiReviewError):
-        prepare_ci_review(repo, env | {"CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "main"})
-    with pytest.raises(CiReviewError):
-        prepare_ci_review(repo, env | {"CI_MERGE_REQUEST_EVENT_TYPE": "merged_result"})
-    without_type = {
-        key: value for key, value in env.items() if key != "CI_MERGE_REQUEST_EVENT_TYPE"
-    }
-    with pytest.raises(CiReviewError):
-        prepare_ci_review(repo, without_type)
+        prepare_ci_review(repo, env)
 
 
-def test_example_job_runs_only_for_detached_mrs_to_dev():
-    root = Path(__file__).resolve().parents[1]
+def test_example_job_runs_only_for_branch_pipelines():
+    root = Path(__file__).resolve().parents[2]
     example = (root / "templates/gitlab-ci-review.yml").read_text()
     assert "templates/gitlab-ci-review.yml" in (root / ".gitlab-ci.yml").read_text()
-    assert 'CI_PIPELINE_SOURCE == "merge_request_event"' in example
-    assert 'CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"' in example
-    assert 'CI_MERGE_REQUEST_EVENT_TYPE == "detached"' in example
+    assert 'CI_PIPELINE_SOURCE == "push"' in example
+    assert 'CI_COMMIT_BRANCH != "dev"' in example
     assert "- when: never" in example
     assert "image: python:3.12" in example
     assert 'python -m pip install "$MEOW_INSTALL_SPEC"' in example
-    assert "python -m pip install ." not in example
 
 
 @pytest.mark.parametrize(
