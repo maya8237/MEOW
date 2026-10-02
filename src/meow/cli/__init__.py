@@ -212,6 +212,7 @@ def cli_main(*args, **kwargs):
     _core.run_lint_fix = run_lint_fix
     _core.load_config = load_config
     _core._ensure_clean_tree = _ensure_clean_tree
+    _core._is_linked_worktree = _is_linked_worktree
     _core.run_issue_solver = run_issue_solver
     import importlib
 
