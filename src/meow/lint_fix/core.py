@@ -87,12 +87,23 @@ async def run_lint_fix(working_dir: Path, *, report_only: bool) -> str | None:
     instead, matching `run_review_command`'s failure convention.
     """
     store = RunStore(working_dir)
-    branch = subprocess.run(
-        ["git", "branch", "--show-current"], cwd=working_dir,
-        capture_output=True, text=True, check=False,
-    ).stdout.strip() or "detached"
-    record = store.create(source="lint-fix", request="", repo=working_dir,
-                          worktree=working_dir, branch=branch)
+    branch = (
+        subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=working_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        or "detached"
+    )
+    record = store.create(
+        source="lint-fix",
+        request="",
+        repo=working_dir,
+        worktree=working_dir,
+        branch=branch,
+    )
     try:
         config = load_config(working_dir)
         describe_lint_plan(config["lint"])

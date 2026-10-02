@@ -57,9 +57,10 @@ def test_separate_feature_worktree_commits_and_pushes(tmp_path):
     record = store.load(run_id)
     assert record.delivery["branch"] == f"meow/{run_id}"
     assert record.delivery["commit"] == git(active, "rev-parse", "HEAD")
-    assert git(remote, "rev-parse", f"refs/heads/meow/{run_id}") == record.delivery[
-        "commit"
-    ]
+    assert (
+        git(remote, "rev-parse", f"refs/heads/meow/{run_id}")
+        == record.delivery["commit"]
+    )
 
 
 def test_in_place_requires_unattended(tmp_path):

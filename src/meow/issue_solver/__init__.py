@@ -1,3 +1,4 @@
+from . import core as _core
 from .core import (
     _BRANCH_UNSAFE as _BRANCH_UNSAFE,
 )
@@ -58,8 +59,6 @@ from .core import (
 from .core import (
     tempfile as tempfile,
 )
-
-from . import core as _core
 
 _run_issue_solver_impl = _core.run_issue_solver
 

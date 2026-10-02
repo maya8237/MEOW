@@ -1,4 +1,10 @@
-from meow.shaping import *
+from meow.shaping import (
+    BreadboardArtifact,
+    assess_request,
+    load_shape_artifact,
+    reflect_breadboard,
+    save_shape_artifact,
+)
 
 
 def test_clear_requests_do_not_require_shaping():

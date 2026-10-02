@@ -9,9 +9,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from tests.test_native import TOML, git, make_repo
-
 from meow import cli, native
+from tests.test_native import TOML, git, make_repo
 
 
 def run_native(*argv: str) -> tuple[int, str, str]:

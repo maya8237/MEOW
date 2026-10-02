@@ -1,3 +1,7 @@
+# Keep the public facade patchable for callers and the legacy test suite.  The
+# implementation module owns the loop globals, so synchronize patched role
+# classes immediately before invoking an exported loop helper.
+from . import core as _core
 from .core import (
     Awaitable as Awaitable,
 )
@@ -80,17 +84,14 @@ from .core import (
     code_revision as code_revision,
 )
 
-# Keep the public facade patchable for callers and the legacy test suite.  The
-# implementation module owns the loop globals, so synchronize patched role
-# classes immediately before invoking an exported loop helper.
-from . import core as _core
-
 _run_prompt_fix_rounds_impl = _core._run_prompt_fix_rounds
 
 
 async def _run_prompt_fix_rounds(*args, **kwargs):
     _core.ReviewFixAgent = ReviewFixAgent
     return await _run_prompt_fix_rounds_impl(*args, **kwargs)
+
+
 from .core import (
     dataclass as dataclass,
 )

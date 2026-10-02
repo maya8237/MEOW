@@ -56,9 +56,15 @@ def discover_frontend(project_dir: Path) -> FrontendEvidence:
                 deps.update(data[key])
         for name in deps:
             low = name.lower()
-            if any(token in low for token in ("playwright", "cypress", "webdriver", "puppeteer")):
+            if any(
+                token in low
+                for token in ("playwright", "cypress", "webdriver", "puppeteer")
+            ):
                 tools.append(name)
-        if any(token in all_text.lower() for token in ("playwright", "cypress", "webdriver", "puppeteer")):
+        if any(
+            token in all_text.lower()
+            for token in ("playwright", "cypress", "webdriver", "puppeteer")
+        ):
             tools.append("browser-script")
     pyproject = root / "pyproject.toml"
     if pyproject.is_file():
@@ -71,7 +77,9 @@ def discover_frontend(project_dir: Path) -> FrontendEvidence:
         project = data.get("project", {}) if isinstance(data, dict) else {}
         deps = project.get("dependencies", []) if isinstance(project, dict) else []
         text = " ".join(str(item) for item in deps) if isinstance(deps, list) else ""
-        if any(token in text.lower() for token in ("selenium", "playwright", "cypress")):
+        if any(
+            token in text.lower() for token in ("selenium", "playwright", "cypress")
+        ):
             tools.append("python-browser-dependency")
     for candidate in ("tests", "test", "e2e", "tests/e2e", "playwright", "cypress"):
         path = root / candidate
@@ -85,7 +93,12 @@ def discover_frontend(project_dir: Path) -> FrontendEvidence:
     if not tools and not dirs:
         reasons.append("missing_browser_provider")
     return FrontendEvidence(
-        tuple(dict.fromkeys(manifests)), tuple(dict.fromkeys(starts)),
-        tuple(urls), tuple(dict.fromkeys(tools)), tuple(dict.fromkeys(dirs)),
-        frontend, False, tuple(dict.fromkeys(reasons)),
+        tuple(dict.fromkeys(manifests)),
+        tuple(dict.fromkeys(starts)),
+        tuple(urls),
+        tuple(dict.fromkeys(tools)),
+        tuple(dict.fromkeys(dirs)),
+        frontend,
+        False,
+        tuple(dict.fromkeys(reasons)),
     )
