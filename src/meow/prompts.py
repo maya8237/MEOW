@@ -10,6 +10,23 @@ filesystem, the SDK, or a Sprint.
 from pathlib import Path
 
 from meow.config import LintCommand
+from meow.shaping import ShapeContext
+
+
+def shape_context_instructions(context: ShapeContext | None) -> str:
+    if context is None:
+        return ""
+    assumptions = ", ".join(context.assumptions) or "(none recorded)"
+    return (
+        " Accepted shaping context: artifact path "
+        + context.artifact_path
+        + "; chosen approach "
+        + context.chosen_approach
+        + "; assumptions: "
+        + assumptions
+        + ". Treat assumptions as Sprint Contract inputs and surface "
+        "contradictions as findings."
+    )
 
 
 def lint_instructions(commands: list[LintCommand]) -> str:
@@ -57,13 +74,24 @@ def tester_prompt(report_file: Path) -> str:
 
 
 def architecture_review_instructions(*, check_worktree_hygiene: bool = True) -> str:
-    """Tell the reviewer to look for monolithic, SRP-breaking modules."""
+    """Tell the reviewer to look for monolithic or overgrown modules."""
     instructions = (
         "Also perform a SOLID/SRP review. Flag any file or class that mixes "
         "multiple responsibilities, such as config parsing + agent wiring + "
         "lint hooks + orchestration + CLI handling in one module. Treat any "
         "single file that does more than one broad concern as a FAIL criterion "
         "unless the code is clearly split into cohesive helpers or classes. "
+        "Review module boundaries in any language as well: inspect packages, "
+        "directories, and namespaces for clusters of too many unrelated files "
+        "or one module that has become a catch-all for several independent "
+        "concerns. A large module is not automatically a failure; use cohesion, "
+        "dependency direction, discoverability, and change patterns as evidence. "
+        "When the concentration materially harms those qualities, report the "
+        "specific files and propose a concrete responsibility-based split. Treat "
+        "that as a FAIL criterion only when the boundary problem affects the "
+        "changed feature or clearly makes maintenance unsafe; otherwise record "
+        "it as an advisory follow-up. Do not demand arbitrary file-count or line "
+        "limits, and do not split merely to make files smaller. "
     )
     if check_worktree_hygiene:
         instructions += (
@@ -113,7 +141,7 @@ def explorer_prompt(active_dir: Path) -> str:
     )
 
 
-def planner_prompt(plan_file: Path) -> str:
+def planner_prompt(plan_file: Path, shape_context: ShapeContext | None = None) -> str:
     return (
         "You are a planning agent. Consult the explorer subagent for "
         "any codebase context you need -- don't explore directly. "
@@ -126,6 +154,7 @@ def planner_prompt(plan_file: Path) -> str:
         "use the configured plan path, retain this Sprint Contract, "
         "and do not use the skill's default plan location or add an "
         "interactive execution-method handoff."
+        + shape_context_instructions(shape_context)
     )
 
 
@@ -191,6 +220,7 @@ def plan_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mirr
     *,
     focus: str | None,
     check_worktree_hygiene: bool,
+    shape_context: ShapeContext | None = None,
 ) -> str:
     focus_instruction = f" Pay particular attention to: {focus}." if focus else ""
     return (
@@ -207,6 +237,7 @@ def plan_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mirr
             check_worktree_hygiene=check_worktree_hygiene
         )
         + _verdict_format(review_file, "criterion")
+        + shape_context_instructions(shape_context)
     )
 
 
@@ -218,6 +249,7 @@ def prompt_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
     has_diff: bool,
     docs_dir: str,
     check_worktree_hygiene: bool,
+    shape_context: ShapeContext | None = None,
 ) -> str:
     prompt_text = (
         f"The feature is described by this prompt: {review_basis!r}. "
@@ -248,6 +280,7 @@ def prompt_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
             check_worktree_hygiene=check_worktree_hygiene
         )
         + _verdict_format(review_file, "requirement")
+        + shape_context_instructions(shape_context)
     )
 
 
@@ -281,6 +314,7 @@ def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
     lint_commands: list[LintCommand],
     *,
     check_worktree_hygiene: bool,
+    shape_context: ShapeContext | None = None,
 ) -> str:
     return (
         "You are a skeptical QA reviewer. You did not write this code "
@@ -300,6 +334,7 @@ def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
             check_worktree_hygiene=check_worktree_hygiene
         )
         + _verdict_format(review_file, "concern")
+        + shape_context_instructions(shape_context)
     )
 
 

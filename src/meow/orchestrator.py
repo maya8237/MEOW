@@ -41,6 +41,7 @@ from meow.agents.reviewer import (
     run_reviewer,
 )
 from meow.agents.tester import TesterAgent
+from meow.checks import code_revision
 from meow.config import load_config
 from meow.logging import get_logger
 from meow.plan_files import (
@@ -48,6 +49,7 @@ from meow.plan_files import (
     _latest_plan_file,
     _latest_review_file,
 )
+from meow.shaping import ShapeContext
 from meow.sprint import Sprint, build_sprint
 from meow.test_runner import TesterSetupError, prepared_test_stage
 from meow.worktree import _resolve_working_dir
@@ -59,6 +61,23 @@ assert _detect_review_flavor and _latest_plan_file  # re-exported for compatibil
 assert _latest_review_file  # re-exported for compatibility
 
 logger = get_logger(__name__)
+
+
+def _shape_context(sprint: Sprint) -> ShapeContext | None:
+    value = sprint.config.get("_shape_context")
+    return value if isinstance(value, ShapeContext) else None
+
+
+def _journal(sprint: Sprint, phase: str, **patch: object) -> None:
+    journal = sprint.config.get("_run_journal")
+    if journal is not None:
+        store, run_id = journal
+        if phase == "reviewer_finished" and "results" in patch:
+            patch["results"] = {
+                **patch["results"],
+                "reviewer_revision": code_revision(sprint.active_working_dir()),
+            }
+        store.transition(run_id, phase, **patch)
 
 
 @dataclass(frozen=True)
@@ -79,10 +98,18 @@ async def review_then_test(
     """Run review and deterministic tests, then exploratory testing on PASS."""
     logger.info("review_test_gate_started", round=round_num, plan_file=str(plan_file))
     if initial_verdict is None:
-        review_status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
+        review_status, verdict = await ReviewerAgent(sprint).review_plan(
+            plan_file, shape_context=_shape_context(sprint)
+        )
     else:
         review_status, verdict = initial_verdict
     if review_status != "PASS":
+        _journal(
+            sprint,
+            "reviewer_finished",
+            review_file=str(plan_file.with_name(plan_file.stem + "-review.md")),
+            results={"reviewer": review_status},
+        )
         label = "Lint" if "Blocking lint failures" in verdict else "Reviewer"
         return ReviewTestResult("FAIL", f"{label} feedback:\n{verdict}", review_status)
 
@@ -100,9 +127,25 @@ async def review_then_test(
             f"Tester report path: {report}"
         ) from exc
     if tester_status != "PASS" or evidence.blocking_failed:
+        _journal(
+            sprint,
+            "tester_finished",
+            results={
+                "reviewer": review_status,
+                "tester": tester_status,
+            },
+        )
         return ReviewTestResult(
             "FAIL", f"Tester feedback:\n{tester_verdict}", review_status, tester_status
         )
+    _journal(
+        sprint,
+        "tester_finished",
+        results={
+            "reviewer": review_status,
+            "tester": tester_status,
+        },
+    )
     return ReviewTestResult("PASS", tester_verdict, review_status, tester_status)
 
 
@@ -148,7 +191,9 @@ def _prepare_sprint(
 # ---------------------------------------------------------------------------
 
 
-async def _run_rounds(sprint: Sprint, plan_file: Path, *, test: bool = False) -> bool:
+async def _run_rounds(  # ruff: ignore[too-many-statements]
+    sprint: Sprint, plan_file: Path, *, test: bool = False
+) -> bool:
     """Loop generator -> reviewer. True if the sprint passed."""
     max_rounds = sprint.config["max_rounds"]
 
@@ -158,16 +203,27 @@ async def _run_rounds(sprint: Sprint, plan_file: Path, *, test: bool = False) ->
             logger.info(
                 "generator_round_started", round=round_num, max_rounds=max_rounds
             )
-            await generator.implement(instruction)
+            _journal(sprint, "generator_started", round=round_num)
+            try:
+                await generator.implement(instruction)
+            except BaseException:
+                _journal(sprint, "interrupted_mutation", round=round_num)
+                raise
+            _journal(sprint, "generator_finished", round=round_num)
 
             logger.info(
                 "reviewer_round_started", round=round_num, max_rounds=max_rounds
             )
+            _journal(sprint, "reviewer_started", round=round_num)
             if test:
                 gate = await review_then_test(sprint, plan_file, round_num)
                 status, verdict = gate.status, gate.feedback
+                reviewer_status = gate.reviewer_status
             else:
-                status, verdict = await ReviewerAgent(sprint).review_plan(plan_file)
+                status, verdict = await ReviewerAgent(sprint).review_plan(
+                    plan_file, shape_context=_shape_context(sprint)
+                )
+                reviewer_status = status
             summary = "\n".join(
                 line.strip()
                 for line in verdict.splitlines()
@@ -178,6 +234,13 @@ async def _run_rounds(sprint: Sprint, plan_file: Path, *, test: bool = False) ->
                 round=round_num,
                 status=status,
                 summary=summary,
+            )
+            _journal(
+                sprint,
+                "reviewer_finished",
+                round=round_num,
+                review_file=str(plan_file.with_name(plan_file.stem + "-review.md")),
+                results={"reviewer": reviewer_status},
             )
 
             if status == "PASS":
@@ -227,20 +290,31 @@ async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-argume
     max_rounds = sprint.config["max_rounds"]
 
     if test:
+        _journal(sprint, "reviewer_started", round=1)
         gate = await review_then_test(
             sprint, plan_file, 1, initial_verdict=initial_verdict
         )
         status, verdict = gate.status, gate.feedback
+        reviewer_status = gate.reviewer_status
     elif initial_verdict is None:
         logger.info("reviewer_round_started", round=1, max_rounds=max_rounds)
+        _journal(sprint, "reviewer_started", round=1)
         status, verdict = await ReviewerAgent(sprint).review_plan(
-            plan_file, focus=focus
+            plan_file, focus=focus, shape_context=_shape_context(sprint)
         )
+        reviewer_status = status
         logger.info(
             "reviewer_round_finished",
             round=1,
             status=status,
             summary=_review_summary(verdict) or "",
+        )
+        _journal(
+            sprint,
+            "reviewer_finished",
+            round=1,
+            review_file=str(plan_file.with_name(plan_file.stem + "-review.md")),
+            results={"reviewer": reviewer_status},
         )
     else:
         status, verdict = initial_verdict
@@ -257,18 +331,27 @@ async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-argume
             logger.info(
                 "generator_round_started", round=round_num, max_rounds=max_rounds
             )
-            await generator.implement(instruction)
+            _journal(sprint, "generator_started", round=round_num)
+            try:
+                await generator.implement(instruction)
+            except BaseException:
+                _journal(sprint, "interrupted_mutation", round=round_num)
+                raise
+            _journal(sprint, "generator_finished", round=round_num)
 
             logger.info(
                 "reviewer_round_started", round=round_num, max_rounds=max_rounds
             )
+            _journal(sprint, "reviewer_started", round=round_num)
             if test:
                 gate = await review_then_test(sprint, plan_file, round_num)
                 status, verdict = gate.status, gate.feedback
+                reviewer_status = gate.reviewer_status
             else:
                 status, verdict = await ReviewerAgent(sprint).review_plan(
-                    plan_file, focus=focus
+                    plan_file, focus=focus, shape_context=_shape_context(sprint)
                 )
+                reviewer_status = status
             summary = "\n".join(
                 line.strip()
                 for line in verdict.splitlines()
@@ -279,6 +362,13 @@ async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-argume
                 round=round_num,
                 status=status,
                 summary=summary,
+            )
+            _journal(
+                sprint,
+                "reviewer_finished",
+                round=round_num,
+                review_file=str(plan_file.with_name(plan_file.stem + "-review.md")),
+                results={"reviewer": reviewer_status},
             )
 
             if status == "PASS":

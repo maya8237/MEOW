@@ -10,10 +10,19 @@ this module reuses, the same way `issue_solver.py`/`gitlab_reviewer.py`/
 the engine module.
 """
 
+import hashlib
+import subprocess
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 
 from meow.agents.planner import PlannerAgent
+from meow.checks import (
+    completion_ready,
+    config_fingerprint,
+    configured_checks,
+    run_final_checks,
+)
 from meow.lint import describe_lint_plan
 from meow.logging import get_logger
 from meow.orchestrator import (
@@ -23,11 +32,13 @@ from meow.orchestrator import (
     _run_rounds,
 )
 from meow.plan_files import _latest_plan_file
+from meow.run_state import RunStore
+from meow.shaping import ShapeContext, load_shape_artifact
 
 logger = get_logger(__name__)
 
 
-async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -- reducing args would change cli.py's call site
+async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, complex-structure, too-many-branches]
     working_dir: Path,
     feature_name: str | None,
     request: str,
@@ -38,6 +49,10 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -
     approve_plan: Callable[[Path], bool] | None = None,
     resume_at: str = "generate",
     test: bool = False,
+    run_id: str | None = None,
+    record_root: Path | None = None,
+    source: str = "prompt",
+    shape_path: Path | None = None,
 ):
     """Plan (unless `plan_file` is given) then implement it in a round loop.
 
@@ -64,39 +79,134 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -
     if resume_at not in {"generate", "review"}:
         raise ValueError(f"resume_at must be 'generate' or 'review', got {resume_at!r}")
 
-    sprint, effective_name, active_dir = _prepare_sprint(
-        working_dir,
-        feature_name,
-        use_worktree=use_worktree,
-        source_branch=source_branch,
+    store = RunStore(record_root or working_dir)
+    record = (
+        store.load(run_id)
+        if run_id
+        else store.create(
+            source=source,
+            request=request,
+            repo=record_root or working_dir,
+            worktree=working_dir,
+            branch="preparing",
+        )
     )
+    store.transition(record.id, "preparing")
+    try:
+        sprint, effective_name, active_dir = _prepare_sprint(
+            working_dir,
+            feature_name,
+            use_worktree=use_worktree,
+            source_branch=source_branch,
+        )
+    except BaseException as exc:
+        store.transition(record.id, "failed", last_failure=str(exc))
+        raise
+    branch_result = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=active_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    branch = branch_result.stdout.strip() or "detached"
+    sprint.config["_run_journal"] = (store, record.id)
+    if shape_path is not None:
+        artifact = load_shape_artifact(shape_path)
+        if hasattr(artifact, "chosen_approach"):
+            sprint.config["_shape_context"] = ShapeContext(
+                str(shape_path), artifact.chosen_approach, artifact.assumptions
+            )
+    store.transition(record.id, "prepared", worktree=str(active_dir), branch=branch)
+    test = test or bool(sprint.config.get("tester", {}).get("tests"))
     describe_lint_plan(sprint.config["lint"])
 
     if plan_file is None:
         if resume_at == "review":
             plan_file = _latest_plan_file(active_dir / sprint.config["docs_dir"])
         else:
+            store.transition(record.id, "planning")
             logger.info(
                 "planner_started",
                 feature_name=effective_name,
                 working_dir=str(active_dir),
             )
-            plan_file = await PlannerAgent(sprint).run(effective_name, request)
+            try:
+                plan_file = await PlannerAgent(sprint).run(
+                    effective_name, request, sprint.config.get("_shape_context")
+                )
+            except BaseException as exc:
+                store.transition(record.id, "failed", last_failure=str(exc))
+                raise
             logger.info("planner_finished", plan_file=str(plan_file))
+    store.transition(
+        record.id,
+        "planned",
+        plan_file=str(plan_file),
+        plan_fingerprint=(
+            hashlib.sha256(plan_file.read_bytes()).hexdigest()
+            if plan_file.is_file()
+            else None
+        ),
+        config_fingerprint=(
+            config_fingerprint(active_dir)
+            if (active_dir / ".harness.toml").is_file()
+            else None
+        ),
+    )
 
     if approve_plan is not None and not approve_plan(plan_file):
         logger.warning("plan_not_approved", plan_file=str(plan_file))
+        store.transition(record.id, "failed", last_failure="Plan not approved")
         raise PlanNotApprovedError(
             f"Plan {plan_file} was not approved -- stopping before the generator runs."
         )
 
     run_rounds = _run_review_rounds if resume_at == "review" else _run_rounds
-    passed = (
-        await run_rounds(sprint, plan_file, test=True)
-        if test
-        else await run_rounds(sprint, plan_file)
-    )
+    try:
+        passed = (
+            await run_rounds(sprint, plan_file, test=True)
+            if test
+            else await run_rounds(sprint, plan_file)
+        )
+    except BaseException as exc:
+        if store.load(record.id).phase != "interrupted_mutation":
+            store.transition(record.id, "failed", last_failure=str(exc))
+        raise
     if passed:
+        if (active_dir / ".harness.toml").is_file():
+            store.transition(record.id, "checking")
+            try:
+                results = await run_final_checks(active_dir, sprint.config)
+            except BaseException as exc:
+                store.transition(record.id, "failed", last_failure=str(exc))
+                raise
+            store.transition(
+                record.id,
+                "checks_finished",
+                results={
+                    "checks": [asdict(item) for item in results],
+                },
+            )
+            verdicts = store.load(record.id).results
+            if not completion_ready(
+                results,
+                configured_checks(sprint.config),
+                active_dir,
+                verdicts.get("reviewer", "FAIL"),
+                verdicts.get("tester", "FAIL") if test else None,
+                reviewer_revision=verdicts.get("reviewer_revision", ""),
+            ):
+                store.transition(
+                    record.id,
+                    "failed",
+                    last_failure="Required evidence failed or became stale",
+                )
+                raise RuntimeError(
+                    "Required checks, review, or tester evidence failed; "
+                    "inspect meow status"
+                )
+        store.transition(record.id, "complete")
         logger.info("sprint_complete", feature_name=feature_name)
         return
 
@@ -105,6 +215,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -
         feature_name=feature_name,
         max_rounds=sprint.config["max_rounds"],
     )
+    store.transition(record.id, "exhausted", last_failure="maximum rounds exhausted")
     raise RuntimeError(
         f"Sprint{f' {feature_name!r}' if feature_name else ''} did not pass "
         f"after {sprint.config['max_rounds']} "
@@ -125,6 +236,7 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
     *,
     use_worktree: bool = True,
     source_branch: str | None = None,
+    shape_path: Path | None = None,
 ) -> Path:
     sprint, effective_name, active_dir = _prepare_sprint(
         working_dir,
@@ -136,6 +248,14 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
     logger.info(
         "planner_started", feature_name=effective_name, working_dir=str(active_dir)
     )
-    plan_file = await PlannerAgent(sprint).run(effective_name, request)
+    if shape_path is not None:
+        artifact = load_shape_artifact(shape_path)
+        if hasattr(artifact, "chosen_approach"):
+            sprint.config["_shape_context"] = ShapeContext(
+                str(shape_path), artifact.chosen_approach, artifact.assumptions
+            )
+    plan_file = await PlannerAgent(sprint).run(
+        effective_name, request, sprint.config.get("_shape_context")
+    )
     logger.info("planner_finished", plan_file=str(plan_file))
     return plan_file

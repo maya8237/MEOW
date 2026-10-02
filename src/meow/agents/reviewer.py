@@ -24,6 +24,7 @@ from meow.prompts import (
 
 if TYPE_CHECKING:
     from meow.ci_review import CiReviewContext
+from meow.shaping import ShapeContext
 from meow.sprint import Sprint
 
 PROMPT_REVIEW_FILENAME = "review.md"
@@ -336,7 +337,11 @@ class ReviewerAgent(Agent):
         )
 
     async def review_plan(
-        self, plan_file: Path, *, focus: str | None = None
+        self,
+        plan_file: Path,
+        *,
+        focus: str | None = None,
+        shape_context: ShapeContext | None = None,
     ) -> tuple[str, str]:
         """Grade a sprint plan against its contract and the current code.
 
@@ -354,6 +359,7 @@ class ReviewerAgent(Agent):
                 self.context.lint_commands(),
                 focus=focus,
                 check_worktree_hygiene=self.context.use_worktree,
+                shape_context=shape_context,
             ),
             allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
             role="reviewer",
@@ -375,6 +381,10 @@ async def run_prompt_reviewer(sprint: Sprint, prompt: str | None) -> tuple[str, 
     return await ReviewerAgent(sprint).review_prompt(prompt)
 
 
-async def run_reviewer(sprint: Sprint, plan_file: Path) -> tuple[str, str]:
+async def run_reviewer(
+    sprint: Sprint, plan_file: Path, shape_context: ShapeContext | None = None
+) -> tuple[str, str]:
     """Compatibility entry point for sprint-plan reviews."""
-    return await ReviewerAgent(sprint).review_plan(plan_file)
+    return await ReviewerAgent(sprint).review_plan(
+        plan_file, shape_context=shape_context
+    )
