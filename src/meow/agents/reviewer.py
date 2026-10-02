@@ -5,6 +5,9 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, query
 
 from meow.agents.base import Agent, AgentContext, _looks_like_a_crash
 from meow.lint import LintGateEvidence, check_lint_evidence
@@ -12,11 +15,15 @@ from meow.logging import get_logger
 from meow.prompts import (
     architecture_review_instructions,
     branch_review_prompt,
+    ci_review_prompt,
     mr_review_prompt,
     no_prompt_review_instructions,
     plan_review_prompt,
     prompt_review_prompt,
 )
+
+if TYPE_CHECKING:
+    from meow.ci_review import CiReviewContext
 from meow.sprint import Sprint
 
 PROMPT_REVIEW_FILENAME = "review.md"
@@ -149,6 +156,46 @@ def _verdict_status(verdict_text: str) -> str:
 
 class ReviewerAgent(Agent):
     """Review plans and working trees through a generic project context."""
+
+    async def review_ci_branch(  # ruff: ignore[complex-structure] -- stream validates each SDK message type
+        self, context: "CiReviewContext"
+    ) -> tuple[str, str]:
+        """Return the final SDK response without granting mutation tools."""
+        options = self.options(
+            system_prompt=ci_review_prompt(
+                context.source_sha, context.target_sha, context.merge_base
+            ),
+            allowed_tools=["Read", "Grep", "Glob"],
+            tools=["Read", "Grep", "Glob"],
+            strict_mcp_config=True,
+            mcp_servers={},
+            setting_sources=[],
+            role="reviewer",
+            permission_mode="dontAsk",
+        )
+        prompt = f"Fixed diff:\n{context.diff or '(empty diff)'}"
+        if context.plan_text:
+            prompt += f"\n\nReview plan:\n{context.plan_text}"
+        parts = []
+        completed = False
+        async for message in query(prompt=prompt, options=options):
+            if isinstance(message, AssistantMessage):
+                parts.extend(
+                    block.text
+                    for block in message.content
+                    if isinstance(block, TextBlock)
+                )
+            elif isinstance(message, ResultMessage):
+                if message.subtype != "success":
+                    raise RuntimeError(f"CI reviewer failed: {message.subtype}")
+                completed = True
+                if message.result:
+                    parts = [message.result]
+        if not completed:
+            raise RuntimeError("CI reviewer returned no completion result")
+        response = "\n".join(parts)
+        statuses = re.findall(r"^STATUS: (PASS|FAIL)\s*$", response, re.MULTILINE)
+        return (statuses[0] if len(statuses) == 1 else "UNVERIFIED", response)
 
     async def _lint_evidence(self) -> LintGateEvidence:
         return await check_lint_evidence(

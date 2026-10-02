@@ -42,6 +42,30 @@ class _LegacyExplorerContext:
 class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     unittest.TestCase
 ):
+    def test_ci_flag_rejects_incompatible_options(self):
+        parser = cli._build_arg_parser()
+        for flags in (
+            ["prompt"], ["--fix"], ["--jira", "ABC-1"],
+            ["--gitlab", "url"], ["--branch", "x"], ["--target", "dev"],
+            ["--review-file", "x"], ["--no-worktree"], ["--test"],
+        ):
+            args = parser.parse_args(["review", "--ci", *flags])
+            with self.assertRaises(SystemExit):
+                cli._validate_ci_flags(parser, args)
+
+    @patch("meow.cli._boot_repo")
+    @patch("meow.cli.run_ci_review")
+    def test_ci_dispatch_skips_boot_and_uses_result_status(self, mock_run, mock_boot):
+        mock_run.return_value.exit_code = 1
+        with (
+            patch("sys.argv", ["meow", "review", "--ci"]),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            cli.cli_main()
+        self.assertEqual(raised.exception.code, 1)
+        self.assertFalse(mock_boot.called)
+        self.assertEqual(mock_run.call_args.args[3], "refs/remotes/origin/dev")
+
     def test_test_flag_is_permitted_for_plain_jira_and_explicit_plan_flows(self):
         parser = cli._build_arg_parser()
         plain = parser.parse_args(["run", "build", "--no-worktree", "--test"])
@@ -59,8 +83,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
     @staticmethod
     @patch("meow.cli._boot_repo")
+    @patch("meow.cli._ensure_clean_tree")
     @patch("meow.cli.run_issue_solver", new_callable=AsyncMock)
-    def test_jira_test_flag_reaches_issue_solver(mock_solver, mock_boot):
+    def test_jira_test_flag_reaches_issue_solver(mock_solver, mock_clean, mock_boot):
         mock_solver.return_value = {"issue": "PROJ-1", "branch": "issue/PROJ-1"}
         with patch(
             "sys.argv",
@@ -71,6 +96,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             Path(".").resolve(), "PROJ-1", approve_plan=None, test=True
         )
         mock_boot.assert_called_once()
+        mock_clean.assert_called_once()
 
     # unittest gives every `test_*` a public method; splitting this fixture
     # class across files to satisfy max-public-methods would scatter closely

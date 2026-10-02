@@ -301,3 +301,16 @@ def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
         )
         + _verdict_format(review_file, "concern")
     )
+
+
+def ci_review_prompt(source_sha: str, target_sha: str, merge_base: str) -> str:
+    return (
+        "You are a skeptical, read-only code reviewer. Review only the supplied "
+        f"diff from merge base {merge_base} to source commit {source_sha}; "
+        f"the target commit is {target_sha}. The revisions are immutable. "
+        "Use Read, Grep, and Glob only for context. Do not write files, run "
+        "commands, invoke other tools, or propose a fix as a substitute for "
+        "review. Return a concise report with file:line evidence. Include "
+        "exactly one standalone line STATUS: PASS or STATUS: FAIL. "
+        "Return FAIL if any material concern remains."
+    )

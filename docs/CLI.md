@@ -115,3 +115,24 @@ Both modes read the same `.harness.toml`, use the same worktree rules and
 `max_rounds`, and write the same plans, reviews, and verdict format. The CLI
 is the option for unattended terminal or scheduled runs. See the shared
 [native mode protocol](../skills/_shared/native-mode.md).
+# GitLab CI review
+
+`meow review --ci` reviews the exact GitLab pipeline checkout against the
+fetched `refs/remotes/origin/dev` commit. It accepts a detached source checkout
+when `HEAD` matches `CI_COMMIT_SHA`. The review is report-only: it does not
+plan, fix, commit, push, or open a merge request. It uses the local Git history,
+so GitLab MCP is unnecessary.
+
+The root `.gitlab-ci.yml` includes [the GitLab review job](../templates/gitlab-ci-review.yml)
+for detached merge request pipelines targeting `dev` only. It fetches `dev` without moving HEAD,
+uses full Git history for a reliable merge base, and uploads
+`.meow-ci-artifacts/review.md` and `.meow-ci-artifacts/verdict.json` even when
+the job fails. Provide the Claude Agent SDK credentials through masked CI
+variables. The job must install this project and fetch the target ref before
+running the command. Merged-result, tag, and other pipeline types are rejected.
+
+The command also accepts `--target-ref REF` for controlled use,
+`--artifact-dir PATH`, and an existing `--plan-file PATH`. PASS exits 0, FAIL
+exits 1, and an unverified or infrastructure failure exits 2. The artifacts
+record the source and target SHAs, merge base, verdict, and failure reason.
+No local branch checkout or worktree is required.
