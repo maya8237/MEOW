@@ -172,7 +172,7 @@ plan, fix, commit, push, or open a merge request. It uses the local Git history,
 so GitLab MCP is unnecessary.
 
 The root `.gitlab-ci.yml` includes [the GitLab review job](../templates/gitlab-ci-review.yml)
-for detached merge request pipelines targeting `dev` only. It fetches `dev` without moving HEAD,
+for detached merge request pipelines targeting `dev` and non-`dev` branch push pipelines. In merge request pipelines, the reviewer reads the MR description as the review brief; GitLab descriptions longer than 2,700 characters are truncated and flagged. Push pipelines have no MR brief and review the diff alone. The job fetches `dev` without moving HEAD,
 uses full Git history for a reliable merge base, and uploads
 `.meow-ci-artifacts/review.md` and `.meow-ci-artifacts/verdict.json` even when
 the job fails. Provide the Claude Agent SDK credentials through masked CI
