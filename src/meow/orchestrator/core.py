@@ -220,12 +220,6 @@ async def _run_rounds(  # ruff: ignore[too-many-statements]
     run_planner = public_orchestrator.run_planner
     run_reviewer = public_orchestrator.run_reviewer
     review_then_test = public_orchestrator.review_then_test
-    import meow.orchestrator as public_orchestrator
-
-    global Generator, ReviewerAgent, review_then_test
-    Generator = public_orchestrator.Generator
-    ReviewerAgent = public_orchestrator.ReviewerAgent
-    review_then_test = public_orchestrator.review_then_test
     max_rounds = sprint.config.get("max_rounds", 3)
 
     async with Generator(sprint, plan_file) as generator:
