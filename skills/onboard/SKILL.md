@@ -12,6 +12,11 @@ repository instructions. Make focused changes and preserve existing settings.
 
 ## 1. Inspect the project and clarify the requested setup
 
+After identifying the project root, run the report-only `meow knowledge audit`
+and show its evidence-backed findings. Ask separately (yes/no/later) before
+creating any selected knowledge documents; audit findings never block feature
+runs.
+
 Identify the project root, language, package manager, existing lint and test
 commands, relevant `AGENTS.md` or equivalent instructions, docs directory,
 architecture conventions, and any existing `.harness.toml`. Check that MEOW is
@@ -48,9 +53,8 @@ Offer the options that fit the project and request:
 - **Scheduled Jira runs** — configure the optional unattended Jira workflow,
   only when Jira is wanted and the project has the required schedule setup.
 - **Additional design docs** — suggest useful design docs based on the project
-  and request. Ask yes/no/later before creating them. Do not offer to create
-  `docs/RULES.md`: MEOW no longer reads or injects that file. Keep any existing
-  copy on disk. The required architecture document is created regardless.
+  and request. Ask yes/no/later before creating them. The required architecture
+  document is created regardless.
 - **Tester mode** — offer yes/no/later unless already requested. Discover
   existing test commands and suite directories, architecture documentation,
   optional dev servers, and useful MCP tools. Configure only entries supported

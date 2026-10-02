@@ -38,9 +38,7 @@ class LintFixAgent(Agent):
             allowed_tools=["Read", "Edit", "Write", "Bash", "Grep", "Glob"],
             role="lint_fixer",
             hooks={
-                "PostToolUse": [
-                    HookMatcher(matcher="Write|Edit", hooks=[lint_hook])
-                ]
+                "PostToolUse": [HookMatcher(matcher="Write|Edit", hooks=[lint_hook])]
             },
         )
         self._client = ClaudeSDKClient(options=options)

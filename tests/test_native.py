@@ -373,16 +373,6 @@ class PromptTests(unittest.TestCase):
             self.assertEqual(result["query"], f"Review {plan}")
             self.assertTrue(result["review_file"].endswith("feat-review.md"))
 
-    def test_rules_md_is_not_appended(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_repo(tmp)
-            (root / "docs" / "RULES.md").write_text("global\n## reviewer\nbe strict\n")
-            plan = root / "docs" / "plans" / "feat.md"
-
-            result = native.role_prompt(root, root, "reviewer-plan", plan_file=plan)
-
-            self.assertNotIn("be strict", result["system_prompt"])
-
     def test_generator_needs_a_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)

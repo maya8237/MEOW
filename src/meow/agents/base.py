@@ -166,9 +166,7 @@ class Agent:
         )
 
     @staticmethod
-    async def run_query(
-        prompt: str, options: ClaudeAgentOptions, role: str
-    ) -> None:
+    async def run_query(prompt: str, options: ClaudeAgentOptions, role: str) -> None:
         """Run a one-shot SDK query and raise when the SDK reports failure.
 
         Retries up to `_SDK_CRASH_RETRY_ATTEMPTS` times, with a short
