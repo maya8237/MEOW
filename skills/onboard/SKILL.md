@@ -76,7 +76,8 @@ background subagent rather than the main onboarding context:
   `meow review --ci` pipeline job. If yes, dispatch a focused background
   subagent to add or update the CI template/job and verify its checkout and
   artifact requirements. The subagent must ensure the target repository's
-  `.gitignore` contains `.meow/` and `.meow-ci-artifacts/`, preserving existing
+  `.gitignore` contains `.meow/`, `.meow-ci-artifacts/`, and
+  `.claude/settings.local.json`, preserving existing
   ignore rules. These directories hold MEOW checkpoints, hook state, and CI
   review artifacts and should not be committed.
   and adding the entry only when missing. Tell the user that the job needs a masked GitLab

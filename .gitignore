@@ -212,6 +212,7 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 .meow/
+.claude/settings.local.json
 
 # PyPI configuration file
 .pypirc
