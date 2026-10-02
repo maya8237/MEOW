@@ -64,6 +64,21 @@ MEOW no longer reads `docs/RULES.md` or injects it into role prompts. Existing
 project-owned files remain on disk. Use the project's normal agent instruction
 files for persistent guidance; `docs/ARCHITECTURE.md` describes architecture.
 
+## Reviewer architecture check
+
+Every MEOW reviewer performs a language-agnostic architecture pass in addition
+to correctness and configured gates. It checks both individual files and the
+module/package layout for mixed responsibilities, catch-all modules, and groups
+of unrelated files that make ownership or navigation unclear. The check uses
+cohesion, dependency direction, discoverability, and change patterns as
+evidence; it does not impose a universal file-count or line-count threshold.
+
+The reviewer must cite the affected files and suggest a responsibility-based
+split. A layout concern is blocking only when it affects the reviewed feature
+or clearly makes maintenance unsafe; otherwise it is recorded as an advisory
+follow-up. This keeps the check useful across Python, TypeScript, and other
+languages without forcing mechanical refactors.
+
 ---
 
 ## `[jira]` / `[jira.mcp]` — for `meow run --jira` / `meow review --jira`
