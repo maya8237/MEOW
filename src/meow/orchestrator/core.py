@@ -97,6 +97,11 @@ async def review_then_test(
     initial_verdict: tuple[str, str] | None = None,
 ) -> ReviewTestResult:
     """Run review and deterministic tests, then exploratory testing on PASS."""
+    import meow.orchestrator as public_orchestrator
+
+    global ReviewerAgent, prepared_test_stage
+    ReviewerAgent = public_orchestrator.ReviewerAgent
+    prepared_test_stage = public_orchestrator.prepared_test_stage
     logger.info("review_test_gate_started", round=round_num, plan_file=str(plan_file))
     if initial_verdict is None:
         shape_context = _shape_context(sprint)
