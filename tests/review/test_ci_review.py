@@ -171,7 +171,9 @@ def test_untracked_checkout_write_invalidates_pass(checkout):
         (repo / "unexpected.py").write_text("new code")
         return "PASS", "SUMMARY: Fine\nSTATUS: PASS"
 
-    with patch("meow.integrations.ci_review.ReviewerAgent.review_ci_branch", writes_file):
+    with patch(
+        "meow.integrations.ci_review.ReviewerAgent.review_ci_branch", writes_file
+    ):
         result = run_ci_review(
             repo,
             {"models": {"reviewer": None}},

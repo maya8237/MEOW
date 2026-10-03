@@ -61,8 +61,7 @@ def test_broken_guidance_link_is_uncertainty_without_doc_recommendation(tmp_path
     _git(tmp_path, "add", ".")
     evidence = gather_context(tmp_path, "Fix run")
     assert any(
-        "AGENTS.md:1" in item and "missing.md" in item
-        for item in evidence.uncertainty
+        "AGENTS.md:1" in item and "missing.md" in item for item in evidence.uncertainty
     )
     assert all("create" not in item.lower() for item in evidence.uncertainty)
 
@@ -150,7 +149,8 @@ def test_unattended_product_choice_stops_before_planning(tmp_path):
     )
     with (
         patch(
-            "meow.execution.sprint_runner._prepare_sprint", return_value=(sprint, "x", tmp_path)
+            "meow.execution.sprint_runner._prepare_sprint",
+            return_value=(sprint, "x", tmp_path),
         ),
         patch("meow.execution.sprint_runner.PlannerAgent") as planner,
         pytest.raises(RuntimeError, match="product decision"),

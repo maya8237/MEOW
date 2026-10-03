@@ -32,7 +32,7 @@ exclude = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff", "pylint"]
+dev = ["pytest", "ruff", "pylint"]
 
 [tool.ruff]
 line-length = 88

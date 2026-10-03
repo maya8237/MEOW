@@ -52,7 +52,9 @@ class UnixOnlyMarkerTests(unittest.TestCase):
         # Windows has no shebang support -- a bare .sh filename can't be
         # exec'd directly even with a real bash on PATH, unlike `bash
         # script.sh`, which explicitly names its interpreter.
-        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+        with patch(
+            "meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"
+        ):
             problem = _os_mismatch("lint.sh --check", "Windows")
         self.assertIsNotNone(problem)
         self.assertIn("Unix shell", problem)
@@ -78,11 +80,15 @@ class GitBashExemptionTests(unittest.TestCase):
     there, and a command that explicitly invokes it genuinely works."""
 
     def test_bash_on_path_is_not_flagged_on_windows(self):
-        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+        with patch(
+            "meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"
+        ):
             self.assertIsNone(_os_mismatch("bash scripts/lint.sh", "Windows"))
 
     def test_sh_on_path_is_not_flagged_on_windows(self):
-        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\sh.exe"):
+        with patch(
+            "meow.project.config.shutil.which", return_value=r"C:\Git\bin\sh.exe"
+        ):
             self.assertIsNone(_os_mismatch("sh scripts/lint.sh", "Windows"))
 
     def test_zsh_on_path_is_not_flagged_on_windows(self):
@@ -98,7 +104,9 @@ class GitBashExemptionTests(unittest.TestCase):
     def test_bare_sh_extension_is_flagged_even_with_bash_on_path(self):
         # `lint.sh` alone (no explicit `bash`/`sh` in front) still can't be
         # exec'd directly by Windows, no matter what's on PATH.
-        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+        with patch(
+            "meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"
+        ):
             problem = _os_mismatch("lint.sh --check", "Windows")
         self.assertIsNotNone(problem)
 
