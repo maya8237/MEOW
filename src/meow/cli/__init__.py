@@ -10,9 +10,6 @@ from .core import (
     DirtyWorkingTreeError as DirtyWorkingTreeError,
 )
 from .core import (
-    EvidenceDocumentWriter as EvidenceDocumentWriter,
-)
-from .core import (
     IssueUnresolvedError as IssueUnresolvedError,
 )
 from .core import (
@@ -118,22 +115,13 @@ from .core import (
     argparse as argparse,
 )
 from .core import (
-    assess_request as assess_request,
-)
-from .core import (
     asyncio as asyncio,
-)
-from .core import (
-    audit_project as audit_project,
 )
 from .core import (
     cli_main as cli_main,
 )
 from .core import (
     configure_logging as configure_logging,
-)
-from .core import (
-    create_selected_documents as create_selected_documents,
 )
 from .core import (
     get_logger as get_logger,
@@ -145,9 +133,6 @@ from .core import (
     load_config as load_config,
 )
 from .core import (
-    load_shape_artifact as load_shape_artifact,
-)
-from .core import (
     log_working_directory as log_working_directory,
 )
 from .core import (
@@ -155,9 +140,6 @@ from .core import (
 )
 from .core import (
     os as os,
-)
-from .core import (
-    reflect_breadboard as reflect_breadboard,
 )
 from .core import (
     resume as resume,
@@ -227,16 +209,7 @@ def cli_main(*args, **kwargs):
 
 
 from .core import (
-    select_findings as select_findings,
-)
-from .core import (
-    shape_create as shape_create,
-)
-from .core import (
     status as status,
-)
-from .core import (
-    structural_check as structural_check,
 )
 from .core import (
     sys as sys,

@@ -54,8 +54,8 @@ each lint, test, build, and browser check is required or advisory.
 
 ## 1. Inspect the project and clarify the requested setup
 
-After identifying the project root, run the report-only `meow knowledge audit`
-and show its evidence-backed findings. In interactive mode, ask separately
+After identifying the project root, use MEOW's internal read-only project
+knowledge audit and show its evidence-backed findings. In interactive mode, ask separately
 (yes/no/later) before creating selected knowledge documents. Audit findings
 never block feature runs.
 
