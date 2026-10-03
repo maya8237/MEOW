@@ -40,23 +40,14 @@ code revision being checked.
 
 ## Project understanding
 
-`meow knowledge audit` prints an evidence-backed, report-only JSON audit.
-`meow knowledge check` reports deterministic structural failures separately
-from advisory prose drift. `meow knowledge create --finding ID` is a separate,
-explicit action and preserves existing documents by default.
-
-`meow shape assess "request"` gives a standalone shaping recommendation.
-Ordinary `meow run` gathers project evidence and performs any justified shaping
-or breadboarding before planning. Clear requests continue directly to the
-planner. An unresolved product choice stops with a checkpoint, including with
-`--unattended`; unattended runs never wait for input in these phases. Feature
-runs do not suggest or edit prose documentation.
-
-Use the knowledge commands when onboarding or auditing an unfamiliar project,
-or when shared architecture/domain/security/reliability guidance may be
-missing. Use `shape assess` when a request is broad, ambiguous, cross-component,
-or has multiple viable approaches. These standalone commands are optional:
-users do not need to run them before `meow run`.
+`meow run` and `meow plan` inspect project guidance and code before planning.
+When a request needs design choices, they shape the requirements and may map
+complex UI or cross-component work as a breadboard. Clear requests proceed
+directly to planning. These phases run automatically and require no separate
+command. An unresolved product choice stops with a checkpoint, including with
+`--unattended`; unattended runs never wait for input. Feature runs do not
+suggest or edit prose documentation. Onboarding uses the same project audit
+internally and can create selected knowledge documents as part of setup.
 
 ## Common options
 

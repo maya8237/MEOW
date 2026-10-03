@@ -20,17 +20,13 @@ from meow.hooks.claude import (
     uninstall_claude_hooks,
 )
 from meow.issue_solver import IssueUnresolvedError, run_issue_solver
-from meow.knowledge import audit_project, select_findings, structural_check
-from meow.knowledge_documents import EvidenceDocumentWriter, create_selected_documents
 from meow.lint_fix import run_lint_fix
 from meow.logging import configure_logging, get_logger
-from meow.native import shape_create
 from meow.native_cli import add_native_parser, run_native
 from meow.orchestrator import PlanNotApprovedError, log_working_directory
 from meow.resume_cli import resume
 from meow.review_cli import run_review_command
 from meow.run_state import RunStateError, RunStore
-from meow.shaping import assess_request, load_shape_artifact, reflect_breadboard
 from meow.sprint_runner import run_plan, run_sprint
 from meow.status_cli import status
 from meow.worktree import (
@@ -297,36 +293,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     docs_update_parser.add_argument("--since", metavar="REF")
     _add_common_args(docs_update_parser)
     add_native_parser(subparsers)
-    knowledge = subparsers.add_parser("knowledge", help="Inspect project knowledge.")
-    knowledge_sub = knowledge.add_subparsers(dest="knowledge_command", required=True)
-    for name, help_text in (
-        ("audit", "Report-only knowledge audit."),
-        ("check", "Deterministic structural knowledge check."),
-    ):
-        child = knowledge_sub.add_parser(name, help=help_text)
-        _add_common_args(child)
-    create = knowledge_sub.add_parser(
-        "create", help="Create explicitly selected documents."
-    )
-    _add_common_args(create)
-    create.add_argument("--finding", action="append", required=True)
-    create.add_argument("--overwrite", action="store_true")
-    shape = subparsers.add_parser("shape", help="Optionally shape uncertain work.")
-    shape_sub = shape.add_subparsers(dest="shape_command", required=True)
-    assess = shape_sub.add_parser("assess", help="Assess a request.")
-    _add_common_args(assess)
-    assess.add_argument("request")
-    create_shape = shape_sub.add_parser(
-        "create", help="Persist an explicitly accepted shape artifact."
-    )
-    _add_common_args(create_shape)
-    create_shape.add_argument("path")
-    create_shape.add_argument("--json", required=True)
-    reflect_shape = shape_sub.add_parser(
-        "reflect", help="Reflect on a breadboard artifact."
-    )
-    _add_common_args(reflect_shape)
-    reflect_shape.add_argument("path")
     hooks = subparsers.add_parser("hooks", help="Manage optional host hooks.")
     hooks_sub = hooks.add_subparsers(dest="hooks_command", required=True)
     install = hooks_sub.add_parser("install", help="Install selected Claude hooks.")
@@ -372,9 +338,6 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         dest="plan",
         default=None,
         help="Use an existing plan file instead of generating a new one.",
-    )
-    run_parser.add_argument(
-        "--shape", default=None, help="Accepted shape artifact path."
     )
     run_parser.add_argument(
         "--resume-at",
@@ -589,9 +552,6 @@ def _add_plan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Write a sprint plan for a feature request, without implementing it.",
     )
     plan_parser.add_argument("request", help="Feature request text.")
-    plan_parser.add_argument(
-        "--shape", default=None, help="Accepted shape artifact path."
-    )
     _add_common_args(plan_parser)
     _add_feature_args(plan_parser)
 
@@ -622,8 +582,6 @@ def _dispatch_jira_build(args, working_dir: Path) -> None:
 def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> None:
     plan_file = _resolve_input_path(args.plan, working_dir)
     approve_plan = _prompt_plan_approval if args.manually_approve_plan else None
-    shape_path = _resolve_input_path(args.shape, working_dir)
-    optional_shape = {"shape_path": shape_path} if shape_path is not None else {}
     try:
         asyncio.run(
             run_sprint(
@@ -635,7 +593,6 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
                 source_branch=args.source_branch,
                 approve_plan=approve_plan,
                 resume_at=args.resume_at,
-                **optional_shape,
                 **({"unattended": True} if args.unattended else {}),
                 **({"test": True} if args.test else {}),
             )
@@ -678,41 +635,9 @@ def _dispatch_review(args, working_dir: Path) -> None:
         raise SystemExit(1) from exc
 
 
-def _dispatch(  # ruff: ignore[too-many-statements, too-many-return-statements]
+def _dispatch(
     args, working_dir: Path, *, use_worktree: bool
 ) -> None:
-    if args.command == "knowledge":
-        if args.knowledge_command == "audit":
-            print(json.dumps(audit_project(working_dir).to_dict()))
-        elif args.knowledge_command == "check":
-            print(json.dumps(structural_check(working_dir)))
-        else:
-            audit = audit_project(working_dir)
-            findings = select_findings(audit, args.finding)
-            result = create_selected_documents(
-                working_dir,
-                findings,
-                writer=EvidenceDocumentWriter(),
-                overwrite=args.overwrite,
-            )
-            print(json.dumps(result.__dict__))
-        return
-    if args.command == "shape":
-        if args.shape_command == "assess":
-            print(json.dumps(assess_request(args.request).__dict__))
-        elif args.shape_command == "create":
-            path = _resolve_input_path(args.path, working_dir)
-            print(json.dumps(shape_create(path, json.loads(args.json))))
-        else:
-            artifact = load_shape_artifact(_resolve_input_path(args.path, working_dir))
-            print(
-                json.dumps({
-                    "findings": list(reflect_breadboard(artifact))
-                    if hasattr(artifact, "places")
-                    else []
-                })
-            )
-        return
     if args.command == "hooks":
         if args.host != "claude":
             raise ValueError("unsupported host")
@@ -734,8 +659,6 @@ def _dispatch(  # ruff: ignore[too-many-statements, too-many-return-statements]
     if args.command == "review":
         _dispatch_review(args, working_dir)
         return
-    shape_path = _resolve_input_path(args.shape, working_dir)
-    optional_shape = {"shape_path": shape_path} if shape_path is not None else {}
     asyncio.run(
         run_plan(
             working_dir,
@@ -743,7 +666,6 @@ def _dispatch(  # ruff: ignore[too-many-statements, too-many-return-statements]
             args.request,
             use_worktree=use_worktree,
             source_branch=args.source_branch,
-            **optional_shape,
         )
     )
 

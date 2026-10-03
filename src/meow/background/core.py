@@ -282,7 +282,6 @@ def worker_main(  # ruff: ignore[too-many-statements]
                     run_id=run_id,
                     record_root=repo,
                     unattended=True,
-                    shape_path=_resolve_input_path(args.shape, repo),
                 )
             )
         return 0
