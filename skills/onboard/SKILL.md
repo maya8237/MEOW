@@ -12,9 +12,9 @@ repository instructions, preserve valid settings, and make focused changes.
 
 ## Operating mode and safety
 
-Use automatic mode when the request contains the standalone word `auto` or
-says `do not ask me any questions` (case-insensitive). Otherwise use
-interactive mode.
+Use automatic mode when the request contains `auto` or
+anything else that hints for automation like `do not ask me any questions`. 
+Otherwise use interactive mode.
 
 Automatic mode uses safe, reversible defaults without asking questions. It may
 configure features explicitly requested by the user, but it skips optional
