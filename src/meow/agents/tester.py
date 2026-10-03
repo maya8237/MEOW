@@ -105,7 +105,10 @@ class TesterAgent(Agent):
         browser = (
             "\n".join(
                 f"provider: {item.provider} ({item.kind})\nstatus: {item.status}\n"
-                f"required: {item.required}\nreason: {item.reason}\noutput:\n{item.output}"
+                f"required: {item.required}\nreason: {item.reason}\n"
+                f"flows: {', '.join(item.flows) or '(none)'}\n"
+                f"artifacts: {', '.join(item.artifacts) or '(none)'}\n"
+                f"output:\n{item.output}"
                 for item in evidence.browser
             )
             or "(no browser provider evidence)"

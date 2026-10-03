@@ -29,6 +29,19 @@ def _now() -> str:
 
 
 def _safe(value: object, key: str = "") -> object:  # ruff: ignore[complex-structure, too-many-return-statements, too-many-branches]
+    if (
+        key
+        in {
+            "tokens",
+            "input_tokens",
+            "output_tokens",
+            "cache_creation_input_tokens",
+            "cache_read_input_tokens",
+        }
+        and isinstance(value, (int, float))
+        and not isinstance(value, bool)
+    ):
+        return value
     if _SECRET_KEY.search(key):
         return "[redacted]"
     if value is None and key == "usage":
@@ -90,6 +103,7 @@ class RunRecord:
     transitions: list[dict] = field(default_factory=list)
     usage: object = "unavailable"
     delivery: dict = field(default_factory=dict)
+    background: dict = field(default_factory=dict)
 
 
 class RunStore:
@@ -191,6 +205,28 @@ class RunStore:
         if not paths:
             raise RunStateError("No runs found. Start one with meow run.")
         return self.load(paths[-1].stem)
+
+    def add_usage(self, run_id: str, entry: dict[str, object]) -> RunRecord:
+        """Append a received SDK result without changing the workflow phase."""
+        record = self.load(run_id)
+        previous = record.usage if isinstance(record.usage, dict) else {}
+        entries = previous.get("entries", [])
+        if not isinstance(entries, list):
+            entries = []
+        record.usage = {"entries": [*entries, _safe(entry)]}
+        record.updated_at = _now()
+        self._write(record)
+        return self.load(run_id)
+
+    def update_background(self, run_id: str, **patch: object) -> RunRecord:
+        """Update worker metadata without changing the workflow phase."""
+        record = self.load(run_id)
+        record.background.update({
+            key: _safe(value, key) for key, value in patch.items()
+        })
+        record.updated_at = _now()
+        self._write(record)
+        return self.load(run_id)
 
     def transition(self, run_id: str, phase: str, **patch: object) -> RunRecord:
         record = self.load(run_id)

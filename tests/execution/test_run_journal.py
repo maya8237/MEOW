@@ -86,6 +86,51 @@ def test_run_records_planning_and_completion(tmp_path):
     assert "planning" in [item["phase"] for item in record.transitions]
 
 
+def test_multitask_plan_uses_isolated_executor_then_final_review(tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text("# plan\n", encoding="utf-8")
+    (tmp_path / "plan.md.tasks.json").write_text(
+        '{"tasks":['
+        '{"id":"api","depends_on":[],"owned_paths":["src/api"],"verification":[]},'
+        '{"id":"ui","depends_on":[],"owned_paths":["src/ui"],"verification":[]}'
+        "]}",
+        encoding="utf-8",
+    )
+    sprint = Sprint(
+        tmp_path,
+        {
+            "max_rounds": 1,
+            "docs_dir": ".",
+            "lint": [],
+            "lint_timeout": 60,
+            "tester": {"tests": [], "dev_server": []},
+            "build": [],
+        },
+        None,
+        None,
+    )
+    with (
+        patch(
+            "meow.sprint_runner._prepare_sprint", return_value=(sprint, "x", tmp_path)
+        ),
+        patch(
+            "meow.sprint_runner.run_parallel_plan", new=AsyncMock(return_value=True)
+        ) as parallel,
+        patch(
+            "meow.sprint_runner._run_rounds",
+            new=AsyncMock(side_effect=AssertionError("generator first")),
+        ),
+        patch(
+            "meow.sprint_runner._run_review_rounds", new=AsyncMock(return_value=True)
+        ) as review,
+    ):
+        asyncio.run(
+            run_sprint(tmp_path, "x", "request", plan_file=plan, use_worktree=False)
+        )
+    parallel.assert_awaited_once()
+    review.assert_awaited_once()
+
+
 def test_prepare_failure_keeps_a_run_checkpoint(tmp_path):
     with (
         patch(

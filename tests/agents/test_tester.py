@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from meow.agents.tester import TesterAgent, architecture_context
-from meow.test_runner import TestCommandEvidence, TestStageEvidence
+from meow.test_runner import BrowserEvidence, TestCommandEvidence, TestStageEvidence
 
 
 class Context:
@@ -74,6 +74,24 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(status, "FAIL")
         self.assertIn("Mandatory test command failed", text)
+
+    async def test_browser_artifacts_and_flows_reach_tester_prompt(self):
+        browser = BrowserEvidence(
+            "project-browser",
+            "command",
+            "passed",
+            required=True,
+            flows=("home page",),
+            artifacts=(".meow/home.png",),
+            exit_code=0,
+        )
+        _, _, run, _ = await self._run_tester(
+            "SUMMARY: checked\nSTATUS: PASS",
+            TestStageEvidence(browser=(browser,)),
+        )
+        prompt = run.await_args.args[0]
+        self.assertIn("home page", prompt)
+        self.assertIn(".meow/home.png", prompt)
 
     async def test_empty_test_list_still_launches_exploratory_tester(self):
         status, _, run, _ = await self._run_tester("SUMMARY: explored\nSTATUS: PASS")

@@ -35,3 +35,22 @@ def test_unknown_or_duplicate_selection_fails_before_writes(tmp_path):
             pass
         else:
             raise AssertionError("expected missing selection to be rejected")
+
+
+def test_writer_skips_empty_template_when_no_project_evidence(tmp_path):
+    result = create_selected_documents(
+        tmp_path, (finding("docs/ARCHITECTURE.md"),), writer=EvidenceDocumentWriter()
+    )
+    assert result.created == ()
+    assert not (tmp_path / "docs" / "ARCHITECTURE.md").exists()
+
+
+def test_writer_cites_observed_source_instead_of_missing_path(tmp_path):
+    (tmp_path / "app.py").write_text("def serve_request():\n    return 200\n")
+    result = create_selected_documents(
+        tmp_path, (finding("docs/ARCHITECTURE.md"),), writer=EvidenceDocumentWriter()
+    )
+    content = (tmp_path / "docs" / "ARCHITECTURE.md").read_text()
+    assert result.created == ("docs/ARCHITECTURE.md",)
+    assert "app.py:1" in content
+    assert "missing required path" not in content

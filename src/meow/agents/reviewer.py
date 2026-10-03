@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from meow.ci_review import CiReviewContext
 from meow.shaping import ShapeContext
 from meow.sprint import Sprint
+from meow.usage import record_result
 
 PROMPT_REVIEW_FILENAME = "review.md"
 MR_REVIEW_FILENAME = "gitlab-review.md"
@@ -195,6 +196,7 @@ class ReviewerAgent(Agent):
                     if isinstance(block, TextBlock)
                 )
             elif isinstance(message, ResultMessage):
+                record_result("reviewer", message)
                 if message.subtype != "success":
                     raise RuntimeError(f"CI reviewer failed: {message.subtype}")
                 completed = True

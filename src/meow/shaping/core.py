@@ -128,4 +128,23 @@ def reflect_breadboard(artifact: BreadboardArtifact) -> tuple[str, ...]:
         and len(artifact.vertical_slices) > len(artifact.wiring)
     ):
         findings.append("inconsistent slices: more slices than wired connections")
+    place_names = {name.casefold() for name in artifact.places}
+    for wire in artifact.wiring:
+        if "->" not in wire:
+            continue
+        endpoints = (part.strip().casefold() for part in wire.split("->"))
+        for endpoint in endpoints:
+            if endpoint and endpoint not in place_names:
+                findings.append(f"wiring names unknown place: {endpoint}")
+    wiring_text = " ".join(artifact.wiring).casefold()
+    for affordance in artifact.affordances:
+        label = affordance.casefold()
+        if any(word in label for word in ("delete", "remove")) and "auth" not in wiring_text:
+            findings.append(f"{affordance}: missing authorization path")
+        if artifact.wiring and any(word in label for word in ("delete", "save", "submit")) and "error" not in wiring_text:
+            findings.append(f"{affordance}: missing error path")
+    if artifact.wiring:
+        for slice_name in artifact.vertical_slices:
+            if not any(word in slice_name.casefold() for word in ("test", "verify", "observable", "response")):
+                findings.append(f"{slice_name}: no verifiable outcome")
     return tuple(findings)

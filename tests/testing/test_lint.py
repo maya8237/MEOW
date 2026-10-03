@@ -49,6 +49,23 @@ class LintHookTests(unittest.IsolatedAsyncioTestCase):
             result["hookSpecificOutput"]["additionalContext"],
         )
 
+    async def test_fix_mode_rechecks_and_reports_remaining_findings(self):
+        script = _write_script(
+            self.scripts_dir,
+            "fix_then_check.py",
+            "import sys\n"
+            "if '--fix' in sys.argv: raise SystemExit(0)\n"
+            "print('remaining finding')\nraise SystemExit(1)\n",
+        )
+        command = LintCommand(command=f"{sys.executable} {script}", fix_flag="--fix")
+        hook = make_lint_hook(self.working_dir, [command], timeout=5)
+        result = await hook(
+            {"tool_name": "Edit", "tool_input": {"file_path": "foo.py"}}, "id", None
+        )
+        self.assertIn(
+            "remaining finding", result["hookSpecificOutput"]["additionalContext"]
+        )
+
     async def test_hanging_command_is_killed_after_timeout_instead_of_blocking(self):
         script = _write_script(
             self.scripts_dir, "hang.py", "import time\ntime.sleep(30)\n"
