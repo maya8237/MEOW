@@ -1,6 +1,6 @@
 ---
 name: onboard
-description: Set up MEOW in another repository from the user's request. Inspect the target project, configure and verify MEOW, and ask which optional integrations or project-specific features to set up using yes/no/later choices. Use when a user asks to install, initialize, onboard, or configure MEOW in a project.
+description: Set up MEOW in another repository from the user's request. Inspect the target project, configure and verify MEOW, and ask which optional integrations or project-specific features to set up using yes/no choices. Use when a user asks to install, initialize, onboard, or configure MEOW in a project.
 ---
 
 # Set up MEOW in a project
@@ -13,7 +13,7 @@ repository instructions. Make focused changes and preserve existing settings.
 ## 1. Inspect the project and clarify the requested setup
 
 After identifying the project root, run the report-only `meow knowledge audit`
-and show its evidence-backed findings. Ask separately (yes/no/later) before
+and show its evidence-backed findings. Ask separately (yes/no) before
 creating any selected knowledge documents; audit findings never block feature
 runs.
 
@@ -31,9 +31,11 @@ that environment from the repository source. Then verify the environment's
 
 If the user's request leaves a material setup choice open, ask concise questions
 before changing project files. In particular, ask about the optional features
-below in a single, easy-to-answer menu. Each choice must be **yes**, **no**, or **later**.
+below in a single, easy-to-answer menu. Each choice must be **yes** or **no**.
 Interpret yes as configure it now and no as skip it. Never treat silence as
-yes. Honor features the user already explicitly requested without asking again.
+yes. If the user is not ready to decide, treat that as no and explain how to
+resume setup later. Honor features the user already explicitly requested
+without asking again.
 
 Delegate work that is time-consuming, exploratory, or has a distinct role from
 the main onboarding flow. Before dispatching each optional delegated task, ask

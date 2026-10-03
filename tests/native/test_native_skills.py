@@ -135,7 +135,8 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
         onboard = (SKILLS_DIR / "onboard" / "SKILL.md").read_text(encoding="utf-8")
 
         self.assertIn("Tester mode", onboard)
-        self.assertIn("yes/no/later", onboard)
+        self.assertIn("yes/no", onboard)
+        self.assertNotIn("yes/no/later", onboard)
 
     def test_every_cited_native_command_exists(self):
         known = native_commands()
