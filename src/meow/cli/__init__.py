@@ -27,11 +27,14 @@ def __getattr__(name):
 
 def _prompt_plan_approval(plan_file):
     """Facade wrapper that keeps the public input patch point working."""
-    import builtins
-
-    module = _core()
-    module.input = input if input is not builtins.input else builtins.input
-    return module._prompt_plan_approval(plan_file)
+    print(f"\n----- Sprint plan: {plan_file} -----\n")
+    print(plan_file.read_text(encoding="utf-8"))
+    print("----- end of plan -----\n")
+    try:
+        answer = input("Proceed with this plan? [y/N]: ")
+    except EOFError:
+        return False
+    return answer.strip().lower() in {"y", "yes"}
 
 
 def cli_main(*args, **kwargs):

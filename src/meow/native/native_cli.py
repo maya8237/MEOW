@@ -235,7 +235,7 @@ def _add_hook(sub) -> None:
 def add_native_parser(
     subparsers: argparse._SubParsersAction,
     *,
-    help: str | argparse._Suppress | None = None,
+    help: str | None = None,
 ) -> None:
     native_parser = subparsers.add_parser(
         "native",
