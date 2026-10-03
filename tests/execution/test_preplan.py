@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from meow.execution.run_state import RunStore
+from meow.execution.sprint_runner import run_plan, run_sprint
 from meow.project.preplan import (
     assess_preplan,
     gather_context,
@@ -15,8 +17,6 @@ from meow.project.preplan import (
     prepare_preplan,
 )
 from meow.project.prompts import planner_prompt
-from meow.execution.run_state import RunStore
-from meow.execution.sprint_runner import run_plan, run_sprint
 
 
 def _git(root: Path, *args: str) -> None:

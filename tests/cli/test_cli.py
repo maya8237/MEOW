@@ -69,6 +69,29 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             "_worker",
         )
 
+    def test_cli_docs_separate_user_and_maintainer_commands(self):
+        docs = Path("docs/CLI.md").read_text(encoding="utf-8")
+        user_commands = docs.index("## User commands")
+        maintainer_commands = docs.index("## Maintainer and internal commands")
+        common_options = docs.index("## Common options")
+
+        self.assertLess(user_commands, common_options)
+        self.assertLess(common_options, maintainer_commands)
+        user_and_common = docs[user_commands:maintainer_commands]
+        maintainer_section = docs[maintainer_commands:]
+        self.assertIn("`meow run`", user_and_common)
+        self.assertIn("`meow review`", user_and_common)
+        self.assertIn("`meow docs-update`", maintainer_section)
+        self.assertIn("`meow native`", maintainer_section)
+        self.assertIn("`meow evaluate`", maintainer_section)
+        self.assertIn("`meow _worker`", maintainer_section)
+        self.assertIn("private implementation detail", maintainer_section)
+        self.assertNotIn("Manual documentation update", user_and_common)
+        self.assertNotIn("`meow docs-update`", user_and_common)
+        self.assertNotIn("`meow native`", user_and_common)
+        self.assertNotIn("`meow evaluate`", user_and_common)
+        self.assertNotIn("`meow _worker`", user_and_common)
+
     def test_project_understanding_runs_behind_the_scenes(self):
         parser = cli._build_arg_parser()
         for command in (("knowledge", "audit"), ("shape", "assess", "request")):

@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from meow.infrastructure.checks import code_revision
 from meow.execution.orchestrator import ReviewTestResult, _run_rounds
 from meow.execution.run_state import RunStore
 from meow.execution.sprint import Sprint
 from meow.execution.sprint_runner import run_sprint
+from meow.infrastructure.checks import code_revision
 from meow.infrastructure.worktree import _ensure_clean_tree
 
 

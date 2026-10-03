@@ -18,8 +18,8 @@ from meow.agents.reviewer import (
     _run_git_retrying,
     _verdict_status,
 )
-from meow.project.config import LintCommand
 from meow.infrastructure.lint import LintGateEvidence
+from meow.project.config import LintCommand
 
 
 class LooksLikeACrashTests(unittest.TestCase):

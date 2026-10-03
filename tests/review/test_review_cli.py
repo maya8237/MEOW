@@ -4,8 +4,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from meow import review_cli
-from meow.execution.orchestrator import ReviewTestResult
 from meow.cli.review_cli import _validate_review_flags
+from meow.execution.orchestrator import ReviewTestResult
 
 
 def _config(**overrides):

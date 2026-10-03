@@ -4,8 +4,8 @@ import asyncio
 import subprocess
 from unittest.mock import AsyncMock, patch
 
-from meow.native.native_state import checkpoint, finalize
 from meow.execution.run_state import RunStore
+from meow.native.native_state import checkpoint, finalize
 
 
 def test_native_finalize_requires_review(tmp_path):

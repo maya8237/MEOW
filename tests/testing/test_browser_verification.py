@@ -3,9 +3,8 @@ import socket
 import sys
 from pathlib import Path
 
-from meow.infrastructure.checks import configured_checks, run_final_checks
-from meow.project.config import DevServerCommand, load_config
 from meow.execution.orchestrator import _tester_results
+from meow.infrastructure.checks import configured_checks, run_final_checks
 from meow.infrastructure.test_runner import (
     BrowserEvidence,
     _reachable,
@@ -14,6 +13,7 @@ from meow.infrastructure.test_runner import (
 from meow.infrastructure.test_runner import (
     TestStageEvidence as StageEvidence,
 )
+from meow.project.config import DevServerCommand, load_config
 
 
 def _port():

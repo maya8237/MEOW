@@ -4,7 +4,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from meow.agents.tester import TesterAgent, architecture_context
-from meow.infrastructure.test_runner import BrowserEvidence, TestCommandEvidence, TestStageEvidence
+from meow.infrastructure.test_runner import (
+    BrowserEvidence,
+    TestCommandEvidence,
+    TestStageEvidence,
+)
 
 
 class Context:

@@ -4,7 +4,6 @@ from types import SimpleNamespace
 import pytest
 
 from meow.execution.orchestrator import _capture_quality
-from meow.project.prompts import _verdict_format
 from meow.infrastructure.quality import (
     QualityStoreError,
     extract_concern_candidates,
@@ -12,6 +11,7 @@ from meow.infrastructure.quality import (
     record_concerns,
     relevant_concerns,
 )
+from meow.project.prompts import _verdict_format
 
 
 def _candidate(

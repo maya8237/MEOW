@@ -8,7 +8,11 @@ import pytest
 
 from meow import cli
 from meow.agents.docs_updater import update_documentation
-from meow.integrations.docs_update import DocsUpdateError, prepare_docs_update, run_docs_update
+from meow.integrations.docs_update import (
+    DocsUpdateError,
+    prepare_docs_update,
+    run_docs_update,
+)
 from meow.project.permissions import PermissionPolicy, Rule
 
 

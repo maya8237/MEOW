@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from meow.execution.run_state import MAX_OUTPUT
 from meow.infrastructure.checks import (
     Check,
     checks_current,
@@ -18,7 +19,6 @@ from meow.infrastructure.checks import (
     run_final_checks,
 )
 from meow.project.config import load_config
-from meow.execution.run_state import MAX_OUTPUT
 
 
 def test_preflight_validates_executable_and_cwd_without_running(tmp_path):
