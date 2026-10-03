@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from meow.worktree import (
+from meow.infrastructure.worktree import (
     _ensure_branch_worktree,
     _ensure_existing_branch_worktree,
     _ensure_feature_worktree,

@@ -26,26 +26,29 @@ import os
 import shutil
 from pathlib import Path
 
-from meow.config import load_config, resolve_command_cwd, split_command, tomllib
-from meow.knowledge import audit_project, select_findings, structural_check
-from meow.knowledge_documents import EvidenceDocumentWriter, create_selected_documents
-from meow.native_lint import LintOptions, lint
-from meow.native_prepare import (
+from meow.infrastructure.worktree import _push_branch
+from meow.integrations.knowledge import audit_project, select_findings, structural_check
+from meow.integrations.knowledge_documents import (
+    EvidenceDocumentWriter,
+    create_selected_documents,
+)
+from meow.native.native_lint import LintOptions, lint
+from meow.native.native_prepare import (
     PrepareOptions,
     latest_plan,
     latest_review,
     prepare,
     verdict,
 )
-from meow.native_prompt import PROMPT_ROLES, role_prompt
-from meow.native_state import checkpoint, finalize, round_state
-from meow.shaping import (
+from meow.native.native_prompt import PROMPT_ROLES, role_prompt
+from meow.native.native_state import checkpoint, finalize, round_state
+from meow.project.config import load_config, resolve_command_cwd, split_command, tomllib
+from meow.project.shaping import (
     assess_request,
     load_shape_artifact,
     reflect_breadboard,
     save_shape_artifact,
 )
-from meow.worktree import _push_branch
 
 __all__ = [
     "PROMPT_ROLES",
@@ -97,7 +100,7 @@ def shape_assess(request: str) -> dict:
 
 
 def shape_create(path: Path, artifact: dict) -> dict:
-    from meow.shaping import BreadboardArtifact, ShapeArtifact, ShapeOption
+    from meow.project.shaping import BreadboardArtifact, ShapeArtifact, ShapeOption
 
     value = (
         BreadboardArtifact(**artifact)

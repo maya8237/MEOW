@@ -12,9 +12,9 @@ from claude_agent_sdk import (
 )
 
 from meow.agents.base import Agent, AgentContext, log_stream_message
-from meow.lint import make_lint_hook
-from meow.logging import get_logger
-from meow.prompts import lint_fixer_prompt
+from meow.infrastructure.lint import make_lint_hook
+from meow.infrastructure.logging import get_logger
+from meow.project.prompts import lint_fixer_prompt
 
 logger = get_logger(__name__)
 

@@ -5,8 +5,8 @@ import asyncio
 import pytest
 
 from meow.agents.base import Agent, ProjectContext
-from meow.config import load_config
-from meow.permissions import make_permission_callback, parse_policy
+from meow.project.config import load_config
+from meow.project.permissions import make_permission_callback, parse_policy
 
 
 def test_role_and_path_rules_do_not_bleed_into_other_roles():

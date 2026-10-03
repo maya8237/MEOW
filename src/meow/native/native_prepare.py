@@ -15,19 +15,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meow.agents.reviewer import _verdict_status
-from meow.config import LintCommand, load_config
-from meow.plan_files import (
-    _detect_review_flavor,
-    _latest_plan_file,
-    _latest_review_file,
-)
-from meow.worktree import (
+from meow.infrastructure.worktree import (
     _boot_repo,
     _ensure_branch_worktree,
     _ensure_clean_tree,
     _ensure_existing_branch_worktree,
     _require_branch_checked_out,
     _resolve_working_dir,
+)
+from meow.project.config import LintCommand, load_config
+from meow.project.plan_files import (
+    _detect_review_flavor,
+    _latest_plan_file,
+    _latest_review_file,
 )
 
 

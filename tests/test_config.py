@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from meow.config import (
+from meow.project.config import (
     LintCommand,
     _lint_entry,
     _normalize_lint_commands,
@@ -52,13 +52,13 @@ class UnixOnlyMarkerTests(unittest.TestCase):
         # Windows has no shebang support -- a bare .sh filename can't be
         # exec'd directly even with a real bash on PATH, unlike `bash
         # script.sh`, which explicitly names its interpreter.
-        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
             problem = _os_mismatch("lint.sh --check", "Windows")
         self.assertIsNotNone(problem)
         self.assertIn("Unix shell", problem)
 
     def test_bash_flagged_on_windows_when_no_interpreter_resolves(self):
-        with patch("meow.config.shutil.which", return_value=None):
+        with patch("meow.project.config.shutil.which", return_value=None):
             problem = _os_mismatch("bash scripts/lint.sh", "Windows")
         self.assertIsNotNone(problem)
 
@@ -78,19 +78,19 @@ class GitBashExemptionTests(unittest.TestCase):
     there, and a command that explicitly invokes it genuinely works."""
 
     def test_bash_on_path_is_not_flagged_on_windows(self):
-        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
             self.assertIsNone(_os_mismatch("bash scripts/lint.sh", "Windows"))
 
     def test_sh_on_path_is_not_flagged_on_windows(self):
-        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\sh.exe"):
+        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\sh.exe"):
             self.assertIsNone(_os_mismatch("sh scripts/lint.sh", "Windows"))
 
     def test_zsh_on_path_is_not_flagged_on_windows(self):
-        with patch("meow.config.shutil.which", return_value="/usr/bin/zsh"):
+        with patch("meow.project.config.shutil.which", return_value="/usr/bin/zsh"):
             self.assertIsNone(_os_mismatch("zsh scripts/lint.sh", "Windows"))
 
     def test_bash_not_on_path_is_still_flagged_on_windows(self):
-        with patch("meow.config.shutil.which", return_value=None):
+        with patch("meow.project.config.shutil.which", return_value=None):
             problem = _os_mismatch("bash scripts/lint.sh", "Windows")
         self.assertIsNotNone(problem)
         self.assertIn("Unix shell", problem)
@@ -98,7 +98,7 @@ class GitBashExemptionTests(unittest.TestCase):
     def test_bare_sh_extension_is_flagged_even_with_bash_on_path(self):
         # `lint.sh` alone (no explicit `bash`/`sh` in front) still can't be
         # exec'd directly by Windows, no matter what's on PATH.
-        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
             problem = _os_mismatch("lint.sh --check", "Windows")
         self.assertIsNotNone(problem)
 
@@ -106,7 +106,7 @@ class GitBashExemptionTests(unittest.TestCase):
         # The PATH check is specifically about whether Windows can run a
         # bash/sh/zsh command at all; it has nothing to say on a platform
         # where these are never flagged in the first place.
-        with patch("meow.config.shutil.which", return_value=None) as which:
+        with patch("meow.project.config.shutil.which", return_value=None) as which:
             self.assertIsNone(_os_mismatch("bash scripts/lint.sh", "Linux"))
         which.assert_not_called()
 
@@ -164,7 +164,7 @@ class LoadConfigOsValidationTests(unittest.TestCase):
                 '[[lint]]\ncommand = "lint.bat --check"\n', encoding="utf-8"
             )
             with (
-                patch("meow.config.platform.system", return_value="Linux"),
+                patch("meow.project.config.platform.system", return_value="Linux"),
                 self.assertRaisesRegex(ValueError, "lint.bat"),
             ):
                 load_config(working_dir)

@@ -13,8 +13,12 @@ import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 
-from meow.config import LintCommand, load_config
-from meow.lint import _run_lint_on_file, apply_lint_fixes, check_lint_commands
+from meow.infrastructure.lint import (
+    _run_lint_on_file,
+    apply_lint_fixes,
+    check_lint_commands,
+)
+from meow.project.config import LintCommand, load_config
 
 
 @dataclass(frozen=True)

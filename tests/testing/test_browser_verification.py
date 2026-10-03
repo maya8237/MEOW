@@ -3,15 +3,15 @@ import socket
 import sys
 from pathlib import Path
 
-from meow.checks import configured_checks, run_final_checks
-from meow.config import DevServerCommand, load_config
-from meow.orchestrator.core import _tester_results
-from meow.test_runner import (
+from meow.infrastructure.checks import configured_checks, run_final_checks
+from meow.project.config import DevServerCommand, load_config
+from meow.execution.orchestrator import _tester_results
+from meow.infrastructure.test_runner import (
     BrowserEvidence,
     _reachable,
     prepared_test_stage,
 )
-from meow.test_runner import (
+from meow.infrastructure.test_runner import (
     TestStageEvidence as StageEvidence,
 )
 

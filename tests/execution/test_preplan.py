@@ -8,15 +8,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from meow.preplan import (
+from meow.project.preplan import (
     assess_preplan,
     gather_context,
     needs_breadboard,
     prepare_preplan,
 )
-from meow.prompts import planner_prompt
-from meow.run_state import RunStore
-from meow.sprint_runner import run_plan, run_sprint
+from meow.project.prompts import planner_prompt
+from meow.execution.run_state import RunStore
+from meow.execution.sprint_runner import run_plan, run_sprint
 
 
 def _git(root: Path, *args: str) -> None:
@@ -125,16 +125,16 @@ def test_planner_prompt_receives_relevant_evidence_without_doc_advice(tmp_path):
 
 
 def test_plan_command_prepares_project_context_behind_the_scenes(tmp_path):
-    from meow.sprint import Sprint
+    from meow.execution.sprint import Sprint
 
     sprint = Sprint(tmp_path, {"docs_dir": ".", "lint": []}, None, None)
     planner = AsyncMock(return_value=tmp_path / "plan.md")
     with (
         patch(
-            "meow.sprint_runner.core._prepare_sprint",
+            "meow.execution.sprint_runner.core._prepare_sprint",
             return_value=(sprint, "feature", tmp_path),
         ),
-        patch("meow.sprint_runner.core.PlannerAgent") as agent,
+        patch("meow.execution.sprint_runner.core.PlannerAgent") as agent,
     ):
         agent.return_value.run = planner
         asyncio.run(run_plan(tmp_path, "feature", "Fix the command"))
@@ -143,16 +143,16 @@ def test_plan_command_prepares_project_context_behind_the_scenes(tmp_path):
 
 
 def test_unattended_product_choice_stops_before_planning(tmp_path):
-    from meow.sprint import Sprint
+    from meow.execution.sprint import Sprint
 
     sprint = Sprint(
         tmp_path, {"docs_dir": ".", "lint": [], "max_rounds": 1}, None, None
     )
     with (
         patch(
-            "meow.sprint_runner._prepare_sprint", return_value=(sprint, "x", tmp_path)
+            "meow.execution.sprint_runner._prepare_sprint", return_value=(sprint, "x", tmp_path)
         ),
-        patch("meow.sprint_runner.PlannerAgent") as planner,
+        patch("meow.execution.sprint_runner.PlannerAgent") as planner,
         pytest.raises(RuntimeError, match="product decision"),
     ):
         asyncio.run(

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from meow.knowledge import KnowledgeConfig, audit_project, structural_check
+from meow.integrations.knowledge import KnowledgeConfig, audit_project, structural_check
 
 
 def test_audit_reports_missing_and_broken_evidence_without_writing(tmp_path: Path):

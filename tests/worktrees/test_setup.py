@@ -2,7 +2,7 @@
 
 import pytest
 
-from meow.worktree.setup import WorktreeSetupError, run_setup, validate_setup
+from meow.infrastructure.worktree_setup import WorktreeSetupError, run_setup, validate_setup
 
 
 def test_copy_selected_regular_file(tmp_path):

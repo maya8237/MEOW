@@ -5,9 +5,9 @@ import sys
 
 import pytest
 
-from meow.cancellation import RunCancelled, cancellable, request_cancel
-from meow.cli.core import _build_arg_parser, cli_main
-from meow.run_state import RunStore
+from meow.infrastructure.cancellation import RunCancelled, cancellable, request_cancel
+from meow.cli.cli import _build_arg_parser, cli_main
+from meow.execution.run_state import RunStore
 
 
 def test_cancel_request_is_idempotent_and_preserves_worktree(tmp_path):

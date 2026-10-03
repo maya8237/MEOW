@@ -2,8 +2,8 @@ import unittest
 from pathlib import Path
 
 from meow import prompts
-from meow.config import LintCommand
-from meow.shaping import ShapeContext
+from meow.project.config import LintCommand
+from meow.project.shaping import ShapeContext
 
 
 class PromptTests(unittest.TestCase):

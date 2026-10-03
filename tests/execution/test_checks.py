@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from meow.checks import (
+from meow.infrastructure.checks import (
     Check,
     checks_current,
     code_revision,
@@ -17,8 +17,8 @@ from meow.checks import (
     run_check,
     run_final_checks,
 )
-from meow.config import load_config
-from meow.run_state import MAX_OUTPUT
+from meow.project.config import load_config
+from meow.execution.run_state import MAX_OUTPUT
 
 
 def test_preflight_validates_executable_and_cwd_without_running(tmp_path):
@@ -183,7 +183,7 @@ def test_completion_rejects_stale_reviewer_evidence(tmp_path):
 def test_final_test_check_uses_integrated_stage(tmp_path):
     (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
     (tmp_path / "sample.py").write_text("print('ok')", encoding="utf-8")
-    from meow.config import TestCommand
+    from meow.project.config import TestCommand
 
     config = {
         "lint": [],
@@ -218,7 +218,7 @@ def test_final_checks_rerun_when_build_changes_code(tmp_path):
         ),
     )
     config = {"lint": [], "build": [], "tester": {"tests": []}}
-    with patch("meow.checks.configured_checks", return_value=[lint, build]):
+    with patch("meow.infrastructure.checks.configured_checks", return_value=[lint, build]):
         results = asyncio.run(run_final_checks(tmp_path, config))
     assert len(results) == len([lint, build])
     assert checks_current(results, [lint, build], tmp_path)

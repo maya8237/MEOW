@@ -32,7 +32,7 @@ def run_native(*argv: str) -> tuple[int, str, str]:
 class NativeVerifyTests(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "Windows executable quoting")
     def test_verify_recognizes_quoted_windows_launcher(self):
-        from meow.config import TestCommand
+        from meow.project.config import TestCommand
 
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)

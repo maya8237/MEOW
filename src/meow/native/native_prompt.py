@@ -20,8 +20,8 @@ from meow.agents.reviewer import (
     _branch_diff,
     _git_review_context,
 )
-from meow.config import load_config
-from meow.prompts import (
+from meow.project.config import load_config
+from meow.project.prompts import (
     branch_review_prompt,
     explorer_prompt,
     generator_prompt,
@@ -32,7 +32,7 @@ from meow.prompts import (
     prompt_review_prompt,
     review_fixer_prompt,
 )
-from meow.shaping import ShapeContext, load_shape_artifact
+from meow.project.shaping import ShapeContext, load_shape_artifact
 
 
 def _load_shape_context(path: Path | None) -> ShapeContext | None:

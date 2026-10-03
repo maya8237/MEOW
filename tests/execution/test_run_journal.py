@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from meow.checks import code_revision
-from meow.orchestrator import ReviewTestResult, _run_rounds
-from meow.run_state import RunStore
-from meow.sprint import Sprint
-from meow.sprint_runner import run_sprint
-from meow.worktree import _ensure_clean_tree
+from meow.infrastructure.checks import code_revision
+from meow.execution.orchestrator import ReviewTestResult, _run_rounds
+from meow.execution.run_state import RunStore
+from meow.execution.sprint import Sprint
+from meow.execution.sprint_runner import run_sprint
+from meow.infrastructure.worktree import _ensure_clean_tree
 
 
 def test_interrupted_generator_is_recorded_before_edit(tmp_path):
@@ -28,7 +28,7 @@ def test_interrupted_generator_is_recorded_before_edit(tmp_path):
     generator.__aexit__ = AsyncMock(return_value=False)
     generator.implement = AsyncMock(side_effect=KeyboardInterrupt)
     with (
-        patch("meow.orchestrator.Generator", return_value=generator),
+        patch("meow.execution.orchestrator.Generator", return_value=generator),
         pytest.raises(KeyboardInterrupt),
     ):
         asyncio.run(_run_rounds(sprint, Path("plan.md")))
@@ -67,12 +67,12 @@ def test_run_records_planning_and_completion(tmp_path):
 
     with (
         patch(
-            "meow.sprint_runner._prepare_sprint",
+            "meow.execution.sprint_runner._prepare_sprint",
             return_value=(sprint, "x", tmp_path),
         ),
-        patch("meow.sprint_runner.PlannerAgent") as planner,
-        patch("meow.sprint_runner._run_rounds", side_effect=passed),
-        patch("meow.sprint_runner.deliver_verified_run") as deliver,
+        patch("meow.execution.sprint_runner.PlannerAgent") as planner,
+        patch("meow.execution.sprint_runner._run_rounds", side_effect=passed),
+        patch("meow.execution.sprint_runner.deliver_verified_run") as deliver,
     ):
         planner.return_value.run = AsyncMock(return_value=plan)
         asyncio.run(run_sprint(tmp_path, "x", "request", use_worktree=False))
@@ -111,17 +111,17 @@ def test_multitask_plan_uses_isolated_executor_then_final_review(tmp_path):
     )
     with (
         patch(
-            "meow.sprint_runner._prepare_sprint", return_value=(sprint, "x", tmp_path)
+            "meow.execution.sprint_runner._prepare_sprint", return_value=(sprint, "x", tmp_path)
         ),
         patch(
-            "meow.sprint_runner.run_parallel_plan", new=AsyncMock(return_value=True)
+            "meow.execution.sprint_runner.run_parallel_plan", new=AsyncMock(return_value=True)
         ) as parallel,
         patch(
-            "meow.sprint_runner._run_rounds",
+            "meow.execution.sprint_runner._run_rounds",
             new=AsyncMock(side_effect=AssertionError("generator first")),
         ),
         patch(
-            "meow.sprint_runner._run_review_rounds", new=AsyncMock(return_value=True)
+            "meow.execution.sprint_runner._run_review_rounds", new=AsyncMock(return_value=True)
         ) as review,
     ):
         asyncio.run(
@@ -134,7 +134,7 @@ def test_multitask_plan_uses_isolated_executor_then_final_review(tmp_path):
 def test_prepare_failure_keeps_a_run_checkpoint(tmp_path):
     with (
         patch(
-            "meow.sprint_runner._prepare_sprint",
+            "meow.execution.sprint_runner._prepare_sprint",
             side_effect=RuntimeError("setup failed"),
         ),
         pytest.raises(RuntimeError, match="setup failed"),
@@ -166,9 +166,9 @@ def test_tester_failure_keeps_independent_reviewer_verdict(tmp_path):
     generator.__aexit__ = AsyncMock(return_value=False)
     generator.implement = AsyncMock()
     with (
-        patch("meow.orchestrator.Generator", return_value=generator),
+        patch("meow.execution.orchestrator.Generator", return_value=generator),
         patch(
-            "meow.orchestrator.review_then_test",
+            "meow.execution.orchestrator.review_then_test",
             new=AsyncMock(
                 return_value=ReviewTestResult("FAIL", "tester fail", "PASS", "FAIL")
             ),
@@ -206,11 +206,11 @@ def test_final_check_exception_records_failure(tmp_path):
 
     with (
         patch(
-            "meow.sprint_runner._prepare_sprint", return_value=(sprint, "x", tmp_path)
+            "meow.execution.sprint_runner._prepare_sprint", return_value=(sprint, "x", tmp_path)
         ),
-        patch("meow.sprint_runner._run_rounds", side_effect=passed),
+        patch("meow.execution.sprint_runner._run_rounds", side_effect=passed),
         patch(
-            "meow.sprint_runner.run_final_checks",
+            "meow.execution.sprint_runner.run_final_checks",
             new=AsyncMock(side_effect=RuntimeError("check crashed")),
         ),
         pytest.raises(RuntimeError, match="check crashed"),

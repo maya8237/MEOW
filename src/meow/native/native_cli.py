@@ -14,8 +14,8 @@ import sys
 from pathlib import Path
 
 from meow import native
-from meow.config import load_config
 from meow.hooks.handlers import HANDLERS
+from meow.project.config import load_config
 
 
 def _add_dirs(parser: argparse.ArgumentParser) -> None:
@@ -232,10 +232,16 @@ def _add_hook(sub) -> None:
     parser.add_argument("path")
 
 
-def add_native_parser(subparsers: argparse._SubParsersAction) -> None:
+def add_native_parser(
+    subparsers: argparse._SubParsersAction,
+    *,
+    help: str | argparse._Suppress | None = None,
+) -> None:
     native_parser = subparsers.add_parser(
         "native",
-        help=(
+        help=help
+        if help is not None
+        else (
             "Agent-free helpers for skill-driven (in-Claude-Code-session) "
             "runs. Prints JSON."
         ),

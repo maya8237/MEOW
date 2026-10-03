@@ -3,9 +3,9 @@
 import sys
 
 from meow.cli import cli_main
-from meow.quality import record_concerns
-from meow.run_state import RunStore
-from meow.status_cli import status
+from meow.infrastructure.quality import record_concerns
+from meow.execution.run_state import RunStore
+from meow.cli.status_cli import status
 
 
 def test_status_latest_and_verbose(tmp_path, capsys):
@@ -76,7 +76,7 @@ def test_status_shows_only_current_run_quality_concern(tmp_path, capsys):
 
 
 def test_status_reads_persistent_concerns_from_main_repo(tmp_path, capsys):
-    from meow.quality import record_concerns
+    from meow.infrastructure.quality import record_concerns
 
     main = tmp_path / "main"
     active = tmp_path / "active"

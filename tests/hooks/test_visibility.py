@@ -1,6 +1,6 @@
 import json
 
-from meow.cli.core import _build_arg_parser, _dispatch
+from meow.cli.cli import _build_arg_parser, _dispatch
 from meow.hooks.claude import (
     COMMANDS,
     MANIFEST,

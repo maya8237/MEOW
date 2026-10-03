@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, query
 
 from meow.agents.base import Agent, AgentContext, _looks_like_a_crash
-from meow.lint import LintGateEvidence, check_lint_evidence
-from meow.logging import get_logger
-from meow.prompts import (
+from meow.infrastructure.lint import LintGateEvidence, check_lint_evidence
+from meow.infrastructure.logging import get_logger
+from meow.project.prompts import (
     architecture_review_instructions,
     branch_review_prompt,
     ci_review_prompt,
@@ -23,10 +23,10 @@ from meow.prompts import (
 )
 
 if TYPE_CHECKING:
-    from meow.ci_review import CiReviewContext
-from meow.shaping import ShapeContext
-from meow.sprint import Sprint
-from meow.usage import record_result
+    from meow.integrations.ci_review import CiReviewContext
+from meow.execution.sprint import Sprint
+from meow.infrastructure.usage import record_result
+from meow.project.shaping import ShapeContext
 
 PROMPT_REVIEW_FILENAME = "review.md"
 MR_REVIEW_FILENAME = "gitlab-review.md"

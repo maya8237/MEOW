@@ -71,14 +71,14 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
         }
         issue = {"key": "PROJ-2", "summary": "Fix thing", "description": "Details."}
         with (
-            patch("meow.issue_solver.load_config", return_value=config),
-            patch("meow.issue_solver._fetch_issue", new=AsyncMock(return_value=issue)),
+            patch("meow.integrations.issue_solver.load_config", return_value=config),
+            patch("meow.integrations.issue_solver._fetch_issue", new=AsyncMock(return_value=issue)),
             patch(
-                "meow.issue_solver._ensure_branch_worktree",
+                "meow.integrations.issue_solver._ensure_branch_worktree",
                 return_value=Path("/project/wt"),
             ),
             patch(
-                "meow.issue_solver.run_sprint",
+                "meow.integrations.issue_solver.run_sprint",
                 new=AsyncMock(side_effect=RuntimeError("Tester stage failed")),
             ) as sprint,
             self.assertRaisesRegex(
@@ -99,15 +99,15 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
         issue = {"key": "PROJ-1", "summary": "Fix thing", "description": "Details."}
 
         with (
-            patch("meow.issue_solver.load_config", return_value=config),
+            patch("meow.integrations.issue_solver.load_config", return_value=config),
             patch(
-                "meow.issue_solver._fetch_issue", new=AsyncMock(return_value=issue)
+                "meow.integrations.issue_solver._fetch_issue", new=AsyncMock(return_value=issue)
             ) as mock_fetch,
             patch(
-                "meow.issue_solver._ensure_branch_worktree",
+                "meow.integrations.issue_solver._ensure_branch_worktree",
                 return_value=Path("/project/.worktrees/issue-proj-1"),
             ) as mock_worktree,
-            patch("meow.issue_solver.run_sprint", new=AsyncMock()) as mock_sprint,
+            patch("meow.integrations.issue_solver.run_sprint", new=AsyncMock()) as mock_sprint,
         ):
             result = await issue_solver.run_issue_solver(working_dir, "PROJ-1")
 
@@ -147,13 +147,13 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
         mock_approve = MagicMock(return_value=True)
 
         with (
-            patch("meow.issue_solver.load_config", return_value=config),
-            patch("meow.issue_solver._fetch_issue", new=AsyncMock(return_value=issue)),
+            patch("meow.integrations.issue_solver.load_config", return_value=config),
+            patch("meow.integrations.issue_solver._fetch_issue", new=AsyncMock(return_value=issue)),
             patch(
-                "meow.issue_solver._ensure_branch_worktree",
+                "meow.integrations.issue_solver._ensure_branch_worktree",
                 return_value=Path("/project/.worktrees/issue-proj-1"),
             ),
-            patch("meow.issue_solver.run_sprint", new=AsyncMock()) as mock_sprint,
+            patch("meow.integrations.issue_solver.run_sprint", new=AsyncMock()) as mock_sprint,
         ):
             result = await issue_solver.run_issue_solver(
                 working_dir, "PROJ-1", approve_plan=mock_approve
@@ -172,8 +172,8 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_raises_before_fetching_when_jira_config_is_missing(self):
         with (
-            patch("meow.issue_solver.load_config", return_value={}),
-            patch("meow.issue_solver._fetch_issue", new=AsyncMock()) as mock_fetch,
+            patch("meow.integrations.issue_solver.load_config", return_value={}),
+            patch("meow.integrations.issue_solver._fetch_issue", new=AsyncMock()) as mock_fetch,
             self.assertRaisesRegex(ValueError, r"No \[jira\] table"),
         ):
             await issue_solver.run_issue_solver(Path("/project"))

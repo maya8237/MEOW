@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from meow.config import DevServerCommand
+from meow.project.config import DevServerCommand
 from meow.frontend import browser_capability
 
 

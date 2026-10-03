@@ -16,11 +16,11 @@ class RunLintFixReportOnlyTests(unittest.IsolatedAsyncioTestCase):
         config = {"lint": [], "lint_timeout": 60, "models": {}}
 
         with (
-            patch("meow.lint_fix.load_config", return_value=config),
+            patch("meow.infrastructure.lint_fix.load_config", return_value=config),
             patch(
-                "meow.lint_fix.check_lint_commands", new=AsyncMock(return_value=[])
+                "meow.infrastructure.lint_fix.check_lint_commands", new=AsyncMock(return_value=[])
             ) as mock_check,
-            patch("meow.lint_fix.apply_lint_fixes", new=AsyncMock()) as mock_apply,
+            patch("meow.infrastructure.lint_fix.apply_lint_fixes", new=AsyncMock()) as mock_apply,
         ):
             result = await lint_fix.run_lint_fix(working_dir, report_only=True)
 
@@ -34,13 +34,13 @@ class RunLintFixReportOnlyTests(unittest.IsolatedAsyncioTestCase):
         problems = ["$ ruff check\nfoo.py:1: F401 unused import"]
 
         with (
-            patch("meow.lint_fix.load_config", return_value=config),
+            patch("meow.infrastructure.lint_fix.load_config", return_value=config),
             patch(
-                "meow.lint_fix.check_lint_commands",
+                "meow.infrastructure.lint_fix.check_lint_commands",
                 new=AsyncMock(return_value=problems),
             ),
-            patch("meow.lint_fix.apply_lint_fixes", new=AsyncMock()) as mock_apply,
-            patch("meow.lint_fix.LintFixAgent") as mock_agent_cls,
+            patch("meow.infrastructure.lint_fix.apply_lint_fixes", new=AsyncMock()) as mock_apply,
+            patch("meow.infrastructure.lint_fix.LintFixAgent") as mock_agent_cls,
         ):
             result = await lint_fix.run_lint_fix(working_dir, report_only=True)
 
@@ -59,12 +59,12 @@ class RunLintFixStandaloneTests(unittest.IsolatedAsyncioTestCase):
         config = {"lint": [], "lint_timeout": 60, "models": {}, "max_rounds": 3}
 
         with (
-            patch("meow.lint_fix.load_config", return_value=config),
-            patch("meow.lint_fix.apply_lint_fixes", new=AsyncMock()) as mock_apply,
+            patch("meow.infrastructure.lint_fix.load_config", return_value=config),
+            patch("meow.infrastructure.lint_fix.apply_lint_fixes", new=AsyncMock()) as mock_apply,
             patch(
-                "meow.lint_fix.check_lint_commands", new=AsyncMock(return_value=[])
+                "meow.infrastructure.lint_fix.check_lint_commands", new=AsyncMock(return_value=[])
             ) as mock_check,
-            patch("meow.lint_fix.LintFixAgent") as mock_agent_cls,
+            patch("meow.infrastructure.lint_fix.LintFixAgent") as mock_agent_cls,
         ):
             result = await lint_fix.run_lint_fix(working_dir, report_only=False)
 
@@ -83,13 +83,13 @@ class RunLintFixStandaloneTests(unittest.IsolatedAsyncioTestCase):
         mock_fixer.fix = AsyncMock(return_value="")
 
         with (
-            patch("meow.lint_fix.load_config", return_value=config),
-            patch("meow.lint_fix.apply_lint_fixes", new=AsyncMock()),
+            patch("meow.infrastructure.lint_fix.load_config", return_value=config),
+            patch("meow.infrastructure.lint_fix.apply_lint_fixes", new=AsyncMock()),
             patch(
-                "meow.lint_fix.check_lint_commands",
+                "meow.infrastructure.lint_fix.check_lint_commands",
                 new=AsyncMock(side_effect=[["still broken"], []]),
             ) as mock_check,
-            patch("meow.lint_fix.LintFixAgent", return_value=mock_fixer),
+            patch("meow.infrastructure.lint_fix.LintFixAgent", return_value=mock_fixer),
         ):
             result = await lint_fix.run_lint_fix(working_dir, report_only=False)
 
@@ -107,13 +107,13 @@ class RunLintFixStandaloneTests(unittest.IsolatedAsyncioTestCase):
         mock_fixer.fix = AsyncMock(return_value="")
 
         with (
-            patch("meow.lint_fix.load_config", return_value=config),
-            patch("meow.lint_fix.apply_lint_fixes", new=AsyncMock()),
+            patch("meow.infrastructure.lint_fix.load_config", return_value=config),
+            patch("meow.infrastructure.lint_fix.apply_lint_fixes", new=AsyncMock()),
             patch(
-                "meow.lint_fix.check_lint_commands",
+                "meow.infrastructure.lint_fix.check_lint_commands",
                 new=AsyncMock(return_value=["still broken"]),
             ),
-            patch("meow.lint_fix.LintFixAgent", return_value=mock_fixer),
+            patch("meow.infrastructure.lint_fix.LintFixAgent", return_value=mock_fixer),
             self.assertRaisesRegex(lint_fix.LintFixError, "still broken"),
         ):
             await lint_fix.run_lint_fix(working_dir, report_only=False)

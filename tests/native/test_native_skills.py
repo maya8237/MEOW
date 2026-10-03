@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from meow import cli, native
-from meow.native_cli import add_native_parser
+from meow.native.native_cli import add_native_parser
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 SHARED = SKILLS_DIR / "_shared" / "native-mode.md"
