@@ -4,8 +4,8 @@ import asyncio
 import subprocess
 from unittest.mock import AsyncMock, patch
 
-from meow.resume_cli import resume
-from meow.run_state import RunStore
+from meow.cli.resume_cli import resume
+from meow.execution.run_state import RunStore
 
 
 def _record(tmp_path):
@@ -25,7 +25,7 @@ def _record(tmp_path):
 
 def test_inspect_only_does_not_start_agents(tmp_path, capsys):
     _, record = _record(tmp_path)
-    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id)) == 0
     run.assert_not_awaited()
     assert "interrupted_mutation" in capsys.readouterr().out
@@ -34,7 +34,7 @@ def test_inspect_only_does_not_start_agents(tmp_path, capsys):
 def test_branch_mismatch_refuses_before_agent(tmp_path, capsys):
     store, record = _record(tmp_path)
     store.transition(record.id, "interrupted_mutation", branch="other")
-    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) != 0
     run.assert_not_awaited()
     assert "branch" in capsys.readouterr().err.lower()
@@ -42,7 +42,7 @@ def test_branch_mismatch_refuses_before_agent(tmp_path, capsys):
 
 def test_mutating_interruption_resumes_with_review_first(tmp_path):
     _, record = _record(tmp_path)
-    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
     assert run.await_args.kwargs["resume_at"] == "review"
 
@@ -50,7 +50,7 @@ def test_mutating_interruption_resumes_with_review_first(tmp_path):
 def test_planned_run_resumes_at_generate(tmp_path):
     store, record = _record(tmp_path)
     store.transition(record.id, "planned")
-    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
     assert run.await_args.kwargs["resume_at"] == "generate"
 
@@ -58,7 +58,7 @@ def test_planned_run_resumes_at_generate(tmp_path):
 def test_integrated_tasks_resume_at_review(tmp_path):
     store, record = _record(tmp_path)
     store.transition(record.id, "tasks_integrated")
-    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
     assert run.await_args.kwargs["resume_at"] == "review"
 
@@ -66,7 +66,7 @@ def test_integrated_tasks_resume_at_review(tmp_path):
 def test_partial_tasks_preserve_worktrees_and_refuse_unsafe_replay(tmp_path, capsys):
     store, record = _record(tmp_path)
     store.transition(record.id, "tasks_running")
-    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()
     assert store.load(record.id).phase == "tasks_running"
@@ -84,7 +84,7 @@ def test_lint_fix_checkpoint_does_not_start_feature_agent(tmp_path, capsys):
         worktree=tmp_path,
         branch="dev",
     )
-    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()
     assert "lint-fix" in capsys.readouterr().err
@@ -95,7 +95,7 @@ def test_missing_worktree_refuses_before_agent(tmp_path, capsys):
     store.transition(
         record.id, "interrupted_mutation", worktree=str(tmp_path / "missing")
     )
-    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()
     assert "worktree" in capsys.readouterr().err.lower()
@@ -107,7 +107,7 @@ def test_replaced_worktree_from_other_repo_refuses_before_agent(tmp_path, capsys
     replacement.mkdir()
     subprocess.run(["git", "init", "-q", "-b", "dev", str(replacement)], check=True)
     store.transition(record.id, "interrupted_mutation", worktree=str(replacement))
-    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()
     assert "worktree" in capsys.readouterr().err.lower()
@@ -123,7 +123,7 @@ def test_changed_plan_refuses_before_agent(tmp_path, capsys):
         plan_fingerprint=hashlib.sha256(b"plan").hexdigest(),
     )
     (tmp_path / "plan.md").write_text("changed", encoding="utf-8")
-    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()
     assert "plan changed" in capsys.readouterr().err.lower()
@@ -140,7 +140,7 @@ def test_changed_config_refuses_before_agent(tmp_path, capsys):
         config_fingerprint=hashlib.sha256(original).hexdigest(),
     )
     (tmp_path / ".harness.toml").write_text("changed", encoding="utf-8")
-    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()
     assert "configuration changed" in capsys.readouterr().err.lower()

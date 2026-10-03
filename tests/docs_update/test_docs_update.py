@@ -8,8 +8,8 @@ import pytest
 
 from meow import cli
 from meow.agents.docs_updater import update_documentation
-from meow.docs_update.core import DocsUpdateError, prepare_docs_update, run_docs_update
-from meow.permissions import PermissionPolicy, Rule
+from meow.integrations.docs_update import DocsUpdateError, prepare_docs_update, run_docs_update
+from meow.project.permissions import PermissionPolicy, Rule
 
 
 def git(repo: Path, *args: str) -> str:

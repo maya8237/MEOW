@@ -1,3 +1,3 @@
 """Compatibility import path for local branch reviews."""
 
-from meow.branch_reviewer import *  # ruff: ignore[undefined-local-with-import-star]
+from meow.integrations.branch_reviewer import *  # ruff: ignore[undefined-local-with-import-star]

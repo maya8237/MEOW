@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from meow.ci_review import CiReviewError, prepare_ci_review, run_ci_review
+from meow.integrations.ci_review import CiReviewError, prepare_ci_review, run_ci_review
 
 
 def git(repo, *args):
@@ -127,7 +127,7 @@ def test_runner_artifacts_and_exit(checkout, reply, verdict, code):
     repo, base, source, env = checkout
     artifacts = repo / ".meow-ci-artifacts"
     with patch(
-        "meow.ci_review.ReviewerAgent.review_ci_branch",
+        "meow.integrations.ci_review.ReviewerAgent.review_ci_branch",
         new_callable=AsyncMock,
         return_value=(verdict, reply),
     ):
@@ -147,7 +147,7 @@ def test_sdk_failure_redacts_secret(checkout):
     repo, _, _, env = checkout
     env["ANTHROPIC_API_KEY"] = "private-key"
     with patch(
-        "meow.ci_review.ReviewerAgent.review_ci_branch",
+        "meow.integrations.ci_review.ReviewerAgent.review_ci_branch",
         new_callable=AsyncMock,
         side_effect=RuntimeError("private-key failed"),
     ):
@@ -171,7 +171,7 @@ def test_untracked_checkout_write_invalidates_pass(checkout):
         (repo / "unexpected.py").write_text("new code")
         return "PASS", "SUMMARY: Fine\nSTATUS: PASS"
 
-    with patch("meow.ci_review.ReviewerAgent.review_ci_branch", writes_file):
+    with patch("meow.integrations.ci_review.ReviewerAgent.review_ci_branch", writes_file):
         result = run_ci_review(
             repo,
             {"models": {"reviewer": None}},

@@ -1,4 +1,4 @@
-from meow.shaping import (
+from meow.project.shaping import (
     BreadboardArtifact,
     assess_request,
     load_shape_artifact,

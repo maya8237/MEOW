@@ -9,8 +9,8 @@ import pytest
 
 from meow import background
 from meow.cli import core as cli_core
-from meow.run_state import RunStore
-from meow.status_cli import render
+from meow.execution.run_state import RunStore
+from meow.cli.status_cli import render
 
 
 def test_background_requires_unattended(tmp_path):
@@ -167,7 +167,7 @@ def test_worker_runs_saved_sprint_and_completes(tmp_path, monkeypatch):
         assert kwargs["run_id"] == record.id
         store.transition(record.id, "complete")
 
-    monkeypatch.setattr("meow.sprint_runner.run_sprint", fake_run_sprint)
+    monkeypatch.setattr("meow.execution.sprint_runner.run_sprint", fake_run_sprint)
     assert background.worker_main(tmp_path, record.id, "n") == 0
     assert store.load(record.id).phase == "complete"
     assert store.load(record.id).background["start_identity"] == identity

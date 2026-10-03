@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from meow.run_state import RunRecord, RunStateError, RunStore
+from meow.execution.run_state import RunRecord, RunStateError, RunStore
 
 
 @dataclass(frozen=True)

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from meow.run_state import MAX_OUTPUT, RunStateError, RunStore
+from meow.execution.run_state import MAX_OUTPUT, RunStateError, RunStore
 
 
 def test_create_transition_and_latest(tmp_path):

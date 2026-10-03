@@ -16,16 +16,16 @@ import subprocess
 from dataclasses import asdict
 from pathlib import Path
 
-from meow.checks import (
+from meow.execution.delivery import deliver_verified_run
+from meow.execution.run_state import RunStore
+from meow.infrastructure.checks import (
     code_revision,
     completion_ready,
     config_fingerprint,
     configured_checks,
     run_final_checks,
 )
-from meow.config import load_config
-from meow.delivery import deliver_verified_run
-from meow.run_state import RunStore
+from meow.project.config import load_config
 
 STATE_SUFFIX = ".native-state.json"
 ROUND_MODES = ("next", "reset", "show")
@@ -141,7 +141,7 @@ async def finalize(  # ruff: ignore[too-many-statements]
     """Run current configured gates and seal a reviewed native run."""
     store = RunStore(repo)
     record = store.load(run_id)
-    from meow.resume_cli import _validate
+    from meow.cli.resume_cli import _validate
 
     problem = _validate(record, repo)
     if problem:

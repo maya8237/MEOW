@@ -4,9 +4,9 @@ from pathlib import Path
 
 from meow.agents.base import Agent
 from meow.agents.explorer import ExplorerAgent
-from meow.prompts import planner_prompt
-from meow.shaping import ShapeContext
-from meow.sprint import Sprint
+from meow.execution.sprint import Sprint
+from meow.project.prompts import planner_prompt
+from meow.project.shaping import ShapeContext
 
 
 class PlannerAgent(Agent):

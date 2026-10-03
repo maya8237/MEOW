@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from meow.delivery import deliver_verified_run
-from meow.run_state import RunStore
+from meow.execution.delivery import deliver_verified_run
+from meow.execution.run_state import RunStore
 
 
 def git(directory: Path, *args: str) -> str:

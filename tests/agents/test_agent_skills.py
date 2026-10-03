@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from meow.agents import explorer, generator, planner
-from meow.sprint import Sprint
+from meow.execution.sprint import Sprint
 
 
 def make_sprint(tmp_path: Path) -> Sprint:

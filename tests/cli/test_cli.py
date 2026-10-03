@@ -17,7 +17,7 @@ from meow.agents import reviewer as reviewer_agent
 from meow.agents.explorer import ExplorerAgent
 from meow.agents.planner import PlannerAgent
 from meow.agents.reviewer import ReviewerAgent
-from meow.sprint import Sprint
+from meow.execution.sprint import Sprint
 
 
 class _LegacyExplorerContext:
@@ -42,6 +42,33 @@ class _LegacyExplorerContext:
 class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     unittest.TestCase
 ):
+    def test_top_level_help_shows_only_primary_user_commands(self):
+        parser = cli._build_arg_parser()
+        output = io.StringIO()
+
+        with redirect_stdout(output), self.assertRaises(SystemExit):
+            parser.parse_args(["--help"])
+
+        help_text = output.getvalue()
+        self.assertIn(
+            "{run,review,plan,status,cancel,worktree,resume,hooks}", help_text
+        )
+        self.assertNotIn("_worker", help_text)
+        self.assertNotIn("native", help_text)
+        self.assertNotIn("evaluate", help_text)
+        self.assertNotIn("docs-update", help_text)
+
+    def test_hidden_top_level_commands_remain_parseable(self):
+        parser = cli._build_arg_parser()
+
+        self.assertEqual(parser.parse_args(["native", "verify"]).command, "native")
+        self.assertEqual(parser.parse_args(["evaluate"]).command, "evaluate")
+        self.assertEqual(parser.parse_args(["docs-update"]).command, "docs-update")
+        self.assertEqual(
+            parser.parse_args(["_worker", "run-123", "--nonce", "token"]).command,
+            "_worker",
+        )
+
     def test_project_understanding_runs_behind_the_scenes(self):
         parser = cli._build_arg_parser()
         for command in (("knowledge", "audit"), ("shape", "assess", "request")):
@@ -175,8 +202,11 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             mock_generator.implement = AsyncMock(return_value="")
 
             with (
-                patch("meow.orchestrator.load_config", return_value=config),
-                patch("meow.orchestrator.Generator", return_value=mock_generator),
+                patch("meow.execution.orchestrator.load_config", return_value=config),
+                patch(
+                    "meow.execution.orchestrator.Generator",
+                    return_value=mock_generator,
+                ),
                 patch.object(
                     PlannerAgent, "run", new_callable=AsyncMock
                 ) as mock_planner_run,
@@ -184,10 +214,10 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                     ReviewerAgent, "review_plan", new_callable=AsyncMock
                 ) as mock_review_plan,
                 patch(
-                    "meow.orchestrator.run_planner", new_callable=AsyncMock
+                    "meow.execution.orchestrator.run_planner", new_callable=AsyncMock
                 ) as mock_run_planner,
                 patch(
-                    "meow.orchestrator.run_reviewer", new_callable=AsyncMock
+                    "meow.execution.orchestrator.run_reviewer", new_callable=AsyncMock
                 ) as mock_run_reviewer,
             ):
                 mock_planner_run.return_value = plan_file
@@ -227,8 +257,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             mock_approve = MagicMock(return_value=False)
 
             with (
-                patch("meow.orchestrator.load_config", return_value=config),
-                patch("meow.orchestrator.Generator") as mock_generator_cls,
+                patch("meow.execution.orchestrator.load_config", return_value=config),
+                patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
                 patch.object(
                     PlannerAgent, "run", new_callable=AsyncMock
                 ) as mock_planner_run,
@@ -276,8 +306,11 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             mock_generator.implement = AsyncMock(return_value="")
 
             with (
-                patch("meow.orchestrator.load_config", return_value=config),
-                patch("meow.orchestrator.Generator", return_value=mock_generator),
+                patch("meow.execution.orchestrator.load_config", return_value=config),
+                patch(
+                    "meow.execution.orchestrator.Generator",
+                    return_value=mock_generator,
+                ),
                 patch.object(
                     PlannerAgent, "run", new_callable=AsyncMock
                 ) as mock_planner_run,
@@ -323,8 +356,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             plan_file.write_text("# Plan", encoding="utf-8")
 
             with (
-                patch("meow.orchestrator.load_config", return_value=config),
-                patch("meow.orchestrator.Generator") as mock_generator_cls,
+                patch("meow.execution.orchestrator.load_config", return_value=config),
+                patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
                 patch.object(
                     ReviewerAgent, "review_plan", new_callable=AsyncMock
                 ) as mock_review_plan,
@@ -372,8 +405,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             plan_file.write_text("# Plan", encoding="utf-8")
 
             with (
-                patch("meow.orchestrator.load_config", return_value=config),
-                patch("meow.orchestrator.Generator") as mock_generator_cls,
+                patch("meow.execution.orchestrator.load_config", return_value=config),
+                patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
                 patch.object(
                     ReviewerAgent, "review_plan", new_callable=AsyncMock
                 ) as mock_review_plan,
@@ -416,8 +449,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             mock_approve = MagicMock(return_value=False)
 
             with (
-                patch("meow.orchestrator.load_config", return_value=config),
-                patch("meow.orchestrator.Generator") as mock_generator_cls,
+                patch("meow.execution.orchestrator.load_config", return_value=config),
+                patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
                 patch.object(
                     ReviewerAgent, "review_plan", new_callable=AsyncMock
                 ) as mock_review_plan,
@@ -469,8 +502,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             working_dir = Path(tmpdir)
 
             with (
-                patch("meow.orchestrator.load_config", return_value=config),
-                patch("meow.orchestrator.Generator") as mock_generator_cls,
+                patch("meow.execution.orchestrator.load_config", return_value=config),
+                patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
                 self.assertRaisesRegex(FileNotFoundError, "No plan file found"),
             ):
                 asyncio.run(
@@ -869,7 +902,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     # trimming any would weaken the "every other command stays untouched"
     # assertions below.
     @staticmethod
-    @patch("meow.orchestrator.logger")
+    @patch("meow.execution.orchestrator.logger")
     @patch("meow.cli._boot_repo")
     @patch("meow.cli.run_review_command", new_callable=AsyncMock)
     @patch("meow.cli.run_plan", new_callable=AsyncMock)
@@ -1551,7 +1584,7 @@ class ManuallyApprovePlanFlagTests(unittest.TestCase):
     def test_jira_build_declining_the_plan_exits_cleanly_via_issue_unresolved_error(
         self,
     ):
-        from meow.issue_solver import IssueUnresolvedError
+        from meow.integrations.issue_solver import IssueUnresolvedError
 
         with (
             patch("meow.cli._ensure_clean_tree"),

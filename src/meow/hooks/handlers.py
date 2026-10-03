@@ -7,9 +7,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from meow.config import load_config
-from meow.lint import _run_lint_on_file
-from meow.plan_state import PlanStore
+from meow.infrastructure.lint import _run_lint_on_file
+from meow.project.config import load_config
+from meow.project.plan_state import PlanStore
 
 
 def _event(event: Any):

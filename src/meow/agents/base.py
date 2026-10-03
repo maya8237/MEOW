@@ -19,10 +19,10 @@ from claude_agent_sdk import (
     query,
 )
 
-from meow.config import LintCommand
-from meow.logging import get_logger
-from meow.permissions import PermissionPolicy, make_permission_callback
-from meow.usage import record_result
+from meow.infrastructure.logging import get_logger
+from meow.infrastructure.usage import record_result
+from meow.project.config import LintCommand
+from meow.project.permissions import PermissionPolicy, make_permission_callback
 
 logger = get_logger(__name__)
 

@@ -13,7 +13,7 @@ from claude_agent_sdk import (
 )
 
 from meow.agents.base import Agent, AgentContext, log_stream_message
-from meow.logging import get_logger
+from meow.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from meow.config import DevServerCommand, TestCommand
-from meow.test_runner import TesterSetupError, _argv, prepared_test_stage
+from meow.project.config import DevServerCommand, TestCommand
+from meow.infrastructure.test_runner import TesterSetupError, _argv, prepared_test_stage
 
 
 def _port() -> int:

@@ -4,8 +4,8 @@ import subprocess
 
 import pytest
 
-from meow.run_state import RunStore
-from meow.worktree.controls import (
+from meow.execution.run_state import RunStore
+from meow.infrastructure.worktree_controls import (
     WorktreeSafetyError,
     clean_worktree,
     inspect_worktree,

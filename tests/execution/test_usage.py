@@ -6,9 +6,9 @@ import pytest
 from claude_agent_sdk import ResultMessage
 
 from meow.agents.base import log_stream_message
-from meow.run_state import RunStore
-from meow.status_cli import render
-from meow.usage import usage_entry, usage_scope, usage_totals
+from meow.execution.run_state import RunStore
+from meow.cli.status_cli import render
+from meow.infrastructure.usage import usage_entry, usage_scope, usage_totals
 
 
 def test_usage_entry_and_totals_keep_reported_values():

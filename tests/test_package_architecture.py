@@ -6,8 +6,8 @@ from meow import branch_reviewer, native, native_cli
 from meow.execution import orchestrator as execution_orchestrator
 from meow.integrations import gitlab as integration_gitlab
 from meow.review import command as review_command
-from meow.testing import gates as testing_gates
-from meow.worktrees import lifecycle as worktree_lifecycle
+from meow.infrastructure import testing_gates
+from meow.infrastructure import worktrees_lifecycle as worktree_lifecycle
 
 # These are deliberate compatibility facades and package entry points.  The
 # refactor keeps them at the package root so existing imports continue to work.
@@ -25,7 +25,7 @@ def test_responsibility_packages_expose_legacy_implementations():
     assert review_command.run_review_command is not None
     assert integration_gitlab.__name__ == "meow.integrations.gitlab"
     assert testing_gates.configured_checks is not None
-    assert worktree_lifecycle.__name__ == "meow.worktrees.lifecycle"
+    assert worktree_lifecycle.__name__ == "meow.infrastructure.worktrees_lifecycle"
 
 
 def test_native_implementation_has_legacy_facades():

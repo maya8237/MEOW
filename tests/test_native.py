@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from meow import native
-from meow.worktree import DirtyWorkingTreeError
+from meow.infrastructure.worktree import DirtyWorkingTreeError
 
 OK_CMD = "python ok.py"
 FAIL_CMD = "python fail.py"

@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from meow.config import LintCommand
-from meow.lint import apply_lint_fixes, check_lint_commands, make_lint_hook
+from meow.project.config import LintCommand
+from meow.infrastructure.lint import apply_lint_fixes, check_lint_commands, make_lint_hook
 
 
 def _write_script(directory: Path, name: str, body: str) -> Path:

@@ -5,8 +5,8 @@ import subprocess
 
 import pytest
 
-from meow.native_state import checkpoint
-from meow.run_state import RunStore
+from meow.native.native_state import checkpoint
+from meow.execution.run_state import RunStore
 
 
 def test_native_checkpoint_create_and_interrupted_mutation(tmp_path):

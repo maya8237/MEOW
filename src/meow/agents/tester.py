@@ -5,8 +5,8 @@ from pathlib import Path
 from claude_agent_sdk import ClaudeAgentOptions
 
 from meow.agents.base import Agent
-from meow.prompts import tester_prompt
-from meow.test_runner import TestStageEvidence
+from meow.infrastructure.test_runner import TestStageEvidence
+from meow.project.prompts import tester_prompt
 
 TESTER_REPORT_SUFFIX = "-test.md"
 

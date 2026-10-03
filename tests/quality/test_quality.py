@@ -3,9 +3,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from meow.orchestrator.core import _capture_quality
-from meow.prompts.core import _verdict_format
-from meow.quality import (
+from meow.execution.orchestrator import _capture_quality
+from meow.project.prompts import _verdict_format
+from meow.infrastructure.quality import (
     QualityStoreError,
     extract_concern_candidates,
     load_concerns,

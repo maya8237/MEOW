@@ -6,7 +6,7 @@ from pathlib import Path
 from claude_agent_sdk import AgentDefinition
 
 from meow.agents.base import Agent
-from meow.prompts import explorer_prompt
+from meow.project.prompts import explorer_prompt
 
 
 class ExplorerAgent(Agent):

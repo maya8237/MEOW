@@ -5,16 +5,16 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from meow.lint_fix import run_lint_fix
-from meow.run_state import RunStore
+from meow.infrastructure.lint_fix import run_lint_fix
+from meow.execution.run_state import RunStore
 
 
 def test_lint_fix_failure_keeps_run_record(tmp_path):
     with (
-        patch("meow.lint_fix.load_config", return_value={"lint": []}),
-        patch("meow.lint_fix.describe_lint_plan"),
+        patch("meow.infrastructure.lint_fix.load_config", return_value={"lint": []}),
+        patch("meow.infrastructure.lint_fix.describe_lint_plan"),
         patch(
-            "meow.lint_fix._fix_until_clean",
+            "meow.infrastructure.lint_fix._fix_until_clean",
             new=AsyncMock(side_effect=RuntimeError("fix failed")),
         ),
         pytest.raises(RuntimeError, match="fix failed"),

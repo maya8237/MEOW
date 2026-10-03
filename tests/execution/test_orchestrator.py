@@ -18,15 +18,15 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from meow.agents.base import ProjectContext
-from meow.orchestrator import (
+from meow.execution.orchestrator import (
     ReviewTestResult,
     _run_prompt_fix_rounds,
     _run_review_rounds,
     _run_rounds,
     review_then_test,
 )
-from meow.sprint import Sprint
-from meow.test_runner import TestStageEvidence
+from meow.execution.sprint import Sprint
+from meow.infrastructure.test_runner import TestStageEvidence
 
 PLAN_FILE = Path("/project/plan.md")
 
@@ -55,9 +55,9 @@ class RunRoundsLoopTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_loops_through_failing_rounds_before_passing(self):
         with (
-            patch("meow.orchestrator.Generator") as mock_generator_cls,
+            patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
             patch(
-                "meow.orchestrator.ReviewerAgent.review_plan",
+                "meow.execution.orchestrator.ReviewerAgent.review_plan",
                 new=AsyncMock(
                     side_effect=[
                         ("FAIL", "STATUS: FAIL\nround 1 issue"),
@@ -91,9 +91,9 @@ class RunRoundsLoopTests(unittest.IsolatedAsyncioTestCase):
             ReviewTestResult("PASS", "tester passed", "PASS", "PASS"),
         ]
         with (
-            patch("meow.orchestrator.Generator") as mock_generator_cls,
+            patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
             patch(
-                "meow.orchestrator.review_then_test",
+                "meow.execution.orchestrator.review_then_test",
                 new=AsyncMock(side_effect=outcomes),
             ) as gate,
         ):
@@ -112,10 +112,10 @@ class ReviewThenTestTests(unittest.IsolatedAsyncioTestCase):
     async def test_reviewer_failure_skips_test_stage(self):
         with (
             patch(
-                "meow.orchestrator.ReviewerAgent.review_plan",
+                "meow.execution.orchestrator.ReviewerAgent.review_plan",
                 new=AsyncMock(return_value=("FAIL", "STATUS: FAIL")),
             ),
-            patch("meow.orchestrator.prepared_test_stage") as test_stage,
+            patch("meow.execution.orchestrator.prepared_test_stage") as test_stage,
         ):
             result = await review_then_test(_sprint(1), PLAN_FILE, 1)
         self.assertEqual(result.status, "FAIL")
@@ -131,12 +131,12 @@ class ReviewThenTestTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "meow.orchestrator.ReviewerAgent.review_plan",
+                "meow.execution.orchestrator.ReviewerAgent.review_plan",
                 new=AsyncMock(return_value=("PASS", "STATUS: PASS")),
             ),
-            patch("meow.orchestrator.prepared_test_stage", new=stage),
+            patch("meow.execution.orchestrator.prepared_test_stage", new=stage),
             patch(
-                "meow.orchestrator.TesterAgent.test_plan",
+                "meow.execution.orchestrator.TesterAgent.test_plan",
                 new=AsyncMock(return_value=("FAIL", "STATUS: FAIL tester finding")),
             ) as tester,
         ):
@@ -147,9 +147,9 @@ class ReviewThenTestTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_never_passing_exhausts_max_rounds_and_returns_false(self):
         with (
-            patch("meow.orchestrator.Generator") as mock_generator_cls,
+            patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
             patch(
-                "meow.orchestrator.ReviewerAgent.review_plan",
+                "meow.execution.orchestrator.ReviewerAgent.review_plan",
                 new=AsyncMock(return_value=("FAIL", "STATUS: FAIL\n")),
             ) as mock_review,
         ):
@@ -168,9 +168,9 @@ class RunReviewRoundsLoopTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_loops_through_failing_rounds_before_passing(self):
         with (
-            patch("meow.orchestrator.Generator") as mock_generator_cls,
+            patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
             patch(
-                "meow.orchestrator.ReviewerAgent.review_plan",
+                "meow.execution.orchestrator.ReviewerAgent.review_plan",
                 new=AsyncMock(
                     side_effect=[
                         ("FAIL", "STATUS: FAIL\nround 1 issue"),
@@ -197,9 +197,9 @@ class RunReviewRoundsLoopTests(unittest.IsolatedAsyncioTestCase):
         self,
     ):
         with (
-            patch("meow.orchestrator.Generator") as mock_generator_cls,
+            patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
             patch(
-                "meow.orchestrator.review_then_test",
+                "meow.execution.orchestrator.review_then_test",
                 new=AsyncMock(
                     return_value=ReviewTestResult(
                         "FAIL", "Tester feedback: still failing", "PASS", "FAIL"
@@ -215,9 +215,9 @@ class RunReviewRoundsLoopTests(unittest.IsolatedAsyncioTestCase):
         generator.implement.assert_not_awaited()
 
         with (
-            patch("meow.orchestrator.Generator") as mock_generator_cls,
+            patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
             patch(
-                "meow.orchestrator.review_then_test",
+                "meow.execution.orchestrator.review_then_test",
                 new=AsyncMock(side_effect=RuntimeError("Tester setup failed")),
             ) as gate,
             self.assertRaisesRegex(RuntimeError, "Tester setup failed"),
@@ -230,9 +230,9 @@ class RunReviewRoundsLoopTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_never_passing_exhausts_max_rounds_and_returns_false(self):
         with (
-            patch("meow.orchestrator.Generator") as mock_generator_cls,
+            patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
             patch(
-                "meow.orchestrator.ReviewerAgent.review_plan",
+                "meow.execution.orchestrator.ReviewerAgent.review_plan",
                 new=AsyncMock(return_value=("FAIL", "STATUS: FAIL\n")),
             ) as mock_review,
         ):
@@ -257,7 +257,7 @@ class RunPromptFixRoundsLoopTests(unittest.IsolatedAsyncioTestCase):
                 ("PASS", "STATUS: PASS\n"),
             ]
         )
-        with patch("meow.orchestrator.ReviewFixAgent") as mock_fixer_cls:
+        with patch("meow.execution.orchestrator.ReviewFixAgent") as mock_fixer_cls:
             fixer = mock_fixer_cls.return_value.__aenter__.return_value
             fixer.fix = AsyncMock()
 
@@ -278,7 +278,7 @@ class RunPromptFixRoundsLoopTests(unittest.IsolatedAsyncioTestCase):
     async def test_never_passing_exhausts_max_rounds_and_returns_false(self):
         context = ProjectContext(Path("/project"), _sprint(max_rounds=3).config)
         re_review = AsyncMock(return_value=("FAIL", "STATUS: FAIL\n"))
-        with patch("meow.orchestrator.ReviewFixAgent") as mock_fixer_cls:
+        with patch("meow.execution.orchestrator.ReviewFixAgent") as mock_fixer_cls:
             fixer = mock_fixer_cls.return_value.__aenter__.return_value
             fixer.fix = AsyncMock()
 
