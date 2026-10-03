@@ -1,9 +1,82 @@
 # docs/INTEGRATIONS.md — Jira, GitLab, and scheduled runs
 
-Reference material for the optional, advanced parts of setting up a project
-with meow. Start with the `/meow:onboard` skill; come here for configuration
-details about `meow run --jira`, `meow review --jira`/`--gitlab`, unattended
-scheduled runs, and the full error-message reference.
+Reference material for optional project setup. Start with `/meow:onboard`;
+this guide covers monorepo lint/test configuration, tester mode, integrations,
+scheduled Jira runs, and error messages.
+
+---
+
+## Monorepo lint and tester
+
+Each `[[lint]]` entry may set `cwd`, `include`, `exclude`, `args`, `env`, and
+`timeout`. `include` and `exclude` are repository-relative path prefixes. A
+per-file lint command runs only for edits inside its `cwd` and included paths;
+project-wide lint runs every configured entry. `gate` defaults to `true`.
+`lint_timeout` (60 seconds by default) supplies the timeout unless the entry
+sets its own `timeout`.
+
+`meow run --test` enables configured tests and exploratory testing after a
+passing plan review. `meow review --plan-file PATH --test` performs one
+report-only pass; add `--fix` to use the shared round budget. Tester mode is
+not available for other review sources or `--review-file`. Without configured
+tests, the tester can inspect and run documented project tests.
+
+```toml
+[models]
+tester = "haiku"
+
+[tester]
+test_dirs = ["apps/web/tests", "services/api/tests"]
+# `architecture_files` is optional; default lookup is docs/ARCHITECTURE.md,
+# then ARCHITECTURE.md.
+architecture_files = ["docs/architecture/backend.md"]
+
+[[tester.tests]]
+cwd = "apps/web"
+command = "npm test"
+timeout = 300
+gate = true
+
+[[tester.dev_server]]
+cwd = "apps/web"
+command = "npm run dev"
+ready_url = "http://127.0.0.1:3000/health"
+startup_timeout = 30
+
+[[tester.mcp]]
+name = "browser"
+command = "npx"
+args = ["PROJECT_CHOSEN_MCP_PACKAGE"]
+```
+
+Test command timeout defaults to 300 seconds; dev-server readiness defaults
+to 30 seconds. Relative command `cwd` paths must exist within the active
+checkout/worktree. `env` may hold non-secret overrides; keep credentials in
+the process environment. `meow native verify` reports local launcher and
+configuration readiness without running tests, servers, agents, or MCP calls;
+`ready_unchecked` does not mean the command or connection has succeeded.
+
+Native `/meow:run` and `/meow:review` use the CLI flow when `--test` is
+requested so MEOW can own server lifecycle during tester work. Normal native
+behavior is unchanged when tester mode is off.
+
+Use the project's normal agent instruction files for persistent guidance;
+`docs/ARCHITECTURE.md` describes architecture.
+
+## Reviewer architecture check
+
+Every MEOW reviewer performs a language-agnostic architecture pass in addition
+to correctness and configured gates. It checks both individual files and the
+module/package layout for mixed responsibilities, catch-all modules, and groups
+of unrelated files that make ownership or navigation unclear. The check uses
+cohesion, dependency direction, discoverability, and change patterns as
+evidence; it does not impose a universal file-count or line-count threshold.
+
+The reviewer must cite the affected files and suggest a responsibility-based
+split. A layout concern is blocking only when it affects the reviewed feature
+or clearly makes maintenance unsafe; otherwise it is recorded as an advisory
+follow-up. This keeps the check useful across Python, TypeScript, and other
+languages without forcing mechanical refactors.
 
 ---
 
@@ -43,7 +116,7 @@ allow that.
 
 ---
 
-## Running `meow run --jira` on a schedule (Windows Task Scheduler)
+## Running `meow run --jira` on a schedule
 
 `meow run --jira [ISSUE-KEY]` fetches a Jira issue (or the most recently
 created one in `[jira].project_key` if you omit the key), solves it through
@@ -72,7 +145,10 @@ environment, and an `origin` remote the scheduled task's account can push to
 lines there instead of only writing to stderr (`MEOW_LOG_LEVEL` also works the
 same way `meow run` uses it, e.g. `DEBUG` for more detail).
 
-**Registering the task** — from an elevated PowerShell prompt, using
+MEOW does not include its own operating-system scheduler. Use the scheduler
+that fits the machine or CI environment that will run the command.
+
+**Windows Task Scheduler** — from an elevated PowerShell prompt, using
 `schtasks` (adjust the venv path, working directory, issue key or omit it for
 "latest", and schedule):
 
@@ -89,6 +165,45 @@ variables (`setx`) rather than relying on variables set in your interactive
 shell. Verify the task once with `schtasks /Run /TN "meow-run-jira"`, then
 `Get-Content <MEOW_LOG_FILE> -Tail 50` to confirm it ran and to read its
 result.
+
+**Linux cron** — add a crontab entry for the account that has Jira credentials
+and push access. Use absolute paths because cron starts with a minimal
+environment:
+
+```cron
+MEOW_LOG_FILE=/var/log/meow-run-jira.log
+JIRA_URL=https://jira.example.com
+JIRA_USERNAME=automation@example.com
+JIRA_API_TOKEN=...
+
+0 9 * * * /path/to/meow/.venv/bin/meow run --jira --working-dir /path/to/target-project
+```
+
+**Linux systemd timer** — prefer this when you want journal logs, explicit
+environment files, or easier enable/disable controls:
+
+```ini
+# /etc/systemd/system/meow-run-jira.service
+[Service]
+Type=oneshot
+Environment=MEOW_LOG_FILE=/var/log/meow-run-jira.log
+EnvironmentFile=/etc/meow/jira.env
+ExecStart=/path/to/meow/.venv/bin/meow run --jira --working-dir /path/to/target-project
+```
+
+```ini
+# /etc/systemd/system/meow-run-jira.timer
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable and test it with `systemctl enable --now meow-run-jira.timer`, then
+`systemctl start meow-run-jira.service` and inspect
+`journalctl -u meow-run-jira.service`.
 
 ---
 

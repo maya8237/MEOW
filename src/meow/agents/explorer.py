@@ -6,8 +6,7 @@ from pathlib import Path
 from claude_agent_sdk import AgentDefinition
 
 from meow.agents.base import Agent
-from meow.prompts import explorer_prompt
-from meow.rules import load_rules
+from meow.project.prompts import explorer_prompt
 
 
 class ExplorerAgent(Agent):
@@ -15,9 +14,6 @@ class ExplorerAgent(Agent):
 
     def definition(self) -> AgentDefinition:
         prompt = explorer_prompt(self.context.active_working_dir())
-        rules_text = load_rules(self.context.active_working_dir(), "explorer")
-        if rules_text:
-            prompt = f"{prompt}{rules_text}"
         return AgentDefinition(
             description=(
                 "Read-only codebase/log/test-output exploration. Use for any "

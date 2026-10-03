@@ -14,9 +14,9 @@ from claude_agent_sdk import (
 )
 
 from meow.agents.base import Agent, AgentContext, log_stream_message
-from meow.lint import make_lint_hook
-from meow.logging import get_logger
-from meow.prompts import review_fixer_prompt
+from meow.infrastructure.lint import make_lint_hook
+from meow.infrastructure.logging import get_logger
+from meow.project.prompts import review_fixer_prompt
 
 logger = get_logger(__name__)
 
@@ -31,7 +31,7 @@ class ReviewFixAgent(Agent):
     def __init__(self, context: AgentContext, timeout: float | None = None):
         super().__init__(context)
         if timeout is None:
-            timeout = context.config["lint_timeout"]
+            timeout = context.config.get("lint_timeout", 60)
         lint_hook = make_lint_hook(
             context.active_working_dir(), context.lint_commands(), timeout
         )
@@ -40,9 +40,7 @@ class ReviewFixAgent(Agent):
             allowed_tools=["Read", "Edit", "Write", "Bash", "Grep", "Glob"],
             role="review_fixer",
             hooks={
-                "PostToolUse": [
-                    HookMatcher(matcher="Write|Edit", hooks=[lint_hook])
-                ]
+                "PostToolUse": [HookMatcher(matcher="Write|Edit", hooks=[lint_hook])]
             },
         )
         self._client = ClaudeSDKClient(options=options)

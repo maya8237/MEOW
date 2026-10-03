@@ -11,7 +11,7 @@ import unittest
 
 import structlog
 
-from meow.logging import configure_logging, get_logger
+from meow.infrastructure.logging import configure_logging, get_logger
 
 
 class ConfigureLoggingEncodingTests(unittest.TestCase):

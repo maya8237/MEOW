@@ -10,8 +10,8 @@ from claude_agent_sdk import (
 )
 
 from meow.agents.base import Agent, GeneratorContext, log_stream_message
-from meow.logging import get_logger
-from meow.prompts import generator_prompt
+from meow.infrastructure.logging import get_logger
+from meow.project.prompts import generator_prompt
 
 logger = get_logger(__name__)
 

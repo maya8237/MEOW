@@ -2,6 +2,8 @@
 .worktrees/
 docs/exec-plans/
 docs/superpowers/
+.meow-ci-artifacts/
+*.lock
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -209,6 +211,8 @@ tempCodeRunnerFile.py
 
 # Ruff stuff:
 .ruff_cache/
+.meow/
+.claude/settings.local.json
 
 # PyPI configuration file
 .pypirc

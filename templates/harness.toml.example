@@ -105,3 +105,46 @@ fix_flag = "--fix"
 #   lint_command = "ruff check"
 #   lint_fix_flag = "--fix"
 # ---------------------------------------------------------------------------
+
+# Configured tests use the managed tester stage and may run with dev servers.
+# gate = true is the default; gate = false makes one test advisory.
+# [tester]
+# [[tester.tests]]
+# command = "python -m pytest -q"
+# gate = true
+# timeout = 300
+
+# Optional project-owned browser verification. Configure a managed dev server
+# with a readiness URL, then run the project's browser test command against it.
+# [[tester.dev_server]]
+# command = "npm run dev"
+# ready_url = "http://localhost:3000"
+# startup_timeout = 30
+#
+# [tester.browser]
+# kind = "command"               # "command", "skill", or "mcp"
+# name = "project-browser"
+# entrypoint = "npx playwright test"
+# cwd = "."
+# timeout = 300
+# flows = ["home page"]
+# artifacts = [".meow/browser-artifacts/home.png"]
+# required = true
+#
+# Existing skill/MCP declarations remain supported, but their result is
+# unavailable to the deterministic final gate until a provider returns
+# structured evidence. Use a command provider for a required browser gate.
+
+# Build checks are separate from tests and lint. Omit if no build is needed.
+# required = true is the default; false records an advisory failure.
+# [[build]]
+# command = "python -m compileall src"
+# required = true
+# timeout = 300
+
+# Optional worktree setup, selected and verified during onboarding. Copy only
+# explicit regular files; secrets, symlinks, and paths outside the repo are
+# refused. Commands are literal argument arrays, not shell snippets.
+# [worktree_setup]
+# copy = ["local-config.example.toml"]
+# commands = [["python", "-m", "pip", "install", "-e", "."]]
