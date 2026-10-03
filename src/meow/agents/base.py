@@ -21,6 +21,8 @@ from claude_agent_sdk import (
 
 from meow.config import LintCommand
 from meow.logging import get_logger
+from meow.permissions import PermissionPolicy, make_permission_callback
+from meow.usage import record_result
 
 logger = get_logger(__name__)
 
@@ -74,6 +76,7 @@ def log_stream_message(role: str, message: object) -> None:
         for block in message.content if isinstance(message.content, list) else []:
             _log_user_block(role, block)
     elif isinstance(message, ResultMessage):
+        record_result(role, message)
         logger.info(
             "agent_result",
             role=role,
@@ -157,6 +160,15 @@ class Agent:
         **extra_options,
     ) -> ClaudeAgentOptions:
         """Build SDK options from project context and agent-specific values."""
+        policy = self.context.config.get("permissions")
+        if isinstance(policy, PermissionPolicy):
+            role_policy = policy.for_role(role)
+            if role_policy.rules:
+                extra_options["can_use_tool"] = make_permission_callback(
+                    role_policy,
+                    unattended=bool(self.context.config.get("_unattended", False)),
+                    project_root=self.context.active_working_dir(),
+                )
         return ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=allowed_tools,

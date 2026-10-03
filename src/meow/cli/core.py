@@ -5,12 +5,20 @@ import asyncio
 import json
 import os
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
+from meow.background import BackgroundError, launch_background, worker_main
+from meow.cancellation import request_cancel
 from meow.ci_review import CiReviewError, run_ci_review
 from meow.config import load_config
+from meow.docs_update import DocsUpdateError, prepare_docs_update, run_docs_update
 from meow.evaluation import evaluate_run
-from meow.hooks.claude import install_claude_hooks, uninstall_claude_hooks
+from meow.hooks.claude import (
+    inspect_claude_hooks,
+    install_claude_hooks,
+    uninstall_claude_hooks,
+)
 from meow.issue_solver import IssueUnresolvedError, run_issue_solver
 from meow.knowledge import audit_project, select_findings, structural_check
 from meow.knowledge_documents import EvidenceDocumentWriter, create_selected_documents
@@ -21,6 +29,7 @@ from meow.native_cli import add_native_parser, run_native
 from meow.orchestrator import PlanNotApprovedError, log_working_directory
 from meow.resume_cli import resume
 from meow.review_cli import run_review_command
+from meow.run_state import RunStateError, RunStore
 from meow.shaping import assess_request, load_shape_artifact, reflect_breadboard
 from meow.sprint_runner import run_plan, run_sprint
 from meow.status_cli import status
@@ -29,6 +38,12 @@ from meow.worktree import (
     _boot_repo,
     _ensure_clean_tree,
     _is_linked_worktree,
+)
+from meow.worktree.controls import (
+    WorktreeSafetyError,
+    clean_worktree,
+    inspect_worktree,
+    list_worktrees,
 )
 
 logger = get_logger(__name__)
@@ -195,6 +210,8 @@ def _validate_build_flags(parser: argparse.ArgumentParser, args) -> None:
 def _validate_run_flags(parser: argparse.ArgumentParser, args) -> None:
     if args.command != "run":
         return
+    if args.background and not args.unattended:
+        parser.error("--background requires --unattended")
     if args.unattended and args.manually_approve_plan:
         parser.error("--unattended cannot wait for manual plan approval")
     if args.unattended and args.lint_fix:
@@ -231,12 +248,35 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     _add_run_parser(subparsers)
+    worker_parser = subparsers.add_parser("_worker", help=argparse.SUPPRESS)
+    worker_parser.add_argument("run_id")
+    worker_parser.add_argument("--nonce", required=True)
+    _add_common_args(worker_parser)
     _add_review_parser(subparsers)
     _add_plan_parser(subparsers)
     status_parser = subparsers.add_parser("status", help="Inspect a saved run.")
     status_parser.add_argument("run_id", nargs="?")
     status_parser.add_argument("--verbose", "-v", action="store_true")
     _add_common_args(status_parser)
+    cancel_parser = subparsers.add_parser(
+        "cancel", help="Request a running sprint to stop."
+    )
+    cancel_parser.add_argument("run_id")
+    _add_common_args(cancel_parser)
+    worktree_parser = subparsers.add_parser(
+        "worktree", help="Inspect and safely clean run worktrees."
+    )
+    worktree_sub = worktree_parser.add_subparsers(
+        dest="worktree_command", required=True
+    )
+    list_parser = worktree_sub.add_parser("list", help="List saved run worktrees.")
+    _add_common_args(list_parser)
+    for action in ("inspect", "clean"):
+        child = worktree_sub.add_parser(
+            action, help=f"{action.title()} a run worktree."
+        )
+        child.add_argument("run_id")
+        _add_common_args(child)
     evaluate_parser = subparsers.add_parser(
         "evaluate", help="Evaluate a saved run without changing it."
     )
@@ -251,6 +291,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     resume_parser.add_argument("--continue", dest="continue_run", action="store_true")
     resume_parser.add_argument("--auto-resume", action="store_true")
     _add_common_args(resume_parser)
+    docs_update_parser = subparsers.add_parser(
+        "docs-update", help="Manually update project documentation on dev."
+    )
+    docs_update_parser.add_argument("--since", metavar="REF")
+    _add_common_args(docs_update_parser)
     add_native_parser(subparsers)
     knowledge = subparsers.add_parser("knowledge", help="Inspect project knowledge.")
     knowledge_sub = knowledge.add_subparsers(dest="knowledge_command", required=True)
@@ -298,6 +343,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     )
     uninstall.add_argument("host", choices=("claude",))
     _add_common_args(uninstall)
+    hook_status = hooks_sub.add_parser("status", help="Inspect installed Claude hooks.")
+    hook_status.add_argument("host", choices=("claude",))
+    _add_common_args(hook_status)
 
     return parser
 
@@ -361,6 +409,11 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         "--unattended",
         action="store_true",
         help="Commit and push a verified run even when working in place.",
+    )
+    run_parser.add_argument(
+        "--background",
+        action="store_true",
+        help="Continue an unattended run in a detached local worker.",
     )
     run_parser.add_argument(
         "--test",
@@ -670,6 +723,8 @@ def _dispatch(  # ruff: ignore[too-many-statements, too-many-return-statements]
                     install_claude_hooks(working_dir, selected, dry_run=args.dry_run)
                 )
             )
+        elif args.hooks_command == "status":
+            print(json.dumps(inspect_claude_hooks(working_dir)))
         else:
             print(json.dumps(uninstall_claude_hooks(working_dir)))
         return
@@ -743,7 +798,7 @@ def _creates_a_worktree(args, *, use_worktree: bool) -> bool:
     return False
 
 
-def cli_main():  # ruff: ignore[too-many-statements] -- command dispatch
+def cli_main():  # ruff: ignore[too-many-statements, too-many-return-statements] -- command dispatch
     configure_logging()
     parser = _build_arg_parser()
     args = parser.parse_args()
@@ -752,8 +807,39 @@ def cli_main():  # ruff: ignore[too-many-statements] -- command dispatch
         return
     working_dir = Path(args.working_dir).resolve()
     log_working_directory(working_dir)
+    if args.command == "_worker":
+        raise SystemExit(worker_main(working_dir, args.run_id, args.nonce))
     if args.command == "status":
         raise SystemExit(status(working_dir, args.run_id, args.verbose))
+    if args.command == "cancel":
+        try:
+            request_cancel(RunStore(working_dir), args.run_id)
+        except (RunStateError, ValueError, OSError, TimeoutError) as exc:
+            print(f"Cancel failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        print(f"Cancellation requested for {args.run_id}.")
+        return
+    if args.command == "worktree":
+        try:
+            if args.worktree_command == "list":
+                inspections = list_worktrees(working_dir)
+                for item in inspections:
+                    print(f"{item.run_id} {item.phase} {item.path}")
+                if not inspections:
+                    print("No saved run worktrees.")
+            else:
+                item = (
+                    inspect_worktree(working_dir, args.run_id)
+                    if args.worktree_command == "inspect"
+                    else clean_worktree(working_dir, args.run_id)
+                )
+                payload = asdict(item)
+                payload["path"] = str(item.path)
+                print(json.dumps(payload))
+        except (WorktreeSafetyError, RunStateError, OSError) as exc:
+            print(f"Worktree {args.worktree_command} failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        return
     if args.command == "evaluate":
         try:
             report = evaluate_run(working_dir, args.run_id, tuple(args.compare))
@@ -773,6 +859,18 @@ def cli_main():  # ruff: ignore[too-many-statements] -- command dispatch
                 )
             )
         )
+    if args.command == "docs-update":
+        try:
+            prepared = prepare_docs_update(working_dir, args.since)
+            result = asyncio.run(run_docs_update(prepared))
+        except (DocsUpdateError, RuntimeError, OSError) as exc:
+            print(f"docs-update failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        print(f"Baseline: {result.baseline_sha}")
+        print(f"Inspected HEAD: {result.head_sha}")
+        print("Edited files: " + (", ".join(result.changed_paths) or "none"))
+        print(result.diff or "No documentation changes.")
+        return
     if args.command in {"knowledge", "shape", "hooks"}:
         _dispatch(args, working_dir, use_worktree=False)
         return
@@ -808,6 +906,15 @@ def cli_main():  # ruff: ignore[too-many-statements] -- command dispatch
         working_dir,
         include_gitignore=_creates_a_worktree(args, use_worktree=use_worktree),
     )
+    if args.command == "run" and args.background:
+        try:
+            run_id = launch_background(working_dir, sys.argv[1:])
+        except BackgroundError as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(1) from exc
+        print(f"Background run: {run_id}")
+        print(f"Inspect: meow status {run_id}")
+        return
     try:
         _dispatch(args, working_dir, use_worktree=use_worktree)
     except (ValueError, RuntimeError, FileNotFoundError) as exc:

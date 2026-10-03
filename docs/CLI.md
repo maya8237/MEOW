@@ -5,6 +5,39 @@ For installation and a quick start, see the [README](../README.md). For Jira
 and GitLab configuration, scheduled runs, and error details, see
 [INTEGRATIONS.md](INTEGRATIONS.md).
 
+## Optional editor hooks
+
+`meow hooks status claude` reports `active`, `missing`, or `modified` for each
+MEOW Claude Code hook by comparing the local installation manifest with Claude
+settings. It only reads files. `meow hooks install claude --only lint` installs
+an accepted subset; repeat `--only` for more hooks. Onboarding shows each hook's
+host event, exact command, and effect before installation. Editor hooks are
+optional: `meow run`, including `--unattended`, works without them.
+
+## Quality concerns
+
+Reviewers may record concrete maintenance concerns with a repository path,
+exact code evidence, impact, and a suggested follow-up. MEOW deduplicates them
+across review rounds and displays only live concerns observed in the current
+run in `meow status`. `meow status --verbose` also shows their evidence and
+follow-up. Concerns are advisory and do not independently fail a verification
+gate. MEOW does not calculate a numerical project quality score.
+
+## Verification preflight and browser checks
+
+Onboarding validates each proposed lint, test, and build command's executable
+and configured `cwd` before saving it. Running a proposed command is a separate
+preflight step after the user reviews its exact command and possible effects;
+preflight reports timeout, failure, and files changed by the command.
+
+When `[tester.browser]` uses `kind = "command"`, MEOW starts the configured
+`[[tester.dev_server]]`, waits for its readiness URL, runs the project's browser
+test command, records named flows and changed artifact paths, then stops the
+server. A required browser failure or unavailable provider blocks completion.
+`meow status` shows separate lint, test, build, and browser results. Browser
+artifacts should live under `.meow/` so verification output does not change the
+code revision being checked.
+
 ## Project understanding
 
 `meow knowledge audit` prints an evidence-backed, report-only JSON audit.
@@ -12,18 +45,34 @@ and GitLab configuration, scheduled runs, and error details, see
 from advisory prose drift. `meow knowledge create --finding ID` is a separate,
 explicit action and preserves existing documents by default.
 
-`meow shape assess "request"` gives an optional shaping recommendation. Clear
-requests continue directly to planning; accepted shape/breadboard artifacts
-are advisory inputs.
+`meow shape assess "request"` gives a standalone shaping recommendation.
+Ordinary `meow run` gathers project evidence and performs any justified shaping
+or breadboarding before planning. Clear requests continue directly to the
+planner. An unresolved product choice stops with a checkpoint, including with
+`--unattended`; unattended runs never wait for input in these phases. Feature
+runs do not suggest or edit prose documentation.
 
 Use the knowledge commands when onboarding or auditing an unfamiliar project,
 or when shared architecture/domain/security/reliability guidance may be
 missing. Use `shape assess` when a request is broad, ambiguous, cross-component,
-or has multiple viable approaches. These workflows are optional: precise
-requests go directly to `meow plan` or `meow run`, and neither workflow is an
-automatic gate.
+or has multiple viable approaches. These standalone commands are optional:
+users do not need to run them before `meow run`.
 
 ## Common options
+
+### Manual documentation update
+
+Run `meow docs-update --since REF` on a clean `dev` checkout the first time,
+using the commit from which documentation should be reviewed. Later, run
+`meow docs-update` on `dev` after the previous documentation changes and
+`docs/.meow-docs-update.json` have been committed. The command compares that
+saved inspected commit with the current HEAD, updates relevant prose, and
+prints its baseline, edited paths, and diff. Review the documentation and
+marker together, then commit them yourself. It does not commit or push.
+
+The checkout must be clean before the command starts. An invalid or rewritten
+baseline stops before editing. Ordinary `run`, `plan`, and unattended feature
+runs do not invoke this maintenance command or recommend documentation edits.
 
 Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
 select a project directory. Sprint plans and reviews are written under that
@@ -82,7 +131,42 @@ against its plan before any generator retry. A mismatch stops with a recovery
 diagnostic. Failed and interrupted runs retain their worktree and evidence.
 Completion requires an independent reviewer PASS, an enabled tester PASS, and
 current passing required lint, test, and build checks. Advisory failures remain
-visible. Missing SDK usage is shown as `unavailable`.
+visible. Status reports SDK turns, tokens, and USD cost accumulated from received agent results. The verbose view lists each result by role. Missing SDK metrics are shown as `unavailable`.
+
+`meow cancel RUN_ID` requests cancellation of an active run. The runner checks
+the request between phases and while awaiting agents or verification commands.
+It stops those tasks, keeps the worktree and checkpoint, and records a
+`cancelled` phase. Resume explicitly with `meow resume RUN_ID --continue`;
+resumption validates the checkout and reviews existing edits first when a
+generator had started. Cancellation does not signal an unrelated process ID.
+
+Use `meow run "REQUEST" --name NAME --unattended --background` to detach a
+local feature run from its launching terminal. The command returns a run ID
+immediately. `meow status RUN_ID` shows the worker state and its run-owned log
+path; `meow cancel RUN_ID` requests a cooperative stop. If a worker disappears,
+status marks the run interrupted and shows the resume command. Background
+execution requires `--unattended` and cannot wait for plan approval.
+
+An optional `[background]` table can set `notify_command` to a literal
+argument array, for example `notify_command = ["notify-meow"]`. MEOW appends
+only the run ID, terminal phase, and status command. Notification failure is
+recorded separately and cannot change verification results.
+
+Inspect saved run worktrees with `meow worktree list` and
+`meow worktree inspect RUN_ID`. `meow worktree clean RUN_ID` removes only a
+completed, registered MEOW worktree inside the repository's `.worktrees`
+directory when it is clean and its branch has no unpushed commits. A detached
+branch or unknown push state blocks cleanup. There is no force cleanup flag.
+
+Onboarding can configure `[worktree_setup]` with selected regular files and
+literal command argument arrays. Setup runs once for a newly created feature
+worktree before planning; each completed action is recorded in the run
+checkpoint. Paths containing `..`, links, and secret-like file names are
+rejected. Failed setup retains the worktree for inspection.
+Each configured command is approved as an exact argument array during
+onboarding. A `[permissions]` rule for the `setup` role and `WorktreeSetup`
+tool can further deny it or require approval; unattended runs stop in either
+case.
 
 ### Jira issue run
 

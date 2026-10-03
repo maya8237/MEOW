@@ -86,6 +86,21 @@ async def _run_one_lint_command(
         return f"$ {entry.command}\nTimed out after {effective_timeout}s -- killed."
 
     returncode, report = result
+    if entry.fix_flag:
+        # The fixing command may exit successfully while leaving findings.
+        # Report the check-only state of the edited file, not stale fix output.
+        result = await _run_subprocess(
+            cwd,
+            [*entry.argv(), file_path],
+            effective_timeout,
+            entry.env,
+        )
+        if result is None:
+            return (
+                f"$ {entry.command}\n"
+                f"Check after fix timed out after {effective_timeout}s."
+            )
+        returncode, report = result
     if returncode == 0:
         return None
 

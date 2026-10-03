@@ -26,7 +26,7 @@ Run (from inside a project repo):        meow run "Add CSV export"
 """
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -49,9 +49,10 @@ from meow.plan_files import (
     _latest_plan_file,
     _latest_review_file,
 )
+from meow.quality import QualityStoreError, extract_concern_candidates, record_concerns
 from meow.shaping import ShapeContext
 from meow.sprint import Sprint, build_sprint
-from meow.test_runner import TesterSetupError, prepared_test_stage  # ruff: ignore[unused-import]
+from meow.test_runner import TesterSetupError, TestStageEvidence, prepared_test_stage  # ruff: ignore[unused-import]
 from meow.worktree import _resolve_working_dir
 
 assert run_prompt_reviewer  # re-exported for compatibility
@@ -81,12 +82,42 @@ def _journal(sprint: Sprint, phase: str, **patch: object) -> None:
         store.transition(run_id, phase, **patch)
 
 
+def _capture_quality(sprint: Sprint, verdict: str) -> None:
+    journal = sprint.config.get("_run_journal")
+    if journal is None:
+        return
+    candidates = extract_concern_candidates(verdict)
+    if not candidates:
+        return
+    try:
+        record_concerns(
+            sprint.repo_dir,
+            journal[1],
+            candidates,
+            evidence_root=sprint.active_working_dir(),
+        )
+    except QualityStoreError as exc:
+        logger.warning("quality_concerns_unavailable", reason=str(exc))
+
+
 @dataclass(frozen=True)
 class ReviewTestResult:
     status: Literal["PASS", "FAIL"]
     feedback: str
     reviewer_status: str
     tester_status: str | None = None
+
+
+def _tester_results(
+    reviewer_status: str, tester_status: str, evidence: TestStageEvidence
+) -> dict:
+    result = {"reviewer": reviewer_status, "tester": tester_status}
+    if evidence.browser:
+        browser = asdict(evidence.browser[0])
+        browser["flows"] = list(browser["flows"])
+        browser["artifacts"] = list(browser["artifacts"])
+        result["browser"] = browser
+    return result
 
 
 async def review_then_test(
@@ -110,6 +141,8 @@ async def review_then_test(
         )
     else:
         review_status, verdict = initial_verdict
+
+    _capture_quality(sprint, verdict)
     if review_status != "PASS":
         _journal(
             sprint,
@@ -137,10 +170,7 @@ async def review_then_test(
         _journal(
             sprint,
             "tester_finished",
-            results={
-                "reviewer": review_status,
-                "tester": tester_status,
-            },
+            results=_tester_results(review_status, tester_status, evidence),
         )
         return ReviewTestResult(
             "FAIL", f"Tester feedback:\n{tester_verdict}", review_status, tester_status
@@ -148,10 +178,7 @@ async def review_then_test(
     _journal(
         sprint,
         "tester_finished",
-        results={
-            "reviewer": review_status,
-            "tester": tester_status,
-        },
+        results=_tester_results(review_status, tester_status, evidence),
     )
     return ReviewTestResult("PASS", tester_verdict, review_status, tester_status)
 
@@ -207,9 +234,7 @@ def _prepare_sprint(
 # ---------------------------------------------------------------------------
 
 
-async def _run_rounds(
-    sprint: Sprint, plan_file: Path, *, test: bool = False
-) -> bool:
+async def _run_rounds(sprint: Sprint, plan_file: Path, *, test: bool = False) -> bool:
     """Loop generator -> reviewer. True if the sprint passed."""
     # Preserve the long-standing patch surface at ``meow.orchestrator`` while
     # keeping implementation code in this module.
@@ -251,6 +276,7 @@ async def _run_rounds(
                     **({"shape_context": shape_context} if shape_context else {}),
                 )
                 reviewer_status = status
+            _capture_quality(sprint, verdict)
             summary = "\n".join(
                 line.strip()
                 for line in verdict.splitlines()
@@ -340,6 +366,7 @@ async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-argume
             plan_file, **review_kwargs
         )
         reviewer_status = status
+        _capture_quality(sprint, verdict)
         logger.info(
             "reviewer_round_finished",
             round=1,
@@ -355,6 +382,7 @@ async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-argume
         )
     else:
         status, verdict = initial_verdict
+        _capture_quality(sprint, verdict)
 
     if status == "PASS":
         return True
@@ -393,6 +421,7 @@ async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-argume
                     plan_file, **review_kwargs
                 )
                 reviewer_status = status
+            _capture_quality(sprint, verdict)
             summary = "\n".join(
                 line.strip()
                 for line in verdict.splitlines()
