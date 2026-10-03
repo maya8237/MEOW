@@ -58,7 +58,7 @@ lives in `.harness.toml`; plans, contracts, and reviews go in
 
 To onboard another repo, use `/meow:onboard`. It inspects the project,
 configures the harness, and asks about optional integrations and project
-features using yes/no/later choices.
+features using yes/no choices.
 
 ## Native (in-session) skill execution
 

@@ -1,6 +1,6 @@
 ---
 name: onboard
-description: Set up MEOW in another repository from the user's request. Inspect the target project, configure and verify MEOW, and ask which optional integrations or project-specific features to set up using yes/no/later choices. Use when a user asks to install, initialize, onboard, or configure MEOW in a project.
+description: Set up MEOW in another repository from the user's request. Inspect the target project, configure and verify MEOW, and ask which optional integrations or project-specific features to set up using yes/no choices. Use when a user asks to install, initialize, onboard, or configure MEOW in a project.
 ---
 
 # Set up MEOW in a project
@@ -16,10 +16,10 @@ If the user's onboarding request contains the standalone word `auto` or says
 `do not ask me any questions` (case insensitive), complete onboarding without
 asking any questions, including delegation, testing, verification, and optional
 feature questions below. This mode takes precedence over every instruction
-below to ask or obtain a yes/no/later answer. The user has authorized safe,
+below to ask or obtain a yes/no answer. The user has authorized safe,
 reversible defaults. Do not treat the absence of an answer as approval for an
 integration, credential, package installation, scheduled job, editor hook, or
-destructive change. Record those optional choices as `later` unless the user
+destructive change. Record those optional choices as skipped unless the user
 explicitly requested them and their required inputs are already available.
 
 In automatic mode, inspect existing commands and use only lint/test/build/browser
@@ -56,7 +56,7 @@ each lint, test, build, and browser check is required or advisory.
 
 After identifying the project root, run the report-only `meow knowledge audit`
 and show its evidence-backed findings. In interactive mode, ask separately
-(yes/no/later) before creating selected knowledge documents. Audit findings
+(yes/no) before creating selected knowledge documents. Audit findings
 never block feature runs.
 
 Identify the project root, language, package manager, existing lint and test
@@ -73,9 +73,11 @@ that environment from the repository source. Then verify the environment's
 
 In interactive mode, if the user's request leaves a material setup choice open, ask concise questions
 before changing project files. In particular, ask about the optional features
-below in a single, easy-to-answer menu. Each choice must be **yes**, **no**, or **later**.
+below in a single, easy-to-answer menu. Each choice must be **yes** or **no**.
 Interpret yes as configure it now and no as skip it. Never treat silence as
-yes. Honor features the user already explicitly requested without asking again.
+yes. If the user is not ready to decide, treat that as no and explain how to
+resume setup later. Honor features the user already explicitly requested
+without asking again.
 
 Delegate work that is time-consuming, exploratory, or has a distinct role from
 the main onboarding flow. Before dispatching each optional delegated task, ask
@@ -151,7 +153,7 @@ background subagent rather than the main onboarding context:
   tools, then configures only entries supported by the project. Never add
   secrets to `.harness.toml`. Explain that `--test` runs configured command
   gates and the exploratory tester after review passes.
-- **Claude Code editor hooks** — optional. Before asking for yes/no/later,
+- **Claude Code editor hooks** — optional. Before asking for yes/no,
   show the exact selected hooks and effects below. Install only the accepted
   subset with `meow hooks install claude --only NAME` (repeat `--only` for each
   selected name). Show `meow hooks status claude` afterward. Declining leaves
