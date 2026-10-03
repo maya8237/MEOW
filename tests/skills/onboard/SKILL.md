@@ -83,8 +83,13 @@ background subagent rather than the main onboarding context:
   CI/CD variable named `ANTHROPIC_API_KEY`; GitLab's `CI_*` variables are
   supplied automatically, and GitLab MCP variables are not needed for this
   local-checkout review path.
-- **Scheduled Jira runs** — configure the optional unattended Jira workflow,
-  only when Jira is wanted and the project has the required schedule setup.
+- **Unattended scheduled Jira runs** — optional. Offer this only when Jira is
+  wanted and the user wants MEOW to run without someone present. Explain that
+  MEOW provides the `meow run --jira` command and persistent logging; the host
+  scheduler is separate. If accepted, tailor setup to the user's environment:
+  Windows Task Scheduler on Windows, `cron` or `systemd` timers on Linux, or a
+  user-specified scheduler elsewhere. If declined, leave normal interactive
+  Jira commands fully usable.
 - **Additional design docs** — suggest useful design docs based on the project
   and request. Ask yes/no before creating them. The required architecture
   document is created regardless.

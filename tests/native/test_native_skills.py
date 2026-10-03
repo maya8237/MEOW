@@ -138,6 +138,15 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
         self.assertIn("yes/no", onboard)
         self.assertNotIn("yes/no/later", onboard)
 
+    def test_onboarding_offers_scheduled_jira_without_windows_lock_in(self):
+        onboard = (SKILLS_DIR / "onboard" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("Unattended scheduled Jira runs", onboard)
+        self.assertIn("Windows Task Scheduler", onboard)
+        self.assertIn("cron", onboard)
+        self.assertIn("systemd", onboard)
+        self.assertNotIn("required schedule setup", onboard)
+
     def test_every_cited_native_command_exists(self):
         known = native_commands()
         cited = set()
