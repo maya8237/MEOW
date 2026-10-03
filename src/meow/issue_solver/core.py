@@ -20,8 +20,10 @@ from pathlib import Path
 
 from meow.agents.base import ProjectContext
 from meow.agents.issue_fetcher import IssueFetcherAgent
+from meow.cancellation import cancellable
 from meow.config import load_config
 from meow.logging import get_logger
+from meow.run_state import RunStore
 from meow.sprint_runner import run_sprint
 from meow.worktree import _ensure_branch_worktree
 
@@ -109,12 +111,13 @@ async def _fetch_issue(
     return data
 
 
-async def run_issue_solver(
+async def run_issue_solver(  # ruff: ignore[too-many-arguments]
     working_dir: Path,
     issue_key: str | None = None,
     *,
     approve_plan: Callable[[Path], bool] | None = None,
     test: bool = False,
+    run_id: str | None = None,
 ) -> dict:
     """Fetch a Jira issue, solve it in a worktree, and return its branch.
 
@@ -135,6 +138,7 @@ async def run_issue_solver(
             jira_config,
             issue_key,
             approve_plan,
+            run_id=run_id,
             **({"test": True} if test else {}),
         )
     except Exception as exc:
@@ -149,20 +153,41 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
     issue_key: str | None,
     approve_plan: Callable[[Path], bool] | None,
     test: bool = False,
+    run_id: str | None = None,
 ) -> dict:
-    issue = await _fetch_issue(working_dir, config, jira_config, issue_key)
+    issue = (
+        await cancellable(
+            RunStore(working_dir),
+            run_id,
+            _fetch_issue(working_dir, config, jira_config, issue_key),
+        )
+        if run_id
+        else await _fetch_issue(working_dir, config, jira_config, issue_key)
+    )
 
     sanitized_key = _sanitize(issue["key"])
     feature_name = f"issue-{sanitized_key}".lower()
     branch_name = f"{jira_config['branch_prefix']}{issue['key']}"
 
+    existing_worktree = (working_dir / ".worktrees" / feature_name).exists()
     active_dir = _ensure_branch_worktree(working_dir, feature_name, branch_name)
     request = (
         f"Resolve Jira issue {issue['key']}: {issue['summary']}\n\n"
         f"{issue['description']}"
     )
+    if run_id:
+        RunStore(working_dir).transition(
+            run_id,
+            "issue_fetched",
+            request=request,
+            worktree=str(active_dir),
+            branch=branch_name,
+        )
 
     logger.info("issue_solver_sprint_started", issue=issue["key"], branch=branch_name)
+    run_options = {"run_id": run_id, "unattended": True} if run_id else {}
+    if existing_worktree:
+        run_options["worktree_preexisting"] = True
     await run_sprint(
         active_dir,
         feature_name,
@@ -171,6 +196,7 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
         approve_plan=approve_plan,
         record_root=working_dir,
         source="jira",
+        **run_options,
         **({"test": True} if test else {}),
     )
     logger.info("issue_solver_sprint_finished", issue=issue["key"], branch=branch_name)

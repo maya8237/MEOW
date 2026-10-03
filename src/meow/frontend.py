@@ -21,6 +21,40 @@ class FrontendEvidence:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class BrowserCapability:
+    configured: bool
+    start_command: str = ""
+    readiness_url: str = ""
+    provider: str = ""
+    required: bool = False
+    reason: str = ""
+
+
+def browser_capability(config: dict) -> BrowserCapability:
+    """Summarize a configured browser stage before executing project commands."""
+    tester = config.get("tester", {})
+    browser = tester.get("browser")
+    if not isinstance(browser, dict):
+        return BrowserCapability(False, reason="browser provider is not configured")
+    servers = tester.get("dev_server", [])
+    if not servers:
+        return BrowserCapability(
+            False,
+            provider=str(browser.get("entrypoint", "")),
+            required=bool(browser.get("required", False)),
+            reason="start command and readiness URL are not configured",
+        )
+    server = servers[0]
+    return BrowserCapability(
+        True,
+        server.command,
+        server.ready_url,
+        str(browser.get("entrypoint", "")),
+        bool(browser.get("required", False)),
+    )
+
+
 def discover_frontend(project_dir: Path) -> FrontendEvidence:
     """Inspect common manifests without executing project commands.
 

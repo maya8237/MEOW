@@ -114,14 +114,26 @@ fix_flag = "--fix"
 # gate = true
 # timeout = 300
 
-# Optional project-owned browser integration. MEOW validates this declaration
-# and records bounded evidence; the skill or MCP server owns browser actions.
+# Optional project-owned browser verification. Configure a managed dev server
+# with a readiness URL, then run the project's browser test command against it.
+# [[tester.dev_server]]
+# command = "npm run dev"
+# ready_url = "http://localhost:3000"
+# startup_timeout = 30
+#
 # [tester.browser]
-# kind = "skill"                 # "skill" or "mcp"
+# kind = "command"               # "command", "skill", or "mcp"
 # name = "project-browser"
-# entrypoint = "check"
-# permissions = ["read_browser"]
-# required = false
+# entrypoint = "npx playwright test"
+# cwd = "."
+# timeout = 300
+# flows = ["home page"]
+# artifacts = [".meow/browser-artifacts/home.png"]
+# required = true
+#
+# Existing skill/MCP declarations remain supported, but their result is
+# unavailable to the deterministic final gate until a provider returns
+# structured evidence. Use a command provider for a required browser gate.
 
 # Build checks are separate from tests and lint. Omit if no build is needed.
 # required = true is the default; false records an advisory failure.
@@ -129,3 +141,10 @@ fix_flag = "--fix"
 # command = "python -m compileall src"
 # required = true
 # timeout = 300
+
+# Optional worktree setup, selected and verified during onboarding. Copy only
+# explicit regular files; secrets, symlinks, and paths outside the repo are
+# refused. Commands are literal argument arrays, not shell snippets.
+# [worktree_setup]
+# copy = ["local-config.example.toml"]
+# commands = [["python", "-m", "pip", "install", "-e", "."]]

@@ -20,6 +20,9 @@ from .core import (
     ci_review_prompt as ci_review_prompt,
 )
 from .core import (
+    docs_update_prompt as docs_update_prompt,
+)
+from .core import (
     explorer_prompt as explorer_prompt,
 )
 from .core import (

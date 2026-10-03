@@ -401,15 +401,21 @@ def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[too-man
             "outputs",
             "permissions",
             "required",
+            "args",
+            "cwd",
+            "timeout",
+            "env",
+            "flows",
+            "artifacts",
         }
         unknown = sorted(set(browser) - allowed)
         if unknown:
             raise ValueError(
                 f"{CONFIG_FILENAME}: [tester.browser] has unknown key(s) {unknown}"
             )
-        if browser.get("kind") not in {"skill", "mcp"}:
+        if browser.get("kind") not in {"skill", "mcp", "command"}:
             raise ValueError(
-                f"{CONFIG_FILENAME}: [tester.browser] kind must be 'skill' or 'mcp'"
+                f"{CONFIG_FILENAME}: [tester.browser] kind must be 'skill', 'mcp', or 'command'"
             )
         for key in ("name", "entrypoint"):
             if not isinstance(browser.get(key), str) or not browser[key].strip():
@@ -425,6 +431,24 @@ def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[too-man
         browser["required"] = _typed_bool(
             browser, "required", False, "[tester.browser]", 1
         )
+        if browser["kind"] == "command":
+            browser["args"] = list(_string_list(browser, "args", "[tester.browser]", 1))
+            browser["flows"] = list(
+                _string_list(browser, "flows", "[tester.browser]", 1)
+            )
+            browser["artifacts"] = [
+                str(path)
+                for path in _string_list(
+                    browser, "artifacts", "[tester.browser]", 1, paths=True
+                )
+            ]
+            browser["cwd"] = _path_value(
+                browser.get("cwd", "."), "[tester.browser]", 1, "cwd"
+            )
+            browser["timeout"] = _positive_timeout(
+                browser, "timeout", 300, "[tester.browser]", 1
+            )
+            browser["env"] = _env_value(browser, "[tester.browser]", 1)
     return {
         "tests": tests,
         "dev_server": servers,
@@ -642,6 +666,8 @@ def _validate_max_rounds(config: dict) -> None:
 
 def load_config(working_dir: Path) -> dict:
     from meow.checks import normalize_build
+    from meow.permissions import parse_policy
+    from meow.worktree.setup import validate_setup
 
     config_path = working_dir / CONFIG_FILENAME
     if not config_path.exists():
@@ -660,6 +686,8 @@ def load_config(working_dir: Path) -> dict:
     _validate_os_compatibility(config["lint"])
     config["tester"] = _normalize_tester_config(user_config)
     config["build"] = normalize_build(user_config.get("build", []))
+    config["permissions"] = parse_policy(user_config.get("permissions"))
+    config["worktree_setup"] = validate_setup(user_config.get("worktree_setup"))
     delivery = user_config.get("delivery", {})
     if not isinstance(delivery, dict):
         raise ValueError(f"{CONFIG_FILENAME}: [delivery] must be a table")

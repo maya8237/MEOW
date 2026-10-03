@@ -55,6 +55,26 @@ def test_planned_run_resumes_at_generate(tmp_path):
     assert run.await_args.kwargs["resume_at"] == "generate"
 
 
+def test_integrated_tasks_resume_at_review(tmp_path):
+    store, record = _record(tmp_path)
+    store.transition(record.id, "tasks_integrated")
+    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    assert run.await_args.kwargs["resume_at"] == "review"
+
+
+def test_partial_tasks_preserve_worktrees_and_refuse_unsafe_replay(tmp_path, capsys):
+    store, record = _record(tmp_path)
+    store.transition(record.id, "tasks_running")
+    with patch("meow.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
+    run.assert_not_awaited()
+    assert store.load(record.id).phase == "tasks_running"
+    error = capsys.readouterr().err.lower()
+    assert "task worktrees" in error
+    assert "review" in error
+
+
 def test_lint_fix_checkpoint_does_not_start_feature_agent(tmp_path, capsys):
     subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
     record = RunStore(tmp_path).create(

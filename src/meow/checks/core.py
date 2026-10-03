@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import os
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -31,6 +32,78 @@ class Check:
     timeout: float = 300
     cwd: Path = Path(".")
     env: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class PreflightResult:
+    status: str
+    command: str
+    cwd: Path | None
+    output: str = ""
+    changed_files: tuple[str, ...] = ()
+
+
+def _preflight_snapshot(repo: Path) -> dict[str, str]:
+    root = repo.resolve()
+    result = {}
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root)
+        if any(part in {".git", ".meow", ".venv"} for part in relative.parts):
+            continue
+        result[relative.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return result
+
+
+def preflight_check(  # ruff: ignore[complex-structure, too-many-statements]
+    repo: Path, check: Check, *, execute: bool = False
+) -> PreflightResult:
+    """Validate a proposed check, optionally running it after user review.
+
+    The default is read-only. An executed preflight reports any file changes so
+    onboarding can ask the user before accepting the command.
+    """
+    try:
+        cwd = resolve_command_cwd(repo, check.cwd)
+    except (OSError, ValueError) as exc:
+        return PreflightResult("invalid_cwd", check.command, None, str(exc))
+    argv = [*split_command(check.command), *check.args]
+    if not argv or not (
+        shutil.which(argv[0]) or (cwd / argv[0]).is_file()
+    ):
+        return PreflightResult("missing_executable", check.command, cwd)
+    if not execute:
+        return PreflightResult("ready_unchecked", check.command, cwd)
+    before = _preflight_snapshot(repo)
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=cwd,
+            env={**os.environ, **(check.env or {})},
+            capture_output=True,
+            timeout=check.timeout,
+            check=False,
+        )
+        output = (completed.stdout + completed.stderr).decode("utf-8", errors="replace")
+        status = "passed" if completed.returncode == 0 else "failed"
+    except subprocess.TimeoutExpired as exc:
+        output = str(exc)
+        status = "timed_out"
+    except OSError as exc:
+        output = str(exc)
+        status = "failed"
+    after = _preflight_snapshot(repo)
+    changed = tuple(
+        sorted(
+            path
+            for path in before.keys() | after.keys()
+            if before.get(path) != after.get(path)
+        )
+    )
+    if changed:
+        status = "changed_files"
+    return PreflightResult(status, check.command, cwd, output[:MAX_OUTPUT], changed)
 
 
 def check_identity(check: Check) -> str:
@@ -142,6 +215,20 @@ def configured_checks(config: dict) -> list[Check]:
             )
         )
     checks.extend(config.get("build", []))
+    browser = config.get("tester", {}).get("browser")
+    if isinstance(browser, dict):
+        checks.append(
+            Check(
+                "browser",
+                str(browser.get("name", "browser")),
+                str(browser.get("entrypoint", "unavailable")),
+                tuple(browser.get("args", [])),
+                bool(browser.get("required", False)),
+                float(browser.get("timeout", 300)),
+                Path(browser.get("cwd", ".")),
+                browser.get("env"),
+            )
+        )
     return checks
 
 
@@ -242,15 +329,16 @@ async def run_final_checks(repo: Path, config: dict) -> list[CheckResult]:
     return results
 
 
-async def _run_check_batch(
+async def _run_check_batch(  # ruff: ignore[complex-structure, too-many-branches]
     repo: Path, config: dict, checks: list[Check]
 ) -> list[CheckResult]:
     results = []
     for check in checks:
-        if check.kind != "test":
+        if check.kind not in {"test", "browser"}:
             results.append(await asyncio.to_thread(run_check, repo, check))
     tests = [check for check in checks if check.kind == "test"]
-    if tests:
+    browser_checks = [check for check in checks if check.kind == "browser"]
+    if tests or browser_checks:
         revision = code_revision(repo)
         fingerprint = config_fingerprint(repo)
         start = time.monotonic()
@@ -268,6 +356,28 @@ async def _run_check_batch(
                         revision,
                         fingerprint,
                         command.timed_out,
+                        check_identity(check),
+                    )
+                )
+            for check, browser in zip(browser_checks, evidence.browser, strict=True):
+                output = browser.output
+                if browser.reason:
+                    output += f"\nReason: {browser.reason}"
+                if browser.flows:
+                    output += "\nFlows: " + ", ".join(browser.flows)
+                if browser.artifacts:
+                    output += "\nArtifacts: " + ", ".join(browser.artifacts)
+                results.append(
+                    CheckResult(
+                        "browser",
+                        check.command,
+                        check.required,
+                        0 if browser.status == "passed" else browser.exit_code,
+                        duration,
+                        output[:MAX_OUTPUT],
+                        revision,
+                        fingerprint,
+                        browser.reason == "timed out",
                         check_identity(check),
                     )
                 )

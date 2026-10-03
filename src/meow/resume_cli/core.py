@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from meow.cancellation import clear_cancel
 from meow.checks import config_fingerprint
 from meow.run_state import RunRecord, RunStateError, RunStore
 from meow.sprint_runner import run_sprint
@@ -71,7 +72,14 @@ def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, to
     return None
 
 
-async def resume(  # ruff: ignore[too-many-return-statements]
+def _partial_tasks(record: RunRecord) -> bool:
+    phases = {step.get("phase") for step in record.transitions}
+    return "tasks_integrated" not in phases and bool(
+        phases.intersection({"tasks_waiting", "tasks_running"})
+    )
+
+
+async def resume(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-statements]
     working_dir: Path,
     run_id: str | None = None,
     *,
@@ -104,6 +112,16 @@ async def resume(  # ruff: ignore[too-many-return-statements]
             file=sys.stderr,
         )
         return 1
+    if _partial_tasks(record):
+        print(
+            "Cannot replay a partially integrated task graph safely. "
+            "Preserve the task worktrees and inspect their commits with "
+            f"meow status {record.id} --verbose; review and integrate the "
+            "completed slices before starting a new run.",
+            file=sys.stderr,
+        )
+        return 1
+    clear_cancel(store, record.id)
     store.transition(record.id, "resuming", attempt=record.attempt + 1)
     review_first = record.phase not in {"created", "preparing", "planning", "planned"}
     review_first = (
@@ -120,6 +138,7 @@ async def resume(  # ruff: ignore[too-many-return-statements]
                 "interrupted_mutation",
                 "checking",
                 "checks_finished",
+                "tasks_integrated",
             }
             for step in record.transitions
         )

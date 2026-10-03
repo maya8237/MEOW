@@ -14,6 +14,9 @@ from .core import (
     Path as Path,
 )
 from .core import (
+    PreflightResult as PreflightResult,
+)
+from .core import (
     TestCommand as TestCommand,
 )
 from .core import (
@@ -60,6 +63,9 @@ from .core import (
 )
 from .core import (
     os as os,
+)
+from .core import (
+    preflight_check as preflight_check,
 )
 from .core import (
     prepared_test_stage as prepared_test_stage,
