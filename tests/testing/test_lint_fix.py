@@ -18,9 +18,12 @@ class RunLintFixReportOnlyTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("meow.infrastructure.lint_fix.load_config", return_value=config),
             patch(
-                "meow.infrastructure.lint_fix.check_lint_commands", new=AsyncMock(return_value=[])
+                "meow.infrastructure.lint_fix.check_lint_commands",
+                new=AsyncMock(return_value=[]),
             ) as mock_check,
-            patch("meow.infrastructure.lint_fix.apply_lint_fixes", new=AsyncMock()) as mock_apply,
+            patch(
+                "meow.infrastructure.lint_fix.apply_lint_fixes", new=AsyncMock()
+            ) as mock_apply,
         ):
             result = await lint_fix.run_lint_fix(working_dir, report_only=True)
 
@@ -39,7 +42,9 @@ class RunLintFixReportOnlyTests(unittest.IsolatedAsyncioTestCase):
                 "meow.infrastructure.lint_fix.check_lint_commands",
                 new=AsyncMock(return_value=problems),
             ),
-            patch("meow.infrastructure.lint_fix.apply_lint_fixes", new=AsyncMock()) as mock_apply,
+            patch(
+                "meow.infrastructure.lint_fix.apply_lint_fixes", new=AsyncMock()
+            ) as mock_apply,
             patch("meow.infrastructure.lint_fix.LintFixAgent") as mock_agent_cls,
         ):
             result = await lint_fix.run_lint_fix(working_dir, report_only=True)
@@ -60,9 +65,12 @@ class RunLintFixStandaloneTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("meow.infrastructure.lint_fix.load_config", return_value=config),
-            patch("meow.infrastructure.lint_fix.apply_lint_fixes", new=AsyncMock()) as mock_apply,
             patch(
-                "meow.infrastructure.lint_fix.check_lint_commands", new=AsyncMock(return_value=[])
+                "meow.infrastructure.lint_fix.apply_lint_fixes", new=AsyncMock()
+            ) as mock_apply,
+            patch(
+                "meow.infrastructure.lint_fix.check_lint_commands",
+                new=AsyncMock(return_value=[]),
             ) as mock_check,
             patch("meow.infrastructure.lint_fix.LintFixAgent") as mock_agent_cls,
         ):

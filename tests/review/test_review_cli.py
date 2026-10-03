@@ -148,7 +148,9 @@ class PlanSourceTests(unittest.IsolatedAsyncioTestCase):
                         )
                     ),
                 ) as gate,
-                patch("meow.cli.review_cli._run_review_rounds", new=AsyncMock()) as rounds,
+                patch(
+                    "meow.cli.review_cli._run_review_rounds", new=AsyncMock()
+                ) as rounds,
             ):
                 await review_cli.run_review_command(
                     working_dir, None, fix=False, plan_file=plan_file, test=True
@@ -326,7 +328,8 @@ class GitlabSourceTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("meow.cli.review_cli.load_config", return_value=config),
             patch(
-                "meow.cli.review_cli._fetch_merge_request", new=AsyncMock(return_value=mr)
+                "meow.cli.review_cli._fetch_merge_request",
+                new=AsyncMock(return_value=mr),
             ) as mock_fetch,
             patch(
                 "meow.cli.review_cli.ReviewerAgent.review_merge_request",
@@ -350,7 +353,8 @@ class JiraSourceTests(unittest.IsolatedAsyncioTestCase):
             with (
                 patch("meow.cli.review_cli.load_config", return_value=config),
                 patch(
-                    "meow.cli.review_cli._fetch_issue", new=AsyncMock(return_value=issue)
+                    "meow.cli.review_cli._fetch_issue",
+                    new=AsyncMock(return_value=issue),
                 ) as mock_fetch,
                 patch(
                     "meow.cli.review_cli.ReviewerAgent.review_prompt",

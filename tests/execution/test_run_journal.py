@@ -111,17 +111,20 @@ def test_multitask_plan_uses_isolated_executor_then_final_review(tmp_path):
     )
     with (
         patch(
-            "meow.execution.sprint_runner._prepare_sprint", return_value=(sprint, "x", tmp_path)
+            "meow.execution.sprint_runner._prepare_sprint",
+            return_value=(sprint, "x", tmp_path),
         ),
         patch(
-            "meow.execution.sprint_runner.run_parallel_plan", new=AsyncMock(return_value=True)
+            "meow.execution.sprint_runner.run_parallel_plan",
+            new=AsyncMock(return_value=True),
         ) as parallel,
         patch(
             "meow.execution.sprint_runner._run_rounds",
             new=AsyncMock(side_effect=AssertionError("generator first")),
         ),
         patch(
-            "meow.execution.sprint_runner._run_review_rounds", new=AsyncMock(return_value=True)
+            "meow.execution.sprint_runner._run_review_rounds",
+            new=AsyncMock(return_value=True),
         ) as review,
     ):
         asyncio.run(
@@ -206,7 +209,8 @@ def test_final_check_exception_records_failure(tmp_path):
 
     with (
         patch(
-            "meow.execution.sprint_runner._prepare_sprint", return_value=(sprint, "x", tmp_path)
+            "meow.execution.sprint_runner._prepare_sprint",
+            return_value=(sprint, "x", tmp_path),
         ),
         patch("meow.execution.sprint_runner._run_rounds", side_effect=passed),
         patch(

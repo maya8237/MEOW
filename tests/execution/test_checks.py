@@ -218,7 +218,9 @@ def test_final_checks_rerun_when_build_changes_code(tmp_path):
         ),
     )
     config = {"lint": [], "build": [], "tester": {"tests": []}}
-    with patch("meow.infrastructure.checks.configured_checks", return_value=[lint, build]):
+    with patch(
+        "meow.infrastructure.checks.configured_checks", return_value=[lint, build]
+    ):
         results = asyncio.run(run_final_checks(tmp_path, config))
     assert len(results) == len([lint, build])
     assert checks_current(results, [lint, build], tmp_path)

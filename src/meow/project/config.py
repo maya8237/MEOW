@@ -126,7 +126,16 @@ class LintCommand:
         # as one) from a bare argv, so look the program up the way a shell
         # would. Falls back to the original name so a genuinely missing
         # program still surfaces as the OS error rather than being hidden.
-        return [shutil.which(argv[0]) or argv[0], *argv[1:]]
+        resolved = shutil.which(argv[0])
+        # Native Windows executables run correctly through CreateProcess by
+        # their bare name. Only resolve shell shims, which cannot be launched
+        # directly by asyncio without their absolute path.
+        if resolved and os.name == "nt" and Path(resolved).suffix.lower() not in {
+            ".bat",
+            ".cmd",
+        }:
+            resolved = argv[0]
+        return [resolved or argv[0], *argv[1:]]
 
     def argv_for_file(self, file_path: str) -> list[str]:
         """The command as argv for one file, auto-fixing where supported."""
