@@ -40,5 +40,4 @@ def cli_main(*args, **kwargs):
     for name in _PATCHABLE:
         if name in globals():
             setattr(module, name, globals()[name])
-    module._prompt_plan_approval = _prompt_plan_approval
     return module.cli_main(*args, **kwargs)

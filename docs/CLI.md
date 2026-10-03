@@ -5,6 +5,21 @@ For installation and a quick start, see the [README](../README.md). For Jira
 and GitLab configuration, scheduled runs, and error details, see
 [INTEGRATIONS.md](INTEGRATIONS.md).
 
+## User commands
+
+These are the commands meant for normal project work:
+
+| Command | Use it when you want to |
+| --- | --- |
+| `meow run` | Plan, implement, verify, review, and optionally deliver a feature request. |
+| `meow review` | Review existing code, and optionally fix findings with `--fix`. |
+| `meow plan` | Write the sprint plan only, without implementing it. |
+| `meow status` | Inspect a saved or background run. |
+| `meow cancel` | Ask a running sprint to stop cooperatively. |
+| `meow worktree` | Inspect or safely clean MEOW-owned run worktrees. |
+| `meow resume` | Inspect or continue a saved run. |
+| `meow hooks` | Manage optional host hooks after reviewing what they install. |
+
 ## Optional editor hooks
 
 `meow hooks status claude` reports `active`, `missing`, or `modified` for each
@@ -50,20 +65,6 @@ suggest or edit prose documentation. Onboarding uses the same project audit
 internally and can create selected knowledge documents as part of setup.
 
 ## Common options
-
-### Manual documentation update
-
-Run `meow docs-update --since REF` on a clean `dev` checkout the first time,
-using the commit from which documentation should be reviewed. Later, run
-`meow docs-update` on `dev` after the previous documentation changes and
-`docs/.meow-docs-update.json` have been committed. The command compares that
-saved inspected commit with the current HEAD, updates relevant prose, and
-prints its baseline, edited paths, and diff. Review the documentation and
-marker together, then commit them yourself. It does not commit or push.
-
-The checkout must be clean before the command starts. An invalid or rewritten
-baseline stops before editing. Ordinary `run`, `plan`, and unattended feature
-runs do not invoke this maintenance command or recommend documentation edits.
 
 Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
 select a project directory. Sprint plans and reviews are written under that
@@ -238,6 +239,34 @@ Both modes read the same `.harness.toml`, use the same worktree rules and
 `max_rounds`, and write the same plans, reviews, and verdict format. The CLI
 is the option for unattended terminal or scheduled runs. See the shared
 [native mode protocol](../skills/_shared/native-mode.md).
+
+## Maintainer and internal commands
+
+These commands are hidden from `meow --help` because they are not the normal
+user surface.
+
+`meow docs-update` is for maintainers updating MEOW's own prose docs on a
+clean `dev` checkout. Run `meow docs-update --since REF` the first time, using
+the commit from which documentation should be reviewed. Later, run
+`meow docs-update` after the previous documentation changes and
+`docs/.meow-docs-update.json` have been committed. It compares the saved
+inspected commit with the current HEAD, updates relevant prose, and prints its
+baseline, edited paths, and diff. Review the documentation and marker together,
+then commit them yourself. It does not commit or push.
+
+`meow native` is the JSON helper used by MEOW's in-session skills. Skill
+authors and maintainers may call it while debugging a skill flow, but normal
+feature work should use the `/meow:*` skills or the public CLI commands above.
+
+`meow evaluate` inspects saved run quality for harness maintainers. It is for
+comparing or auditing MEOW runs, not for building, reviewing, or resuming
+project work.
+
+`meow _worker` is a private implementation detail used by
+`meow run --unattended --background` to start the detached local worker. Humans
+should not invoke it directly; use `meow status`, `meow cancel`, and
+`meow resume` to interact with background runs.
+
 # GitLab CI review
 
 `meow review --ci` reviews the exact GitLab pipeline checkout against the

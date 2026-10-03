@@ -6,8 +6,8 @@ import pytest
 from claude_agent_sdk import ResultMessage
 
 from meow.agents.base import log_stream_message
-from meow.execution.run_state import RunStore
 from meow.cli.status_cli import render
+from meow.execution.run_state import RunStore
 from meow.infrastructure.usage import usage_entry, usage_scope, usage_totals
 
 

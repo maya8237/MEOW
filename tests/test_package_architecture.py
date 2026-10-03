@@ -4,10 +4,10 @@ from pathlib import Path
 
 from meow import branch_reviewer, native, native_cli
 from meow.execution import orchestrator as execution_orchestrator
-from meow.integrations import gitlab as integration_gitlab
-from meow.review import command as review_command
 from meow.infrastructure import testing_gates
 from meow.infrastructure import worktrees_lifecycle as worktree_lifecycle
+from meow.integrations import gitlab as integration_gitlab
+from meow.review import command as review_command
 
 # These are deliberate compatibility facades and package entry points.  The
 # refactor keeps them at the package root so existing imports continue to work.

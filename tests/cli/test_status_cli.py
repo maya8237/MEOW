@@ -3,9 +3,9 @@
 import sys
 
 from meow.cli import cli_main
-from meow.infrastructure.quality import record_concerns
-from meow.execution.run_state import RunStore
 from meow.cli.status_cli import status
+from meow.execution.run_state import RunStore
+from meow.infrastructure.quality import record_concerns
 
 
 def test_status_latest_and_verbose(tmp_path, capsys):

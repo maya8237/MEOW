@@ -9,8 +9,8 @@ import pytest
 
 from meow import background
 from meow.cli import core as cli_core
-from meow.execution.run_state import RunStore
 from meow.cli.status_cli import render
+from meow.execution.run_state import RunStore
 
 
 def test_background_requires_unattended(tmp_path):

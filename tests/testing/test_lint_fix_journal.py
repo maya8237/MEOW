@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from meow.infrastructure.lint_fix import run_lint_fix
 from meow.execution.run_state import RunStore
+from meow.infrastructure.lint_fix import run_lint_fix
 
 
 def test_lint_fix_failure_keeps_run_record(tmp_path):
