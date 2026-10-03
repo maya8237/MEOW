@@ -16,3 +16,12 @@ explorer = "haiku"
 [[lint]]
 command = "ruff check"
 fix_flag = "--fix"
+gate = true
+
+# Configured tests use the existing tester stage; failures block completion.
+[tester]
+[[tester.tests]]
+command = "python -m pytest -q"
+gate = true
+
+# Optional build checks are configured with [[build]].

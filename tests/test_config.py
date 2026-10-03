@@ -3,15 +3,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from meow.config import (
+from meow.project.config import (
     LintCommand,
     _lint_entry,
     _normalize_lint_commands,
+    _normalize_tester_config,
     _os_mismatch,
     _program_name,
     _validate_max_rounds,
     _validate_os_compatibility,
     load_config,
+    resolve_command_cwd,
 )
 
 
@@ -20,9 +22,7 @@ class ProgramNameTests(unittest.TestCase):
         self.assertEqual(_program_name("Ruff check --fix"), "ruff")
 
     def test_strips_a_windows_path_prefix(self):
-        self.assertEqual(
-            _program_name(r"C:\tools\Scripts\lint.BAT --all"), "lint.bat"
-        )
+        self.assertEqual(_program_name(r"C:\tools\Scripts\lint.BAT --all"), "lint.bat")
 
     def test_strips_a_posix_path_prefix(self):
         self.assertEqual(_program_name("/usr/local/bin/eslint ."), "eslint")
@@ -52,13 +52,13 @@ class UnixOnlyMarkerTests(unittest.TestCase):
         # Windows has no shebang support -- a bare .sh filename can't be
         # exec'd directly even with a real bash on PATH, unlike `bash
         # script.sh`, which explicitly names its interpreter.
-        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
             problem = _os_mismatch("lint.sh --check", "Windows")
         self.assertIsNotNone(problem)
         self.assertIn("Unix shell", problem)
 
     def test_bash_flagged_on_windows_when_no_interpreter_resolves(self):
-        with patch("meow.config.shutil.which", return_value=None):
+        with patch("meow.project.config.shutil.which", return_value=None):
             problem = _os_mismatch("bash scripts/lint.sh", "Windows")
         self.assertIsNotNone(problem)
 
@@ -78,19 +78,19 @@ class GitBashExemptionTests(unittest.TestCase):
     there, and a command that explicitly invokes it genuinely works."""
 
     def test_bash_on_path_is_not_flagged_on_windows(self):
-        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
             self.assertIsNone(_os_mismatch("bash scripts/lint.sh", "Windows"))
 
     def test_sh_on_path_is_not_flagged_on_windows(self):
-        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\sh.exe"):
+        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\sh.exe"):
             self.assertIsNone(_os_mismatch("sh scripts/lint.sh", "Windows"))
 
     def test_zsh_on_path_is_not_flagged_on_windows(self):
-        with patch("meow.config.shutil.which", return_value="/usr/bin/zsh"):
+        with patch("meow.project.config.shutil.which", return_value="/usr/bin/zsh"):
             self.assertIsNone(_os_mismatch("zsh scripts/lint.sh", "Windows"))
 
     def test_bash_not_on_path_is_still_flagged_on_windows(self):
-        with patch("meow.config.shutil.which", return_value=None):
+        with patch("meow.project.config.shutil.which", return_value=None):
             problem = _os_mismatch("bash scripts/lint.sh", "Windows")
         self.assertIsNotNone(problem)
         self.assertIn("Unix shell", problem)
@@ -98,7 +98,7 @@ class GitBashExemptionTests(unittest.TestCase):
     def test_bare_sh_extension_is_flagged_even_with_bash_on_path(self):
         # `lint.sh` alone (no explicit `bash`/`sh` in front) still can't be
         # exec'd directly by Windows, no matter what's on PATH.
-        with patch("meow.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
+        with patch("meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"):
             problem = _os_mismatch("lint.sh --check", "Windows")
         self.assertIsNotNone(problem)
 
@@ -106,7 +106,7 @@ class GitBashExemptionTests(unittest.TestCase):
         # The PATH check is specifically about whether Windows can run a
         # bash/sh/zsh command at all; it has nothing to say on a platform
         # where these are never flagged in the first place.
-        with patch("meow.config.shutil.which", return_value=None) as which:
+        with patch("meow.project.config.shutil.which", return_value=None) as which:
             self.assertIsNone(_os_mismatch("bash scripts/lint.sh", "Linux"))
         which.assert_not_called()
 
@@ -164,7 +164,7 @@ class LoadConfigOsValidationTests(unittest.TestCase):
                 '[[lint]]\ncommand = "lint.bat --check"\n', encoding="utf-8"
             )
             with (
-                patch("meow.config.platform.system", return_value="Linux"),
+                patch("meow.project.config.platform.system", return_value="Linux"),
                 self.assertRaisesRegex(ValueError, "lint.bat"),
             ):
                 load_config(working_dir)
@@ -226,7 +226,7 @@ class ValidateMaxRoundsTests(unittest.TestCase):
                 load_config(working_dir)
 
 
-class LintEntryTests(unittest.TestCase):
+class LintEntryTests(unittest.TestCase):  # ruff: ignore[too-many-public-methods]
     """`_lint_entry` validates one [[lint]] table. No test here exercised
     this at all before -- found while adversarially checking zero/one/many
     lint command counts; confirmed the zero-commands case for real via
@@ -269,6 +269,183 @@ class LintEntryTests(unittest.TestCase):
         self.assertFalse(entry.per_file)
         self.assertFalse(entry.gate)
 
+    def test_normalizes_extended_lint_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "apps" / "web").mkdir(parents=True)
+            entry = _lint_entry(
+                {
+                    "command": "ruff check",
+                    "cwd": "apps\\web",
+                    "include": ["src", "tests"],
+                    "exclude": ["tests/slow"],
+                    "timeout": 12.5,
+                    "env": {"MODE": "fast"},
+                    "args": ["--output-file", "a report.json"],
+                },
+                1,
+            )
+            self.assertEqual(entry.cwd, Path("apps/web"))
+            self.assertEqual(entry.include, (Path("src"), Path("tests")))
+            self.assertEqual(entry.exclude, (Path("tests/slow"),))
+            self.assertEqual(entry.timeout, 12.5)
+            self.assertEqual(entry.env, {"MODE": "fast"})
+            self.assertEqual(entry.args, ("--output-file", "a report.json"))
+            self.assertEqual(
+                entry.argv(), ["ruff", "check", "--output-file", "a report.json"]
+            )
+            self.assertEqual(
+                resolve_command_cwd(root, entry.cwd), (root / "apps/web").resolve()
+            )
+
+    def test_rejects_bad_lint_types_and_timeouts(self):
+        invalid = [
+            {"per_file": "false"},
+            {"gate": 1},
+            {"cwd": 3},
+            {"include": "src"},
+            {"exclude": ["src", 2]},
+            {"timeout": True},
+            {"timeout": 0},
+            {"timeout": -1},
+            {"env": {"X": 2}},
+            {"args": ["ok", 2]},
+        ]
+        for fields in invalid:
+            with (
+                self.subTest(fields=fields),
+                self.assertRaisesRegex(ValueError, r"\[\[lint\]\] entry 3"),
+            ):
+                _lint_entry({"command": "ruff check", **fields}, 3)
+
+    def test_rejects_absolute_or_escaping_lint_paths(self):
+        for field, value in [
+            ("cwd", "../outside"),
+            ("cwd", "C:/outside"),
+            ("include", ["../outside"]),
+            ("exclude", ["/outside"]),
+        ]:
+            with (
+                self.subTest(field=field, value=value),
+                self.assertRaisesRegex(ValueError, r"\[\[lint\]\] entry 1"),
+            ):
+                _lint_entry({"command": "ruff check", field: value}, 1)
+
+    def test_component_prefix_matching_does_not_match_sibling_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "apps" / "web").mkdir(parents=True)
+            (root / "apps" / "website").mkdir(parents=True)
+            entry = _lint_entry({"command": "ruff check", "cwd": "apps/web"}, 1)
+            self.assertTrue(entry.matches_file(Path("apps/web/src/a.py")))
+            self.assertFalse(entry.matches_file(Path("apps/website/src/a.py")))
+
+    def test_component_include_and_exclude_use_repo_relative_paths(self):
+        entry = _lint_entry(
+            {
+                "command": "ruff check",
+                "cwd": "apps/web",
+                "include": ["apps/web/src"],
+                "exclude": ["apps/web/src/generated"],
+            },
+            1,
+        )
+        self.assertTrue(entry.matches_file(Path("apps/web/src/app.py")))
+        self.assertFalse(entry.matches_file(Path("apps/web/src/generated/code.py")))
+        self.assertFalse(entry.matches_file(Path("apps/website/src/app.py")))
+
+
+class TesterConfigTests(unittest.TestCase):
+    def test_empty_tester_config_is_valid(self):
+        tester = _normalize_tester_config({})
+        self.assertEqual(tester["tests"], [])
+        self.assertEqual(tester["dev_server"], [])
+        self.assertEqual(tester["mcp"], [])
+
+    def test_normalizes_tester_commands_and_quoted_args(self):
+        tester = _normalize_tester_config({
+            "tester": {
+                "base_url": "http://localhost:3000",
+                "test_dirs": ["apps/web/tests"],
+                "architecture_files": ["docs/ARCHITECTURE.md"],
+                "tests": [
+                    {
+                        "cwd": "apps/web",
+                        "command": "python -m pytest",
+                        "args": ["--junitxml", "test results.xml"],
+                        "timeout": 45,
+                        "env": {"CI": "1"},
+                        "gate": False,
+                    }
+                ],
+                "dev_server": [
+                    {
+                        "cwd": "apps/web",
+                        "command": "npm run dev",
+                        "args": ["--", "--host"],
+                        "ready_url": "http://localhost:3000/health",
+                        "startup_timeout": 10,
+                    }
+                ],
+                "mcp": [{"name": "browser", "command": "npx", "args": ["browser-mcp"]}],
+            }
+        })
+        self.assertEqual(tester["tests"][0].args, ("--junitxml", "test results.xml"))
+        self.assertFalse(tester["tests"][0].gate)
+        self.assertEqual(tester["dev_server"][0].startup_timeout, 10)
+        self.assertEqual(tester["mcp"][0]["args"], ["browser-mcp"])
+
+    def test_rejects_bad_tester_entries_and_duplicate_mcp_names(self):
+        cases = [
+            {"tests": [{"command": "pytest", "timeout": True}]},
+            {"tests": [{"command": "pytest", "timeout": 0}]},
+            {"tests": [{"command": "pytest", "cwd": "../outside"}]},
+            {"dev_server": [{"command": "npm start"}]},
+            {
+                "dev_server": [
+                    {
+                        "command": "npm start",
+                        "ready_url": "http://localhost",
+                        "startup_timeout": False,
+                    }
+                ]
+            },
+            {
+                "mcp": [
+                    {"name": "same", "command": "one"},
+                    {"name": "same", "command": "two"},
+                ]
+            },
+        ]
+        for fields in cases:
+            with self.subTest(fields=fields), self.assertRaises(ValueError):
+                _normalize_tester_config({"tester": fields})
+
+    def test_resolve_command_cwd_rejects_symlink_escape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            outside = Path(tmp) / "outside"
+            root.mkdir()
+            outside.mkdir()
+            try:
+                (root / "linked").symlink_to(outside, target_is_directory=True)
+            except OSError:
+                self.skipTest("symlink creation unavailable")
+            with self.assertRaisesRegex(ValueError, "inside"):
+                resolve_command_cwd(root, Path("linked"))
+
+    def test_load_config_ignores_fully_commented_tester_table(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, ".harness.toml").write_text(
+                (
+                    '[[lint]]\ncommand = "ruff check"\n\n# [tester]\n'
+                    '# base_url = "http://localhost"\n# [[tester.tests]]\n'
+                    '# command = "pytest"\n'
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(load_config(Path(tmp))["tester"]["tests"], [])
+
 
 class NormalizeLintCommandsTests(unittest.TestCase):
     def test_zero_commands_raises(self):
@@ -276,37 +453,35 @@ class NormalizeLintCommandsTests(unittest.TestCase):
             _normalize_lint_commands({})
 
     def test_one_command_via_the_list_form(self):
-        commands = _normalize_lint_commands(
-            {"lint": [{"command": "ruff check"}]}
-        )
+        commands = _normalize_lint_commands({"lint": [{"command": "ruff check"}]})
         self.assertEqual([c.command for c in commands], ["ruff check"])
 
     def test_many_commands_preserve_configured_order(self):
-        commands = _normalize_lint_commands(
-            {
-                "lint": [
-                    {"command": "ruff check"},
-                    {"command": "mypy .", "gate": False},
-                    {"command": "npx eslint ."},
-                ]
-            }
-        )
+        commands = _normalize_lint_commands({
+            "lint": [
+                {"command": "ruff check"},
+                {"command": "mypy .", "gate": False},
+                {"command": "npx eslint ."},
+            ]
+        })
         self.assertEqual(
             [c.command for c in commands], ["ruff check", "mypy .", "npx eslint ."]
         )
 
     def test_legacy_single_command_form_becomes_one_entry(self):
-        commands = _normalize_lint_commands(
-            {"lint_command": "ruff check", "lint_fix_flag": "--fix"}
-        )
+        commands = _normalize_lint_commands({
+            "lint_command": "ruff check",
+            "lint_fix_flag": "--fix",
+        })
         self.assertEqual(len(commands), 1)
         self.assertEqual(commands[0].command, "ruff check")
         self.assertEqual(commands[0].fix_flag, "--fix")
 
     def test_legacy_form_and_list_form_combine_legacy_first(self):
-        commands = _normalize_lint_commands(
-            {"lint_command": "ruff check", "lint": [{"command": "mypy ."}]}
-        )
+        commands = _normalize_lint_commands({
+            "lint_command": "ruff check",
+            "lint": [{"command": "mypy ."}],
+        })
         self.assertEqual([c.command for c in commands], ["ruff check", "mypy ."])
 
     def test_lint_not_a_list_raises(self):
