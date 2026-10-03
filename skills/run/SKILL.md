@@ -1,18 +1,18 @@
 ---
 name: run
-description: Run a full meow sprint for a feature request in the current project — plan it, implement it, then review and fix it in a loop until it passes. Optionally sourced from a Jira issue instead of typed text, built in a retained branch. Runs natively in this Claude Code session by default. Use when the user wants meow to build a feature end to end.
+description: Run a full meow sprint for a feature request in the current project — plan it, implement it, then review and fix it in a loop until it passes. Optionally sourced from a Jira issue instead of typed text, built in a retained branch. Uses the CLI by default so automatic project understanding and run checkpoints apply.
 ---
 
 # run
 
 Plan -> implement -> review, in a loop, for one feature request -- either
-typed directly, or fetched from a Jira issue. By default this runs
-**natively**: you plan and implement, and a fresh reviewer subagent grades
-each round. Read [`../_shared/native-mode.md`](../_shared/native-mode.md)
-(relative to this skill's base directory) first — it defines the `meow native`
-helper, the roles, lint discipline, round limits and the review loop that the
-steps below refer to. Use **CLI mode** (bottom) only if the user explicitly asks
-for the headless/separate-process run.
+typed directly, or fetched from a Jira issue. CLI mode is the default: `meow
+run` performs knowledge gathering, shaping, optional breadboarding, planning,
+implementation, verification, and review within one checkpointed run. Use the
+CLI mode section below for ordinary requests. Native mode is an explicit opt-in
+when the user asks for implementation inside this Claude Code session. For
+native mode, read [`../_shared/native-mode.md`](../_shared/native-mode.md)
+first; it defines the `meow native` helper and review loop.
 
 ## Native mode
 
@@ -77,10 +77,10 @@ for the headless/separate-process run.
 
 ## CLI mode
 
-When the user requests `--test`, use CLI mode so MEOW owns configured test
-commands and keeps configured development servers running throughout the
-tester agent. Pass `--test` through to `meow run` (including Jira and
-`--resume-at review` flows). Without `--test`, preserve native mode.
+Use CLI mode for all ordinary runs so MEOW owns the complete automatic pre-plan
+flow and its checkpoints. When the user requests `--test`, pass it through to
+`meow run` (including Jira and `--resume-at review` flows); configured servers
+stay alive throughout tester validation.
 
 Runs `meow run` (separate Agent SDK sessions, works headless). From the project root:
 

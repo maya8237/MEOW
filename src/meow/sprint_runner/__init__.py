@@ -69,6 +69,7 @@ from .core import (
 from .core import (
     run_sprint as run_sprint,
 )
+from .core import run_parallel_plan as run_parallel_plan
 
 _run_sprint_impl = _core.run_sprint
 
@@ -84,6 +85,7 @@ async def run_sprint(*args, **kwargs):
         "PlannerAgent",
         "run_final_checks",
         "deliver_verified_run",
+        "run_parallel_plan",
     ):
         if hasattr(facade, name):
             setattr(_core, name, getattr(facade, name))

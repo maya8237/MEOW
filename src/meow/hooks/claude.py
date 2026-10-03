@@ -30,7 +30,62 @@ def _entry(name: str) -> dict:
     }
 
 
-def install_claude_hooks(  # ruff: ignore[complex-structure, too-many-statements]
+def _entry_command(entry: dict) -> str | None:
+    values = entry.get("hooks")
+    if not isinstance(values, list):
+        return None
+    return next(
+        (
+            hook.get("command")
+            for hook in values
+            if isinstance(hook, dict) and isinstance(hook.get("command"), str)
+        ),
+        None,
+    )
+
+
+def inspect_claude_hooks(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+    project_dir: Path,
+) -> dict[str, str]:
+    """Compare MEOW-owned manifest entries with Claude settings without writes."""
+    root = Path(project_dir).resolve()
+    manifest_path = root / MANIFEST
+    result = {name: "missing" for name in COMMANDS}
+    if not manifest_path.exists():
+        return result
+    try:
+        manifest = _load(manifest_path)
+        entries = manifest["entries"]
+        if not isinstance(entries, list):
+            raise ValueError("entries must be an array")
+        settings = _load(root / SETTINGS)
+        hooks = settings.get("hooks", {})
+        if not isinstance(hooks, dict):
+            raise ValueError("hooks must be an object")
+        for item in entries:
+            event, entry = item["event"], item["entry"]
+            if not isinstance(entry, dict):
+                raise ValueError("entry must be an object")
+            command = _entry_command(entry)
+            name = next(
+                (key for key, value in COMMANDS.items() if value == command), None
+            )
+            if name is None:
+                continue
+            current = hooks.get(event, [])
+            if entry in current:
+                result[name] = "active"
+            elif any(
+                isinstance(value, dict) and _entry_command(value) == command
+                for value in current
+            ):
+                result[name] = "modified"
+    except (ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError):
+        result["_diagnostic"] = "malformed manifest"
+    return result
+
+
+def install_claude_hooks(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches]
     project_dir: Path, selected: list[str] | tuple[str, ...], *, dry_run: bool = False
 ) -> dict:
     root, names = Path(project_dir).resolve(), list(selected)
@@ -41,7 +96,9 @@ def install_claude_hooks(  # ruff: ignore[complex-structure, too-many-statements
     hooks = settings.setdefault("hooks", {})
     if not isinstance(hooks, dict):
         raise ValueError("Claude settings 'hooks' must be an object")
-    manifest_entries = []
+    manifest_entries = _load(root / MANIFEST).get("entries", [])
+    if not isinstance(manifest_entries, list):
+        raise ValueError("Claude hook manifest entries must be an array")
     for name in names:
         event = "PostToolUse" if name in {"lint", "shaping"} else "Stop"
         if event not in SUPPORTED_EVENTS:
@@ -52,7 +109,9 @@ def install_claude_hooks(  # ruff: ignore[complex-structure, too-many-statements
         entry = _entry(name)
         if entry not in entries:
             entries.append(entry)
-        manifest_entries.append({"event": event, "entry": entry})
+        manifest_item = {"event": event, "entry": entry}
+        if manifest_item not in manifest_entries:
+            manifest_entries.append(manifest_item)
     result = {
         "settings": str(settings_path),
         "manifest": str(root / MANIFEST),

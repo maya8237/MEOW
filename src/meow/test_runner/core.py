@@ -30,6 +30,9 @@ class BrowserEvidence:
     output: str = ""
     required: bool = False
     reason: str = ""
+    flows: tuple[str, ...] = ()
+    artifacts: tuple[str, ...] = ()
+    exit_code: int | None = None
 
 
 def normalize_browser_result(
@@ -285,6 +288,73 @@ async def _run_test(active_dir: Path, command: TestCommand) -> TestCommandEviden
         raise
 
 
+def _artifact_stamp(root: Path, name: str) -> tuple[int, int] | None:
+    path = (root / name).resolve()
+    if not path.is_relative_to(root.resolve()) or not path.is_file():
+        return None
+    stat = path.stat()
+    return stat.st_mtime_ns, stat.st_size
+
+
+async def _run_browser(active_dir: Path, tester: dict) -> BrowserEvidence | None:
+    browser = tester.get("browser")
+    if not isinstance(browser, dict):
+        return None
+    required = bool(browser.get("required", False))
+    name = str(browser.get("name", ""))
+    kind = str(browser.get("kind", ""))
+    if kind != "command":
+        return BrowserEvidence(
+            name,
+            kind,
+            "unavailable",
+            required=required,
+            reason="provider requires agent validation",
+        )
+    if not tester.get("dev_server"):
+        return BrowserEvidence(
+            name,
+            kind,
+            "unavailable",
+            required=required,
+            reason="missing start command and readiness URL",
+        )
+    artifacts = tuple(str(item) for item in browser.get("artifacts", []))
+    before = {item: _artifact_stamp(active_dir, item) for item in artifacts}
+    command = TestCommand(
+        Path(browser.get("cwd", ".")),
+        str(browser["entrypoint"]),
+        tuple(browser.get("args", [])),
+        float(browser.get("timeout", 300)),
+        browser.get("env"),
+        required,
+    )
+    try:
+        result = await _run_test(active_dir, command)
+    except TesterSetupError as exc:
+        return BrowserEvidence(
+            name, kind, "unavailable", required=required, reason=str(exc)
+        )
+    available_artifacts = tuple(
+        item
+        for item in artifacts
+        if _artifact_stamp(active_dir, item) is not None
+        and _artifact_stamp(active_dir, item) != before[item]
+    )
+    status = "failed" if result.timed_out or result.exit_code != 0 else "passed"
+    return BrowserEvidence(
+        name,
+        kind,
+        status,
+        result.output,
+        required,
+        "timed out" if result.timed_out else "",
+        tuple(str(item) for item in browser.get("flows", [])),
+        available_artifacts,
+        result.exit_code,
+    )
+
+
 def _reachable(url: str) -> bool:
     try:
         with urllib.request.urlopen(url, timeout=0.25):
@@ -370,7 +440,8 @@ async def prepared_test_stage(active_dir: Path, config: dict):
         for command in tester.get("tests", []):
             commands.append(await _run_test(active_dir, command))
         urls = tuple(server.ready_url for server in tester.get("dev_server", []))
-        yield TestStageEvidence(tuple(commands), urls)
+        browser = await _run_browser(active_dir, tester)
+        yield TestStageEvidence(tuple(commands), urls, (browser,) if browser else ())
     finally:
         for process in reversed(servers):
             await _terminate(process)

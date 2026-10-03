@@ -4,6 +4,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from meow.cancellation import RunCancelled, check_cancel, delivery_lock
 from meow.run_state import RunStore
 
 
@@ -51,7 +52,15 @@ def _branch_and_remote(
     return branch, "origin"
 
 
-def deliver_verified_run(  # ruff: ignore[too-many-statements]
+def deliver_verified_run(
+    store: RunStore, run_id: str, *, unattended: bool = False
+) -> bool:
+    """Hold the run's delivery lock until commit/push has finished."""
+    with delivery_lock(store, run_id):
+        return _deliver_verified_run(store, run_id, unattended=unattended)
+
+
+def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structure]
     store: RunStore, run_id: str, *, unattended: bool = False
 ) -> bool:
     """Deliver after verified checks, from a linked worktree or unattended run.
@@ -66,6 +75,7 @@ def deliver_verified_run(  # ruff: ignore[too-many-statements]
     if not (unattended or _linked_worktree(active)):
         return False
     try:
+        check_cancel(store, run_id)
         branch, remote = _branch_and_remote(active, f"meow/{run_id}")
         previous = record.delivery
         if previous.get("pushed") and previous.get("commit"):
@@ -75,9 +85,11 @@ def deliver_verified_run(  # ruff: ignore[too-many-statements]
             "delivery_started",
             delivery={**previous, "branch": branch, "remote": remote},
         )
+        check_cancel(store, run_id)
         _git(active, "add", "-A")
         _git(active, "reset", "-q", "--", ".meow", check=False)
         if _git(active, "diff", "--cached", "--quiet", check=False).returncode:
+            check_cancel(store, run_id)
             _git(active, "commit", "-m", f"MEOW run {run_id}: {record.request[:72]}")
         commit = _git(active, "rev-parse", "HEAD").stdout.strip()
         store.transition(
@@ -89,6 +101,7 @@ def deliver_verified_run(  # ruff: ignore[too-many-statements]
                 "committed": True,
             },
         )
+        check_cancel(store, run_id)
         _git(active, "push", "-u", remote, branch)
         store.transition(
             run_id,
@@ -96,6 +109,8 @@ def deliver_verified_run(  # ruff: ignore[too-many-statements]
             delivery={**store.load(run_id).delivery, "pushed": True},
         )
         return True
+    except RunCancelled:
+        raise
     except (OSError, RuntimeError) as exc:
         store.transition(run_id, "delivery_failed", last_failure=str(exc))
         raise

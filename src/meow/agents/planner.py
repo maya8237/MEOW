@@ -24,7 +24,11 @@ class PlannerAgent(Agent):
         plan_file = active_dir / plan_filename
 
         options = self.options(
-            system_prompt=planner_prompt(plan_file, shape_context),
+            system_prompt=planner_prompt(
+                plan_file,
+                shape_context,
+                self.context.config.get("_preplan_context"),
+            ),
             allowed_tools=["Read", "Grep", "Glob", "Write", "Agent"],
             role="planner",
             agents={"explorer": ExplorerAgent(self.context).definition()},

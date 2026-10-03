@@ -7,10 +7,26 @@ one copy means the two modes cannot drift apart. Nothing here touches the
 filesystem, the SDK, or a Sprint.
 """
 
+import json
 from pathlib import Path
 
 from meow.config import LintCommand
 from meow.shaping import ShapeContext
+
+
+def docs_update_prompt(baseline: str, head: str) -> str:
+    """Constrain the manual documentation role to evidence-backed prose edits."""
+    return (
+        "You maintain project documentation for a manually requested update. "
+        f"Compare Git commits {baseline}..{head} using the supplied diff and "
+        "read code, tests, and existing docs to verify each factual statement. "
+        "Edit only README.md or prose files under docs/ (.md, .rst, .txt). "
+        "Never edit source, tests, configuration, AGENTS.md, or the "
+        "docs/.meow-docs-update.json marker. Do not create a document merely "
+        "to fill a template. Make only relevant updates supported by observed "
+        "behavior. If evidence is insufficient, leave the docs unchanged and "
+        "report uncertainty. Do not invent features or recommendations."
+    )
 
 
 def shape_context_instructions(context: ShapeContext | None) -> str:
@@ -141,7 +157,11 @@ def explorer_prompt(active_dir: Path) -> str:
     )
 
 
-def planner_prompt(plan_file: Path, shape_context: ShapeContext | None = None) -> str:
+def planner_prompt(
+    plan_file: Path,
+    shape_context: ShapeContext | None = None,
+    project_context: dict | None = None,
+) -> str:
     return (
         "You are a planning agent. Consult the explorer subagent for "
         "any codebase context you need -- don't explore directly. "
@@ -154,7 +174,18 @@ def planner_prompt(plan_file: Path, shape_context: ShapeContext | None = None) -
         "use the configured plan path, retain this Sprint Contract, "
         "and do not use the skill's default plan location or add an "
         "interactive execution-method handoff."
+        f" For substantial work with independent tasks and disjoint file ownership, "
+        f"write {plan_file}.tasks.json as JSON with a tasks array. Each task "
+        "has id, depends_on, owned_paths, and verification fields. "
+        "Omit this graph for simple work or unclear ownership."
         + shape_context_instructions(shape_context)
+        + (
+            " Pre-plan repository evidence: "
+            + json.dumps(project_context, sort_keys=True)
+            if project_context
+            else ""
+        )
+        + " Use cited observations in planning. Do not suggest doc edits."
     )
 
 
@@ -209,6 +240,12 @@ def _verdict_format(review_file: Path, unit: str) -> str:
         "starting with 'SUMMARY:' and containing a brief one- or two-"
         "sentence summary. The next line must start with 'STATUS: PASS' "
         f"or 'STATUS: FAIL', followed by one line per {unit}. "
+        "For a concrete maintenance issue relevant to the changed code, "
+        "you may add one QUALITY_CONCERN: JSON object per issue with keys "
+        "path, evidence, impact, and follow_up. Evidence must be exact code text "
+        "currently present at that repository path. These concerns are advisory; "
+        "do not change PASS to FAIL for a concern alone. "
+        "Do not emit doc-update advice. "
         "Default to FAIL when uncertain."
     )
 

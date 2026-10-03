@@ -73,5 +73,41 @@ def create_selected_documents(
 
 class EvidenceDocumentWriter:
     def write(self, root: Path, finding: AuditFinding) -> str:
-        evidence = "\n".join(f"- {item}" for item in finding.evidence)
-        return f"# {finding.proposed_document or 'Project knowledge'}\n\nObserved evidence:\n{evidence}\n\n## Uncertainty\n\n- This document records observations only; verify policy with the project owner.\n"
+        observations: list[str] = []
+        max_observations = 12
+        extensions = {".py", ".js", ".ts", ".tsx", ".go", ".rs", ".java"}
+        for path in sorted(root.rglob("*")):
+            if len(observations) >= max_observations:
+                break
+            if not path.is_file() or path.suffix.lower() not in extensions:
+                continue
+            relative = path.relative_to(root)
+            if any(
+                part.startswith(".") or part in {"node_modules", "venv", "__pycache__"}
+                for part in relative.parts
+            ):
+                continue
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()[:80]
+            except (OSError, UnicodeError):
+                continue
+            for number, line in enumerate(lines, 1):
+                if line.strip().startswith((
+                    "def ",
+                    "class ",
+                    "function ",
+                    "export ",
+                    "pub fn ",
+                )):
+                    observations.append(
+                        f"- {relative.as_posix()}:{number}: {line.strip()[:120]}"
+                    )
+                    break
+        if not observations:
+            return ""
+        evidence = "\n".join(observations)
+        title = finding.proposed_document or "Project knowledge"
+        return (
+            f"# {title}\n\nObserved source entry points:\n{evidence}\n\n"
+            "## Uncertainty\n\n- Module responsibilities and project policy require human verification.\n"
+        )
