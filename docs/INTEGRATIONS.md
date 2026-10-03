@@ -116,7 +116,7 @@ allow that.
 
 ---
 
-## Running `meow run --jira` on a schedule (Windows Task Scheduler)
+## Running `meow run --jira` on a schedule
 
 `meow run --jira [ISSUE-KEY]` fetches a Jira issue (or the most recently
 created one in `[jira].project_key` if you omit the key), solves it through
@@ -145,7 +145,10 @@ environment, and an `origin` remote the scheduled task's account can push to
 lines there instead of only writing to stderr (`MEOW_LOG_LEVEL` also works the
 same way `meow run` uses it, e.g. `DEBUG` for more detail).
 
-**Registering the task** — from an elevated PowerShell prompt, using
+MEOW does not include its own operating-system scheduler. Use the scheduler
+that fits the machine or CI environment that will run the command.
+
+**Windows Task Scheduler** — from an elevated PowerShell prompt, using
 `schtasks` (adjust the venv path, working directory, issue key or omit it for
 "latest", and schedule):
 
@@ -162,6 +165,45 @@ variables (`setx`) rather than relying on variables set in your interactive
 shell. Verify the task once with `schtasks /Run /TN "meow-run-jira"`, then
 `Get-Content <MEOW_LOG_FILE> -Tail 50` to confirm it ran and to read its
 result.
+
+**Linux cron** — add a crontab entry for the account that has Jira credentials
+and push access. Use absolute paths because cron starts with a minimal
+environment:
+
+```cron
+MEOW_LOG_FILE=/var/log/meow-run-jira.log
+JIRA_URL=https://jira.example.com
+JIRA_USERNAME=automation@example.com
+JIRA_API_TOKEN=...
+
+0 9 * * * /path/to/meow/.venv/bin/meow run --jira --working-dir /path/to/target-project
+```
+
+**Linux systemd timer** — prefer this when you want journal logs, explicit
+environment files, or easier enable/disable controls:
+
+```ini
+# /etc/systemd/system/meow-run-jira.service
+[Service]
+Type=oneshot
+Environment=MEOW_LOG_FILE=/var/log/meow-run-jira.log
+EnvironmentFile=/etc/meow/jira.env
+ExecStart=/path/to/meow/.venv/bin/meow run --jira --working-dir /path/to/target-project
+```
+
+```ini
+# /etc/systemd/system/meow-run-jira.timer
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable and test it with `systemctl enable --now meow-run-jira.timer`, then
+`systemctl start meow-run-jira.service` and inspect
+`journalctl -u meow-run-jira.service`.
 
 ---
 
