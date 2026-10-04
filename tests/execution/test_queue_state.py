@@ -1,6 +1,10 @@
 from meow.execution.queue_state import QueueStateError, QueueStore, QueueWorkerLock
 
 
+def test_queue_store_annotations_are_safe_when_list_method_shadows_builtin():
+    assert isinstance(QueueStore.pending.__annotations__["return"], str)
+
+
 def test_queue_persists_fifo_items_and_claims_once(tmp_path):
     store = QueueStore(tmp_path)
     first = store.enqueue("first")
