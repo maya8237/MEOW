@@ -7,6 +7,8 @@
 # NOTE ON TOML: every top-level key must appear ABOVE the first [[lint]]
 # table. Anything written after one belongs to that table, not to the file.
 # The engine rejects the config with a clear error if you get this wrong.
+# The file is optional; without it, MEOW uses built-in defaults.
+# String values support $HOME/${HOME} and %USERPROFILE% environment variables.
 
 # How many generator <-> reviewer rounds to allow before giving up on a
 # sprint rather than looping forever.

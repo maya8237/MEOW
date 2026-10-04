@@ -8,6 +8,12 @@ scheduled Jira runs, and error messages.
 
 ## Monorepo lint and tester
 
+`.harness.toml` is optional. If it is absent, MEOW starts with its built-in
+defaults and no lint commands. String values may reference environment
+variables with either POSIX syntax (`$HOME` or `${HOME}`) or Windows syntax
+(`%USERPROFILE%`); expansion is applied recursively to configured tables and
+lists. Unknown variables are left unchanged.
+
 Each `[[lint]]` entry may set `cwd`, `include`, `exclude`, `args`, `env`, and
 `timeout`. `include` and `exclude` are repository-relative path prefixes. A
 per-file lint command runs only for edits inside its `cwd` and included paths;
@@ -211,7 +217,7 @@ Enable and test it with `systemctl enable --now meow-run-jira.timer`, then
 
 | Missing / wrong | Result |
 |---|---|
-| `.harness.toml` | `FileNotFoundError` before any agent runs |
+| `.harness.toml` absent | Built-in defaults are used; no lint commands are configured |
 | No `[[lint]]` entries or `lint_command` | `ValueError`: no lint command defined |
 | Unknown key in a `[[lint]]` table (often a top-level key placed after it) | `ValueError` naming the entry and key |
 | No architecture doc anywhere under `docs/` | No error — reviewer's SOLID/SRP pass finds nothing to Glob/Read, so it has no project-specific boundaries to check, just its generic mixed-responsibility rule |
