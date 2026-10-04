@@ -9,6 +9,7 @@ from dataclasses import asdict
 from importlib.metadata import version
 from pathlib import Path
 
+from meow.cli.queue_cli import queue
 from meow.cli.resume_cli import resume
 from meow.cli.review_cli import run_review_command
 from meow.cli.status_cli import status
@@ -324,6 +325,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     resume_parser.add_argument("--continue", dest="continue_run", action="store_true")
     resume_parser.add_argument("--auto-resume", action="store_true")
     _add_common_args(resume_parser)
+    queue_parser = subparsers.add_parser(
+        "queue", help="Queue a task or run queued tasks serially."
+    )
+    queue_parser.add_argument("request", nargs="?", default=None)
+    queue_parser.add_argument("--name", dest="feature_name", default=None)
+    _add_common_args(queue_parser)
     docs_update_parser = _add_hidden_parser(subparsers, "docs-update")
     docs_update_parser.add_argument("--since", metavar="REF")
     _add_common_args(docs_update_parser)
@@ -697,6 +704,8 @@ def _dispatch(
     if args.command == "review":
         _dispatch_review(args, working_dir)
         return
+    if args.command == "queue":
+        raise SystemExit(queue(working_dir, args.request, args.feature_name))
     asyncio.run(
         run_plan(
             working_dir,
