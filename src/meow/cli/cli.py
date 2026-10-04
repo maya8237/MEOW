@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from dataclasses import asdict
+from importlib.metadata import version
 from pathlib import Path
 
 from meow.cli.resume_cli import resume
@@ -270,6 +271,11 @@ def _resolve_input_path(path: str | None, working_dir: Path) -> Path | None:
 
 def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-statements, too-many-locals]
     parser = argparse.ArgumentParser(prog="meow")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"meow {version('meow')}",
+    )
     subparsers = parser.add_subparsers(
         dest="command",
         required=True,
