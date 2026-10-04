@@ -18,7 +18,17 @@ These are the commands meant for normal project work:
 | `meow cancel` | Ask a running sprint to stop cooperatively. |
 | `meow worktree` | Inspect or safely clean MEOW-owned run worktrees. |
 | `meow resume` | Inspect or continue a saved run. |
+| `meow queue` | Enqueue tasks or run queued tasks serially in the current repository. |
 | `meow hooks` | Manage optional host hooks after reviewing what they install. |
+
+### Queueing work
+
+Use `meow queue "request"` to persist work for the current repository. This
+works while another MEOW run is active or while the repository is idle. Run
+`meow queue` without a request to process pending items in FIFO order. A
+repository-scoped worker lock ensures that two sessions cannot process the
+same queue concurrently; a failed task pauses the queue for inspection and
+retry.
 
 ## Optional editor hooks
 
