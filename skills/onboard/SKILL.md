@@ -46,10 +46,31 @@ relevant agent instructions, documentation directory, architecture conventions,
 and existing `.harness.toml`. Run MEOW's read-only project knowledge audit and
 show its evidence-backed findings. Audit findings do not block setup.
 
-Check `meow --help`. If MEOW is unavailable, look first for a usable `.venv`
-in the MEOW source repository. If none exists, create one in the current MEOW
-repository, ignore `.venv/` there if needed, install MEOW from the repository
-source, and verify `meow --help`. Never install packages globally.
+Before using or installing MEOW, verify that the selected Python interpreter
+is version 3.12 or newer (`python --version`, `python3 --version`, or `py -3.12
+--version` on Windows). Use that same 3.12+ interpreter for every pip,
+virtual-environment, and MEOW command; do not fall back to an older `python`
+on PATH. If no suitable interpreter is available, report that prerequisite and
+stop before changing the repository.
+
+Check `meow --help` with the selected interpreter. If MEOW is unavailable, offer
+the user two installation options before installing anything:
+
+- **Recommended: system Python.** Run `<python-3.12+> -m pip install -e
+  <MEOW-source>`. This puts the `meow`
+  command on the system Python PATH, so it can be run easily from any
+  repository. Explain that this is the simplest option for most users.
+- **Project-local virtual environment.** Create or use `.venv` in the MEOW
+  source repository with the selected 3.12+ interpreter, install MEOW there
+  with that environment's Python, and tell the user to activate the environment
+  or use its full `meow` path.
+
+In interactive mode, show both choices and ask which one the user prefers. In
+automatic mode, use system Python only when the request clearly authorizes
+installation; otherwise stop and ask the user to choose. Do not silently
+install packages or create an environment. After installation, verify
+`meow --help` through the selected 3.12+ environment and continue onboarding
+only when the command is available.
 
 In interactive mode, present one menu of the applicable optional choices. In
 automatic mode, skip unrequested choices and record them as skipped. Delegate
@@ -122,7 +143,8 @@ command. Do not add stale links.
 ## 3. Verify and report
 
 Run `meow --help`, then `meow native verify --working-dir <project-root>` from
-the MEOW installation. Treat verification as diagnostics rather than a reason
+the MEOW installation, using the selected Python 3.12+ environment. Treat
+verification as diagnostics rather than a reason
 to abandon independent setup. Capture exact failures, defer only unsafe or
 dependent actions, and report every failed component. Verification covers core
 settings, lint entries, tester commands and servers, optional architecture
