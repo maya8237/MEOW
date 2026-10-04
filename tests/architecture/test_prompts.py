@@ -25,6 +25,44 @@ class PromptTests(unittest.TestCase):
             self.assertIn("legacy API remains", text)
             self.assertIn("Sprint Contract", text)
 
+    def test_bug_planner_prompt_requires_reproduction_and_regression_evidence(self):
+        text = prompts.planner_prompt(Path("plan.md"), bug_mode=True)
+
+        self.assertIn("reproduce", text.lower())
+        self.assertIn("regression", text.lower())
+        self.assertIn("minimise", text.lower())
+
+    def test_planner_prompt_decomposes_mixed_requests_into_graph_tasks(self):
+        text = prompts.planner_prompt(Path("plan.md"))
+
+        self.assertIn("distinct feature, bug fix, or validation outcome", text)
+        self.assertIn("independent tasks", text)
+        self.assertIn("shared files", text)
+        self.assertIn("depends_on", text)
+        self.assertIn("parallel", text.lower())
+
+    def test_generator_prompt_respects_task_graph_boundaries(self):
+        text = prompts.generator_prompt(Path("plan.md"))
+
+        self.assertIn("tasks.json", text)
+        self.assertIn("dependency order", text)
+        self.assertIn("read-only exploration", text)
+        self.assertIn("owned paths", text)
+
+    def test_planner_and_reviewer_prompts_name_public_seams_and_boundaries(self):
+        planner = prompts.planner_prompt(Path("plan.md"))
+        review = prompts.plan_review_prompt(
+            Path("plan.md"),
+            Path("review.md"),
+            [],
+            focus=None,
+            check_worktree_hygiene=False,
+        )
+
+        for text in (planner, review):
+            self.assertIn("public seam", text)
+            self.assertIn("module boundary", text)
+
     def test_plan_review_prompt_names_plan_verdict_and_lint_gates(self):
         text = prompts.plan_review_prompt(
             Path("p.md"),

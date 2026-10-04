@@ -40,7 +40,7 @@ from meow.infrastructure.worktree_setup import WorktreeSetupError, run_setup
 from meow.project.plan_files import _latest_plan_file
 from meow.project.plan_state import PlanStore
 from meow.project.preplan import gather_context, prepare_preplan
-from meow.project.shaping import ShapeContext, load_shape_artifact
+from meow.project.shaping import ShapeContext, is_bug_request, load_shape_artifact
 from meow.tasks.model import load_task_graph
 from meow.tasks.runner import run_parallel_plan
 
@@ -127,6 +127,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
     branch = branch_result.stdout.strip() or "detached"
     sprint.config["_run_journal"] = (store, record.id)
     sprint.config["_unattended"] = unattended
+    sprint.config["_bug_mode"] = is_bug_request(request)
     if shape_path is not None:
         artifact = load_shape_artifact(shape_path)
         if hasattr(artifact, "chosen_approach"):
@@ -393,6 +394,7 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
             "Unresolved product decision before planning; specify the intended outcome"
         )
     sprint.config["_preplan_context"] = preplan.to_dict()
+    sprint.config["_bug_mode"] = is_bug_request(request)
     if preplan.shape is not None and shape_path is None:
         sprint.config["_shape_context"] = ShapeContext(
             "automatic preplan",

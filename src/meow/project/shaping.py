@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -47,6 +48,19 @@ class BreadboardArtifact:
     wiring: tuple[str, ...]
     vertical_slices: tuple[str, ...]
     reflection: tuple[str, ...] = ()
+
+
+_BUG_REQUEST = re.compile(
+    r"\b(?:bug|bugfix|debug|debugging|regression|regressed|broken|crash|crashes|"
+    r"exception|traceback|stack trace|failing test|intermittent|flaky|timeout|"
+    r"slow|incorrect|wrong output)\b",
+    re.I,
+)
+
+
+def is_bug_request(request: str) -> bool:
+    """Return whether a request calls for diagnosis rather than feature work."""
+    return bool(_BUG_REQUEST.search(request))
 
 
 def assess_request(request: str) -> ShapeRecommendation:
