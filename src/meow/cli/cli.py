@@ -9,6 +9,7 @@ from dataclasses import asdict
 from importlib.metadata import version
 from pathlib import Path
 
+from meow.cli.ipython_cli import start_ipython
 from meow.cli.queue_cli import queue
 from meow.cli.resume_cli import resume
 from meow.cli.review_cli import run_review_command
@@ -767,10 +768,13 @@ def _creates_a_worktree(args, *, use_worktree: bool) -> bool:
     return False
 
 
-def cli_main():  # ruff: ignore[too-many-statements, too-many-return-statements] -- command dispatch
+def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-statements] -- command dispatch
     configure_logging()
+    if argv is None and len(sys.argv) == 1:
+        start_ipython()
+        return
     parser = _build_arg_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.command == "native":
         run_native(args)
         return

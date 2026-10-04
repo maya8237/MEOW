@@ -21,6 +21,12 @@ These are the commands meant for normal project work:
 | `meow queue` | Enqueue tasks or run queued tasks serially in the current repository. |
 | `meow hooks` | Manage optional host hooks after reviewing what they install. |
 
+Running `meow` without a command opens an IPython session. Inside it, the
+top-level MEOW commands are available as bare commands, for example
+`status`, `run "Add CSV export" --name csv-export`, and `native verify`.
+The explicit `%meow ...` magic and regular `!meow ...` shell form are also
+available.
+
 ### Queueing work
 
 Use `meow queue "request"` to persist work for the current repository. This

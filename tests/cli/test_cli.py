@@ -2011,6 +2011,15 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 1)
 
 
+class InteractiveCliTests(unittest.TestCase):
+    @patch("meow.cli.cli.start_ipython")
+    def test_no_command_starts_ipython(self, mock_start_ipython):  # ruff: ignore[no-self-use]
+        with patch("sys.argv", ["meow"]):
+            cli.cli_main()
+
+        mock_start_ipython.assert_called_once_with()
+
+
 class FeatureNameRequirementTests(unittest.TestCase):
     """No test anywhere exercised _validate_feature_name_requirement before
     -- found while adversarially checking worktree-mode edge cases. Confirmed
