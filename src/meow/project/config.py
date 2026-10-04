@@ -8,6 +8,7 @@ wiring and orchestration that consume them.
 
 import os
 import platform
+import re
 import shlex
 import shutil
 from dataclasses import dataclass
@@ -93,6 +94,24 @@ DEFAULT_CONFIG = {
         "gitlab": {"enabled": False},
     },
 }
+
+_WINDOWS_ENV_VAR = re.compile(r"%([A-Za-z_][A-Za-z0-9_]*)%")
+
+
+def _expand_config_environment(value):
+    """Expand common environment-variable syntaxes in TOML values."""
+    if isinstance(value, str):
+        value = os.path.expandvars(value)
+        return _WINDOWS_ENV_VAR.sub(
+            lambda match: os.environ.get(match.group(1), match.group(0)), value
+        )
+    if isinstance(value, list):
+        return [_expand_config_environment(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _expand_config_environment(item) for key, item in value.items()
+        }
+    return value
 
 
 @dataclass(frozen=True)
@@ -679,15 +698,11 @@ def load_config(working_dir: Path) -> dict:
     from meow.project.permissions import parse_policy
 
     config_path = working_dir / CONFIG_FILENAME
-    if not config_path.exists():
-        raise FileNotFoundError(
-            f"No {CONFIG_FILENAME} found in {working_dir}. "
-            "Create one before running the harness -- see the harness "
-            "repo's README for the required fields."
-        )
-
-    with open(config_path, "rb") as f:
-        user_config = tomllib.load(f)
+    if config_path.exists():
+        with open(config_path, "rb") as f:
+            user_config = _expand_config_environment(tomllib.load(f))
+    else:
+        user_config = {}
 
     config = {**DEFAULT_CONFIG, **user_config}
     config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}

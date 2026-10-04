@@ -186,6 +186,36 @@ class LoadConfigOsValidationTests(unittest.TestCase):
             config = load_config(working_dir)  # no raise, on whatever host OS
             self.assertEqual(config["lint"][0].command, "ruff check")
 
+    def test_load_config_expands_windows_and_posix_environment_variables(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            working_dir = Path(tmp)
+            (working_dir / ".harness.toml").write_text(
+                'docs_dir = "%USERPROFILE%/meow-docs"\n'
+                'lint_command = "ruff check"\n'
+                '[tester]\n'
+                'base_url = "$MEOW_BASE_URL/api"\n',
+                encoding="utf-8",
+            )
+            with patch.dict(
+                "os.environ",
+                {
+                    "USERPROFILE": r"C:\Users\alice",
+                    "MEOW_BASE_URL": "http://localhost:3000",
+                },
+                clear=False,
+            ):
+                config = load_config(working_dir)
+
+        self.assertEqual(config["docs_dir"], r"C:\Users\alice/meow-docs")
+        self.assertEqual(config["tester"]["base_url"], "http://localhost:3000/api")
+
+    def test_load_config_uses_defaults_when_harness_file_is_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_config(Path(tmp))
+
+        self.assertEqual(config["docs_dir"], "docs/exec-plans/active")
+        self.assertEqual(config["lint"], [])
+
 
 class ValidateMaxRoundsTests(unittest.TestCase):
     """max_rounds <= 0 doesn't crash in any round-loop shape -- every one
