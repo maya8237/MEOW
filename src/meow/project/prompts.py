@@ -92,6 +92,9 @@ def tester_prompt(report_file: Path) -> str:
 def architecture_review_instructions(*, check_worktree_hygiene: bool = True) -> str:
     """Tell the reviewer to look for monolithic or overgrown modules."""
     instructions = (
+        "For the changed behavior, identify the public seam and module boundary "
+        "that should own it. Prefer a deep, cohesive module with a narrow "
+        "interface over spreading policy across callers. "
         "Also perform a SOLID/SRP review. Flag any file or class that mixes "
         "multiple responsibilities, such as config parsing + agent wiring + "
         "lint hooks + orchestration + CLI handling in one module. Treat any "
@@ -161,7 +164,18 @@ def planner_prompt(
     plan_file: Path,
     shape_context: ShapeContext | None = None,
     project_context: dict | None = None,
+    *,
+    bug_mode: bool = False,
 ) -> str:
+    bug_instructions = (
+        " This is a bug-fix request. The plan must first reproduce the failure "
+        "with a tight, red-capable test at the real public seam, then minimise it, "
+        "rank falsifiable hypotheses, and define the regression test and "
+        "verification evidence that will prove the fix. Do not plan speculative "
+        "refactoring before the cause is established."
+        if bug_mode
+        else ""
+    )
     return (
         "You are a planning agent. Consult the explorer subagent for "
         "any codebase context you need -- don't explore directly. "
@@ -185,7 +199,10 @@ def planner_prompt(
             if project_context
             else ""
         )
-        + " Use cited observations in planning. Do not suggest doc edits."
+        + " Identify the public seam being changed, the module boundary that owns "
+        "it, and why the proposed placement preserves a deep, cohesive interface. "
+        "Use cited observations in planning. Do not suggest doc edits."
+        + bug_instructions
     )
 
 
@@ -203,7 +220,10 @@ def generator_prompt(plan_file: Path) -> str:
         "test, confirm the expected failure, implement, then run it "
         "and confirm it passes. When an unexpected failure occurs, "
         "use systematic debugging to establish its root cause before "
-        "editing. Before acting on reviewer feedback, verify each "
+        "editing. For a bug-fix plan, first reproduce and minimise the "
+        "reported failure, test ranked hypotheses one at a time, and leave "
+        "a regression test at the correct public seam. Before acting on reviewer "
+        "feedback, verify each "
         "finding against the code and plan; report unsupported or "
         "out-of-scope findings instead of making unrelated changes. "
         "Before reporting a task complete, run relevant project tests "

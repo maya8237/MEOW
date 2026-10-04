@@ -1,10 +1,20 @@
 from meow.project.shaping import (
     BreadboardArtifact,
     assess_request,
+    is_bug_request,
     load_shape_artifact,
     reflect_breadboard,
     save_shape_artifact,
 )
+
+
+def test_bug_request_detects_debugging_language_and_references():
+    assert is_bug_request("fix the bug at line 42")
+    assert is_bug_request("debug the intermittent timeout")
+
+
+def test_bug_request_does_not_classify_ordinary_feature_work():
+    assert not is_bug_request("add a button to settings")
 
 
 def test_clear_requests_do_not_require_shaping():

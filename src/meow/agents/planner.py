@@ -28,6 +28,7 @@ class PlannerAgent(Agent):
                 plan_file,
                 shape_context,
                 self.context.config.get("_preplan_context"),
+                bug_mode=bool(self.context.config.get("_bug_mode", False)),
             ),
             allowed_tools=["Read", "Grep", "Glob", "Write", "Agent"],
             role="planner",
