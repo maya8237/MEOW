@@ -1,0 +1,15 @@
+{
+  "name": "meow",
+  "description": "Claude Code plugins for the MEOW workflow harness.",
+  "owner": {
+    "name": "MEOW"
+  },
+  "plugins": [
+    {
+      "name": "meow",
+      "source": "../",
+      "description": "Planner, generator, reviewer, and lint workflow skills for MEOW.",
+      "version": "0.1.0"
+    }
+  ]
+}
