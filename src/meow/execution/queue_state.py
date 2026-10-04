@@ -1,5 +1,7 @@
 """Durable queue records and repository-scoped worker locking."""
 
+from __future__ import annotations
+
 import json
 import os
 import socket
