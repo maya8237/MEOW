@@ -1,2 +1,0 @@
-include:
-  - local: templates/gitlab-ci-review.yml
