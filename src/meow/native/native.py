@@ -47,6 +47,7 @@ from meow.project.config import (
     load_config,
     resolve_command_cwd,
     split_command,
+    unresolved_environment_references,
 )
 from meow.project.shaping import (
     assess_request,
@@ -271,13 +272,7 @@ def _verify_command(command, active_dir: Path) -> dict:
 
 def _unresolved_env(environment: dict[str, str]) -> list[str]:
     """List missing variable names without returning configured values."""
-    return [
-        key
-        for value in environment.values()
-        if value.startswith("$")
-        for key in [value[1:].strip("{}")]
-        if not os.environ.get(key)
-    ]
+    return unresolved_environment_references(environment)
 
 
 def _launcher_status(command: str, unresolved: list[str]) -> str:
@@ -308,13 +303,7 @@ def _verify_mcp(
         isinstance(argument, str) for argument in args
     )
     missing_env = [key for key in required_env if not environment.get(key)]
-    unresolved_env = [
-        key
-        for key, value in env_config.items()
-        if isinstance(value, str)
-        and value.startswith("$")
-        and not environment.get(value[1:].strip("{}"))
-    ]
+    unresolved_env = unresolved_environment_references(env_config)
 
     if not config_complete or not args_valid:
         status = "invalid_config"

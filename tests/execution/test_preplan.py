@@ -45,6 +45,22 @@ def test_gather_context_selects_relevant_code_without_writing(tmp_path):
     assert all("create" not in item.lower() for item in evidence.uncertainty)
 
 
+def test_gather_context_excludes_generated_execution_plans(tmp_path):
+    _git(tmp_path, "init")
+    (tmp_path / "src.py").write_text("def refund_payment(): return True\n")
+    plan_dir = tmp_path / "docs" / "exec-plans" / "active"
+    plan_dir.mkdir(parents=True)
+    (plan_dir / "refund.md").write_text(
+        "Generated execution plan for refund payment.\n"
+    )
+    _git(tmp_path, "add", ".")
+
+    evidence = gather_context(tmp_path, "Fix refund payment")
+
+    assert any("src.py" in item for item in evidence.references)
+    assert not any("docs/exec-plans/" in item for item in evidence.references)
+
+
 def test_missing_docs_stays_internal_uncertainty(tmp_path):
     _git(tmp_path, "init")
     (tmp_path / "src.py").write_text("def run(): pass\n")

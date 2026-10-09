@@ -1,5 +1,21 @@
 {
   "name": "meow",
-  "description": "Planner/generator/reviewer harness engine: plan, implement, and review feature work through .harness.toml.",
-  "version": "0.1.0"
+  "displayName": "MEOW",
+  "description": "Simple, template-driven Claude Agent SDK automation that turns requests and issues into verified branches with minimal supervision.",
+  "version": "0.1.0",
+  "author": {
+    "name": "MEOW contributors",
+    "url": "https://github.com/maya8237/MEOW"
+  },
+  "homepage": "https://github.com/maya8237/MEOW#readme",
+  "repository": "https://github.com/maya8237/MEOW",
+  "keywords": [
+    "claude-code",
+    "claude-agent-sdk",
+    "agent-skills",
+    "workflow-automation",
+    "code-review",
+    "developer-tools",
+    "python"
+  ]
 }

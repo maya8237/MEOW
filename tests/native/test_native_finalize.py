@@ -46,3 +46,31 @@ def test_native_finalize_delivers_after_current_evidence(tmp_path):
         result = asyncio.run(finalize(tmp_path, tmp_path, run_id))
     assert result["complete"]
     deliver.assert_called_once()
+
+
+def test_native_finalize_loads_repository_config_for_worktree(tmp_path):
+    repo = tmp_path / "repo"
+    active = tmp_path / "worktree"
+    repo.mkdir()
+    active.mkdir()
+    (repo / ".meow").mkdir()
+    (repo / ".meow" / "config.toml").write_text("max_rounds = 1\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q", "-b", "dev", str(repo)], check=True)
+    run_id = checkpoint(repo, active, "planned", request="work")["run_id"]
+    config = {"tester": {"tests": []}}
+
+    with (
+        patch("meow.cli.resume_cli._validate", return_value=None),
+        patch("meow.native.native_state.load_config", return_value=config) as load,
+        patch(
+            "meow.native.native_state.run_final_checks",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch("meow.native.native_state.configured_checks", return_value=[]),
+        patch("meow.native.native_state.completion_ready", return_value=False),
+    ):
+        result = asyncio.run(finalize(repo, active, run_id))
+
+    load.assert_called_once_with(repo)
+    assert not result["complete"]

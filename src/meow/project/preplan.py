@@ -136,7 +136,7 @@ def gather_context(  # ruff: ignore[complex-structure, too-many-branches, too-ma
         }:
             continue
         rel = path.relative_to(repo).as_posix()
-        if rel.startswith(".meow/"):
+        if rel.startswith(("docs/exec-plans/", ".meow/")):
             continue
         if rel == "AGENTS.md":
             uncertainty.extend(_broken_guidance_links(path, repo))

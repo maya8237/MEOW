@@ -1,14 +1,16 @@
 {
   "name": "meow",
-  "description": "Claude Code plugins for the MEOW workflow harness.",
+  "description": "Simple, template-driven Claude Agent SDK automation for Claude Code.",
   "owner": {
-    "name": "MEOW"
+    "name": "MEOW",
+    "url": "https://github.com/maya8237/MEOW"
   },
   "plugins": [
     {
       "name": "meow",
-      "source": "../",
-      "description": "Planner, generator, reviewer, and lint workflow skills for MEOW.",
+      "displayName": "MEOW",
+      "source": "./",
+      "description": "Configure once, submit software work, and receive a verified branch with minimal supervision.",
       "version": "0.1.0"
     }
   ]

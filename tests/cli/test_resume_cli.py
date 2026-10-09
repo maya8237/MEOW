@@ -4,8 +4,9 @@ import asyncio
 import subprocess
 from unittest.mock import AsyncMock, patch
 
-from meow.cli.resume_cli import resume
+from meow.cli.resume_cli import _validate, resume
 from meow.execution.run_state import RunStore
+from meow.infrastructure.checks import config_fingerprint
 
 
 def _record(tmp_path):
@@ -144,6 +145,56 @@ def test_changed_config_refuses_before_agent(tmp_path, capsys):
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()
     assert "configuration changed" in capsys.readouterr().err.lower()
+
+
+def test_validate_reads_repository_config_when_worktree_is_linked(tmp_path):
+    repo = tmp_path / "repo"
+    active = tmp_path / "worktree"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "dev", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    (repo / "file.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "file.txt"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "base"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feature",
+            str(active),
+            "dev",
+        ],
+        check=True,
+    )
+    (repo / ".meow").mkdir()
+    (repo / ".meow" / "config.toml").write_text("max_rounds = 1\n", encoding="utf-8")
+
+    with patch("meow.project.config.user_config_path", return_value=tmp_path / "none"):
+        store = RunStore(repo)
+        record = store.create(
+            source="prompt",
+            request="x",
+            repo=repo,
+            worktree=active,
+            branch="feature",
+        )
+        store.transition(
+            record.id,
+            "interrupted_mutation",
+            config_fingerprint=config_fingerprint(repo),
+        )
+        problem = _validate(store.load(record.id), repo)
+
+    assert problem is None
 
 
 def test_missing_session_reference_refuses_resume(tmp_path, capsys):

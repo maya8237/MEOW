@@ -124,8 +124,8 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
             ),
             **({"tester": tester} if tester is not None else {}),
         }
-    if not record.config_fingerprint and config_paths(active_dir):
-        patch["config_fingerprint"] = config_fingerprint(active_dir)
+    if not record.config_fingerprint and config_paths(repo):
+        patch["config_fingerprint"] = config_fingerprint(repo)
     record = store.transition(run_id, phase, **patch)
     return {
         "run_id": record.id,
@@ -148,7 +148,7 @@ async def finalize(  # ruff: ignore[too-many-statements]
         raise ValueError(problem)
     if Path(record.worktree).resolve() != active_dir.resolve():
         raise ValueError("Saved worktree differs from active directory")
-    config = load_config(active_dir)
+    config = load_config(repo)
     store.transition(run_id, "checking")
     try:
         results = await run_final_checks(active_dir, config)
