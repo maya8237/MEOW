@@ -144,3 +144,12 @@ def test_changed_config_refuses_before_agent(tmp_path, capsys):
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()
     assert "configuration changed" in capsys.readouterr().err.lower()
+
+
+def test_missing_session_reference_refuses_resume(tmp_path, capsys):
+    store, record = _record(tmp_path)
+    store.transition(record.id, "generator_started")
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
+    run.assert_not_awaited()
+    assert "missing claude session" in capsys.readouterr().err.lower()

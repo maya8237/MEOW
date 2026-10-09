@@ -22,7 +22,7 @@ class ExplorerAgent(Agent):
             prompt=prompt,
             tools=["Read", "Grep", "Glob", "Bash"],
             model=self.context.model("explorer"),
-            skills=["superpowers:systematic-debugging"],
+            skills=self.skills("explorer", ["superpowers:systematic-debugging"]),
         )
 
     @classmethod

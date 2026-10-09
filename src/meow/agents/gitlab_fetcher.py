@@ -71,7 +71,7 @@ class GitlabFetcherAgent(Agent):
         async for message in query(
             prompt="Check GitLab MCP connectivity.", options=options
         ):
-            log_stream_message("gitlab_fetcher", message)
+            log_stream_message("gitlab_fetcher", message, options=options)
             used_gitlab_tool = used_gitlab_tool or _used_gitlab_tool(message)
             if isinstance(message, ResultMessage):
                 succeeded = message.subtype == "success"

@@ -79,6 +79,16 @@ def _partial_tasks(record: RunRecord) -> bool:
     )
 
 
+def _required_session_roles(record: RunRecord, resume_at: str) -> set[str]:
+    phases = {step.get("phase") for step in record.transitions}
+    required = set()
+    if "generator_started" in phases:
+        required.add("generator")
+    if "reviewer_started" in phases:
+        required.add("reviewer")
+    return required if resume_at == "review" else {"generator"} & required
+
+
 async def resume(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-statements]
     working_dir: Path,
     run_id: str | None = None,
@@ -121,8 +131,6 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
             file=sys.stderr,
         )
         return 1
-    clear_cancel(store, record.id)
-    store.transition(record.id, "resuming", attempt=record.attempt + 1)
     review_first = record.phase not in {"created", "preparing", "planning", "planned"}
     review_first = (
         review_first
@@ -143,6 +151,19 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
             for step in record.transitions
         )
     )
+    resume_at = "review" if review_first else "generate"
+    required_sessions = _required_session_roles(record, resume_at)
+    missing_sessions = sorted(required_sessions - set(record.sessions))
+    if missing_sessions:
+        print(
+            "Cannot resume: missing Claude session reference(s) for "
+            f"{', '.join(missing_sessions)}. Inspect with meow status "
+            f"{record.id} and start a new run if the transcript is unavailable.",
+            file=sys.stderr,
+        )
+        return 1
+    clear_cancel(store, record.id)
+    store.transition(record.id, "resuming", attempt=record.attempt + 1)
     import sys as _sys
 
     runner = getattr(_sys.modules.get("meow.cli.resume_cli"), "run_sprint", run_sprint)
@@ -152,8 +173,9 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
         record.request,
         use_worktree=False,
         plan_file=Path(record.plan_file) if record.plan_file else None,
-        resume_at="review" if review_first else "generate",
+        resume_at=resume_at,
         run_id=record.id,
         record_root=Path(record.repo),
+        required_session_roles=required_sessions,
     )
     return 0

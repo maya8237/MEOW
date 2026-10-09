@@ -29,6 +29,49 @@ def test_create_transition_and_latest(tmp_path):
     assert not list(store.directory.glob("*.tmp"))
 
 
+def test_run_records_retain_schema_and_role_session_references(tmp_path):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+
+    assert record.schema_version == 1
+    assert record.sessions == {}
+    saved = (store.directory / f"{record.id}.json").read_text(encoding="utf-8")
+    assert saved.endswith("\n")
+    assert store.set_session(record.id, "planner", "claude-session-1").sessions == {
+        "planner": "claude-session-1"
+    }
+
+
+def test_old_run_records_load_with_empty_sessions(tmp_path):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    path = store.directory / f"{record.id}.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw.pop("schema_version")
+    raw.pop("sessions")
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    assert store.load(record.id).sessions == {}
+
+
+def test_future_run_record_schema_is_rejected(tmp_path):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    path = store.directory / f"{record.id}.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["schema_version"] = 999
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(RunStateError, match="corrupt"):
+        store.load(record.id)
+
+
 def test_missing_and_corrupt_records_are_safe(tmp_path):
     store = RunStore(tmp_path)
     with pytest.raises(RunStateError, match="meow status"):

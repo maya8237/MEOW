@@ -69,7 +69,7 @@ class IssueFetcherAgent(Agent):
         async for message in query(
             prompt="Check Jira MCP connectivity.", options=options
         ):
-            log_stream_message("issue_fetcher", message)
+            log_stream_message("issue_fetcher", message, options=options)
             used_jira_tool = used_jira_tool or _used_jira_tool(message)
             if isinstance(message, ResultMessage):
                 succeeded = message.subtype == "success"

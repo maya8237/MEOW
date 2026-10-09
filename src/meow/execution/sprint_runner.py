@@ -65,6 +65,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
     shape_path: Path | None = None,
     unattended: bool = False,
     worktree_preexisting: bool = False,
+    required_session_roles: set[str] | None = None,
 ):
     """Plan (unless `plan_file` is given) then implement it in a round loop.
 
@@ -129,6 +130,8 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
     sprint.config["_run_journal"] = (store, record.id)
     sprint.config["_unattended"] = unattended
     sprint.config["_bug_mode"] = is_bug_request(request)
+    if required_session_roles:
+        sprint.config["_resume_required_roles"] = set(required_session_roles)
     if shape_path is not None:
         artifact = load_shape_artifact(shape_path)
         if hasattr(artifact, "chosen_approach"):
