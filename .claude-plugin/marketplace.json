@@ -1,6 +1,6 @@
 {
   "name": "meow",
-  "description": "Simple, template-driven Claude Agent SDK automation for Claude Code.",
+  "description": "Simple, template-driven harness engineering for Claude Code and the Claude Agent SDK.",
   "owner": {
     "name": "MEOW",
     "url": "https://github.com/maya8237/MEOW"
@@ -10,7 +10,7 @@
       "name": "meow",
       "displayName": "MEOW",
       "source": "./",
-      "description": "Configure once, submit software work, and receive a verified branch with minimal supervision.",
+      "description": "Configure once, submit software work, and let MEOW's harness carry it to a verified branch.",
       "version": "0.1.0"
     }
   ]

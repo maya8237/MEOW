@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MEOW harness engineering</title>
+  <style>
+    :root {
+      --bg: #f7f8fc;
+      --card: #ffffff;
+      --ink: #101828;
+      --muted: #5f6b7a;
+      --line: #dfe4ee;
+      --accent: #635bff;
+      --accent-soft: #eeedff;
+      --green: #0f9d78;
+      --green-soft: #e5f7f0;
+      --shadow: 0 16px 36px rgba(31, 41, 55, .08);
+    }
+    :root[data-theme="dark"] {
+      --bg: #0b1020;
+      --card: #151d31;
+      --ink: #f2f4fb;
+      --muted: #aab4c7;
+      --line: #2b3853;
+      --accent: #9a93ff;
+      --accent-soft: #28264f;
+      --green: #4fd1a5;
+      --green-soft: #173e38;
+      --shadow: 0 18px 40px rgba(0, 0, 0, .25);
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .stage {
+      width: 100vw;
+      height: 100vh;
+      padding: 5cqmin 5.5cqmin 3.5cqmin;
+      display: flex;
+      flex-direction: column;
+      gap: 3cqmin;
+      container-type: size;
+      background: radial-gradient(110cqmin 70cqmin at 100% 0%, var(--accent-soft), transparent 62%), var(--bg);
+    }
+    .eyebrow {
+      color: var(--accent);
+      font-size: 2cqmin;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 1cqmin 0 0;
+      font-size: 5.4cqmin;
+      line-height: 1.02;
+      letter-spacing: -.04em;
+    }
+    .lede {
+      max-width: 70cqmin;
+      margin: 1.2cqmin 0 0;
+      color: var(--muted);
+      font-size: 2.35cqmin;
+      line-height: 1.35;
+      font-weight: 500;
+    }
+    .workflow {
+      min-height: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 3cqmin;
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: stretch;
+      gap: 2cqmin;
+    }
+    .step {
+      position: relative;
+      min-height: 23cqmin;
+      padding: 2.2cqmin;
+      border: 1px solid var(--line);
+      border-radius: 2cqmin;
+      background: var(--card);
+      box-shadow: var(--shadow);
+    }
+    .step:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      z-index: 2;
+      right: -2.2cqmin;
+      top: 50%;
+      transform: translate(50%, -58%);
+      color: var(--accent);
+      font-size: 3.2cqmin;
+      font-weight: 800;
+    }
+    .number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 4.2cqmin;
+      height: 4.2cqmin;
+      border-radius: 50%;
+      color: var(--accent);
+      background: var(--accent-soft);
+      font-size: 1.8cqmin;
+      font-weight: 800;
+    }
+    .step h2 { margin: 2cqmin 0 1cqmin; font-size: 2.45cqmin; line-height: 1.05; }
+    .step p { margin: 0; color: var(--muted); font-size: 1.8cqmin; line-height: 1.35; }
+    .step.agent { border-color: var(--accent); background: linear-gradient(145deg, var(--accent-soft), var(--card)); }
+    .quality {
+      display: flex;
+      align-items: center;
+      gap: 1.5cqmin;
+      padding: 1.8cqmin 2.4cqmin;
+      border: 1px solid var(--green);
+      border-radius: 2cqmin;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 2cqmin;
+      line-height: 1.3;
+    }
+    .quality strong { color: var(--ink); }
+    footer {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 1.7cqmin;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <header>
+      <div class="eyebrow">MEOW / HARNESS ENGINEERING</div>
+      <h1>One request. A verified branch.</h1>
+      <p class="lede">Simple automation on the surface; templates, context, state, checks, and delivery around Claude underneath.</p>
+    </header>
+    <main class="workflow">
+      <div class="flow" aria-label="MEOW workflow from request to verified branch">
+        <section class="step">
+          <div class="number">01</div>
+          <h2>Say what you want</h2>
+          <p>Feature request, queue, or issue. Plain language is enough.</p>
+        </section>
+        <section class="step">
+          <div class="number">02</div>
+          <h2>Project harness</h2>
+          <p>MEOW loads the repository rules, templates, checks, integrations, and defaults.</p>
+        </section>
+        <section class="step agent">
+          <div class="number">03</div>
+          <h2>Claude Agent SDK</h2>
+          <p>One session explores, plans, implements, and responds to feedback.</p>
+        </section>
+        <section class="step">
+          <div class="number">04</div>
+          <h2>Quality loop</h2>
+          <p>Isolated worktree, configured checks, independent review, and fixes.</p>
+        </section>
+        <section class="step">
+          <div class="number">05</div>
+          <h2>Finished branch</h2>
+          <p>Inspect the evidence, resume a checkpoint, or deliver the passing branch.</p>
+        </section>
+      </div>
+      <div class="quality"><strong>Done means done:</strong> MEOW's harness carries the repetitive path until the configured gates pass, then leaves a branch you can inspect or deliver.</div>
+    </main>
+    <footer><span>Configure once. Hand off the outcome.</span><span>MEOW</span></footer>
+  </div>
+  <script>
+    const theme = new URLSearchParams(location.search).get("theme");
+    if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
+    window.__VIZ_READY__ = false;
+    window.vizReady = () => { window.__VIZ_READY__ = true; };
+    document.fonts?.ready.then(() => requestAnimationFrame(() => requestAnimationFrame(window.vizReady)));
+  </script>
+</body>
+</html>

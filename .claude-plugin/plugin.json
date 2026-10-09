@@ -1,7 +1,7 @@
 {
   "name": "meow",
   "displayName": "MEOW",
-  "description": "Simple, template-driven Claude Agent SDK automation that turns requests and issues into verified branches with minimal supervision.",
+  "description": "Simple, template-driven harness engineering for Claude Agent SDK: turn requests and issues into verified branches with minimal supervision.",
   "version": "0.1.0",
   "author": {
     "name": "MEOW contributors",
@@ -12,6 +12,7 @@
   "keywords": [
     "claude-code",
     "claude-agent-sdk",
+    "harness-engineering",
     "agent-skills",
     "workflow-automation",
     "code-review",
