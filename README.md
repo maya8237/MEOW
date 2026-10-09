@@ -196,7 +196,7 @@ Each skill is available with the `meow` namespace:
 | `/meow:review` | Review a prompt, plan, branch diff, Jira issue, GitLab merge request, or existing review; optionally fix findings. |
 | `/meow:lint` | Run the current project's configured linters and fix their findings in the active session. |
 | `/meow:onboard` | Set up MEOW configuration, ignore rules, project checks, and optional integrations. |
-| `/meow:migration` | Convert a legacy MEOW or `.harness.toml` layout to the current structure. |
+| `/meow:migration` | Convert a legacy MEOW layout to the current structure. |
 | `/meow:customize` | Decide where to add a skill, agent, MCP tool, or workflow behavior. |
 
 ## CLI essentials

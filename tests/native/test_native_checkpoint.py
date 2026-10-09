@@ -13,7 +13,8 @@ from meow.native.native_state import checkpoint
 
 def test_native_checkpoint_create_and_interrupted_mutation(tmp_path):
     subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
-    (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     plan = tmp_path / "plan.md"
     plan.write_text("plan", encoding="utf-8")
 

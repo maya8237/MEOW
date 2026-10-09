@@ -264,8 +264,7 @@ shareable project configuration is `.meow/config.toml`. Configuration priority
 is `.meow/config.local.toml`, project `.meow/config.toml`, user
 `~/.meow/config.toml`, then built-in defaults. `agent_skills.default` and
 `agent_skills.<role>` are the exception: their lists append across all config
-layers. A legacy `.harness.toml` is read as the project-level compatibility
-fallback. The CLI is the option for
+layers. The CLI is the option for
 unattended terminal or scheduled runs. See the shared
 [native mode protocol](../skills/_shared/native-mode.md).
 

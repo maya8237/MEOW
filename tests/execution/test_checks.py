@@ -21,6 +21,11 @@ from meow.infrastructure.checks import (
 from meow.project.config import load_config
 
 
+@pytest.fixture(autouse=True)
+def _meow_config_directory(tmp_path):
+    (tmp_path / ".meow").mkdir()
+
+
 def test_preflight_validates_executable_and_cwd_without_running(tmp_path):
     app = tmp_path / "app"
     app.mkdir()
@@ -69,7 +74,7 @@ def test_revision_and_config_changes_invalidate_evidence(tmp_path):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     file = tmp_path / "source.py"
     file.write_text("one", encoding="utf-8")
-    config = tmp_path / ".harness.toml"
+    config = tmp_path / ".meow" / "config.toml"
     config.write_text("x=1", encoding="utf-8")
     check = Check(
         "build",
@@ -108,7 +113,7 @@ def test_config_fingerprint_accepts_user_fallback_outside_project(
 
 
 def test_required_failure_blocks_but_advisory_failure_does_not(tmp_path):
-    (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     failing = Check(
         "build", "fail", sys.executable, ("-c", "raise SystemExit(2)"), required=False
     )
@@ -120,7 +125,7 @@ def test_required_failure_blocks_but_advisory_failure_does_not(tmp_path):
 
 
 def test_same_command_with_different_args_cannot_share_evidence(tmp_path):
-    (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     passing = Check("build", "first", sys.executable, ("-c", "pass"))
     failing = Check("build", "second", sys.executable, ("-c", "raise SystemExit(2)"))
     result = run_check(tmp_path, passing)
@@ -128,7 +133,7 @@ def test_same_command_with_different_args_cannot_share_evidence(tmp_path):
 
 
 def test_output_is_bounded(tmp_path):
-    (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     check = Check(
         "build",
         "large",
@@ -142,7 +147,7 @@ def test_output_is_bounded(tmp_path):
 
 
 def test_build_defaults_and_advisory_config(tmp_path):
-    (tmp_path / ".harness.toml").write_text(
+    (tmp_path / ".meow" / "config.toml").write_text(
         '[[lint]]\ncommand="ruff check"\n'
         '[[build]]\ncommand="python -m compileall src"\nrequired=false\n',
         encoding="utf-8",
@@ -153,7 +158,7 @@ def test_build_defaults_and_advisory_config(tmp_path):
 
 
 def test_build_rejects_invalid_command(tmp_path):
-    (tmp_path / ".harness.toml").write_text(
+    (tmp_path / ".meow" / "config.toml").write_text(
         '[[lint]]\ncommand="ruff check"\n[[build]]\ncommand=""\n',
         encoding="utf-8",
     )
@@ -162,7 +167,7 @@ def test_build_rejects_invalid_command(tmp_path):
 
 
 def test_completion_requires_review_tester_and_current_required_gates(tmp_path):
-    (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     check = Check(
         "build",
         "ok",
@@ -181,7 +186,7 @@ def test_completion_requires_review_tester_and_current_required_gates(tmp_path):
 
 
 def test_completion_rejects_stale_reviewer_evidence(tmp_path):
-    (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     check = Check("build", "ok", sys.executable, ("-c", "pass"))
     reviewed_revision = code_revision(tmp_path)
     (tmp_path / "source.py").write_text("new edit", encoding="utf-8")
@@ -196,7 +201,7 @@ def test_completion_rejects_stale_reviewer_evidence(tmp_path):
 
 
 def test_final_test_check_uses_integrated_stage(tmp_path):
-    (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     (tmp_path / "sample.py").write_text("print('ok')", encoding="utf-8")
     from meow.project.config import TestCommand
 
@@ -219,7 +224,7 @@ def test_final_test_check_uses_integrated_stage(tmp_path):
 
 
 def test_final_checks_rerun_when_build_changes_code(tmp_path):
-    (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     (tmp_path / "source.py").write_text("old", encoding="utf-8")
     lint = Check("lint", "lint", sys.executable, ("-c", "pass"))
     build = Check(

@@ -83,7 +83,7 @@ def test_launch_creates_checkpoint_and_worker_log(tmp_path, monkeypatch):
 
 
 def test_real_worker_survives_launcher_and_reports_failure(tmp_path):
-    # An absent harness config makes the fixture worker exit without an agent.
+    # An absent MEOW config makes the fixture worker exit without an agent.
     run_id = background.launch_background(
         tmp_path,
         ["run", "feature", "--name", "x", "--unattended", "--background"],
@@ -186,7 +186,7 @@ def test_notification_is_opt_in_and_sent_once_with_summary_only(
         branch="dev",
     )
     store.transition(record.id, terminal_phase)
-    (tmp_path / ".harness.toml").write_text(
+    (tmp_path / ".meow" / "config.toml").write_text(
         '[background]\nnotify_command = ["notify"]\n', encoding="utf-8"
     )
     calls = []

@@ -3,8 +3,7 @@
 MEOW is a configurable planner, generator, and reviewer loop. The engine lives
 under `src/meow/`; project-specific settings are loaded from the target
 project's `.meow/config.toml`, with a higher-priority local overlay, a
-user-level `~/.meow/config.toml` fallback, and a legacy `.harness.toml`
-compatibility fallback at the project layer.
+user-level `~/.meow/config.toml` fallback, and built-in defaults.
 
 ## Workflow
 

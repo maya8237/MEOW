@@ -84,7 +84,8 @@ def test_required_browser_without_start_command_is_unavailable(tmp_path):
 
 
 def test_browser_provider_failure_blocks_final_check(tmp_path):
-    (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     browser = _browser_config(tmp_path, exit_code=2)
     config = {"lint": [], "build": [], "tester": browser}
     checks = configured_checks(config)
@@ -98,7 +99,8 @@ def test_browser_provider_failure_blocks_final_check(tmp_path):
 
 
 def test_config_accepts_command_browser_provider(tmp_path):
-    (tmp_path / ".harness.toml").write_text(
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text(
         '[[lint]]\ncommand="ruff check"\n'
         '[tester.browser]\nkind="command"\nname="project-browser"\n'
         'entrypoint="npx playwright test"\nrequired=true\n'

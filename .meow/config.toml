@@ -1,0 +1,15 @@
+max_rounds = 8
+docs_dir = ".meow/plans"
+
+[models]
+explorer = "haiku"
+
+[[lint]]
+command = "ruff check"
+fix_flag = "--fix"
+gate = true
+
+[tester]
+[[tester.tests]]
+command = "python -m pytest -q"
+gate = true

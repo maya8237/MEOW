@@ -11,8 +11,7 @@ scheduled Jira runs, and error messages.
 `.meow/config.toml` is optional. If it is absent, MEOW starts with its built-in
 defaults and no lint commands. Configuration priority is the ignored local
 `.meow/config.local.toml`, project `.meow/config.toml`, user
-`~/.meow/config.toml`, then built-in defaults. A legacy `.harness.toml` is
-accepted as the project-level compatibility fallback. String values may reference environment
+`~/.meow/config.toml`, then built-in defaults. String values may reference environment
 variables with either POSIX syntax (`$HOME` or `${HOME}`) or Windows syntax
 (`%USERPROFILE%`); expansion is applied recursively to configured tables and
 lists. Unknown variables are left unchanged.
@@ -216,7 +215,7 @@ Enable and test it with `systemctl enable --now meow-run-jira.timer`, then
 
 | Missing / wrong | Result |
 |---|---|
-| `.meow/config.toml` absent | Built-in defaults are used; no lint commands are configured. A legacy `.harness.toml` is also accepted. |
+| `.meow/config.toml` absent | Built-in defaults are used; no lint commands are configured. |
 | A lint field is present but no `[[lint]]` entry or `lint_command` is defined | `ValueError`: no lint command defined. Config files containing only models, skills, MCP, or other settings are valid. |
 | Unknown key in a `[[lint]]` table (often a top-level key placed after it) | `ValueError` naming the entry and key |
 | No architecture doc anywhere under `docs/` | No error — reviewer's SOLID/SRP pass finds nothing to Glob/Read, so it has no project-specific boundaries to check, just its generic mixed-responsibility rule |

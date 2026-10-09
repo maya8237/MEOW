@@ -21,7 +21,6 @@ except ModuleNotFoundError:
 
 CONFIG_FILENAME = ".meow/config.toml"
 LOCAL_CONFIG_FILENAME = ".meow/config.local.toml"
-LEGACY_CONFIG_FILENAME = ".harness.toml"
 USER_CONFIG_FILENAME = ".meow/config.toml"
 DEFAULT_FIX_FLAG = "--fix"
 LINT_ENTRY_KEYS = frozenset({
@@ -182,13 +181,11 @@ def config_paths(working_dir: Path) -> tuple[Path, ...]:
     project = Path(working_dir)
     local = project / LOCAL_CONFIG_FILENAME
     shared = project / CONFIG_FILENAME
-    legacy = project / LEGACY_CONFIG_FILENAME
     paths = []
     if local.is_file():
         paths.append(local)
-    primary = shared if shared.is_file() else legacy if legacy.is_file() else None
-    if primary is not None:
-        paths.append(primary)
+    if shared.is_file():
+        paths.append(shared)
     fallback = user_config_path()
     if fallback.is_file() and fallback.resolve() not in {
         path.resolve() for path in paths

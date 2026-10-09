@@ -10,7 +10,8 @@ from meow.native.native_state import checkpoint, finalize
 
 def test_native_finalize_requires_review(tmp_path):
     subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
-    (tmp_path / ".harness.toml").write_text(
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text(
         '[[lint]]\ncommand="ruff check"\n', encoding="utf-8"
     )
     run_id = checkpoint(tmp_path, tmp_path, "planned", request="work")["run_id"]
@@ -29,7 +30,8 @@ def test_native_finalize_requires_review(tmp_path):
 
 def test_native_finalize_delivers_after_current_evidence(tmp_path):
     subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
-    (tmp_path / ".harness.toml").write_text(
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text(
         '[[lint]]\ncommand="ruff check"\n', encoding="utf-8"
     )
     run_id = checkpoint(tmp_path, tmp_path, "planned", request="work")["run_id"]

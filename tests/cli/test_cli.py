@@ -1878,7 +1878,7 @@ class ReviewDispatchTests(unittest.TestCase):
 
 class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
     """cli_main's last-resort net around `_dispatch`: a bare ValueError or
-    RuntimeError from deep in run/plan/review (a malformed .harness.toml, a
+    RuntimeError from deep in run/plan/review (a malformed .meow/config.toml, a
     worktree/git failure, an unresumable review-file flavor, ...) must exit
     1 with its message, not propagate as a raw traceback. DirtyWorkingTreeError/
     PlanNotApprovedError/IssueUnresolvedError and review's ValueError are
@@ -1913,7 +1913,7 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
                 "meow.cli.run_plan",
                 new=AsyncMock(
                     side_effect=ValueError(
-                        ".harness.toml: [[lint]] entry 1 must set 'command'"
+                        ".meow/config.toml: [[lint]] entry 1 must set 'command'"
                     )
                 ),
             ),
@@ -1953,9 +1953,9 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, 1)
 
-    def test_missing_harness_toml_exits_cleanly(self):
+    def test_missing_meow_config_exits_cleanly(self):
         # By far the most likely first mistake a new user makes: running
-        # meow before creating .harness.toml at all. load_config raises
+        # meow before creating .meow/config.toml at all. load_config raises
         # FileNotFoundError, a type cli_main's net didn't originally cover.
         with (
             patch("meow.cli._boot_repo"),
@@ -1963,7 +1963,8 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
                 "meow.cli.run_plan",
                 new=AsyncMock(
                     side_effect=FileNotFoundError(
-                        "No .harness.toml found in /some/project. Create one "
+                        "No MEOW configuration file found in /some/project. "
+                        "Create .meow/config.toml "
                         "before running the harness."
                     )
                 ),

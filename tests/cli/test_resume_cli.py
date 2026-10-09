@@ -11,7 +11,8 @@ from meow.infrastructure.checks import config_fingerprint
 
 def _record(tmp_path):
     subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
-    (tmp_path / ".harness.toml").write_text(
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text(
         '[[lint]]\ncommand="ruff check"\n', encoding="utf-8"
     )
     plan = tmp_path / "plan.md"
@@ -134,13 +135,13 @@ def test_changed_config_refuses_before_agent(tmp_path, capsys):
     import hashlib
 
     store, record = _record(tmp_path)
-    original = (tmp_path / ".harness.toml").read_bytes()
+    original = (tmp_path / ".meow" / "config.toml").read_bytes()
     store.transition(
         record.id,
         "interrupted_mutation",
         config_fingerprint=hashlib.sha256(original).hexdigest(),
     )
-    (tmp_path / ".harness.toml").write_text("changed", encoding="utf-8")
+    (tmp_path / ".meow" / "config.toml").write_text("changed", encoding="utf-8")
     with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()

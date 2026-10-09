@@ -35,7 +35,8 @@ def make_repo(tmp: str) -> Path:
     git(root, "init", "-q")
     git(root, "config", "user.email", "t@example.com")
     git(root, "config", "user.name", "t")
-    (root / ".harness.toml").write_text(TOML, encoding="utf-8")
+    (root / ".meow").mkdir()
+    (root / ".meow" / "config.toml").write_text(TOML, encoding="utf-8")
     (root / "docs" / "plans").mkdir(parents=True)
     (root / "docs" / "plans" / "feat.md").write_text("# plan\n", encoding="utf-8")
     (root / "README.md").write_text("x\n", encoding="utf-8")
@@ -47,7 +48,7 @@ def make_repo(tmp: str) -> Path:
 
 
 def write_config(root: Path, command: str) -> None:
-    (root / ".harness.toml").write_text(
+    (root / ".meow" / "config.toml").write_text(
         f'docs_dir = "docs/plans"\n[[lint]]\ncommand = {json.dumps(command)}\n',
         encoding="utf-8",
     )

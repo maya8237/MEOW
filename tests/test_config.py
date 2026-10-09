@@ -169,7 +169,8 @@ class LoadConfigOsValidationTests(unittest.TestCase):
     def test_load_config_rejects_a_mismatched_lint_command(self):
         with tempfile.TemporaryDirectory() as tmp:
             working_dir = Path(tmp)
-            (working_dir / ".harness.toml").write_text(
+            (working_dir / ".meow").mkdir()
+            (working_dir / ".meow" / "config.toml").write_text(
                 '[[lint]]\ncommand = "lint.bat --check"\n', encoding="utf-8"
             )
             with (
@@ -181,7 +182,8 @@ class LoadConfigOsValidationTests(unittest.TestCase):
     def test_load_config_accepts_a_cross_platform_lint_command(self):
         with tempfile.TemporaryDirectory() as tmp:
             working_dir = Path(tmp)
-            (working_dir / ".harness.toml").write_text(
+            (working_dir / ".meow").mkdir()
+            (working_dir / ".meow" / "config.toml").write_text(
                 '[[lint]]\ncommand = "ruff check"\n', encoding="utf-8"
             )
             config = load_config(working_dir)  # no raise, on whatever host OS
@@ -190,7 +192,8 @@ class LoadConfigOsValidationTests(unittest.TestCase):
     def test_load_config_expands_windows_and_posix_environment_variables(self):
         with tempfile.TemporaryDirectory() as tmp:
             working_dir = Path(tmp)
-            (working_dir / ".harness.toml").write_text(
+            (working_dir / ".meow").mkdir()
+            (working_dir / ".meow" / "config.toml").write_text(
                 'docs_dir = "%USERPROFILE%/meow-docs"\n'
                 'lint_command = "ruff check"\n'
                 '[tester]\n'
@@ -352,7 +355,7 @@ class LoadConfigOsValidationTests(unittest.TestCase):
             ["user-review-skill", "shared-review-skill", "local-review-skill"],
         )
 
-    def test_load_config_uses_defaults_when_harness_file_is_missing(self):
+    def test_load_config_uses_defaults_when_config_is_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = load_config(Path(tmp))
 
@@ -399,7 +402,8 @@ class ValidateMaxRoundsTests(unittest.TestCase):
     def test_load_config_rejects_max_rounds_zero(self):
         with tempfile.TemporaryDirectory() as tmp:
             working_dir = Path(tmp)
-            (working_dir / ".harness.toml").write_text(
+            (working_dir / ".meow").mkdir()
+            (working_dir / ".meow" / "config.toml").write_text(
                 'max_rounds = 0\n[[lint]]\ncommand = "ruff check"\n',
                 encoding="utf-8",
             )
@@ -617,7 +621,8 @@ class TesterConfigTests(unittest.TestCase):
 
     def test_load_config_ignores_fully_commented_tester_table(self):
         with tempfile.TemporaryDirectory() as tmp:
-            Path(tmp, ".harness.toml").write_text(
+            Path(tmp, ".meow").mkdir()
+            Path(tmp, ".meow", "config.toml").write_text(
                 (
                     '[[lint]]\ncommand = "ruff check"\n\n# [tester]\n'
                     '# base_url = "http://localhost"\n# [[tester.tests]]\n'
