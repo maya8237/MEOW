@@ -40,8 +40,6 @@ Try it first:
 
 Tell MEOW what you want. It does all the work and gives you the finished branch.
 
-![MEOW harness demo: one simple command becoming a finished branch](docs/demo.gif)
-
 ![MEOW harness engineering workflow from a plain-language request to a verified branch](visualizations/meow-workflow/meow-workflow.png)
 
 ## How it works
