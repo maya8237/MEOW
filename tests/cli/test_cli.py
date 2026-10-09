@@ -61,7 +61,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
         help_text = output.getvalue()
         self.assertIn(
-            "{run,review,plan,status,cancel,worktree,resume,hooks}", help_text
+            "{run,review,plan,status,cancel,worktree,resume,hooks,ipython}", help_text
         )
         self.assertNotIn("_worker", help_text)
         self.assertNotIn("native", help_text)
@@ -723,7 +723,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
             self.assertEqual(
                 (project_root / ".gitignore").read_text(encoding="utf-8"),
-                "venv\n.worktrees/\n.meow/\n.meow-ci-artifacts/\n.claude/settings.local.json\n",
+                "venv\n.worktrees/\n.meow/*\n!.meow/\n!.meow/config.toml\n.claude/settings.local.json\n",
             )
 
     @staticmethod

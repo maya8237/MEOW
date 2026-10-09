@@ -40,8 +40,8 @@ locally first). Resuming from a review file always fixes (there's no
 
 ## Native mode
 
-1. Pick source and mode as above. The project needs a `.harness.toml` at
-   its root.
+1. Pick source and mode as above. The project uses `.meow/config.toml` at
+   its root; legacy `.harness.toml` is a compatibility fallback.
 2. Resolve the working directory and, for jira/gitlab, fetch the source
    material:
    - **prompt** / **plan** / no source: `meow native prepare --no-worktree
@@ -50,7 +50,7 @@ locally first). Resuming from a review file always fixes (there's no
      native latest-plan --working-dir "<project-path>"`; if neither exists
      (no path given, none found), fall back to the prompt source with an
      empty prompt (reviews the git diff / whole project).
-   - **jira**: the project's `.harness.toml` must have `[jira]` with
+   - **jira**: the project's `.meow/config.toml` must have `[jira]` with
      `project_key`. Fetch through the Jira MCP tools already connected to
      this session (tool names containing `jira`) -- not `[jira.mcp]`. If
      none connected, or `[jira]` missing, say so and stop. Need `key`,
@@ -156,7 +156,8 @@ meow review --plan-file "<path>" --test [--fix] --working-dir "<project-path>"
 meow review --review-file "<path>" ["<focus prompt>"] --working-dir "<project-path>"  # always fixes
 ```
 
-Omitting every source flag reviews the latest plan in `docs_dir`, falling
+Omitting every source flag reviews the latest plan in `docs_dir` (default
+`.meow/plans`), falling
 back to the git diff (or whole project) if none exists. `--gitlab` combined
 with `--fix` is rejected -- there is no local checkout to fix. If `meow`
 isn't on PATH, tell the user to install it (README: `pip install -e .` in a

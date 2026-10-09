@@ -6,6 +6,7 @@ _PATCHABLE = {
     "_is_linked_worktree",
     "_prompt_plan_approval",
     "load_config",
+    "launch_background",
     "run_ci_review",
     "run_issue_solver",
     "run_lint_fix",

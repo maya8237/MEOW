@@ -77,7 +77,7 @@ class IssueFetcherAgent(Agent):
         if not used_jira_tool or not succeeded:
             raise RuntimeError(
                 "No active Jira MCP server responded. Check [jira.mcp] in "
-                ".harness.toml (command/args to launch it, e.g. command = "
+                ".meow/config.toml (command/args to launch it, e.g. command = "
                 '"uvx", args = ["mcp-atlassian"]) and the Jira credentials '
                 "it needs in the environment -- see docs/INTEGRATIONS.md."
             )

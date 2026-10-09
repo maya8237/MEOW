@@ -1,7 +1,7 @@
 """
 meow/config.py
 
-Lint-command modeling and .harness.toml loading -- the project-specific
+Lint-command modeling and MEOW configuration loading -- the project-specific
 values every role reads through a `Sprint`, kept separate from the agent
 wiring and orchestration that consume them.
 """
@@ -22,6 +22,7 @@ except ModuleNotFoundError:
 CONFIG_FILENAME = ".meow/config.toml"
 LOCAL_CONFIG_FILENAME = ".meow/config.local.toml"
 LEGACY_CONFIG_FILENAME = ".harness.toml"
+USER_CONFIG_FILENAME = ".meow/config.toml"
 DEFAULT_FIX_FLAG = "--fix"
 LINT_ENTRY_KEYS = frozenset({
     "command",
@@ -133,9 +134,19 @@ def _expand_config_environment(value):
 
 
 def _merge_config(base: dict, override: dict) -> dict:
-    """Merge local TOML over shared TOML, recursively for tables."""
+    """Merge config layers, appending skill lists across every layer."""
     merged = dict(base)
     for key, value in override.items():
+        if key == "agent_skills" and isinstance(merged.get(key), dict) and isinstance(value, dict):
+            skills = dict(merged[key])
+            for role, additions in value.items():
+                previous = skills.get(role)
+                if isinstance(previous, list) and isinstance(additions, list):
+                    skills[role] = [*previous, *additions]
+                else:
+                    skills[role] = additions
+            merged[key] = skills
+            continue
         if isinstance(merged.get(key), dict) and isinstance(value, dict):
             merged[key] = _merge_config(merged[key], value)
         else:
@@ -143,16 +154,28 @@ def _merge_config(base: dict, override: dict) -> dict:
     return merged
 
 
+def user_config_path() -> Path:
+    """Return the optional per-user fallback config path."""
+    return Path.home() / USER_CONFIG_FILENAME
+
+
 def config_paths(working_dir: Path) -> tuple[Path, ...]:
-    """Return the active shared/legacy config and optional local overlay."""
+    """Return configs from highest priority to lowest priority."""
     project = Path(working_dir)
+    local = project / LOCAL_CONFIG_FILENAME
     shared = project / CONFIG_FILENAME
     legacy = project / LEGACY_CONFIG_FILENAME
-    primary = shared if shared.is_file() else legacy if legacy.is_file() else None
-    local = project / LOCAL_CONFIG_FILENAME
-    paths = [primary] if primary is not None else []
+    paths = []
     if local.is_file():
         paths.append(local)
+    primary = shared if shared.is_file() else legacy if legacy.is_file() else None
+    if primary is not None:
+        paths.append(primary)
+    fallback = user_config_path()
+    if fallback.is_file() and fallback.resolve() not in {
+        path.resolve() for path in paths
+    }:
+        paths.append(fallback)
     return tuple(paths)
 
 
@@ -740,7 +763,7 @@ def load_config(working_dir: Path) -> dict:
     from meow.project.permissions import parse_policy
 
     user_config = {}
-    for config_path in config_paths(working_dir):
+    for config_path in reversed(config_paths(working_dir)):
         with open(config_path, "rb") as f:
             user_config = _merge_config(
                 user_config, _expand_config_environment(tomllib.load(f))
@@ -748,7 +771,10 @@ def load_config(working_dir: Path) -> dict:
 
     config = {**DEFAULT_CONFIG, **user_config}
     config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}
-    config["lint"] = [] if not user_config else _normalize_lint_commands(user_config)
+    lint_configured = any(
+        key in user_config for key in ("lint", "lint_command", "lint_fix_flag")
+    )
+    config["lint"] = _normalize_lint_commands(user_config) if lint_configured else []
     _validate_os_compatibility(config["lint"])
     config["tester"] = _normalize_tester_config(user_config)
     config["build"] = normalize_build(user_config.get("build", []))

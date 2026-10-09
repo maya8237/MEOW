@@ -1,7 +1,7 @@
 [project]
 name = "meow"
 version = "0.1.0"
-description = "Harness engine for the Claude Agent SDK, reusable across projects via .harness.toml"
+description = "MEOW workflow engine for the Claude Agent SDK, configurable per project"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

@@ -226,6 +226,9 @@ class LoadConfigOsValidationTests(unittest.TestCase):
                 'name = "browser"\n'
                 'command = "mcp-browser"\n'
                 'args = ["%USERPROFILE%/browser"]\n'
+                '[jira.mcp]\n'
+                'command = "%USERPROFILE%/jira-mcp"\n'
+                'args = ["${MEOW_ARG}"]\n'
                 '[models]\n'
                 'explorer = "shared-model"\n',
                 encoding="utf-8",
@@ -260,6 +263,13 @@ class LoadConfigOsValidationTests(unittest.TestCase):
         self.assertEqual(
             config["tester"]["mcp"][0]["args"], [r"C:\Users\alice/browser"]
         )
+        self.assertEqual(
+            config["jira"]["mcp"],
+            {
+                "command": r"C:\Users\alice/jira-mcp",
+                "args": ["--strict"],
+            },
+        )
         self.assertEqual(config["models"]["explorer"], "shared-model")
         self.assertEqual(config["agent_skills"]["default"], ["my-local-skill"])
 
@@ -275,6 +285,65 @@ class LoadConfigOsValidationTests(unittest.TestCase):
         self.assertEqual(
             expanded,
             "/home/alice//home/alice//home/alice/%NOT_SET%/$NOT_SET/${NOT_SET}",
+        )
+
+    def test_user_config_is_fallback_to_project_shared_and_local(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            working_dir = root / "project"
+            user_home = root / "user"
+            (working_dir / ".meow").mkdir(parents=True)
+            (user_home / ".meow").mkdir(parents=True)
+            (user_home / ".meow" / "config.toml").write_text(
+                'max_rounds = 2\n'
+                '[models]\n'
+                'explorer = "user-explorer"\n'
+                'reviewer = "user-reviewer"\n'
+                'generator = "user-generator"\n'
+                '[jira]\n'
+                'project_key = "USER"\n'
+                '[agent_skills]\n'
+                'default = ["user-skill"]\n'
+                'reviewer = ["user-review-skill"]\n',
+                encoding="utf-8",
+            )
+            (working_dir / ".meow" / "config.toml").write_text(
+                'max_rounds = 4\n'
+                '[models]\n'
+                'reviewer = "shared-reviewer"\n'
+                '[jira]\n'
+                'project_key = "SHARED"\n'
+                '[agent_skills]\n'
+                'default = ["shared-skill"]\n'
+                'reviewer = ["shared-review-skill"]\n',
+                encoding="utf-8",
+            )
+            (working_dir / ".meow" / "config.local.toml").write_text(
+                '[models]\n'
+                'explorer = "local-explorer"\n'
+                '[jira.mcp]\n'
+                'command = "local-mcp"\n'
+                '[agent_skills]\n'
+                'default = ["local-skill"]\n'
+                'reviewer = ["local-review-skill"]\n',
+                encoding="utf-8",
+            )
+            with patch("meow.project.config.Path.home", return_value=user_home):
+                config = load_config(working_dir)
+
+        self.assertEqual(config["max_rounds"], 4)
+        self.assertEqual(config["models"]["explorer"], "local-explorer")
+        self.assertEqual(config["models"]["reviewer"], "shared-reviewer")
+        self.assertEqual(config["models"]["generator"], "user-generator")
+        self.assertEqual(config["jira"]["project_key"], "SHARED")
+        self.assertEqual(config["jira"]["mcp"]["command"], "local-mcp")
+        self.assertEqual(
+            config["agent_skills"]["default"],
+            ["user-skill", "shared-skill", "local-skill"],
+        )
+        self.assertEqual(
+            config["agent_skills"]["reviewer"],
+            ["user-review-skill", "shared-review-skill", "local-review-skill"],
         )
 
     def test_load_config_uses_defaults_when_harness_file_is_missing(self):

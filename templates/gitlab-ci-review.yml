@@ -18,8 +18,8 @@ meow_review:
     - python -m pip install "$MEOW_INSTALL_SPEC"
     - git fetch --no-tags origin refs/heads/dev:refs/remotes/origin/dev
   script:
-    - meow review --ci --artifact-dir "$CI_PROJECT_DIR/.meow-ci-artifacts"
+    - meow review --ci --artifact-dir "$CI_PROJECT_DIR/.meow/ci-artifacts"
   artifacts:
     when: always
     paths:
-      - .meow-ci-artifacts/
+      - .meow/ci-artifacts/

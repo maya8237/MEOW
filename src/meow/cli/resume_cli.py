@@ -66,9 +66,15 @@ def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, to
         try:
             current = config_fingerprint(worktree)
         except OSError:
-            return "Configuration missing. Restore .harness.toml before continuing."
+            return (
+                "Configuration missing. Restore the active MEOW config "
+                "before continuing."
+            )
         if current != record.config_fingerprint:
-            return "Configuration changed. Restore .harness.toml before continuing."
+            return (
+                "Configuration changed. Restore the active MEOW config "
+                "before continuing."
+            )
     return None
 
 

@@ -7,7 +7,7 @@ When a meow skill runs inside a Claude Code session, that session plays
 planner/generator and dispatches reviewer/explorer subagents itself -- no
 Agent SDK process is involved. What the session cannot do reliably from
 prose alone are the mechanical facts the Python harness already owns:
-parsed `.harness.toml`, worktree and branch resolution, plan/review
+parsed MEOW configuration, worktree and branch resolution, plan/review
 lookup, lint execution, verdict parsing, the round counter, and the role
 prompts. `native_cli.py` wires the functions re-exported here to `meow
 native ...` and prints their results as JSON.
@@ -42,7 +42,12 @@ from meow.native.native_prepare import (
 )
 from meow.native.native_prompt import PROMPT_ROLES, role_prompt
 from meow.native.native_state import checkpoint, finalize, round_state
-from meow.project.config import load_config, resolve_command_cwd, split_command, tomllib
+from meow.project.config import (
+    config_paths,
+    load_config,
+    resolve_command_cwd,
+    split_command,
+)
 from meow.project.shaping import (
     assess_request,
     load_shape_artifact,
@@ -140,15 +145,15 @@ def verify(
 ) -> dict:
     """Validate all supported config sections and their local prerequisites."""
     config = load_config(working_dir)
-    user_config = _read_user_config(working_dir)
     integrations = {
-        "jira": _verify_jira(user_config),
-        "gitlab": _verify_gitlab(user_config),
+        "jira": _verify_jira(config),
+        "gitlab": _verify_gitlab(config),
     }
+    paths = config_paths(working_dir)
     result = {
         "valid": True,
         "project_dir": str(working_dir.resolve()),
-        "config_file": str((working_dir / ".harness.toml").resolve()),
+        "config_file": str(paths[0].resolve()) if paths else None,
         "docs_dir": config["docs_dir"],
         "max_rounds": config["max_rounds"],
         "lint_timeout": config["lint_timeout"],
@@ -279,12 +284,6 @@ def _launcher_status(command: str, unresolved: list[str]) -> str:
     if not shutil.which(command):
         return "command_unavailable"
     return "missing_environment" if unresolved else "ready_unchecked"
-
-
-def _read_user_config(working_dir: Path) -> dict:
-    """Read raw .harness.toml tables after `load_config` validated it."""
-    with (working_dir / ".harness.toml").open("rb") as config_file:
-        return tomllib.load(config_file)
 
 
 def _verify_mcp(

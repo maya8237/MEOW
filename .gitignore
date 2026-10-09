@@ -1,8 +1,6 @@
 # meow feature worktrees
 .worktrees/
-docs/exec-plans/
 docs/superpowers/
-.meow-ci-artifacts/
 *.lock
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -211,7 +209,11 @@ tempCodeRunnerFile.py
 
 # Ruff stuff:
 .ruff_cache/
-.meow/
+# Keep project-shared MEOW configuration trackable while ignoring local config
+# and all runtime state/artifacts under the same directory.
+.meow/*
+!.meow/
+!.meow/config.toml
 .claude/settings.local.json
 
 # PyPI configuration file

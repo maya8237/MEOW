@@ -42,7 +42,7 @@ def _load_jira_config(config: dict) -> dict:
     jira = config.get("jira")
     if not isinstance(jira, dict):
         raise ValueError(
-            "No [jira] table found in .harness.toml. `meow run --jira` needs "
+            "No [jira] table found in .meow/config.toml. `meow run --jira` needs "
             "[jira] with 'project_key' set, and a [jira.mcp] table "
             "describing how to launch the Jira MCP server, e.g.:\n\n"
             "[jira]\n"
@@ -58,14 +58,14 @@ def _load_jira_config(config: dict) -> dict:
     project_key = jira.get("project_key")
     if not project_key:
         raise ValueError(
-            "[jira] in .harness.toml must set 'project_key' -- the project "
+            "[jira] in .meow/config.toml must set 'project_key' -- the project "
             "`meow run --jira` searches for the latest issue when none is given."
         )
 
     mcp = jira.get("mcp")
     if not isinstance(mcp, dict) or not mcp.get("command"):
         raise ValueError(
-            "[jira.mcp] in .harness.toml must set 'command' (the program "
+            "[jira.mcp] in .meow/config.toml must set 'command' (the program "
             'that launches the Jira MCP server, e.g. command = "uvx" with '
             'args = ["mcp-atlassian"]).'
         )

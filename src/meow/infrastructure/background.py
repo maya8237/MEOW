@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meow.execution.run_state import RunRecord, RunStore
+from meow.project.config import _expand_config_environment, _merge_config, config_paths
+
+# Keep the old ``background.core`` patch point working for existing callers.
+core = sys.modules[__name__]
 
 _TERMINAL = {
     "complete",
@@ -217,11 +221,18 @@ def _notify_once(  # ruff: ignore[complex-structure, too-many-return-statements]
     record = store.load(run_id)
     if record.phase not in _TERMINAL or record.background.get("notification_claimed"):
         return
-    config_path = Path(record.repo) / ".harness.toml"
-    if not config_path.is_file():
+    config_files = config_paths(Path(record.repo))
+    if not config_files:
         return
     try:
-        raw = tomllib.loads(config_path.read_text(encoding="utf-8"))
+        raw = {}
+        for config_path in reversed(config_files):
+            raw = _merge_config(
+                raw,
+                _expand_config_environment(
+                    tomllib.loads(config_path.read_text(encoding="utf-8"))
+                ),
+            )
         argv = raw.get("background", {}).get("notify_command")
     except (OSError, ValueError, AttributeError):
         return
