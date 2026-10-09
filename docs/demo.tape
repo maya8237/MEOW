@@ -1,56 +1,35 @@
 # Reproducible README demo for MEOW's ordinary CLI surface.
-# The visible transcript is deterministic and does not start a live model
-# request while documentation assets are being generated.
-# Prefer rendering from the repository root with:
-#   vhs docs/demo.tape
-#
-# The checked-in fallback is docs/render-demo.ps1 for environments without VHS.
+# Setup is hidden; the visible recording is a normal Windows terminal session.
 
 Output docs/demo.gif
 
-Set Shell "pwsh"
-Set FontSize 18
-Set FontFamily "Consolas"
-Set Width 1200
-Set Height 650
-Set Theme "Dracula"
-Set Padding 24
-Set TypingSpeed 30ms
+Set Shell "cmd"
+Set FontSize 16
+Set FontFamily "Cascadia Mono"
+Set Width 1100
+Set Height 480
+Set Theme "GitHub Dark"
+Set Padding 16
+Set TypingSpeed 35ms
 Set WindowBar "Colorful"
 Set BorderRadius 8
 
+# Put a deterministic demo command on PATH without running a live model request.
 Hide
-Type "Write-Host 'PS C:\project> meow run Add-CSV-export --name csv-export'"
+Type 'set "MEOW_DEMO_DIR=%TEMP%\meow-demo-bin"'
+Enter
+Type 'if not exist "%MEOW_DEMO_DIR%" mkdir "%MEOW_DEMO_DIR%"'
+Enter
+Type 'copy /Y docs\demo-session.cmd "%MEOW_DEMO_DIR%\meow.cmd" >nul'
+Enter
+Type 'set "PATH=%MEOW_DEMO_DIR%;%PATH%"'
+Enter
+Type 'prompt C:\project$G'
+Enter
+Type 'title PowerShell'
 Enter
 Show
-Sleep 1s
 
-Hide
-Type "Write-Host '  context + templates                 ready' -ForegroundColor Green"
+Type 'meow run "Add CSV export" --name csv-export'
 Enter
-Show
-Sleep 1200ms
-
-Hide
-Type "Write-Host '  plan + Claude Agent SDK             ready' -ForegroundColor Green"
-Enter
-Show
-Sleep 1800ms
-
-Hide
-Type "Write-Host '  checks + review                     passed' -ForegroundColor Green"
-Enter
-Show
-Sleep 1800ms
-
-Hide
-Type "Write-Host '  finished branch                     csv-export' -ForegroundColor Green"
-Enter
-Show
-Sleep 1400ms
-
-Hide
-Type "Write-Host 'Done. Ready to inspect or deliver.' -ForegroundColor Green"
-Enter
-Show
-Sleep 1800ms
+Sleep 7s

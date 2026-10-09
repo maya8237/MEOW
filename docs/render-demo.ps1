@@ -2,9 +2,11 @@ param(
     [string]$Output = (Join-Path $PSScriptRoot "demo.gif")
 )
 
-# Purpose: show one meow run request as a normal terminal session.
+# Purpose: show one meow run request as a compact, ordinary terminal session.
 # This is a deterministic preview, not a live model transcript.
 $duration = 10
+$width = 1200
+$height = 500
 $ffmpeg = (Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if (-not $ffmpeg) {
     throw "ffmpeg is required. Install it, then run docs/render-demo.ps1 again."
@@ -45,33 +47,38 @@ function New-TextFilter {
 }
 
 $filters = @(
-    "drawbox=x=0:y=0:w=1200:h=650:color=0x111318:t=fill",
-    "drawbox=x=0:y=0:w=1200:h=44:color=0x1a1e27:t=fill",
-    "drawbox=x=0:y=43:w=1200:h=1:color=0x343a46:t=fill"
+    "drawbox=x=0:y=0:w=${width}:h=${height}:color=0x111318:t=fill",
+    "drawbox=x=0:y=0:w=${width}:h=42:color=0x161b22:t=fill",
+    "drawbox=x=0:y=41:w=${width}:h=1:color=0x30363d:t=fill"
 )
 
-$filters += New-TextFilter -Text "PowerShell" -Color "a9b2c2" -Size 16 -X 28 -Y 14
-$filters += New-TextFilter -Text "C:\project" -Color "7f8898" -Size 16 -X 1030 -Y 14
-$filters += New-TextFilter -Text "PS C:\project>" -Color "c7a7ff" -Size 23 -X 56 -Y 76 -Bold
-$filters += New-TextFilter -Text 'meow run "Add CSV export" --name csv-export' -Color "f4f7fb" -Size 24 -X 252 -Y 76
+$filters += New-TextFilter -Text "●" -Color "ff7b72" -Size 16 -X 20 -Y 10
+$filters += New-TextFilter -Text "●" -Color "e3b341" -Size 16 -X 42 -Y 10
+$filters += New-TextFilter -Text "●" -Color "7ee787" -Size 16 -X 64 -Y 10
+$filters += New-TextFilter -Text "PowerShell" -Color "8b949e" -Size 16 -X 96 -Y 13
+$filters += New-TextFilter -Text "PS C:/project>" -Color "79c0ff" -Size 22 -X 56 -Y 76 -Bold
+
+$command = 'meow run "Add CSV export" --name csv-export'
+$filters += New-TextFilter -Text $command -Color "f0f6fc" -Size 22 -X 250 -Y 76
 
 $rows = @(
-    @{ label = "context + templates"; y = 160; start = 1.0; activeEnd = 2.2; done = "ready" },
-    @{ label = "plan + Claude Agent SDK"; y = 204; start = 2.4; activeEnd = 4.2; done = "ready" },
-    @{ label = "checks + review"; y = 248; start = 4.4; activeEnd = 6.2; done = "passed" },
-    @{ label = "finished branch"; y = 292; start = 6.4; activeEnd = 7.8; done = "csv-export" }
+    @{ label = "context + templates"; y = 145; start = 1.45; activeEnd = 2.45; done = "ready" },
+    @{ label = "plan + Claude Agent SDK"; y = 187; start = 2.65; activeEnd = 4.15; done = "ready" },
+    @{ label = "checks + review"; y = 229; start = 4.35; activeEnd = 5.85; done = "passed" },
+    @{ label = "finished branch"; y = 271; start = 6.05; activeEnd = 7.25; done = "csv-export" }
 )
 
 foreach ($row in $rows) {
+    $visible = "gte(t,$($row.start))"
     $active = "between(t,$($row.start),$($row.activeEnd))"
     $done = "gte(t,$($row.activeEnd))"
-    $filters += New-TextFilter -Text ("  " + $row.label) -Color "f4f7fb" -Size 22 -X 56 -Y $row.y -Enable "gte(t,$($row.start))"
-    $filters += New-TextFilter -Text "..." -Color "a9b2c2" -Size 22 -X 620 -Y $row.y -Enable $active
-    $filters += New-TextFilter -Text $row.done -Color "86e1a7" -Size 22 -X 620 -Y $row.y -Enable $done -Bold
+    $filters += New-TextFilter -Text ("  " + $row.label) -Color "c9d1d9" -Size 21 -X 56 -Y $row.y -Enable $visible
+    $filters += New-TextFilter -Text "..." -Color "8b949e" -Size 21 -X 650 -Y $row.y -Enable $active
+    $filters += New-TextFilter -Text $row.done -Color "7ee787" -Size 21 -X 650 -Y $row.y -Enable $done -Bold
 }
 
-$filters += New-TextFilter -Text "Done. Ready to inspect or deliver." -Color "86e1a7" -Size 23 -X 56 -Y 360 -Enable "gte(t,8.0)" -Bold
-$filters += New-TextFilter -Text "PS C:\project>" -Color "c7a7ff" -Size 23 -X 56 -Y 420 -Enable "gte(t,8.0)" -Bold
+$filters += New-TextFilter -Text "Done. Ready to inspect or deliver." -Color "7ee787" -Size 22 -X 56 -Y 340 -Enable "gte(t,7.8)" -Bold
+$filters += New-TextFilter -Text "PS C:/project>" -Color "79c0ff" -Size 22 -X 56 -Y 395 -Enable "gte(t,7.8)" -Bold
 
 $filterGraph = $filters -join ","
 $outputDirectory = Split-Path -Parent $Output
@@ -79,8 +86,9 @@ New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 
 $video = Join-Path $work "demo.mp4"
 $palette = Join-Path $work "palette.png"
+$complex = "[0:v]$filterGraph[out]"
 
-& $ffmpeg -y -f lavfi -i "color=c=0x111318:s=1200x650:r=12:d=$duration" -vf $filterGraph -t $duration -an -c:v libx264 -pix_fmt yuv420p $video
+& $ffmpeg -y -f lavfi -i "color=c=0x111318:s=${width}x${height}:r=12:d=$duration" -filter_complex $complex -map "[out]" -t $duration -an -c:v libx264 -pix_fmt yuv420p $video
 if ($LASTEXITCODE -ne 0) {
     throw "ffmpeg could not render the demo video."
 }
