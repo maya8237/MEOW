@@ -1,0 +1,33 @@
+name: Bug report
+description: Report a reproducible problem in MEOW
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include the command or Claude Code skill you ran and the result you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How can we reproduce it?
+      description: Include a minimal project shape, configuration, and safe logs.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MEOW version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Python version, operating system, Claude Code version, and integration details.
+    validations:
+      required: true

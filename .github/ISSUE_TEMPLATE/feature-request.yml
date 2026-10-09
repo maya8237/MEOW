@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest a workflow improvement or integration for MEOW
+title: "[feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        MEOW is designed to make the path from request to verified branch simple.
+        Tell us where your current workflow still needs manual work.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What should become simpler?
+      description: Describe the repetitive work, handoff, or integration.
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Example request or workflow
+      description: Show the command, issue, or prompt you would like to use.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you use today?
+    validations:
+      required: false

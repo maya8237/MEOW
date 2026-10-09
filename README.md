@@ -3,6 +3,10 @@
 [![CI](https://github.com/maya8237/MEOW/actions/workflows/ci.yml/badge.svg)](https://github.com/maya8237/MEOW/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB.svg)](https://www.python.org/downloads/)
 
+<p align="center">
+  <img src="logo.jfif" width="160" alt="MEOW pixel cat logo" />
+</p>
+
 > Tell MEOW what you want. Get the finished branch.
 
 MEOW makes software delivery simple. Set up a project once, describe the work
@@ -303,6 +307,10 @@ notes, scheduled runs, and troubleshooting.
 - [Architecture](ARCHITECTURE.md): workflow, module responsibilities, and
   agent contracts.
 - [Project instructions](AGENTS.md): repository-specific development rules.
+- [Contributing](CONTRIBUTING.md): development setup and pull request guidance.
+- [Roadmap](docs/ROADMAP.md): shipped work and the next simple handoffs.
+- [Changelog](CHANGELOG.md): notable project changes.
+- [License](LICENSE): MIT License.
 
 ## Development
 
