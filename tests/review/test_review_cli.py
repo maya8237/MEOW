@@ -80,6 +80,19 @@ class GitlabFixRejectionTests(unittest.IsolatedAsyncioTestCase):
         mock_gitlab.assert_not_awaited()
 
 
+class GithubFixRejectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_github_and_fix_together_raises_before_fetching(self):
+        with (
+            patch("meow.cli.review_cli.load_config", return_value=_config()),
+            patch("meow.cli.review_cli._github_review", new=AsyncMock()) as mock_github,
+            self.assertRaisesRegex(ValueError, "--github.*--fix"),
+        ):
+            await review_cli.run_review_command(
+                Path("/project"), None, fix=True, github_link="https://x/pull/1"
+            )
+        mock_github.assert_not_awaited()
+
+
 class PromptSourceTests(unittest.IsolatedAsyncioTestCase):
     async def test_report_only_never_raises_on_fail(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -332,7 +345,7 @@ class GitlabSourceTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=mr),
             ) as mock_fetch,
             patch(
-                "meow.cli.review_cli.ReviewerAgent.review_merge_request",
+                "meow.cli.review_cli.ReviewerAgent.review_remote_change",
                 new=AsyncMock(return_value=("PASS", "STATUS: PASS\n")),
             ) as mock_review,
         ):
@@ -341,7 +354,30 @@ class GitlabSourceTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertIsNone(result)
         mock_fetch.assert_awaited_once()
-        mock_review.assert_awaited_once_with("t", "d", "diff")
+        mock_review.assert_awaited_once_with("t", "d", "diff", provider="gitlab")
+
+
+class GithubSourceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_report_only_fetches_and_reviews(self):
+        config = _config(github={"mcp": {"command": "uvx", "args": []}})
+        pull_request = {"title": "t", "description": "d", "diff": "diff"}
+        with (
+            patch("meow.cli.review_cli.load_config", return_value=config),
+            patch(
+                "meow.cli.review_cli._fetch_pull_request",
+                new=AsyncMock(return_value=pull_request),
+            ) as mock_fetch,
+            patch(
+                "meow.cli.review_cli.ReviewerAgent.review_remote_change",
+                new=AsyncMock(return_value=("PASS", "STATUS: PASS\n")),
+            ) as mock_review,
+        ):
+            result = await review_cli.run_review_command(
+                Path("/project"), None, fix=False, github_link="https://x/pull/1"
+            )
+        self.assertIsNone(result)
+        mock_fetch.assert_awaited_once()
+        mock_review.assert_awaited_once_with("t", "d", "diff", provider="github")
 
 
 class JiraSourceTests(unittest.IsolatedAsyncioTestCase):
@@ -393,6 +429,21 @@ class ResumeReviewFileTests(unittest.IsolatedAsyncioTestCase):
             docs_dir = working_dir / "docs"
             docs_dir.mkdir()
             review_file = docs_dir / "gitlab-review.md"
+            review_file.write_text("STATUS: FAIL", encoding="utf-8")
+            with (
+                patch("meow.cli.review_cli.load_config", return_value=_config()),
+                self.assertRaisesRegex(RuntimeError, "no local checkout"),
+            ):
+                await review_cli.run_review_command(
+                    working_dir, None, fix=False, review_file=review_file
+                )
+
+    async def test_github_flavor_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            working_dir = Path(tmp)
+            docs_dir = working_dir / "docs"
+            docs_dir.mkdir()
+            review_file = docs_dir / "github-review.md"
             review_file.write_text("STATUS: FAIL", encoding="utf-8")
             with (
                 patch("meow.cli.review_cli.load_config", return_value=_config()),

@@ -116,7 +116,7 @@ variables stay visible so verification can report them; no shell evaluation is
 performed.
 
 Offer optional features as concise yes/no choices. Applicable choices include
-Jira, GitLab, Unattended scheduled Jira runs, worktree setup, additional design
+Jira, GitLab, GitHub, Unattended scheduled Jira runs, worktree setup, additional design
 docs, testing infrastructure, Tester mode, Claude hooks, and another feature
 the user explicitly named. Scheduled runs use Windows Task Scheduler on
 Windows, or cron/systemd on Linux. Tester mode is optional and should only be
@@ -130,6 +130,8 @@ When an optional feature is accepted, use the matching documented path:
 - GitLab: configure the approved connection, verify checkout and artifact
   behavior, then use `meow review --gitlab <merge-request-url>`. A headless CI
   job requires a masked `ANTHROPIC_API_KEY`; never echo it.
+- GitHub: configure the approved connection, verify checkout and artifact
+  behavior, then use `meow review --github <pull-request-url>`.
 - Worktrees: show every proposed copy path and literal command argument list,
   reject secret-like files and symlinks, and verify the setup in a disposable
   worktree before enabling it for runs.

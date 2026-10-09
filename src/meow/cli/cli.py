@@ -461,7 +461,7 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         "review",
         help=(
             "Review existing code (and, with --fix, fix it) from a "
-            "prompt, --jira, --gitlab, --branch, or a plan file."
+            "prompt, --jira, --gitlab, --github, --branch, or a plan file."
         ),
     )
     review_parser.add_argument(
@@ -538,6 +538,17 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     review_parser.add_argument(
+        "--github",
+        dest="github",
+        default=None,
+        metavar="PR-LINK",
+        help=(
+            "Grade a GitHub pull request's diff. Always read-only -- "
+            "there is no local checkout to fix, so this can't be combined "
+            "with --fix."
+        ),
+    )
+    review_parser.add_argument(
         "--branch",
         dest="branch",
         default=None,
@@ -585,6 +596,7 @@ def _validate_ci_flags(parser: argparse.ArgumentParser, args) -> None:
             ("--fix", args.fix),
             ("--jira", args.jira is not None),
             ("--gitlab", args.gitlab),
+            ("--github", args.github),
             ("--branch", args.branch),
             ("--target", args.target),
             ("--review-file", args.review_file),
@@ -666,21 +678,21 @@ def _dispatch_review(args, working_dir: Path) -> None:
     plan_file = _resolve_input_path(args.plan, working_dir)
     review_file = _resolve_input_path(args.review_file, working_dir)
     try:
-        asyncio.run(
-            run_review_command(
-                working_dir,
-                args.request,
-                fix=args.fix,
-                jira_key=args.jira,
-                gitlab_link=args.gitlab,
-                branch=args.branch,
-                target=args.target,
-                plan_file=plan_file,
-                review_file=review_file,
-                use_worktree=not args.no_worktree,
-                **({"test": True} if args.test else {}),
-            )
-        )
+        review_kwargs = {
+            "fix": args.fix,
+            "jira_key": args.jira,
+            "gitlab_link": args.gitlab,
+            "branch": args.branch,
+            "target": args.target,
+            "plan_file": plan_file,
+            "review_file": review_file,
+            "use_worktree": not args.no_worktree,
+        }
+        if args.github is not None:
+            review_kwargs["github_link"] = args.github
+        if args.test:
+            review_kwargs["test"] = True
+        asyncio.run(run_review_command(working_dir, args.request, **review_kwargs))
     except ValueError as exc:
         print(f"\n{exc}", file=sys.stderr)
         raise SystemExit(1) from exc

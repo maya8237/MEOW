@@ -5,7 +5,7 @@ from pathlib import Path
 from meow.cli import review_cli
 from meow.execution import orchestrator as execution_orchestrator
 from meow.infrastructure import checks, worktree
-from meow.integrations import branch_reviewer, gitlab_reviewer
+from meow.integrations import branch_reviewer, github_reviewer, gitlab_reviewer
 from meow.native import native, native_cli
 
 ALLOWED_ROOT_FILES = {
@@ -33,6 +33,7 @@ def test_responsibility_packages_expose_canonical_implementations():
     assert execution_orchestrator.review_then_test is not None
     assert review_cli.run_review_command is not None
     assert gitlab_reviewer._fetch_merge_request is not None
+    assert github_reviewer._fetch_pull_request is not None
     assert checks.configured_checks is not None
     assert worktree._resolve_working_dir is not None
 

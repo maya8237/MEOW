@@ -138,6 +138,34 @@ python -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
 
+### Use a LiteLLM Claude proxy
+
+MEOW also supports LiteLLM Claude proxies through the Claude Agent SDK. Point
+the SDK at your proxy, choose a model configured in LiteLLM, and run the same
+one-command workflow:
+
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:4000"
+export ANTHROPIC_AUTH_TOKEN="sk-your-litellm-key"
+export ANTHROPIC_MODEL="your-litellm-model"
+
+meow run "Add CSV export" --name csv-export
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:ANTHROPIC_BASE_URL = "http://localhost:4000"
+$env:ANTHROPIC_AUTH_TOKEN = "sk-your-litellm-key"
+$env:ANTHROPIC_MODEL = "your-litellm-model"
+
+meow run "Add CSV export" --name csv-export
+```
+
+The proxy changes where the Claude Agent SDK sends model requests; MEOW's
+templates, worktrees, checkpoints, checks, review, and delivery flow stay the
+same. Keep proxy keys in environment variables or ignored local configuration.
+
 ## Try it in 60 seconds
 
 From the repository where you want to use MEOW:
@@ -241,7 +269,7 @@ Each skill is available with the `meow` namespace:
 | --- | --- |
 | `/meow:run` | Plan, implement, verify, review, and optionally deliver a feature. |
 | `/meow:plan` | Write a plan and Sprint Contract without changing application code. |
-| `/meow:review` | Review a prompt, plan, branch diff, Jira issue, GitLab merge request, or existing review; optionally fix findings. |
+| `/meow:review` | Review a prompt, plan, branch diff, Jira issue, GitLab or GitHub remote change, or existing review; optionally fix findings. |
 | `/meow:lint` | Run the current project's configured linters and fix their findings in the active session. |
 | `/meow:onboard` | Set up MEOW configuration, ignore rules, project checks, and optional integrations. |
 | `/meow:migration` | Convert a legacy MEOW layout to the current structure. |
@@ -258,6 +286,7 @@ Use the CLI for scripts, CI, scheduled work, or a fully headless run:
 | `meow review` | Review a plan or code diff; add `--fix` to loop on findings. |
 | `meow run --jira [ISSUE-KEY]` | Solve a configured Jira issue in its own worktree. |
 | `meow review --gitlab "<MR-URL>"` | Review a GitLab merge request read-only. |
+| `meow review --github "<PR-URL>"` | Review a GitHub pull request read-only. |
 | `meow run --lint-fix` | Run configured linters and fix remaining findings. |
 | `meow status` / `meow resume` | Inspect or continue a saved run. |
 
@@ -288,6 +317,10 @@ already uses:
 - **Jira:** fetch an issue and build it in a retained branch with
   `meow run --jira`.
 - **GitLab:** review a merge request with `meow review --gitlab`.
+- **GitHub:** review a pull request with `meow review --github`.
+- **LiteLLM:** route Claude Agent SDK requests through a Claude-compatible
+  LiteLLM proxy with `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and
+  `ANTHROPIC_MODEL`.
 - **Testing:** run project tests, development servers, and optional browser
   flows with `--test`.
 - **Claude Code hooks:** inspect and install optional lint hooks with
@@ -302,7 +335,7 @@ notes, scheduled runs, and troubleshooting.
 
 - [CLI guide](docs/CLI.md): command options, execution modes, recovery, and
   testing.
-- [Integration guide](docs/INTEGRATIONS.md): Jira, GitLab, scheduled runs, and
+- [Integration guide](docs/INTEGRATIONS.md): Jira, GitLab, GitHub, scheduled runs, and
   error reference.
 - [Architecture](ARCHITECTURE.md): workflow, module responsibilities, and
   agent contracts.

@@ -146,6 +146,7 @@ env = {TOKEN = "actual-secret-do-not-print"}
         self.assertEqual(result["status"], "not_configured")
         self.assertFalse(result["mcp"]["connection_tested"])
         self.assertEqual(native._verify_gitlab({})["status"], "not_configured")
+        self.assertEqual(native._verify_github({})["status"], "not_configured")
 
     def test_checks_mcp_command_and_environment_without_exposing_values(self):
         with patch("meow.native.native.shutil.which", return_value="/usr/bin/uvx"):
@@ -162,8 +163,18 @@ env = {TOKEN = "actual-secret-do-not-print"}
         self.assertNotIn("environment_values", result["mcp"])
         self.assertFalse(result["mcp"]["connection_tested"])
 
+    def test_checks_github_mcp_command_and_environment(self):
+        with patch("meow.native.native.shutil.which", return_value="/usr/bin/uvx"):
+            result = native._verify_github({"github": {"mcp": {"command": "uvx"}}})
 
-class NativeCliTests(unittest.TestCase):
+        self.assertEqual(result["status"], "missing_environment")
+        self.assertEqual(
+            result["mcp"]["required_environment_missing"],
+            ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+        )
+
+
+class NativeCliTests(unittest.TestCase):  # ruff: ignore[too-many-public-methods]
     def test_prepare_prints_one_json_document(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
@@ -241,6 +252,19 @@ class NativeCliTests(unittest.TestCase):
             self.assertIn("Sprint Contract", json.loads(out)["system_prompt"])
             self.assertEqual(bad_code, 1)
             self.assertIn("--plan", err)
+
+    def test_prompt_github_remote_review_uses_github_verdict_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            code, out, _ = run_native(
+                "prompt", "reviewer-mr", "--provider", "github", "-d", str(root)
+            )
+
+            self.assertEqual(code, 0)
+            data = json.loads(out)
+            self.assertTrue(data["review_file"].endswith("github-review.md"))
+            self.assertIn("GitHub pull request", data["system_prompt"])
 
     def test_lint_command_reports_json(self):
         with tempfile.TemporaryDirectory() as tmp:

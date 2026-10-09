@@ -10,7 +10,7 @@ workflow.
   preparation, prompt, and checkpoint components.
 - `execution/`: sprint orchestration, runners, and durable run state.
 - `review/`: review command and branch review flows.
-- `integrations/`: Jira and GitLab adapters.
+- `integrations/`: Jira, GitLab, and GitHub adapters.
 - `testing/`: test execution and verification gates.
 - `worktrees/`: Git worktree lifecycle.
 - `cli/`: the installed command entry point.

@@ -7,19 +7,19 @@ functions that used to live in `review_runner.py` (the old `meow review`/
 `branch_reviewer.py` (the old `meow branch-review`), and
 `review_fix_review.py` (the old `meow review-fix-review`)
 -- one review-and-optionally-fix operation, sourced from a free-text prompt,
-a Jira issue, a GitLab merge request, a local branch's diff against a
-target, an existing plan file (or the latest one auto-discovered), or an
-existing review file being resumed.
+a Jira issue, a GitLab merge request, a GitHub pull request, a local branch's
+diff against a target, an existing plan file (or the latest one
+auto-discovered), or an existing review file being resumed.
 
 The underlying mechanisms are unchanged and still exactly four: prompt-based
 (`ReviewerAgent.review_prompt` + `ReviewFixAgent` via `_run_prompt_fix_rounds`),
 plan-based (`ReviewerAgent.review_plan` + `Generator` via `_run_review_rounds`,
 Sprint-Contract-aware), branch-based (`ReviewerAgent.review_branch` +
 `ReviewFixAgent`, same loop as prompt-based but a diff-recomputing re-review),
-and gitlab-based (`ReviewerAgent.review_merge_request`, always report-only --
+and remote-based (`ReviewerAgent.review_remote_change`, always report-only --
 no local checkout exists to fix). `--jira` and bare/auto-discovered sources
-just pick which of the first two mechanisms to feed; `--gitlab`/`--branch`
-are new source flags but reuse the mechanisms those old commands already had.
+just pick which of the first two mechanisms to feed; `--gitlab`, `--github`,
+and `--branch` select their corresponding source paths.
 """
 
 import subprocess
@@ -41,6 +41,7 @@ from meow.infrastructure.worktree import (
     _require_branch_checked_out,
 )
 from meow.integrations.branch_reviewer import _sanitize
+from meow.integrations.github_reviewer import _fetch_pull_request, _load_github_config
 from meow.integrations.gitlab_reviewer import _fetch_merge_request, _load_gitlab_config
 from meow.integrations.issue_solver import _fetch_issue, _load_jira_config
 from meow.project.config import load_config
@@ -49,17 +50,21 @@ from meow.project.plan_files import _detect_review_flavor, _latest_plan_file
 logger = get_logger(__name__)
 
 
-def _review_sources(
+def _review_sources(  # ruff: ignore[too-many-arguments]
     jira_key: str | None,
     gitlab_link: str | None,
     branch: str | None,
     plan_file: Path | None,
+    *,
+    github_link: str | None = None,
 ) -> list[str]:
     sources = []
     if jira_key is not None:
         sources.append("--jira")
     if gitlab_link is not None:
         sources.append("--gitlab")
+    if github_link is not None:
+        sources.append("--github")
     if branch is not None:
         sources.append("--branch")
     if plan_file is not None:
@@ -76,6 +81,7 @@ def _validate_review_flags(  # ruff: ignore[too-many-arguments, too-many-positio
     plan_file: Path | None,
     review_file: Path | None,
     *,
+    github_link: str | None = None,
     test: bool = False,
 ) -> None:
     """Enforce "at most one review source", with `--review-file` (resuming
@@ -85,7 +91,13 @@ def _validate_review_flags(  # ruff: ignore[too-many-arguments, too-many-positio
     if (branch is None) != (target is None):
         raise ValueError("--branch and --target must be given together")
 
-    other_sources = _review_sources(jira_key, gitlab_link, branch, plan_file)
+    other_sources = _review_sources(
+        jira_key,
+        gitlab_link,
+        branch,
+        plan_file,
+        github_link=github_link,
+    )
     if len(other_sources) > 1:
         joined = ", ".join(other_sources)
         raise ValueError(f"Give at most one review source, got: {joined}")
@@ -93,7 +105,9 @@ def _validate_review_flags(  # ruff: ignore[too-many-arguments, too-many-positio
         raise ValueError(f"--review-file can't be combined with {other_sources[0]}")
     if prompt and other_sources:
         raise ValueError(f"Give either a prompt or {other_sources[0]}, not both")
-    test_has_other_source = any((prompt, jira_key, gitlab_link, branch, review_file))
+    test_has_other_source = any(
+        (prompt, jira_key, gitlab_link, github_link, branch, review_file)
+    )
     if test and (plan_file is None or test_has_other_source):
         raise ValueError(
             "--test requires an explicit --plan-file and cannot be used "
@@ -215,10 +229,20 @@ async def _gitlab_review(working_dir: Path, config: dict, gitlab_link: str) -> N
     gitlab_config = _load_gitlab_config(config)
     context = ProjectContext(working_dir, config)
     mr = await _fetch_merge_request(working_dir, config, gitlab_config, gitlab_link)
-    status, _ = await ReviewerAgent(context).review_merge_request(
-        mr["title"], mr["description"], mr["diff"]
+    status, _ = await ReviewerAgent(context).review_remote_change(
+        mr["title"], mr["description"], mr["diff"], provider="gitlab"
     )
     logger.info("gitlab_review_finished", status=status)
+
+
+async def _github_review(working_dir: Path, config: dict, github_link: str) -> None:
+    github_config = _load_github_config(config)
+    context = ProjectContext(working_dir, config)
+    pr = await _fetch_pull_request(working_dir, config, github_config, github_link)
+    status, _ = await ReviewerAgent(context).review_remote_change(
+        pr["title"], pr["description"], pr["diff"], provider="github"
+    )
+    logger.info("github_review_finished", status=status)
 
 
 async def _jira_review_prompt(working_dir: Path, config: dict, jira_key: str) -> str:
@@ -237,6 +261,13 @@ _UNRESUMABLE_FLAVOR_MESSAGES = {
         "request's code, and --gitlab never creates one. Check out the "
         "MR's branch locally and review that checkout instead, or "
         "address the MR feedback directly."
+    ),
+    "github": (
+        "{file} is a GitHub pull request review -- `meow review` "
+        "can't resume it: there is no local checkout of the pull "
+        "request's code, and --github never creates one. Check out the "
+        "PR's branch locally and review that checkout instead, or "
+        "address the PR feedback directly."
     ),
     "branch": (
         "{file} is a branch review -- `meow review` can't resume "
@@ -290,6 +321,7 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
     fix: bool,
     jira_key: str | None = None,
     gitlab_link: str | None = None,
+    github_link: str | None = None,
     branch: str | None = None,
     target: str | None = None,
     plan_file: Path | None = None,
@@ -298,23 +330,40 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
     test: bool = False,
 ) -> None:
     """`meow review`'s dispatcher. Exactly one of `jira_key`,
-    `gitlab_link`, `branch`(+`target`), `plan_file`, or `review_file` may be
+    `gitlab_link`, `github_link`, `branch`(+`target`), `plan_file`, or
+    `review_file` may be
     given; none given falls back to `prompt` (or full auto-discovery if
     `prompt` is also `None` -- see `_plan_or_prompt_review`). `fix` toggles
     a single report-only pass vs. looping review-fix-review to
     `max_rounds` (raising if it never passes) -- except `review_file`,
     which always implies fixing (resuming a review file only makes sense
-    if something is going to act on it), and `gitlab_link`, which rejects
-    `fix=True` outright: there's no local checkout of a merge request to
+    if something is going to act on it), and remote links, which reject
+    `fix=True` outright: there is no local checkout of a remote request to
     fix.
     """
     _validate_review_flags(
-        prompt, jira_key, gitlab_link, branch, target, plan_file, review_file, test=test
+        prompt,
+        jira_key,
+        gitlab_link,
+        branch,
+        target,
+        plan_file,
+        review_file,
+        github_link=github_link,
+        test=test,
     )
-    if gitlab_link is not None and fix:
+    remote_flag = next(
+        (
+            flag
+            for flag, link in (("--gitlab", gitlab_link), ("--github", github_link))
+            if link is not None
+        ),
+        None,
+    )
+    if remote_flag and fix:
         raise ValueError(
-            "--gitlab can't be combined with --fix -- there is no local "
-            "checkout of a merge request to fix."
+            f"{remote_flag} can't be combined with --fix -- there is no local "
+            "checkout of a remote request to fix."
         )
 
     store = RunStore(working_dir) if working_dir.is_dir() else None
@@ -327,7 +376,7 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
             text=True,
             check=False,
         )
-        request = prompt or jira_key or gitlab_link or branch
+        request = prompt or jira_key or gitlab_link or github_link or branch
         request = request or str(plan_file or review_file or "latest")
         record = store.create(
             source="review",
@@ -354,6 +403,8 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
             await _resume_review_file(working_dir, config, prompt, review_file)
         elif gitlab_link is not None:
             await _gitlab_review(working_dir, config, gitlab_link)
+        elif github_link is not None:
+            await _github_review(working_dir, config, github_link)
         elif branch is not None:
             await _branch_review(
                 working_dir, config, branch, target, fix=fix, use_worktree=use_worktree

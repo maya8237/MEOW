@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review existing code -- report-only, or loop fixing until it passes -- sourced from a free-text prompt, a Jira issue, a GitLab merge request, a local branch's diff against a target, an existing plan file, or an existing review file being resumed. Runs natively in this Claude Code session by default. Use whenever the user wants code checked or fixed against some existing source of truth, rather than a new feature built from scratch.
+description: Review existing code -- report-only, or loop fixing until it passes -- sourced from a free-text prompt, a Jira issue, a GitLab merge request, a GitHub pull request, a local branch's diff against a target, an existing plan file, or an existing review file being resumed. Runs natively in this Claude Code session by default. Use whenever the user wants code checked or fixed against some existing source of truth, rather than a new feature built from scratch.
 ---
 
 # review
@@ -21,6 +21,7 @@ asked.
 | Free text describing what to check | prompt | current checkout, as-is |
 | A Jira issue key (or "the latest issue") | jira | current checkout, as-is -- the issue's text becomes the review basis, nothing gets built |
 | A GitLab merge request URL | gitlab | **none** -- read-only, diff fetched via MCP |
+| A GitHub pull request URL | github | **none** -- read-only, diff fetched via MCP |
 | A branch name + a target branch | branch | isolated worktree (default) or in place |
 | A plan file path, or nothing at all and a plan exists in `docs_dir` | plan | current checkout, as-is |
 | An existing review file to resume | review-file | whatever that file's own flavor needs (plan/prompt only -- see step 5) |
@@ -33,16 +34,16 @@ prompt *and* a branch), ask which one they mean.
 "review", "check", "grade", "does this pass" -> report-only. "fix", "make it
 pass", "loop until it's clean" -> fix mode. Default to report-only if
 genuinely unclear; it's the safer, non-destructive choice. Fix mode is
-unavailable for the gitlab source (no local checkout to fix -- say so and
-either fall back to reporting or ask the user to check the MR branch out
-locally first). Resuming from a review file always fixes (there's no
+unavailable for the gitlab or github source (no local checkout to fix -- say
+so and either fall back to reporting or ask the user to check the remote
+branch out locally first). Resuming from a review file always fixes (there's no
 "resume but don't act on it" case).
 
 ## Native mode
 
 1. Pick source and mode as above. The project uses `.meow/config.toml` at
    its root.
-2. Resolve the working directory and, for jira/gitlab, fetch the source
+2. Resolve the working directory and, for jira/gitlab/github, fetch the source
    material:
    - **prompt** / **plan** / no source: `meow native prepare --no-worktree
      --allow-dirty --working-dir "<project-path>"`. For the plan source,
@@ -66,6 +67,11 @@ locally first). Resuming from a review file always fixes (there's no
      not `[gitlab.mcp]`. If none connected, say so and stop. Do not check
      anything out. `meow native prepare --no-worktree --allow-dirty
      --working-dir "<project-path>"` (changes nothing; confirms config).
+   - **github**: fetch title/description/diff through the GitHub MCP tools
+     already connected to this session (tool names containing `github`) --
+     not `[github.mcp]`. If none connected, say so and stop. Do not check
+     anything out. `meow native prepare --no-worktree --allow-dirty
+     --working-dir "<project-path>"` (changes nothing; confirms config).
    - **branch**: both branch and target are required -- never guess a
      target. Isolated worktree (default): `meow native prepare
      --existing-branch "<branch>" --name "branch-review-<sanitized-branch>"
@@ -78,24 +84,25 @@ locally first). Resuming from a review file always fixes (there's no
      `origin/<branch>` -- report and stop.
    - **review-file**: the file the user named, else `meow native
      latest-review --working-dir "<project-path>"` (gives `review_file` and
-     `flavor`). `flavor: gitlab` or `flavor: branch` cannot be resumed here
+     `flavor`). `flavor: gitlab`, `github`, or `branch` cannot be resumed here
      (no target/checkout to re-diff against) -- tell the user to re-run
-     this skill with the gitlab/branch source instead, or address the
+     this skill with the gitlab/github/branch source instead, or address the
      feedback directly, and stop. `meow native prepare --no-worktree
      --allow-dirty --working-dir "<project-path>"` for `max_rounds`.
 3. **Report-only** (every source but review-file, which always fixes): one
    reviewer subagent, no round counter.
-   - **gitlab** (always report-only, never fix mode): `meow native prompt
-     reviewer-mr --working-dir "<project-path>"`. Dispatch one reviewer
+   - **gitlab**/**github** (always report-only, never fix mode): `meow native
+     prompt reviewer-mr --provider <gitlab|github> --working-dir
+     "<project-path>"`. Dispatch one reviewer
      subagent with `system_prompt` followed by this task message (the
      JSON's `query` is null for this role):
      ```
-     Merge request title: <title>
+     Remote request title: <title>
 
-     Merge request description:
+     Remote request description:
      <description>
 
-     Merge request diff:
+     Remote request diff:
      <diff>
      ```
    - **prompt**/**jira**: `meow native prompt reviewer-prompt --focus
@@ -150,6 +157,7 @@ meow review "<prompt>" --working-dir "<project-path>"              # prompt sour
 meow review --fix "<prompt>" --working-dir "<project-path>"        # prompt source, loop to max_rounds
 meow review --jira [KEY] [--fix] --working-dir "<project-path>"
 meow review --gitlab "<mr-url>" --working-dir "<project-path>"     # always report-only
+meow review --github "<pr-url>" --working-dir "<project-path>"     # always report-only
 meow review --branch "<branch>" --target "<target>" [--fix] [--no-worktree] --working-dir "<project-path>"
 meow review --plan-file "<path>" [--fix] --working-dir "<project-path>"   # omit for auto-discovery
 meow review --plan-file "<path>" --test [--fix] --working-dir "<project-path>"
@@ -157,8 +165,9 @@ meow review --review-file "<path>" ["<focus prompt>"] --working-dir "<project-pa
 ```
 
 Omitting every source flag reviews the latest plan in `docs_dir`, falling
-back to the git diff (or whole project) if none exists. `--gitlab` combined
-with `--fix` is rejected -- there is no local checkout to fix. If `meow`
+back to the git diff (or whole project) if none exists. `--gitlab` and
+`--github` combined with `--fix` are rejected -- there is no local checkout to
+fix. If `meow`
 isn't on PATH, tell the user to install it (README: `pip install -e .` in a
 venv, or `pipx install -e .`). Stream `[reviewer]`/`[generator]`/
 `[review_fixer]` progress; report PASS or, after `max_rounds`, the review

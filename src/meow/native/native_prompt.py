@@ -15,8 +15,8 @@ from pathlib import Path
 from meow.agents.base import ProjectContext
 from meow.agents.reviewer import (
     BRANCH_REVIEW_FILENAME,
-    MR_REVIEW_FILENAME,
     PROMPT_REVIEW_FILENAME,
+    REMOTE_REVIEW_SPECS,
     _branch_diff,
     _git_review_context,
 )
@@ -26,10 +26,10 @@ from meow.project.prompts import (
     explorer_prompt,
     generator_prompt,
     lint_fixer_prompt,
-    mr_review_prompt,
     plan_review_prompt,
     planner_prompt,
     prompt_review_prompt,
+    remote_review_prompt,
     review_fixer_prompt,
 )
 from meow.project.shaping import ShapeContext, load_shape_artifact
@@ -99,11 +99,15 @@ def _prompt_review(context: ProjectContext, basis: str | None) -> dict:
     return {"system_prompt": text, "query": query, "review_file": str(review_file)}
 
 
-def _mr_review(context: ProjectContext) -> dict:
-    review_file = (
-        context.active_working_dir() / context.config["docs_dir"] / MR_REVIEW_FILENAME
+def _mr_review(context: ProjectContext, provider: str) -> dict:
+    try:
+        filename, request_label = REMOTE_REVIEW_SPECS[provider]
+    except KeyError as exc:
+        raise ValueError(f"unsupported remote review provider: {provider}") from exc
+    review_file = context.active_working_dir() / context.config["docs_dir"] / filename
+    text = remote_review_prompt(
+        review_file, request_label, check_worktree_hygiene=context.use_worktree
     )
-    text = mr_review_prompt(review_file, check_worktree_hygiene=context.use_worktree)
     return {"system_prompt": text, "query": None, "review_file": str(review_file)}
 
 
@@ -152,6 +156,7 @@ def _reviewer_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-ar
     focus: str | None,
     target: str | None,
     branch: str | None,
+    remote_provider: str,
     shape_context: ShapeContext | None = None,
 ) -> dict:
     if role == "reviewer-plan":
@@ -161,7 +166,7 @@ def _reviewer_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-ar
     if role == "reviewer-prompt":
         return _prompt_review(context, focus)
     if role == "reviewer-mr":
-        return _mr_review(context)
+        return _mr_review(context, remote_provider)
     if not target or not branch:
         raise ValueError("the reviewer-branch prompt needs --target and --branch")
     return _branch_review(context, target, branch)
@@ -177,6 +182,7 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
     use_worktree: bool = False,
     target: str | None = None,
     branch: str | None = None,
+    remote_provider: str = "gitlab",
     shape_path: Path | None = None,
 ) -> dict:
     """The exact system prompt (and task message, where there is one) the SDK
@@ -189,7 +195,14 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
     shape_context = _load_shape_context(shape_path)
     if role.startswith("reviewer-"):
         result = _reviewer_prompt(
-            role, context, plan_file, focus, target, branch, shape_context
+            role,
+            context,
+            plan_file,
+            focus,
+            target,
+            branch,
+            remote_provider,
+            shape_context,
         )
     else:
         result = _simple_prompt(role, context, plan_file, shape_context)

@@ -3,7 +3,7 @@ meow/plan_files.py
 
 Plan/review file naming and lookup within a project's docs_dir: which file
 is the latest sprint plan, which review file goes with a plan, and what
-flavor (plan/prompt/gitlab) an existing review file is. This is
+flavor (plan/prompt/gitlab/github) an existing review file is. This is
 file-naming/lookup logic -- distinct from the generator<->reviewer
 round-loop control flow orchestrator.py's own docstring says it holds.
 """
@@ -12,7 +12,8 @@ from pathlib import Path
 
 from meow.agents.reviewer import (
     BRANCH_REVIEW_FILENAME,
-    MR_REVIEW_FILENAME,
+    GITHUB_REVIEW_FILENAME,
+    GITLAB_REVIEW_FILENAME,
     PROMPT_REVIEW_FILENAME,
 )
 
@@ -42,12 +43,14 @@ def _detect_review_flavor(review_file: Path) -> str:
     verdict formats each have a distinct, deterministic naming convention,
     so no ambiguity and no guessing is needed here."""
     name = review_file.name
-    if name == MR_REVIEW_FILENAME:
-        return "gitlab"
-    if name == PROMPT_REVIEW_FILENAME:
-        return "prompt"
-    if name == BRANCH_REVIEW_FILENAME:
-        return "branch"
+    flavor = {
+        GITLAB_REVIEW_FILENAME: "gitlab",
+        GITHUB_REVIEW_FILENAME: "github",
+        PROMPT_REVIEW_FILENAME: "prompt",
+        BRANCH_REVIEW_FILENAME: "branch",
+    }.get(name)
+    if flavor:
+        return flavor
     if name.endswith("-review.md"):
         return "plan"
     raise ValueError(

@@ -1,4 +1,4 @@
-# docs/INTEGRATIONS.md — Jira, GitLab, and scheduled runs
+# docs/INTEGRATIONS.md — Jira, GitLab, GitHub, and scheduled runs
 
 Reference material for optional project setup. Start with `/meow:onboard`;
 this guide covers monorepo lint/test configuration, tester mode, integrations,
@@ -118,6 +118,26 @@ Keep tokens in the process environment or in the ignored
 `.meow/config.toml`. MEOW expands `$NAME`, `${NAME}`, and `%NAME%` in string
 configuration values without evaluating them as shell code.
 
+## `[github.mcp]` — for `meow review --github`
+
+Unlike `[jira]`, there's no project field — the pull request URL is passed on
+the command line each time.
+
+| Field | Required | Default | Notes |
+|---|---|---|---|
+| `[github.mcp].command` | Only for `--github` | — | Program that launches a GitHub MCP server exposing pull-request read tools. |
+| `[github.mcp].args` | No | `[]` | Its arguments. |
+| `[github.mcp].env` | No | `{}` | Environment variables passed to the launched server, e.g. `GITHUB_PERSONAL_ACCESS_TOKEN`. |
+
+The configured MCP server must expose the GitHub tools needed to fetch a pull
+request's title, body, and unified diff. MEOW accepts any compatible server.
+
+**Security note:** `[github.mcp].env` is passed to the launched server as-is.
+Keep tokens in the process environment or in the ignored
+`.meow/config.local.toml`; do not commit them to the shared
+`.meow/config.toml`. MEOW expands `$NAME`, `${NAME}`, and `%NAME%` in string
+configuration values without evaluating them as shell code.
+
 ---
 
 ## Running `meow run --jira` on a schedule
@@ -227,8 +247,12 @@ Enable and test it with `systemctl enable --now meow-run-jira.timer`, then
 | `meow review --gitlab` run without `[gitlab]`/`[gitlab.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
 | `meow review --gitlab` run with no GitLab MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__gitlab__*` tool call to succeed, not just a text claim of success |
 | `meow review --gitlab --fix` (both given together) | `ValueError` rejecting the combination before fetching anything — there is no local checkout of a merge request to fix |
+| `meow review --github` run without `[github]`/`[github.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
+| `meow review --github` run with no GitHub MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__github__*` tool call to succeed, not just a text claim of success |
+| `meow review --github --fix` (both given together) | `ValueError` rejecting the combination before fetching anything — there is no local checkout of a pull request to fix |
 | `meow run --lint-fix` (standalone, not `--report-only`) never gets lint clean within `max_rounds` | `LintFixError` including the still-failing commands' raw output |
 | `meow review --review-file` pointing at a GitLab MR review file | `RuntimeError` explaining there is no local checkout of the merge request's code to fix — re-run with `--gitlab` instead |
+| `meow review --review-file` pointing at a GitHub PR review file | `RuntimeError` explaining there is no local checkout of the pull request's code to fix — re-run with `--github` instead |
 | `meow review --review-file` pointing at a branch review file | `RuntimeError` explaining it can't be resumed this way (no target branch to re-diff against) — re-run with `--fix --branch <branch> --target <target>` instead |
 | `meow review --review-file` omitted and no review file anywhere in `docs_dir` | `FileNotFoundError` naming `docs_dir` and pointing at `--review-file` |
 | `meow review --fix` (any source) never passes within `max_rounds` | `RuntimeError` naming the review file, same stop/raise shape regardless of source |

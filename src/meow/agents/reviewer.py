@@ -20,10 +20,10 @@ from meow.infrastructure.logging import get_logger
 from meow.project.prompts import (
     branch_review_prompt,
     ci_review_prompt,
-    mr_review_prompt,
     no_prompt_review_instructions,
     plan_review_prompt,
     prompt_review_prompt,
+    remote_review_prompt,
 )
 
 if TYPE_CHECKING:
@@ -31,8 +31,14 @@ if TYPE_CHECKING:
 from meow.project.shaping import ShapeContext
 
 PROMPT_REVIEW_FILENAME = "review.md"
-MR_REVIEW_FILENAME = "gitlab-review.md"
+GITLAB_REVIEW_FILENAME = "gitlab-review.md"
+GITHUB_REVIEW_FILENAME = "github-review.md"
 BRANCH_REVIEW_FILENAME = "branch-review.md"
+
+REMOTE_REVIEW_SPECS = {
+    "gitlab": (GITLAB_REVIEW_FILENAME, "GitLab merge request"),
+    "github": (GITHUB_REVIEW_FILENAME, "GitHub pull request"),
+}
 
 _GIT_RETRY_ATTEMPTS = 3
 _GIT_RETRY_BACKOFF = 0.5
@@ -273,25 +279,30 @@ class ReviewerAgent(Agent):
             _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
         )
 
-    async def review_merge_request(
-        self, title: str, description: str, diff: str
+    async def review_remote_change(
+        self, title: str, description: str, diff: str, *, provider: str
     ) -> tuple[str, str]:
-        """Grade a GitLab merge request's diff, independent of any local checkout.
+        """Grade a remote merge/pull request diff without checking it out.
 
         Mirrors `review_prompt`'s no-Sprint-Contract, report-only shape, but
-        the source of truth is the merge request's title/description/diff
-        handed in by the caller (fetched through a GitLab MCP server), not a
+        the source of truth is the remote request's title/description/diff
+        handed in by the caller (fetched through an MCP server), not a
         local `git diff` -- the selected working directory need not be
-        checked out at the merge request's commit, so lint commands and
+        checked out at the remote request's commit, so lint commands and
         shell access are deliberately left out here; their result would not
         reflect this diff.
         """
+        try:
+            filename, request_label = REMOTE_REVIEW_SPECS[provider]
+        except KeyError as exc:
+            raise ValueError(f"unsupported remote review provider: {provider}") from exc
         review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
         review_dir.mkdir(parents=True, exist_ok=True)
-        review_file = review_dir / MR_REVIEW_FILENAME
+        review_file = review_dir / filename
         options = self.options(
-            system_prompt=mr_review_prompt(
+            system_prompt=remote_review_prompt(
                 review_file,
+                request_label,
                 check_worktree_hygiene=self.context.use_worktree,
             ),
             allowed_tools=["Read", "Grep", "Glob", "Write"],
@@ -299,9 +310,9 @@ class ReviewerAgent(Agent):
             skills=["superpowers:verification-before-completion"],
         )
         query_prompt = (
-            f"Merge request title: {title}\n\n"
-            f"Merge request description:\n{description}\n\n"
-            f"Merge request diff:\n{diff}"
+            f"{request_label} title: {title}\n\n"
+            f"{request_label} description:\n{description}\n\n"
+            f"{request_label} diff:\n{diff}"
         )
         await self.run_query(query_prompt, options, "Reviewer")
         verdict_text = review_file.read_text(encoding="utf-8")
@@ -310,7 +321,7 @@ class ReviewerAgent(Agent):
     async def review_branch(self, target: str, branch: str) -> tuple[str, str]:
         """Grade a local branch's diff against a target branch, PASS/FAIL.
 
-        Unlike `review_merge_request` (a remote diff, no local checkout),
+        Unlike `review_remote_change` (a remote diff, no local checkout),
         `branch` is actually checked out in the active working directory,
         so lint commands and Read/Grep/Glob/Bash access apply the same way
         `review_plan`/`review_prompt` do.

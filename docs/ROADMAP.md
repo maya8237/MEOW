@@ -9,7 +9,7 @@ users learn a large workflow system.
 - Claude Agent SDK execution with Claude Code skill entry points.
 - Reusable project configuration and templates.
 - Isolated worktrees, checkpoints, bounded quality gates, and review loops.
-- CLI and skill paths for feature requests, queues, Jira, and GitLab review.
+- CLI and skill paths for feature requests, queues, Jira, GitLab, and GitHub review.
 
 ## Next
 

@@ -2,7 +2,7 @@
 
 This page covers the detailed behavior of MEOW's command-line interface.
 For installation and a quick start, see the [README](../README.md). For Jira
-and GitLab configuration, scheduled runs, and error details, see
+and GitLab/GitHub configuration, scheduled runs, and error details, see
 [INTEGRATIONS.md](INTEGRATIONS.md).
 
 ## User commands
@@ -222,19 +222,20 @@ meow review
 meow review "Check API error handling"
 meow review --jira PROJ-123
 meow review --gitlab "https://gitlab.example.com/group/project/-/merge_requests/123"
+meow review --github "https://github.com/group/project/pull/123"
 meow review --branch feature/add-csv-export --target main
 meow review --plan-file .meow/plans/add-csv-export.md
 ```
 
 With no source, review uses the latest plan or falls back to a code-diff
-review. Other sources are a free-text prompt, Jira issue, GitLab merge
-request, local branch diff, or specific plan file. Only one source may be
-selected.
+review. Other sources are a free-text prompt, Jira issue, GitLab merge request,
+GitHub pull request, local branch diff, or specific plan file. Only one source
+may be selected.
 
 Reviews are report-only by default: one reviewer pass writes a PASS/FAIL
 verdict without editing. Add `--fix` to loop through review, fixes, and
 another review up to `max_rounds`. This option is supported for all sources
-except `--gitlab`, which has no local checkout to edit.
+except `--gitlab` and `--github`, which have no local checkout to edit.
 
 Branch reviews require `--target TARGET` and use an isolated worktree by
 default. Add `--no-worktree` to fix in place, but the selected directory must
@@ -243,19 +244,21 @@ working directory directly and do not require a clean tree.
 
 `--review-file PATH` (also `-r`) resumes fixing an existing prompt- or
 plan-based review. Pass the original prompt when resuming a prompt-based
-review. GitLab and branch reviews cannot be resumed this way; rerun the
+review. GitLab, GitHub, and branch reviews cannot be resumed this way; rerun the
 original source instead. Review files are saved under the configured plan
 directory, which defaults to `.meow/plans/`, with names based on their source
-(`review.md`, `gitlab-review.md`, `branch-review.md`, or `<plan>-review.md`).
+(`review.md`, `gitlab-review.md`, `github-review.md`, `branch-review.md`, or
+`<plan>-review.md`).
 
-Configure `[jira]`/`[jira.mcp]` for `--jira` or `[gitlab.mcp]` for `--gitlab`.
+Configure `[jira]`/`[jira.mcp]` for `--jira`, `[gitlab.mcp]` for `--gitlab`, or
+`[github.mcp]` for `--github`.
 See [INTEGRATIONS.md](INTEGRATIONS.md).
 
 ## Native and CLI skill modes
 
 MEOW's Claude Code skills use native mode by default: the calling session
 plans and generates, while a fresh subagent reviews each round. Jira and
-GitLab access comes from the MCP tools connected to that session. Ask for
+GitLab and GitHub access comes from the MCP tools connected to that session. Ask for
 "CLI mode" (or headless mode) to run the `meow` CLI instead.
 
 Both modes read the same active MEOW configuration, use the same worktree rules

@@ -76,7 +76,7 @@ variables stay visible so verification can report them; no shell evaluation is
 performed.
 
 Offer optional features as concise yes/no choices. Applicable choices include
-Jira, GitLab, Unattended scheduled Jira runs, worktree setup, additional design
+Jira, GitLab, GitHub, Unattended scheduled Jira runs, worktree setup, additional design
 docs, testing infrastructure, Tester mode, Claude hooks, and another feature
 the user explicitly named. Scheduled runs use Windows Task Scheduler on
 Windows, or cron/systemd on Linux. Tester mode is optional and should only be

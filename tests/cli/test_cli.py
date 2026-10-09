@@ -106,6 +106,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             ["--fix"],
             ["--jira", "ABC-1"],
             ["--gitlab", "url"],
+            ["--github", "url"],
             ["--branch", "x"],
             ["--target", "dev"],
             ["--review-file", "x"],
@@ -1300,6 +1301,42 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             fix=False,
             jira_key=None,
             gitlab_link="https://gitlab.example.com/group/project/-/merge_requests/1",
+            branch=None,
+            target=None,
+            plan_file=None,
+            review_file=None,
+            use_worktree=True,
+        )
+
+    @staticmethod
+    def test_review_github_source_is_supported():
+        with (
+            patch("meow.cli.cli._boot_repo") as mock_boot,
+            patch(
+                "meow.cli.cli.run_review_command", new_callable=AsyncMock
+            ) as mock_review,
+            patch(
+                "sys.argv",
+                [
+                    "meow",
+                    "review",
+                    "--github",
+                    "https://github.com/example/project/pull/1",
+                    "--work-dir",
+                    ".",
+                ],
+            ),
+        ):
+            cli.cli_main()
+
+        mock_boot.assert_called_once_with(Path(".").resolve(), include_gitignore=False)
+        mock_review.assert_awaited_once_with(
+            Path(".").resolve(),
+            None,
+            fix=False,
+            jira_key=None,
+            gitlab_link=None,
+            github_link="https://github.com/example/project/pull/1",
             branch=None,
             target=None,
             plan_file=None,
