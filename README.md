@@ -15,9 +15,32 @@ You do not have to babysit every phase: give MEOW a request, a queue of tasks,
 or a Jira issue and it keeps moving toward a done deal. It pauses only when a
 real product decision or permission boundary needs your input.
 
+In harness engineering terms, MEOW is the layer around Claude: it supplies the
+right context, templates, worktree, state, checks, recovery, and delivery path.
+You get the simple part—one request in, one finished branch out.
+
+Install it in one paste:
+
+```bash
+claude plugin marketplace add maya8237/MEOW && claude plugin install meow@meow
+```
+
+Try it first:
+
+```text
+/meow:onboard
+/meow:run Add CSV export
+```
+
 ## One command. Done.
 
 Tell MEOW what you want. It does all the work and gives you the finished branch.
+
+<img src="docs/demo.gif" width="900" alt="Animated preview of MEOW's harness carrying a request through queueing, planning, verification, review, and a finished branch" />
+
+The GIF is a deterministic workflow preview, not a live model transcript. Its
+source is [the VHS tape](docs/demo.tape); Windows users can use the
+[FFmpeg fallback](docs/render-demo.ps1) to regenerate it.
 
 ## How it works
 
@@ -41,12 +64,19 @@ without learning the configuration system first.
 
 ## Why MEOW
 
+MEOW is for developers and teams who want to state the outcome once instead of
+operating another workflow system around every feature.
+
 - **Configure once.** Project rules, checks, model settings, integrations, and
   worktree setup live in reusable configuration and templates.
 - **Hand off repetitive work.** Give MEOW a feature request, queued task, or
   issue instead of manually coordinating setup, coding, checks, and review.
-- **Automate the whole loop.** Claude Agent SDK sessions explore, plan,
-  implement, test, review, and fix the change.
+- **Use automation with a harness.** Claude Agent SDK sessions explore, plan,
+  implement, test, review, and fix the change inside MEOW's repeatable delivery
+  path.
+- **Engineer the harness once.** Project templates, context, worktrees,
+  checkpoints, checks, review, and delivery boundaries stay ready for the next
+  request.
 - **Stay hands-off safely.** Runs use isolated worktrees and explicit quality
   gates instead of editing the user's checkout blindly.
 - **Recover instead of restarting.** Checkpoints, logs, plans, reviews, and
@@ -71,6 +101,14 @@ From a shell, use the equivalent commands:
 claude plugin marketplace add maya8237/MEOW
 claude plugin install meow@meow
 ```
+
+Verify the plugin is available:
+
+```bash
+claude plugin list
+```
+
+You should see `meow@meow` in the installed plugins.
 
 ### Install the MEOW CLI
 
@@ -167,12 +205,18 @@ meow resume RUN_ID --continue
 | A queue of requests | Persistent FIFO processing and safe pause/retry | Repeatable background work |
 | A Jira issue | Issue fetching, worktree setup, execution, verification, and delivery | A pushed issue branch and machine-readable result |
 
-## The automation flow
+## The harness behind the automation
+
+This is MEOW's harness engineering loop in plain English: the automation feels
+simple because MEOW keeps the context, state, safety boundaries, feedback, and
+delivery around Claude.
 
 ```text
 request or issue -> project template -> Claude Agent SDK ->
 isolated worktree -> checks and review -> verified branch
 ```
+
+![MEOW harness engineering workflow from a plain-language request to a verified branch](visualizations/meow-workflow/meow-workflow.png)
 
 `meow run` coordinates the loop and keeps its state in a run checkpoint. The
 normal path is:
