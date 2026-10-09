@@ -1,8 +1,7 @@
 # Reproducible README demo for MEOW's one-command harness-engineering surface.
 #
-# The tape uses a disposable temporary fixture so it never changes this checkout.
-# It demonstrates the real queue command and the real run entry point without
-# starting a live Claude Agent SDK request during documentation generation.
+# The tape is a deterministic terminal preview so it never changes this checkout
+# or starts a live Claude Agent SDK request during documentation generation.
 # Prefer rendering from the repository root with:
 #   vhs docs/demo.tape
 #
@@ -25,22 +24,32 @@ Set WindowBar Colorful
 Set TypingSpeed 48ms
 
 Hide
-Type '$demo = Join-Path $env:TEMP "meow-readme-demo"; Remove-Item -LiteralPath $demo -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path $demo -Force | Out-Null'
+Type 'Write-Host "> /meow:run Add CSV export"'
 Enter
-Sleep 500ms
 Show
-
-Type '& "C:\Users\m\AppData\Roaming\Python\Python314\Scripts\meow.exe" queue "Add CSV export" --name csv-export --working-dir $demo'
-Sleep 500ms
+Sleep 1100ms
+Hide
+Type 'Write-Host "01  context + templates       ready" -ForegroundColor Green'
 Enter
-Sleep 1800ms
-
-Type '& "C:\Users\m\AppData\Roaming\Python\Python314\Scripts\meow.exe" queue "Upgrade the API client" --name api-client --working-dir $demo'
-Sleep 500ms
+Show
+Sleep 1400ms
+Hide
+Type 'Write-Host "02  plan + Claude Agent SDK  ready" -ForegroundColor Green'
 Enter
-Sleep 1800ms
-
-Type '& "C:\Users\m\AppData\Roaming\Python\Python314\Scripts\meow.exe" run --help'
-Sleep 500ms
+Show
+Sleep 2200ms
+Hide
+Type 'Write-Host "03  checks + review          passed" -ForegroundColor Green'
 Enter
-Sleep 4500ms
+Show
+Sleep 2200ms
+Hide
+Type 'Write-Host "04  finished branch          csv-export" -ForegroundColor Green'
+Enter
+Show
+Sleep 1600ms
+Hide
+Type 'Write-Host "finished branch ready to inspect or deliver" -ForegroundColor Cyan'
+Enter
+Show
+Sleep 1500ms
