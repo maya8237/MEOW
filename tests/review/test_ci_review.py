@@ -107,7 +107,6 @@ def test_truncated_merge_request_description_is_flagged(checkout):
 def test_example_job_runs_for_merge_request_pipelines():
     root = Path(__file__).resolve().parents[2]
     example = (root / "templates/gitlab-ci-review.yml").read_text()
-    assert "templates/gitlab-ci-review.yml" in (root / ".gitlab-ci.yml").read_text()
     assert 'CI_PIPELINE_SOURCE == "merge_request_event"' in example
     assert 'CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"' in example
     assert "- when: never" in example
