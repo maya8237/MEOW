@@ -203,7 +203,7 @@ def test_completion_rejects_stale_reviewer_evidence(tmp_path):
 def test_final_test_check_uses_integrated_stage(tmp_path):
     (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     (tmp_path / "sample.py").write_text("print('ok')", encoding="utf-8")
-    from meow.project.config import TestCommand
+    from meow.project.config import VerificationCommand
 
     config = {
         "lint": [],
@@ -211,7 +211,7 @@ def test_final_test_check_uses_integrated_stage(tmp_path):
         "build": [],
         "tester": {
             "tests": [
-                TestCommand(
+                VerificationCommand(
                     tmp_path.relative_to(tmp_path), sys.executable, ("sample.py",)
                 )
             ],

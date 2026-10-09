@@ -3,19 +3,24 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from meow.project.config import (
-    LintCommand,
-    _expand_config_environment,
+from meow.project.command_policy import (
+    _os_mismatch,
+    _program_name,
+    _validate_os_compatibility,
+)
+from meow.project.config import LintCommand, load_config, resolve_command_cwd
+from meow.project.config_env import _expand_config_environment
+from meow.project.config_schema import (
     _lint_entry,
     _normalize_lint_commands,
     _normalize_tester_config,
-    _os_mismatch,
-    _program_name,
     _validate_max_rounds,
-    _validate_os_compatibility,
-    load_config,
-    resolve_command_cwd,
 )
+
+
+def _which_stub(result):
+    """Stub `which` only where command_policy resolves it, not on stdlib shutil."""
+    return patch("meow.project.command_policy.shutil", **{"which.return_value": result})
 
 
 class ProgramNameTests(unittest.TestCase):
@@ -53,15 +58,13 @@ class UnixOnlyMarkerTests(unittest.TestCase):
         # Windows has no shebang support -- a bare .sh filename can't be
         # exec'd directly even with a real bash on PATH, unlike `bash
         # script.sh`, which explicitly names its interpreter.
-        with patch(
-            "meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"
-        ):
+        with _which_stub(r"C:\Git\bin\bash.exe"):
             problem = _os_mismatch("lint.sh --check", "Windows")
         self.assertIsNotNone(problem)
         self.assertIn("Unix shell", problem)
 
     def test_bash_flagged_on_windows_when_no_interpreter_resolves(self):
-        with patch("meow.project.config.shutil.which", return_value=None):
+        with _which_stub(None):
             problem = _os_mismatch("bash scripts/lint.sh", "Windows")
         self.assertIsNotNone(problem)
 
@@ -81,23 +84,19 @@ class GitBashExemptionTests(unittest.TestCase):
     there, and a command that explicitly invokes it genuinely works."""
 
     def test_bash_on_path_is_not_flagged_on_windows(self):
-        with patch(
-            "meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"
-        ):
+        with _which_stub(r"C:\Git\bin\bash.exe"):
             self.assertIsNone(_os_mismatch("bash scripts/lint.sh", "Windows"))
 
     def test_sh_on_path_is_not_flagged_on_windows(self):
-        with patch(
-            "meow.project.config.shutil.which", return_value=r"C:\Git\bin\sh.exe"
-        ):
+        with _which_stub(r"C:\Git\bin\sh.exe"):
             self.assertIsNone(_os_mismatch("sh scripts/lint.sh", "Windows"))
 
     def test_zsh_on_path_is_not_flagged_on_windows(self):
-        with patch("meow.project.config.shutil.which", return_value="/usr/bin/zsh"):
+        with _which_stub("/usr/bin/zsh"):
             self.assertIsNone(_os_mismatch("zsh scripts/lint.sh", "Windows"))
 
     def test_bash_not_on_path_is_still_flagged_on_windows(self):
-        with patch("meow.project.config.shutil.which", return_value=None):
+        with _which_stub(None):
             problem = _os_mismatch("bash scripts/lint.sh", "Windows")
         self.assertIsNotNone(problem)
         self.assertIn("Unix shell", problem)
@@ -105,9 +104,7 @@ class GitBashExemptionTests(unittest.TestCase):
     def test_bare_sh_extension_is_flagged_even_with_bash_on_path(self):
         # `lint.sh` alone (no explicit `bash`/`sh` in front) still can't be
         # exec'd directly by Windows, no matter what's on PATH.
-        with patch(
-            "meow.project.config.shutil.which", return_value=r"C:\Git\bin\bash.exe"
-        ):
+        with _which_stub(r"C:\Git\bin\bash.exe"):
             problem = _os_mismatch("lint.sh --check", "Windows")
         self.assertIsNotNone(problem)
 
@@ -115,9 +112,9 @@ class GitBashExemptionTests(unittest.TestCase):
         # The PATH check is specifically about whether Windows can run a
         # bash/sh/zsh command at all; it has nothing to say on a platform
         # where these are never flagged in the first place.
-        with patch("meow.project.config.shutil.which", return_value=None) as which:
+        with _which_stub(None) as shutil_stub:
             self.assertIsNone(_os_mismatch("bash scripts/lint.sh", "Linux"))
-        which.assert_not_called()
+        shutil_stub.which.assert_not_called()
 
 
 class NoFalsePositiveTests(unittest.TestCase):

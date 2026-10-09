@@ -11,7 +11,7 @@ from meow.infrastructure.test_runner import (
     prepared_test_stage,
 )
 from meow.infrastructure.test_runner import (
-    TestStageEvidence as StageEvidence,
+    VerificationStageEvidence as StageEvidence,
 )
 from meow.project.config import DevServerCommand, load_config
 

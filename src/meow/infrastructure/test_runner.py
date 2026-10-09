@@ -14,7 +14,7 @@ from pathlib import Path
 
 from meow.project.config import (
     DevServerCommand,
-    TestCommand,
+    VerificationCommand,
     resolve_command_cwd,
     split_command,
 )
@@ -72,7 +72,7 @@ def normalize_browser_result(
     )
 
 
-class TesterSetupError(RuntimeError):
+class VerificationSetupError(RuntimeError):
     """A test or server could not be launched or made ready."""
 
     def __init__(self, command: str, cwd: Path, cause: object):
@@ -166,7 +166,7 @@ class _WindowsOwnedProcess:
 
 
 @dataclass(frozen=True)
-class TestCommandEvidence:
+class VerificationCommandEvidence:
     cwd: Path
     command: str
     exit_code: int | None
@@ -176,8 +176,8 @@ class TestCommandEvidence:
 
 
 @dataclass(frozen=True)
-class TestStageEvidence:
-    commands: tuple[TestCommandEvidence, ...] = ()
+class VerificationStageEvidence:
+    commands: tuple[VerificationCommandEvidence, ...] = ()
     server_urls: tuple[str, ...] = ()
     browser: tuple[BrowserEvidence, ...] = ()
 
@@ -246,11 +246,15 @@ async def _terminate(  # ruff: ignore[too-many-branches, complex-structure, too-
         await process.wait()
 
 
-async def _run_test(active_dir: Path, command: TestCommand) -> TestCommandEvidence:
+async def _run_test(
+    active_dir: Path, command: VerificationCommand
+) -> VerificationCommandEvidence:
     try:
         cwd = resolve_command_cwd(active_dir, command.cwd)
     except (OSError, ValueError) as exc:
-        raise TesterSetupError(command.command, active_dir / command.cwd, exc) from exc
+        raise VerificationSetupError(
+            command.command, active_dir / command.cwd, exc
+        ) from exc
     argv = _argv(command.command, command.args)
     env = {**os.environ, **(command.env or {})}
     try:
@@ -266,16 +270,16 @@ async def _run_test(active_dir: Path, command: TestCommand) -> TestCommandEviden
             ),
         )
     except (OSError, ValueError) as exc:
-        raise TesterSetupError(command.command, cwd, exc) from exc
+        raise VerificationSetupError(command.command, cwd, exc) from exc
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), command.timeout)
         output = _decode(stdout + (b"\n" if stdout and stderr else b"") + stderr)
-        return TestCommandEvidence(
+        return VerificationCommandEvidence(
             cwd, command.command, process.returncode, output, False, command.gate
         )
     except TimeoutError:
         await _terminate(process)
-        return TestCommandEvidence(
+        return VerificationCommandEvidence(
             cwd,
             command.command,
             None,
@@ -321,7 +325,7 @@ async def _run_browser(active_dir: Path, tester: dict) -> BrowserEvidence | None
         )
     artifacts = tuple(str(item) for item in browser.get("artifacts", []))
     before = {item: _artifact_stamp(active_dir, item) for item in artifacts}
-    command = TestCommand(
+    command = VerificationCommand(
         Path(browser.get("cwd", ".")),
         str(browser["entrypoint"]),
         tuple(browser.get("args", [])),
@@ -331,7 +335,7 @@ async def _run_browser(active_dir: Path, tester: dict) -> BrowserEvidence | None
     )
     try:
         result = await _run_test(active_dir, command)
-    except TesterSetupError as exc:
+    except VerificationSetupError as exc:
         return BrowserEvidence(
             name, kind, "unavailable", required=required, reason=str(exc)
         )
@@ -369,9 +373,11 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
     try:
         cwd = resolve_command_cwd(active_dir, server.cwd)
     except (OSError, ValueError) as exc:
-        raise TesterSetupError(server.command, active_dir / server.cwd, exc) from exc
+        raise VerificationSetupError(
+            server.command, active_dir / server.cwd, exc
+        ) from exc
     if await asyncio.to_thread(_reachable, server.ready_url):
-        raise TesterSetupError(
+        raise VerificationSetupError(
             server.command,
             cwd,
             f"readiness URL {server.ready_url} is already serving before launch",
@@ -397,19 +403,19 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
             )
             job = None
     except Exception as exc:
-        raise TesterSetupError(server.command, cwd, exc) from exc
+        raise VerificationSetupError(server.command, cwd, exc) from exc
     try:
         owned = _OwnedProcess(process, job)
     except Exception as exc:
         await _terminate(process)
-        raise TesterSetupError(
+        raise VerificationSetupError(
             server.command, cwd, f"could not own process tree: {exc}"
         ) from exc
     deadline = asyncio.get_running_loop().time() + server.startup_timeout
     try:
         while asyncio.get_running_loop().time() < deadline:
             if process.returncode is not None:
-                raise TesterSetupError(
+                raise VerificationSetupError(
                     server.command,
                     cwd,
                     f"server exited with code {process.returncode} before "
@@ -418,7 +424,7 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
             if await asyncio.to_thread(_reachable, server.ready_url):
                 return owned
             await asyncio.sleep(0.1)
-        raise TesterSetupError(
+        raise VerificationSetupError(
             server.command,
             cwd,
             f"timed out after {server.startup_timeout}s waiting for {server.ready_url}",
@@ -441,7 +447,9 @@ async def prepared_test_stage(active_dir: Path, config: dict):
             commands.append(await _run_test(active_dir, command))
         urls = tuple(server.ready_url for server in tester.get("dev_server", []))
         browser = await _run_browser(active_dir, tester)
-        yield TestStageEvidence(tuple(commands), urls, (browser,) if browser else ())
+        yield VerificationStageEvidence(
+            tuple(commands), urls, (browser,) if browser else ()
+        )
     finally:
         for process in reversed(servers):
             await _terminate(process)

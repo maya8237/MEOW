@@ -26,7 +26,7 @@ from meow.execution.orchestrator import (
     review_then_test,
 )
 from meow.execution.sprint import Sprint
-from meow.infrastructure.test_runner import TestStageEvidence
+from meow.infrastructure.test_runner import VerificationStageEvidence
 
 PLAN_FILE = Path("/project/plan.md")
 
@@ -123,7 +123,7 @@ class ReviewThenTestTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_passing_reviewer_runs_tester_and_preserves_blocking_failure(self):
         sprint = _sprint(1)
-        evidence = TestStageEvidence()
+        evidence = VerificationStageEvidence()
 
         @asynccontextmanager
         async def stage(active_dir, config):
@@ -136,7 +136,7 @@ class ReviewThenTestTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch("meow.execution.orchestrator.prepared_test_stage", new=stage),
             patch(
-                "meow.execution.orchestrator.TesterAgent.test_plan",
+                "meow.execution.orchestrator.VerificationAgent.test_plan",
                 new=AsyncMock(return_value=("FAIL", "STATUS: FAIL tester finding")),
             ) as tester,
         ):

@@ -213,6 +213,22 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(calls["n"], 1)
 
+    async def test_process_error_without_stderr_reports_last_assistant_text(self):
+        async def api_error_then_exit(*, prompt, options):
+            await asyncio.sleep(0)
+            yield AssistantMessage(
+                content=[TextBlock(text="Invalid API key · Fix external API key")],
+                model="haiku",
+            )
+            raise ProcessError("Command failed", exit_code=1, stderr=None)
+            yield  # pragma: no cover -- makes this an async generator
+
+        with (
+            patch("meow.agents.base.query", api_error_then_exit),
+            self.assertRaisesRegex(RuntimeError, r"Reviewer.*Invalid API key"),
+        ):
+            await Agent.run_query("do work", object(), "Reviewer")
+
 
 class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):

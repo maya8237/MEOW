@@ -3,11 +3,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from meow.agents.tester import TesterAgent, architecture_context
+from meow.agents.tester import VerificationAgent, architecture_context
 from meow.infrastructure.test_runner import (
     BrowserEvidence,
-    TestCommandEvidence,
-    TestStageEvidence,
+    VerificationCommandEvidence,
+    VerificationStageEvidence,
 )
 
 
@@ -57,11 +57,11 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
             report.write_text(verdict, encoding="utf-8")
 
         with patch.object(
-            TesterAgent, "run_query", new=AsyncMock(side_effect=write_report)
+            VerificationAgent, "run_query", new=AsyncMock(side_effect=write_report)
         ) as run:
-            status, text = await TesterAgent(
+            status, text = await VerificationAgent(
                 Context(self.root, config) if config else self.context
-            ).test_plan(plan, evidence or TestStageEvidence())
+            ).test_plan(plan, evidence or VerificationStageEvidence())
         return status, text, run, plan
 
     async def test_reviewer_and_tester_verdicts_use_separate_files(self):
@@ -72,9 +72,11 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("feature-test.md", run.await_args.args[1].system_prompt)
 
     async def test_mandatory_test_failure_overrides_tester_pass(self):
-        result = TestCommandEvidence(self.root, "pytest", 1, "failed", False, True)
+        result = VerificationCommandEvidence(
+            self.root, "pytest", 1, "failed", False, True
+        )
         status, text, _, _ = await self._run_tester(
-            "SUMMARY: all good\nSTATUS: PASS", TestStageEvidence((result,))
+            "SUMMARY: all good\nSTATUS: PASS", VerificationStageEvidence((result,))
         )
         self.assertEqual(status, "FAIL")
         self.assertIn("Mandatory test command failed", text)
@@ -91,7 +93,7 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
         )
         _, _, run, _ = await self._run_tester(
             "SUMMARY: checked\nSTATUS: PASS",
-            TestStageEvidence(browser=(browser,)),
+            VerificationStageEvidence(browser=(browser,)),
         )
         prompt = run.await_args.args[0]
         self.assertIn("home page", prompt)
@@ -111,9 +113,9 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
         plan.write_text("Plan body", encoding="utf-8")
         report = self.root / "feature-test.md"
         report.write_text("SUMMARY: stale pass\nSTATUS: PASS\n", encoding="utf-8")
-        with patch.object(TesterAgent, "run_query", new=AsyncMock()):
-            status, text = await TesterAgent(self.context).test_plan(
-                plan, TestStageEvidence()
+        with patch.object(VerificationAgent, "run_query", new=AsyncMock()):
+            status, text = await VerificationAgent(self.context).test_plan(
+                plan, VerificationStageEvidence()
             )
         self.assertEqual(status, "FAIL")
         self.assertIn("did not produce", text)

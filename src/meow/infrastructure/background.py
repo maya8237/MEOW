@@ -14,7 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meow.execution.run_state import RunRecord, RunStore
-from meow.project.config import _expand_config_environment, _merge_config, config_paths
+from meow.project.config import _merge_config, config_paths
+from meow.project.config_env import _expand_config_environment
 
 _TERMINAL = {
     "complete",

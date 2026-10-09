@@ -6,8 +6,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from meow.infrastructure.test_runner import TesterSetupError, _argv, prepared_test_stage
-from meow.project.config import DevServerCommand, TestCommand
+from meow.infrastructure.test_runner import (
+    VerificationSetupError,
+    _argv,
+    prepared_test_stage,
+)
+from meow.project.config import DevServerCommand, VerificationCommand
 
 
 def _port() -> int:
@@ -45,12 +49,12 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
         config = {
             "tester": {
                 "tests": [
-                    TestCommand(
+                    VerificationCommand(
                         Path("apps/web"),
                         f"{sys.executable} {script}",
                         env={"PART": "web"},
                     ),
-                    TestCommand(
+                    VerificationCommand(
                         Path("services/api"),
                         f"{sys.executable} {script}",
                         env={"PART": "api"},
@@ -76,7 +80,9 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
         config = {
             "tester": {
                 "tests": [
-                    TestCommand(Path("."), f"{sys.executable} {script}", gate=False)
+                    VerificationCommand(
+                        Path("."), f"{sys.executable} {script}", gate=False
+                    )
                 ],
                 "dev_server": [],
                 "base_url": None,
@@ -92,7 +98,7 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
         fail.write_text("raise SystemExit(3)\n", encoding="utf-8")
         config = {
             "tester": {
-                "tests": [TestCommand(Path("."), f"{sys.executable} {fail}")],
+                "tests": [VerificationCommand(Path("."), f"{sys.executable} {fail}")],
                 "dev_server": [],
                 "base_url": None,
             }
@@ -102,7 +108,7 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
         hang = self.root / "hang.py"
         hang.write_text("import time\ntime.sleep(20)\n", encoding="utf-8")
         config["tester"]["tests"] = [
-            TestCommand(Path("."), f"{sys.executable} {hang}", timeout=0.1)
+            VerificationCommand(Path("."), f"{sys.executable} {hang}", timeout=0.1)
         ]
         async with prepared_test_stage(self.root, config) as evidence:
             self.assertTrue(evidence.commands[0].timed_out)
@@ -116,7 +122,7 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
         )
         config = {
             "tester": {
-                "tests": [TestCommand(Path("."), f"{sys.executable} {script}")],
+                "tests": [VerificationCommand(Path("."), f"{sys.executable} {script}")],
                 "dev_server": [],
                 "base_url": None,
             }
@@ -152,7 +158,7 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
                 Path("."), "unused", ready_url=ready, startup_timeout=1
             )
             config = {"tester": {"tests": [], "dev_server": [server], "base_url": None}}
-            with self.assertRaisesRegex(TesterSetupError, "already serving"):
+            with self.assertRaisesRegex(VerificationSetupError, "already serving"):
                 async with prepared_test_stage(self.root, config):
                     self.fail("collision should fail before entering the stage")
         finally:
@@ -168,7 +174,7 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
             startup_timeout=2,
         )
         config["tester"]["dev_server"] = [failed]
-        with self.assertRaisesRegex(TesterSetupError, "exited with code 4"):
+        with self.assertRaisesRegex(VerificationSetupError, "exited with code 4"):
             async with prepared_test_stage(self.root, config):
                 self.fail("failed startup should not enter the stage")
 
@@ -183,12 +189,12 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
         )
         config = {
             "tester": {
-                "tests": [TestCommand(Path("."), "missing-test-program-zz")],
+                "tests": [VerificationCommand(Path("."), "missing-test-program-zz")],
                 "dev_server": [server],
                 "base_url": None,
             }
         }
-        with self.assertRaises(TesterSetupError):
+        with self.assertRaises(VerificationSetupError):
             async with prepared_test_stage(self.root, config):
                 self.fail("missing test executable should be a setup error")
         self.assertFalse(await asyncio.to_thread(_reachable, ready))
@@ -211,7 +217,7 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
             startup_timeout=2,
         )
         config = {"tester": {"tests": [], "dev_server": [server], "base_url": None}}
-        with self.assertRaises(TesterSetupError):
+        with self.assertRaises(VerificationSetupError):
             async with prepared_test_stage(self.root, config):
                 pass
         self.assertFalse(await asyncio.to_thread(_reachable, ready))
@@ -221,7 +227,7 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
         config = {
             "tester": {
                 "tests": [
-                    TestCommand(
+                    VerificationCommand(
                         Path("."), "missing-test-program-zz", env={"TOKEN": secret}
                     )
                 ],
@@ -229,7 +235,7 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
                 "base_url": None,
             }
         }
-        with self.assertRaises(TesterSetupError) as caught:
+        with self.assertRaises(VerificationSetupError) as caught:
             async with prepared_test_stage(self.root, config):
                 self.fail("setup should not complete")
         self.assertIn("missing-test-program-zz", str(caught.exception))
@@ -269,7 +275,7 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
         try:
             async with prepared_test_stage(self.root, config):
                 self.assertTrue(await asyncio.to_thread(_reachable, ready))
-        except TesterSetupError:
+        except VerificationSetupError:
             pass  # The wrapper exited; cleanup still owns its child server.
         self.assertFalse(await asyncio.to_thread(_reachable, ready))
 
