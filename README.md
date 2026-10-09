@@ -40,7 +40,9 @@ Try it first:
 
 Tell MEOW what you want. It does all the work and gives you the finished branch.
 
-<img src="docs/demo.gif" width="900" alt="Animated preview of MEOW's harness carrying a request through queueing, planning, verification, review, and a finished branch" />
+![MEOW harness demo: one simple command becoming a finished branch](docs/demo.gif)
+
+![MEOW harness engineering workflow from a plain-language request to a verified branch](visualizations/meow-workflow/meow-workflow.png)
 
 The GIF is a deterministic workflow preview, not a live model transcript. Its
 source is [the VHS tape](docs/demo.tape); Windows users can use the
@@ -219,8 +221,6 @@ delivery around Claude.
 request or issue -> project template -> Claude Agent SDK ->
 isolated worktree -> checks and review -> verified branch
 ```
-
-![MEOW harness engineering workflow from a plain-language request to a verified branch](visualizations/meow-workflow/meow-workflow.png)
 
 `meow run` coordinates the loop and keeps its state in a run checkpoint. The
 normal path is:
