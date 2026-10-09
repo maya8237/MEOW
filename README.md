@@ -44,9 +44,6 @@ Tell MEOW what you want. It does all the work and gives you the finished branch.
 
 ![MEOW harness engineering workflow from a plain-language request to a verified branch](visualizations/meow-workflow/meow-workflow.png)
 
-The demo shows what happens after one simple `/meow:run` command: MEOW carries
-the work through to a verified branch.
-
 ## How it works
 
 ```text
