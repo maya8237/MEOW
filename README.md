@@ -44,9 +44,8 @@ Tell MEOW what you want. It does all the work and gives you the finished branch.
 
 ![MEOW harness engineering workflow from a plain-language request to a verified branch](visualizations/meow-workflow/meow-workflow.png)
 
-The GIF is a deterministic preview of one `/meow:run` path, not a live model
-transcript. Use the [VHS tape](docs/demo.tape) or the [FFmpeg
-fallback](docs/render-demo.ps1) to regenerate it.
+The demo shows what happens after one simple `/meow:run` command: MEOW carries
+the work through to a verified branch.
 
 ## How it works
 
