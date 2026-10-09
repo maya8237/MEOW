@@ -5,179 +5,73 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MEOW harness engineering</title>
   <style>
-    :root {
-      --bg: #f7f8fc;
-      --card: #ffffff;
-      --ink: #101828;
-      --muted: #5f6b7a;
-      --line: #dfe4ee;
-      --accent: #635bff;
-      --accent-soft: #eeedff;
-      --green: #0f9d78;
-      --green-soft: #e5f7f0;
-      --shadow: 0 16px 36px rgba(31, 41, 55, .08);
-    }
-    :root[data-theme="dark"] {
-      --bg: #0b1020;
-      --card: #151d31;
-      --ink: #f2f4fb;
-      --muted: #aab4c7;
-      --line: #2b3853;
-      --accent: #9a93ff;
-      --accent-soft: #28264f;
-      --green: #4fd1a5;
-      --green-soft: #173e38;
-      --shadow: 0 18px 40px rgba(0, 0, 0, .25);
-    }
+    :root { --ink: #111016; --panel: #1c1824; --panel-2: #26202f; --paper: #f4efe6; --muted: #b9afc4; --violet: #b088ff; --mint: #79e0c8; --coral: #ff896f; --line: #463950; }
+    :root[data-theme="light"] { --ink: #f4efe6; --panel: #fffaf1; --panel-2: #eee5d8; --paper: #17131d; --muted: #6b6074; --violet: #7241b7; --mint: #087f6a; --coral: #bd4f3c; --line: #d8cabb; }
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-    body {
-      background: var(--bg);
-      color: var(--ink);
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-      -webkit-font-smoothing: antialiased;
-    }
-    .stage {
-      width: 100vw;
-      height: 100vh;
-      padding: 5cqmin 5.5cqmin 3.5cqmin;
-      display: flex;
-      flex-direction: column;
-      gap: 3cqmin;
-      container-type: size;
-      background: radial-gradient(110cqmin 70cqmin at 100% 0%, var(--accent-soft), transparent 62%), var(--bg);
-    }
-    .eyebrow {
-      color: var(--accent);
-      font-size: 2cqmin;
-      font-weight: 800;
-      letter-spacing: .16em;
-      text-transform: uppercase;
-    }
-    h1 {
-      margin: 1cqmin 0 0;
-      font-size: 5.4cqmin;
-      line-height: 1.02;
-      letter-spacing: -.04em;
-    }
-    .lede {
-      max-width: 70cqmin;
-      margin: 1.2cqmin 0 0;
-      color: var(--muted);
-      font-size: 2.35cqmin;
-      line-height: 1.35;
-      font-weight: 500;
-    }
-    .workflow {
-      min-height: 0;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      gap: 3cqmin;
-    }
-    .flow {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      align-items: stretch;
-      gap: 2cqmin;
-    }
-    .step {
-      position: relative;
-      min-height: 23cqmin;
-      padding: 2.2cqmin;
-      border: 1px solid var(--line);
-      border-radius: 2cqmin;
-      background: var(--card);
-      box-shadow: var(--shadow);
-    }
-    .step:not(:last-child)::after {
-      content: "→";
-      position: absolute;
-      z-index: 2;
-      right: -2.2cqmin;
-      top: 50%;
-      transform: translate(50%, -58%);
-      color: var(--accent);
-      font-size: 3.2cqmin;
-      font-weight: 800;
-    }
-    .number {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 4.2cqmin;
-      height: 4.2cqmin;
-      border-radius: 50%;
-      color: var(--accent);
-      background: var(--accent-soft);
-      font-size: 1.8cqmin;
-      font-weight: 800;
-    }
-    .step h2 { margin: 2cqmin 0 1cqmin; font-size: 2.45cqmin; line-height: 1.05; }
-    .step p { margin: 0; color: var(--muted); font-size: 1.8cqmin; line-height: 1.35; }
-    .step.agent { border-color: var(--accent); background: linear-gradient(145deg, var(--accent-soft), var(--card)); }
-    .quality {
-      display: flex;
-      align-items: center;
-      gap: 1.5cqmin;
-      padding: 1.8cqmin 2.4cqmin;
-      border: 1px solid var(--green);
-      border-radius: 2cqmin;
-      color: var(--green);
-      background: var(--green-soft);
-      font-size: 2cqmin;
-      line-height: 1.3;
-    }
-    .quality strong { color: var(--ink); }
-    footer {
-      display: flex;
-      justify-content: space-between;
-      color: var(--muted);
-      font-size: 1.7cqmin;
-      font-weight: 600;
-    }
+    body { color: var(--paper); background: var(--ink); font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    .stage { width: 100vw; height: 100vh; padding: 4.5cqmin 5.5cqmin 3.4cqmin; display: flex; flex-direction: column; gap: 3.2cqmin; container-type: size; background: linear-gradient(90deg, transparent 0 49.9%, rgba(255,255,255,.045) 50%, transparent 50.1%), radial-gradient(70cqmin 60cqmin at 100% 0%, rgba(176,136,255,.13), transparent 70%), var(--ink); }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 4cqmin; }
+    .brand { display: flex; align-items: center; gap: 1.8cqmin; }
+    .logo-frame { width: 9cqmin; height: 9cqmin; padding: .45cqmin; overflow: hidden; border: 1px solid rgba(255,255,255,.2); border-radius: 1.8cqmin; background: var(--paper); box-shadow: .8cqmin .8cqmin 0 rgba(176,136,255,.27); }
+    .logo-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .brand strong { display: block; color: var(--paper); font-size: 3.5cqmin; line-height: .9; letter-spacing: -.08em; }
+    .brand span { display: block; margin-top: .7cqmin; color: var(--muted); font: 1.7cqmin ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .top-note { color: var(--muted); font: 1.8cqmin ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
+    .top-note span { color: var(--paper); }
+    h1 { margin: 0; color: var(--paper); font-size: 5.7cqmin; line-height: .95; letter-spacing: -.07em; }
+    .lede { max-width: 76cqmin; margin: 1cqmin 0 0; color: var(--muted); font-size: 2.2cqmin; line-height: 1.28; }
+    .pipeline { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 2.2fr 1.2fr 1fr; align-items: center; gap: 2.2cqmin; }
+    .node, .harness { position: relative; min-height: 24cqmin; padding: 2.2cqmin; border: 1px solid var(--line); background: rgba(28,24,36,.92); }
+    :root[data-theme="light"] .node, :root[data-theme="light"] .harness { background: rgba(255,250,241,.94); }
+    .node { display: flex; flex-direction: column; justify-content: space-between; border-radius: 1.2cqmin; }
+    .node::after { content: ""; position: absolute; top: 50%; right: -2.2cqmin; width: 2.2cqmin; height: 1px; background: var(--violet); }
+    .node:last-child::after { display: none; }
+    .node-mark { display: inline-grid; place-items: center; width: 4.3cqmin; height: 4.3cqmin; border: 1px solid var(--line); border-radius: .7cqmin; color: var(--violet); font: 700 1.8cqmin ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .node h2 { margin: 3.5cqmin 0 1cqmin; color: var(--paper); font-size: 2.5cqmin; line-height: 1.02; letter-spacing: -.04em; }
+    .node p { margin: 0; color: var(--muted); font-size: 1.75cqmin; line-height: 1.3; }
+    .request { border-color: var(--coral); }
+    .request .node-mark { color: var(--coral); }
+    .sdk { border-color: var(--violet); background: linear-gradient(145deg, rgba(176,136,255,.18), rgba(28,24,36,.92)); }
+    :root[data-theme="light"] .sdk { background: linear-gradient(145deg, rgba(176,136,255,.18), rgba(255,250,241,.94)); }
+    .done { border-color: var(--mint); }
+    .done .node-mark { color: var(--mint); }
+    .harness { min-height: 29cqmin; padding: 2cqmin; border: 1px solid var(--violet); border-radius: 1.2cqmin; background: var(--panel-2); box-shadow: 1cqmin 1cqmin 0 rgba(176,136,255,.16); }
+    .harness::before, .harness::after { position: absolute; top: 2.8cqmin; bottom: 2.8cqmin; width: 1.1cqmin; border-top: 1px solid var(--violet); border-bottom: 1px solid var(--violet); content: ""; }
+    .harness::before { left: -.7cqmin; border-left: 1px solid var(--violet); }
+    .harness::after { right: -.7cqmin; border-right: 1px solid var(--violet); }
+    .harness-head { display: flex; align-items: baseline; justify-content: space-between; gap: 2cqmin; padding-bottom: 1.5cqmin; border-bottom: 1px solid var(--line); }
+    .harness-head strong { color: var(--paper); font-size: 2.8cqmin; letter-spacing: -.05em; }
+    .harness-head span { color: var(--violet); font: 1.65cqmin ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .harness-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2cqmin; margin-top: 2.2cqmin; }
+    .harness-item { min-height: 11cqmin; padding: 1.4cqmin; border-left: 2px solid var(--violet); background: rgba(17,16,22,.35); }
+    :root[data-theme="light"] .harness-item { background: rgba(255,255,255,.45); }
+    .harness-item strong { display: block; color: var(--paper); font: 600 1.75cqmin/1.1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .harness-item span { display: block; margin-top: 1cqmin; color: var(--muted); font-size: 1.55cqmin; line-height: 1.2; }
+    .harness-note { margin: 2cqmin 0 0; color: var(--mint); font: 1.75cqmin ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .footer { display: flex; align-items: center; justify-content: space-between; padding-top: 1.8cqmin; border-top: 1px solid var(--line); color: var(--muted); font: 1.7cqmin ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .footer strong { color: var(--paper); font-weight: 600; }
+    @media (max-width: 1050px) { .pipeline { grid-template-columns: 1fr 1.8fr 1fr; } .done { grid-column: 2; } .done::after { display: none; } }
   </style>
 </head>
 <body>
-  <div class="stage">
-    <header>
-      <div class="eyebrow">MEOW / HARNESS ENGINEERING</div>
-      <h1>One request. A verified branch.</h1>
-      <p class="lede">Simple automation on the surface; templates, context, state, checks, and delivery around Claude underneath.</p>
+  <main class="stage">
+    <header class="top">
+      <div class="brand"><div class="logo-frame"><img src="../../logo.jfif" alt="MEOW pixel cat logo" /></div><div><strong>MEOW</strong><span>the layer around Claude</span></div></div>
+      <div class="top-note">harness engineering<br /><span>simple automation on the surface</span></div>
     </header>
-    <main class="workflow">
-      <div class="flow" aria-label="MEOW workflow from request to verified branch">
-        <section class="step">
-          <div class="number">01</div>
-          <h2>Say what you want</h2>
-          <p>Feature request, queue, or issue. Plain language is enough.</p>
-        </section>
-        <section class="step">
-          <div class="number">02</div>
-          <h2>Project harness</h2>
-          <p>MEOW loads the repository rules, templates, checks, integrations, and defaults.</p>
-        </section>
-        <section class="step agent">
-          <div class="number">03</div>
-          <h2>Claude Agent SDK</h2>
-          <p>One session explores, plans, implements, and responds to feedback.</p>
-        </section>
-        <section class="step">
-          <div class="number">04</div>
-          <h2>Quality loop</h2>
-          <p>Isolated worktree, configured checks, independent review, and fixes.</p>
-        </section>
-        <section class="step">
-          <div class="number">05</div>
-          <h2>Finished branch</h2>
-          <p>Inspect the evidence, resume a checkpoint, or deliver the passing branch.</p>
-        </section>
-      </div>
-      <div class="quality"><strong>Done means done:</strong> MEOW's harness carries the repetitive path until the configured gates pass, then leaves a branch you can inspect or deliver.</div>
+    <section>
+      <h1>What MEOW does around Claude.</h1>
+      <p class="lede">It keeps the context, state, feedback, and delivery path in place so one plain-language request can become a verified branch.</p>
+    </section>
+    <main class="pipeline" aria-label="MEOW harness engineering pipeline">
+      <section class="node request"><div class="node-mark">01</div><div><h2>Say the outcome</h2><p>Feature request, queue, or issue. Plain language is enough.</p></div></section>
+      <section class="harness"><div class="harness-head"><strong>MEOW harness</strong><span>the repetitive path</span></div><div class="harness-grid"><div class="harness-item"><strong>context</strong><span>rules, templates, integrations</span></div><div class="harness-item"><strong>state</strong><span>worktree, checkpoint, recovery</span></div><div class="harness-item"><strong>feedback</strong><span>checks, review, delivery gate</span></div></div><p class="harness-note">MEOW carries the work between the request and the result.</p></section>
+      <section class="node sdk"><div class="node-mark">02</div><div><h2>Claude Agent SDK</h2><p>Explore, plan, implement, and respond to feedback in one managed session.</p></div></section>
+      <section class="node done"><div class="node-mark">✓</div><div><h2>Verified branch</h2><p>Inspect it, resume it, or deliver it when the gates pass.</p></div></section>
     </main>
-    <footer><span>Configure once. Hand off the outcome.</span><span>MEOW</span></footer>
-  </div>
+    <footer class="footer"><span><strong>/meow:run Add CSV export</strong></span><span>one request → one finished branch</span></footer>
+  </main>
   <script>
     const theme = new URLSearchParams(location.search).get("theme");
     if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
