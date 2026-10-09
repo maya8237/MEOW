@@ -2,10 +2,12 @@
 
 import json
 import subprocess
+from unittest.mock import patch
 
 import pytest
 
 from meow.execution.run_state import RunStore
+from meow.infrastructure.checks import config_fingerprint
 from meow.native.native_state import checkpoint
 
 
@@ -50,3 +52,20 @@ def test_native_checkpoint_cannot_claim_completion_without_gates(tmp_path):
     created = checkpoint(tmp_path, tmp_path, "planning", request="do work")
     with pytest.raises(ValueError, match="completion"):
         checkpoint(tmp_path, tmp_path, "complete", run_id=created["run_id"])
+
+
+def test_native_checkpoint_fingerprints_repository_config_for_worktree(tmp_path):
+    repo = tmp_path / "repo"
+    active = tmp_path / "worktree"
+    repo.mkdir()
+    active.mkdir()
+    (repo / ".meow").mkdir()
+    (repo / ".meow" / "config.toml").write_text("max_rounds = 1\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q", "-b", "dev", str(repo)], check=True)
+
+    with patch("meow.project.config.user_config_path", return_value=tmp_path / "none"):
+        created = checkpoint(repo, active, "planning", request="do work")
+        record = RunStore(repo).load(created["run_id"])
+        expected = config_fingerprint(repo)
+
+    assert record.config_fingerprint == expected

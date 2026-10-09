@@ -30,7 +30,6 @@ from meow.project.prompts import (
 if TYPE_CHECKING:
     from meow.integrations.ci_review import CiReviewContext
 from meow.execution.sprint import Sprint
-from meow.infrastructure.usage import record_result
 from meow.project.shaping import ShapeContext
 
 PROMPT_REVIEW_FILENAME = "review.md"
@@ -202,7 +201,6 @@ class ReviewerAgent(Agent):
                     if isinstance(block, TextBlock)
                 )
             elif isinstance(message, ResultMessage):
-                record_result("reviewer", message)
                 if message.subtype != "success":
                     raise RuntimeError(f"CI reviewer failed: {message.subtype}")
                 completed = True

@@ -64,15 +64,15 @@ def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, to
             return f"Plan changed: {plan}. Restore the saved plan before continuing."
     if record.config_fingerprint:
         try:
-            current = config_fingerprint(worktree)
+            current = config_fingerprint(repo)
         except OSError:
             return (
-                "Configuration missing. Restore the active MEOW config "
+                "Configuration missing. Restore the repository MEOW config "
                 "before continuing."
             )
         if current != record.config_fingerprint:
             return (
-                "Configuration changed. Restore the active MEOW config "
+                "Configuration changed. Restore the repository MEOW config "
                 "before continuing."
             )
     return None

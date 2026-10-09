@@ -287,6 +287,12 @@ class LoadConfigOsValidationTests(unittest.TestCase):
             "/home/alice//home/alice//home/alice/%NOT_SET%/$NOT_SET/${NOT_SET}",
         )
 
+    def test_empty_environment_variables_expand_to_empty_strings(self):
+        with patch.dict("os.environ", {"MEOW_EMPTY": ""}, clear=True):
+            expanded = _expand_config_environment("before-$MEOW_EMPTY-after")
+
+        self.assertEqual(expanded, "before--after")
+
     def test_user_config_is_fallback_to_project_shared_and_local(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -200,12 +200,13 @@ def log_working_directory(working_dir: Path) -> None:
     logger.info("working_directory_resolved", path=str(Path(working_dir).resolve()))
 
 
-def _prepare_sprint(
+def _prepare_sprint(  # ruff: ignore[too-many-arguments] -- config root is an independent provenance boundary
     working_dir: Path,
     feature_name: str | None,
     *,
     use_worktree: bool,
     source_branch: str | None = None,
+    config_dir: Path | None = None,
 ) -> tuple[Sprint, str | None, Path]:
     """Load config, resolve the active directory, and build a Sprint.
 
@@ -222,7 +223,7 @@ def _prepare_sprint(
         if public_orchestrator.load_config is _PUBLIC_LOAD_CONFIG
         else public_orchestrator.load_config
     )
-    config = config_loader(working_dir)
+    config = config_loader(config_dir or working_dir)
     active_dir, effective_name, is_worktree = _resolve_working_dir(
         working_dir,
         use_worktree=use_worktree,

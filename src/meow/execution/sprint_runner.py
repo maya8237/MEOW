@@ -96,7 +96,8 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
     if resume_at not in {"generate", "review"}:
         raise ValueError(f"resume_at must be 'generate' or 'review', got {resume_at!r}")
 
-    store = RunStore(record_root or working_dir)
+    config_dir = Path(record_root or working_dir).resolve()
+    store = RunStore(config_dir)
     record = (
         store.load(run_id)
         if run_id
@@ -119,6 +120,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
             feature_name,
             use_worktree=use_worktree,
             source_branch=source_branch,
+            config_dir=config_dir,
         )
     except BaseException as exc:
         store.transition(record.id, "failed", last_failure=str(exc))
@@ -261,8 +263,8 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
             else None
         ),
         config_fingerprint=(
-            config_fingerprint(active_dir)
-            if config_paths(active_dir)
+            config_fingerprint(config_dir)
+            if config_paths(config_dir)
             else None
         ),
     )
@@ -305,7 +307,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
             store.transition(record.id, "failed", last_failure=str(exc))
         raise
     if passed:
-        if config_paths(active_dir):
+        if config_paths(config_dir):
             store.transition(record.id, "checking")
             try:
                 results = await cancellable(

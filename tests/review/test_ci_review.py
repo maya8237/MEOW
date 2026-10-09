@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from meow.execution.run_state import RunStore
+from meow.infrastructure.usage import usage_scope
 from meow.integrations.ci_review import CiReviewError, prepare_ci_review, run_ci_review
 
 
@@ -185,7 +187,9 @@ def test_untracked_checkout_write_invalidates_pass(checkout):
     assert "checkout HEAD or files changed" in result.report_path.read_text()
 
 
-def test_ci_reviewer_grants_only_read_tools(checkout):
+def test_ci_reviewer_grants_only_read_tools(  # ruff: ignore[too-many-statements] -- SDK stream assertions cover the review contract
+    checkout,
+):
     from meow.agents.base import ProjectContext
     from meow.agents.reviewer import ReviewerAgent
 
@@ -225,8 +229,13 @@ def test_ci_reviewer_grants_only_read_tools(checkout):
             result="SUMMARY: Fine\nSTATUS: PASS",
         )
 
-    with patch("meow.agents.reviewer.query", sdk_stream):
+    store = RunStore(repo)
+    record = store.create(
+        source="review", request="review", repo=repo, worktree=repo, branch="detached"
+    )
+    with usage_scope(store, record.id), patch("meow.agents.reviewer.query", sdk_stream):
         import asyncio
 
         status, _ = asyncio.run(agent.review_ci_branch(context))
     assert status == "PASS"
+    assert len(store.load(record.id).usage["entries"]) == 1
