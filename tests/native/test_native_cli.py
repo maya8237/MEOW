@@ -88,7 +88,9 @@ name = "browser"
 command = "missing-tester-mcp"
 env = {TOKEN = "actual-secret-do-not-print"}
 """
-            (root / ".harness.toml").write_text(TOML + tester_toml, encoding="utf-8")
+            (root / ".meow" / "config.toml").write_text(
+                TOML + tester_toml, encoding="utf-8"
+            )
 
             def find_command(name):
                 return None if name == "missing-tester-mcp" else "/python"
@@ -118,7 +120,9 @@ env = {TOKEN = "actual-secret-do-not-print"}
     def test_verify_reports_missing_command_cwd_as_invalid(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
-            with (root / ".harness.toml").open("a", encoding="utf-8") as config_file:
+            with (root / ".meow" / "config.toml").open(
+                "a", encoding="utf-8"
+            ) as config_file:
                 config_file.write(
                     '\n[[tester.tests]]\ncwd = "missing"\n'
                     'command = "python -m unittest"\n'

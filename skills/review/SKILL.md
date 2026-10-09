@@ -41,7 +41,7 @@ locally first). Resuming from a review file always fixes (there's no
 ## Native mode
 
 1. Pick source and mode as above. The project uses `.meow/config.toml` at
-   its root; legacy `.harness.toml` is a compatibility fallback.
+   its root.
 2. Resolve the working directory and, for jira/gitlab, fetch the source
    material:
    - **prompt** / **plan** / no source: `meow native prepare --no-worktree

@@ -2,6 +2,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
+LEGACY_CONFIG_NAME = "." + "harness.toml"
 
 
 def _git_ignores(path: str) -> bool:
@@ -21,7 +22,7 @@ def test_onboarding_is_current_setup_and_repairs_gitignore_itself():
     assert "!.meow/config.toml" in text
     assert "independently" in text.lower()
     assert ".meow/config.local.toml" in text
-    assert ".harness.toml" not in text
+    assert LEGACY_CONFIG_NAME not in text
     assert "knowledge-audit" in text
     assert "ANTHROPIC_API_KEY" in text
     assert "disposable" in text
@@ -33,7 +34,7 @@ def test_migration_is_separate_and_repairs_gitignore_itself():
     )
 
     assert "legacy" in text.lower()
-    assert ".harness.toml" in text
+    assert LEGACY_CONFIG_NAME in text
     assert ".meow/*" in text
     assert "!.meow/" in text
     assert "!.meow/config.toml" in text
@@ -63,6 +64,28 @@ def test_repository_does_not_reintroduce_removed_backend_references():
             continue
         try:
             if removed_backend in path.read_text(encoding="utf-8").lower():
+                offending.append(name)
+        except (OSError, UnicodeError):
+            continue
+
+    assert offending == []
+
+
+def test_legacy_config_references_are_confined_to_migration():
+    tracked = subprocess.run(
+        ["git", "ls-files"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    offending = []
+    for name in tracked:
+        path = ROOT / name
+        if not path.is_file() or "migration" in path.parts:
+            continue
+        try:
+            if LEGACY_CONFIG_NAME in path.read_text(encoding="utf-8"):
                 offending.append(name)
         except (OSError, UnicodeError):
             continue

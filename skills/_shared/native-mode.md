@@ -31,8 +31,7 @@ reviewer PASS, and enabled tester PASS. SDK usage missing from evidence is
 on stderr, exit 1). It starts no agents. If `meow` is not on PATH, tell the
 user to install it (README: a venv with `pip install -e .`, or `pipx install -e .`)
 and stop; do not guess at a venv path. Flags shared by every command:
-`--working-dir PATH` (project root with `.meow/config.toml`; legacy
-`.harness.toml` is a fallback; default cwd) and
+`--working-dir PATH` (project root with `.meow/config.toml`; default cwd) and
 `--active-dir PATH` (the worktree that `prepare` returned; default = working dir).
 
 | Command | Purpose |

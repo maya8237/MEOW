@@ -40,7 +40,8 @@ def test_interrupted_generator_is_recorded_before_edit(tmp_path):
 
 
 def test_run_records_planning_and_completion(tmp_path):
-    (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     plan = tmp_path / "plan.md"
     plan.write_text("plan", encoding="utf-8")
     config = {
@@ -182,7 +183,8 @@ def test_tester_failure_keeps_independent_reviewer_verdict(tmp_path):
 
 
 def test_final_check_exception_records_failure(tmp_path):
-    (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     plan = tmp_path / "plan.md"
     plan.write_text("plan", encoding="utf-8")
     config = {

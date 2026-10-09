@@ -64,7 +64,7 @@ configuration is in
 
 To onboard another repo, use `/meow:onboard`. It sets up a current/clean
 project and repairs its `.gitignore` itself. Use `/meow:migration` separately
-for legacy `.harness.toml` layouts; migration also repairs `.gitignore` itself.
+for legacy layouts; migration also repairs `.gitignore` itself.
 Both skills ask about optional integrations and project features using yes/no
 choices.
 

@@ -151,8 +151,6 @@ def config_fingerprint(repo: Path) -> str:
     paths = config_paths(repo)
     if not paths:
         raise FileNotFoundError("No MEOW configuration file found")
-    if len(paths) == 1 and paths[0].name == ".harness.toml":
-        return hashlib.sha256(paths[0].read_bytes()).hexdigest()
     digest = hashlib.sha256()
     for path in paths:
         try:

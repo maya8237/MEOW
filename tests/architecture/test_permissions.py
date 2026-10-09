@@ -70,7 +70,8 @@ def test_invalid_or_unenforceable_rules_are_rejected(raw):
 
 
 def test_config_loads_permission_rules(tmp_path):
-    (tmp_path / ".harness.toml").write_text(
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text(
         'lint_command = "ruff check"\n[permissions]\n'
         '[[permissions.rule]]\nrole = "generator"\n'
         'tool = "Write"\naction = "deny"\npath = ".env"\n',
