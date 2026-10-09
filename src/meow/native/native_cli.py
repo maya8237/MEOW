@@ -189,6 +189,13 @@ def _add_prompt(sub) -> None:
         default=None,
         help="Branch under review (reviewer-branch role).",
     )
+    parser.add_argument(
+        "--provider",
+        dest="remote_provider",
+        choices=("gitlab", "github"),
+        default="gitlab",
+        help="Remote provider for reviewer-mr (default: gitlab).",
+    )
     parser.add_argument("--shape", default=None, help="Accepted shape artifact path.")
 
 
@@ -321,6 +328,7 @@ def _prompt(args, working_dir: Path, active: Path) -> dict:
         use_worktree=args.worktree,
         target=args.target,
         branch=args.branch,
+        remote_provider=args.remote_provider,
         shape_path=_resolve(args.shape, active),
     )
 

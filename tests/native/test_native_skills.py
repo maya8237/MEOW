@@ -105,6 +105,7 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
             "Lint fixer",
             "Jira issue fetcher",
             "GitLab merge-request fetcher",
+            "GitHub pull-request fetcher",
         ):
             with self.subTest(native_role=native_role):
                 self.assertIn(native_role, text)

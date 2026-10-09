@@ -360,13 +360,15 @@ def prompt_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
     )
 
 
-def mr_review_prompt(review_file: Path, *, check_worktree_hygiene: bool) -> str:
+def remote_review_prompt(
+    review_file: Path, request_label: str, *, check_worktree_hygiene: bool
+) -> str:
     return (
         "You are a skeptical QA reviewer. You did not write this "
-        "code -- grade it critically. You are reviewing a GitLab "
-        "merge request's diff, not a local working tree -- there is "
+        f"code -- grade it critically. You are reviewing a {request_label}'s "
+        "diff, not a local working tree -- there is "
         "no Sprint Contract and no `git diff` to run yourself. Use "
-        "only the merge request title, description, and diff given "
+        "only the remote request title, description, and diff given "
         "in the task message as your source of truth; Read/Grep/Glob "
         "the local project only for background context on the files "
         "the diff touches, if that helps. Do not run or reference "

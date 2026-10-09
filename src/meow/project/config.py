@@ -85,6 +85,7 @@ DEFAULT_CONFIG = {
         "reviewer": None,
         "issue_fetcher": None,
         "gitlab_fetcher": None,
+        "github_fetcher": None,
         "lint_fixer": None,
         "review_fixer": None,
         "tester": None,

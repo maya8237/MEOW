@@ -38,13 +38,13 @@ and stop; do not guess at a venv path. Flags shared by every command:
 |---|---|
 | `prepare [--name N] [--no-worktree] [--source-branch B] [--branch BR] [--existing-branch BR] [--allow-dirty]` | Startup guards + worktree; returns `active_dir`, `docs_dir`, `plan_file`, `review_file`, `max_rounds`, `models`, `lint` |
 | `verify [--no-lint]` | Validate config and report lint, tester, and integration readiness without starting agents, servers, or MCP connections |
-| `latest-plan` / `latest-review` | Newest plan / review file in `docs_dir` (`latest-review` also gives its `flavor`: plan, prompt or gitlab) |
+| `latest-plan` / `latest-review` | Newest plan / review file in `docs_dir` (`latest-review` also gives its `flavor`: plan, prompt, gitlab or github) |
 | `verdict FILE` | `{status: PASS\|FAIL, summary}` of a review file |
 | `lint [--file F] [--fix] [--all-blocking]` | Per-file (auto-fixing) or project-wide lint run. `--all-blocking` ignores `gate` and treats every command as blocking (what the `lint` skill needs; everything else wants the default gate/informational split) |
 | `round PLAN [--reset\|--show]` | On-disk round counter; default advances it |
 | `checkpoint PHASE [--run-id ID] [--request TEXT] [--plan FILE] [--review FILE] [--round N] [--reviewer PASS\|FAIL] [--tester PASS\|FAIL]` | Atomic run journal transition; omit `--run-id` only to create a native run, then reuse the returned ID |
 | `finalize RUN_ID` | Run current required lint, test, and build gates and finish only when reviewer and enabled tester evidence pass |
-| `prompt ROLE [--plan F] [--focus T] [--worktree]` | Exact SDK system prompt (+ task message, model) for a role |
+| `prompt ROLE [--plan F] [--focus T] [--provider {gitlab,github}] [--worktree]` | Exact SDK system prompt (+ task message, model) for a role |
 | `push BRANCH` | Push a named branch to origin |
 | `knowledge-audit` / `knowledge-check` / `knowledge-create` | Audit, validate, or create selected project knowledge documents |
 | `shape-assess` / `shape-create` / `shape-reflect` | Assess, create, or reflect on requirements shaping artifacts |
@@ -80,6 +80,7 @@ only with an explicit plan file and rejects other sources and `--review-file`.
 | Lint fixer | The CLI role receives no additional skill metadata; it uses a lint-specific prompt and a post-edit lint hook. In the native lint skill, run `meow native prompt lint-fixer` and run per-file lint after edits. Do not start a second agent. |
 | Jira issue fetcher | CLI mode reads through the configured Jira MCP server. Native run/review skills use the already-connected Jira MCP tools directly and pass the issue text to the planner or reviewer. |
 | GitLab merge-request fetcher | CLI mode reads through the configured GitLab MCP server. Native review uses the already-connected GitLab MCP tools directly to fetch the title, description, and diff, then dispatches `reviewer-mr`. |
+| GitHub pull-request fetcher | CLI mode reads through the configured GitHub MCP server. Native review uses the already-connected GitHub MCP tools directly to fetch the title, description, and diff, then dispatches `reviewer-mr --provider github`. |
 
 ### Dispatching the reviewer
 
@@ -138,7 +139,8 @@ then stop." plus the full review text (same wording as the CLI).
 
 - Plan: `<docs_dir>/<name>.md` (or `plan.md`); review of it: `<name>-review.md`.
   The default `docs_dir` is `.meow/plans`.
-- Prompt review: `review.md`. Merge request review: `gitlab-review.md`.
+- Prompt review: `review.md`. Remote reviews: `gitlab-review.md` or
+  `github-review.md`.
 - Verdict format: line 1 `SUMMARY: ...`, line 2 `STATUS: PASS` or `STATUS: FAIL`,
   then one line per criterion.
 - Never edit files under `docs_dir` other than the plan and the review verdicts.

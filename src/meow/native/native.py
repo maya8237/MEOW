@@ -148,6 +148,7 @@ def verify(
     integrations = {
         "jira": _verify_jira(config),
         "gitlab": _verify_gitlab(config),
+        "github": _verify_github(config),
     }
     paths = config_paths(working_dir)
     result = {
@@ -383,6 +384,29 @@ def _verify_gitlab(user_config: dict) -> dict:
         "gitlab",
         mcp,
         required_env=("GITLAB_URL", "GITLAB_TOKEN"),
+        config_env=mcp_env,
+    )
+    return {
+        "configured": bool(mcp),
+        "status": check["status"],
+        "mcp": check,
+    }
+
+
+def _verify_github(user_config: dict) -> dict:
+    github = user_config.get("github")
+    if not isinstance(github, dict):
+        return {
+            "configured": False,
+            "status": "not_configured",
+            "mcp": _not_configured(),
+        }
+    mcp = github.get("mcp")
+    mcp_env = mcp.get("env", {}) if isinstance(mcp, dict) else {}
+    check = _verify_mcp(
+        "github",
+        mcp,
+        required_env=("GITHUB_PERSONAL_ACCESS_TOKEN",),
         config_env=mcp_env,
     )
     return {

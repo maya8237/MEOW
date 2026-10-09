@@ -36,6 +36,14 @@ default = []
 # [gitlab.mcp.env]
 # GITLAB_URL = "https://gitlab.example.com"
 
+# Shared GitHub MCP launcher settings. Put tokens in the environment or local
+# config. The pull-request URL is supplied to `meow review --github`.
+# [github.mcp]
+# command = "npx"
+# args = ["your-github-mcp-package"]
+# [github.mcp.env]
+# GITHUB_PERSONAL_ACCESS_TOKEN = "<token>"
+
 # Add one or more project lint commands as needed.
 # [[lint]]
 # command = "python -m ruff check"

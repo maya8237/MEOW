@@ -24,6 +24,12 @@ class DetectReviewFlavorTests(unittest.TestCase):
             "gitlab",
         )
 
+    def test_github_based_review_file(self):
+        self.assertEqual(
+            plan_files._detect_review_flavor(Path("docs/github-review.md")),
+            "github",
+        )
+
     def test_branch_based_review_file(self):
         self.assertEqual(
             plan_files._detect_review_flavor(Path("docs/branch-review.md")),

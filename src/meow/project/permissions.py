@@ -10,7 +10,8 @@ _ACTIONS = frozenset({"allow", "deny", "ask"})
 _PATH_KEYS = ("file_path", "path", "notebook_path")
 _ROLES = frozenset({
     "planner", "generator", "reviewer", "tester", "review_fixer",
-    "lint_fixer", "issue_fetcher", "gitlab_fetcher", "docs_updater", "setup",
+    "lint_fixer", "issue_fetcher", "gitlab_fetcher", "github_fetcher",
+    "docs_updater", "setup",
 })
 
 
