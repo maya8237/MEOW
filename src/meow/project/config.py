@@ -19,7 +19,9 @@ try:
 except ModuleNotFoundError:
     import tomli as tomllib  # Python 3.10 fallback -- pip install tomli
 
-CONFIG_FILENAME = ".harness.toml"
+CONFIG_FILENAME = ".meow/config.toml"
+LOCAL_CONFIG_FILENAME = ".meow/config.local.toml"
+LEGACY_CONFIG_FILENAME = ".harness.toml"
 DEFAULT_FIX_FLAG = "--fix"
 LINT_ENTRY_KEYS = frozenset({
     "command",
@@ -77,7 +79,7 @@ DEFAULT_CONFIG = {
     "lint_fix_flag": DEFAULT_FIX_FLAG,
     "max_rounds": 8,
     "lint_timeout": 60,  # seconds before a per-file lint command is killed
-    "docs_dir": "docs/exec-plans/active",
+    "docs_dir": ".meow/plans",
     "models": {
         "explorer": "haiku",
         "planner": None,  # None = engine default
@@ -95,15 +97,31 @@ DEFAULT_CONFIG = {
     },
 }
 
-_WINDOWS_ENV_VAR = re.compile(r"%([A-Za-z_][A-Za-z0-9_]*)%")
+_CONFIG_ENV_VAR = re.compile(
+    r"%([A-Za-z_][A-Za-z0-9_]*)%|\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)"
+)
+
+
+def _config_environment_value(name: str) -> str | None:
+    value = os.environ.get(name)
+    if value is not None:
+        return value
+    if name == "USERPROFILE":
+        return os.environ.get("HOME") or str(Path.home())
+    return None
 
 
 def _expand_config_environment(value):
     """Expand common environment-variable syntaxes in TOML values."""
     if isinstance(value, str):
-        value = os.path.expandvars(value)
-        return _WINDOWS_ENV_VAR.sub(
-            lambda match: os.environ.get(match.group(1), match.group(0)), value
+        return _CONFIG_ENV_VAR.sub(
+            lambda match: (
+                _config_environment_value(
+                    match.group(1) or match.group(2) or match.group(3)
+                )
+                or match.group(0)
+            ),
+            value,
         )
     if isinstance(value, list):
         return [_expand_config_environment(item) for item in value]
@@ -112,6 +130,30 @@ def _expand_config_environment(value):
             key: _expand_config_environment(item) for key, item in value.items()
         }
     return value
+
+
+def _merge_config(base: dict, override: dict) -> dict:
+    """Merge local TOML over shared TOML, recursively for tables."""
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(merged.get(key), dict) and isinstance(value, dict):
+            merged[key] = _merge_config(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def config_paths(working_dir: Path) -> tuple[Path, ...]:
+    """Return the active shared/legacy config and optional local overlay."""
+    project = Path(working_dir)
+    shared = project / CONFIG_FILENAME
+    legacy = project / LEGACY_CONFIG_FILENAME
+    primary = shared if shared.is_file() else legacy if legacy.is_file() else None
+    local = project / LOCAL_CONFIG_FILENAME
+    paths = [primary] if primary is not None else []
+    if local.is_file():
+        paths.append(local)
+    return tuple(paths)
 
 
 @dataclass(frozen=True)
@@ -138,7 +180,7 @@ class LintCommand:
 
     def argv(self) -> list[str]:
         """The command as argv, check-only, program resolved on PATH."""
-        argv = self.command.split() + list(self.args)
+        argv = split_command(self.command) + list(self.args)
         if not argv:
             raise ValueError(f"{CONFIG_FILENAME}: lint command is empty.")
         # Windows will not exec a .cmd shim (npx, eslint and oxlint all ship
@@ -697,12 +739,12 @@ def load_config(working_dir: Path) -> dict:
     from meow.infrastructure.worktree_setup import validate_setup
     from meow.project.permissions import parse_policy
 
-    config_path = working_dir / CONFIG_FILENAME
-    if config_path.exists():
+    user_config = {}
+    for config_path in config_paths(working_dir):
         with open(config_path, "rb") as f:
-            user_config = _expand_config_environment(tomllib.load(f))
-    else:
-        user_config = {}
+            user_config = _merge_config(
+                user_config, _expand_config_environment(tomllib.load(f))
+            )
 
     config = {**DEFAULT_CONFIG, **user_config}
     config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}

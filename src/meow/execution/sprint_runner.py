@@ -37,6 +37,7 @@ from meow.infrastructure.lint import describe_lint_plan
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import usage_scope
 from meow.infrastructure.worktree_setup import WorktreeSetupError, run_setup
+from meow.project.config import config_paths
 from meow.project.plan_files import _latest_plan_file
 from meow.project.plan_state import PlanStore
 from meow.project.preplan import gather_context, prepare_preplan
@@ -254,7 +255,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
         ),
         config_fingerprint=(
             config_fingerprint(active_dir)
-            if (active_dir / ".harness.toml").is_file()
+            if config_paths(active_dir)
             else None
         ),
     )
@@ -297,7 +298,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
             store.transition(record.id, "failed", last_failure=str(exc))
         raise
     if passed:
-        if (active_dir / ".harness.toml").is_file():
+        if config_paths(active_dir):
             store.transition(record.id, "checking")
             try:
                 results = await cancellable(

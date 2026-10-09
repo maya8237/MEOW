@@ -17,6 +17,7 @@ from meow.project.config import (
     _command_fields,
     _positive_timeout,
     _typed_bool,
+    config_paths,
     resolve_command_cwd,
     split_command,
 )
@@ -147,7 +148,16 @@ def normalize_build(raw: object) -> list[Check]:
 
 
 def config_fingerprint(repo: Path) -> str:
-    return hashlib.sha256((repo / ".harness.toml").read_bytes()).hexdigest()
+    paths = config_paths(repo)
+    if not paths:
+        raise FileNotFoundError("No MEOW configuration file found")
+    if len(paths) == 1 and paths[0].name == ".harness.toml":
+        return hashlib.sha256(paths[0].read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    for path in paths:
+        digest.update(str(path.relative_to(repo)).encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
 def code_revision(repo: Path) -> str:

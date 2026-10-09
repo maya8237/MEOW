@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from meow.project.config import (
     LintCommand,
+    _expand_config_environment,
     _lint_entry,
     _normalize_lint_commands,
     _normalize_tester_config,
@@ -209,11 +210,78 @@ class LoadConfigOsValidationTests(unittest.TestCase):
         self.assertEqual(config["docs_dir"], r"C:\Users\alice/meow-docs")
         self.assertEqual(config["tester"]["base_url"], "http://localhost:3000/api")
 
+    def test_load_config_merges_shared_and_local_meow_toml(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            working_dir = Path(tmp)
+            meow_dir = working_dir / ".meow"
+            meow_dir.mkdir()
+            (meow_dir / "config.toml").write_text(
+                '[[lint]]\n'
+                'command = "python \\\"%USERPROFILE%/tools/lint.py\\\""\n'
+                'args = ["$MEOW_ARG"]\n'
+                'env = { SHARED_MODE = "%SHARED_MODE%" }\n'
+                '[tester]\n'
+                'base_url = "$MEOW_BASE_URL/api"\n'
+                '[[tester.mcp]]\n'
+                'name = "browser"\n'
+                'command = "mcp-browser"\n'
+                'args = ["%USERPROFILE%/browser"]\n'
+                '[models]\n'
+                'explorer = "shared-model"\n',
+                encoding="utf-8",
+            )
+            (meow_dir / "config.local.toml").write_text(
+                '[tester]\n'
+                'base_url = "$MEOW_LOCAL_URL"\n'
+                '[agent_skills]\n'
+                'default = ["my-local-skill"]\n',
+                encoding="utf-8",
+            )
+            with patch.dict(
+                "os.environ",
+                {
+                    "USERPROFILE": r"C:\Users\alice",
+                    "MEOW_ARG": "--strict",
+                    "SHARED_MODE": "shared",
+                    "MEOW_BASE_URL": "http://shared",
+                    "MEOW_LOCAL_URL": "http://local",
+                },
+                clear=False,
+            ):
+                config = load_config(working_dir)
+
+        lint = config["lint"][0]
+        self.assertEqual(
+            lint.command, r'python "C:\Users\alice/tools/lint.py"'
+        )
+        self.assertEqual(lint.args, ("--strict",))
+        self.assertEqual(lint.env, {"SHARED_MODE": "shared"})
+        self.assertEqual(config["tester"]["base_url"], "http://local")
+        self.assertEqual(
+            config["tester"]["mcp"][0]["args"], [r"C:\Users\alice/browser"]
+        )
+        self.assertEqual(config["models"]["explorer"], "shared-model")
+        self.assertEqual(config["agent_skills"]["default"], ["my-local-skill"])
+
+    def test_percent_userprofile_falls_back_to_home_and_missing_vars_remain(self):
+        with (
+            patch.dict("os.environ", {"HOME": "/home/alice"}, clear=True),
+            patch("meow.project.config.Path.home", return_value=Path("/home/alice")),
+        ):
+            expanded = _expand_config_environment(
+                "%USERPROFILE%/$HOME/${HOME}/%NOT_SET%/$NOT_SET/${NOT_SET}"
+            )
+
+        self.assertEqual(
+            expanded,
+            "/home/alice//home/alice//home/alice/%NOT_SET%/$NOT_SET/${NOT_SET}",
+        )
+
     def test_load_config_uses_defaults_when_harness_file_is_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = load_config(Path(tmp))
 
-        self.assertEqual(config["docs_dir"], "docs/exec-plans/active")
+        self.assertEqual(config["docs_dir"], ".meow/plans")
         self.assertEqual(config["lint"], [])
 
 
