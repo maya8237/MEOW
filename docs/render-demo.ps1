@@ -7,9 +7,9 @@ if (-not $ffmpeg) {
     throw "ffmpeg is required. Install it, then run docs/render-demo.ps1 again."
 }
 
-$logo = Join-Path (Split-Path -Parent $PSScriptRoot) "logo.jfif"
+$logo = Join-Path (Split-Path -Parent $PSScriptRoot) "logo.png"
 if (-not (Test-Path -LiteralPath $logo)) {
-    throw "MEOW's logo.jfif is required to render the demo."
+    throw "MEOW's logo.png is required to render the demo."
 }
 
 $work = Join-Path $env:TEMP "meow-demo-render"
