@@ -1,7 +1,8 @@
-# harness.toml.typescript.example -- a filled-in .harness.toml for a
-# TypeScript/JavaScript project.
+# harness.toml.typescript.example -- legacy-compatible TypeScript/JavaScript
+# config template.
 #
-# Copy to the project root as `.harness.toml`. This one assumes eslint for the
+# Copy to the project as `.meow/config.toml` (or retain `.harness.toml` only for
+# compatibility). This one assumes eslint for the
 # auto-fixing gate and tsc as an advisory, project-wide type check -- swap
 # eslint for `npx oxlint` if this project uses that instead (also auto-fixing,
 # generally faster).
@@ -10,7 +11,7 @@
 # language-neutral version of every field.
 
 max_rounds = 8
-docs_dir = "docs/exec-plans/active"
+docs_dir = ".meow/plans"
 
 [models]
 explorer = "haiku"

@@ -1,8 +1,8 @@
-# harness.toml.example -- template, from the meow harness repo.
+# harness.toml.example -- legacy compatibility template.
 #
-# Copy this to the root of a project that uses the installed harness engine,
-# renamed to `.harness.toml`, then fill in the real values.
-# Run with: harness run "your feature request"   (from that project's root)
+# New projects should copy this to `.meow/config.toml` instead. MEOW still
+# reads a root `.harness.toml` as a migration fallback.
+# Run with: meow run "your feature request"   (from that project's root)
 #
 # NOTE ON TOML: every top-level key must appear ABOVE the first [[lint]]
 # table. Anything written after one belongs to that table, not to the file.
@@ -16,7 +16,7 @@ max_rounds = 8
 
 # Where sprint plan/contract/review files get written, relative to this
 # project's root. Must already exist as part of the project's docs/ setup.
-docs_dir = "docs/exec-plans/active"
+docs_dir = ".meow/plans"
 
 # Seconds before a per-file lint command is killed.
 # lint_timeout = 60
@@ -55,16 +55,12 @@ explorer = "haiku"
 # your chosen server needs (typically a GitLab URL and a personal/project
 # access token) directly here, by name.
 #
-# SECURITY: .harness.toml is an ordinary project file, meant to be
-# committed like any other config -- it is NOT gitignored. Putting a real
+# SECURITY: `.meow/config.toml` is the shareable project file. Putting a real
 # access token in [gitlab.mcp.env] commits that secret to your repo's
 # history in plain text, readable by anyone with read access (including
 # forks, CI logs, etc.) and hard to fully revoke even after rotating it.
-# If that's not acceptable for your repo, don't put the real value here --
-# keep the token in your actual shell/CI environment instead and reference
-# it in [gitlab.mcp.env] however your chosen MCP server supports (e.g. if
-# it supports variable expansion in its own config), or gitignore this
-# file (or a local override of it) if your project's conventions allow that.
+# If that's not acceptable, keep the token in your shell/CI environment or
+# put the private override in the ignored `.meow/config.local.toml`.
 # [gitlab.mcp]
 # command = "<program that launches your GitLab MCP server>"
 # args = []

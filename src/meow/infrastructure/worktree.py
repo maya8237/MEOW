@@ -137,8 +137,9 @@ def _boot_repo(working_dir: Path, *, include_gitignore: bool = True) -> None:
     if include_gitignore:
         _ensure_gitignore_entry(working_dir)
         for entry in (
-            ".meow/",
-            ".meow-ci-artifacts/",
+            ".meow/*",
+            "!.meow/",
+            "!.meow/config.toml",
             ".claude/settings.local.json",
         ):
             _ensure_gitignore_entry(working_dir, entry)

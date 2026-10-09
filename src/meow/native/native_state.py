@@ -25,7 +25,7 @@ from meow.infrastructure.checks import (
     configured_checks,
     run_final_checks,
 )
-from meow.project.config import load_config
+from meow.project.config import config_paths, load_config
 
 STATE_SUFFIX = ".native-state.json"
 ROUND_MODES = ("next", "reset", "show")
@@ -124,7 +124,7 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
             ),
             **({"tester": tester} if tester is not None else {}),
         }
-    if not record.config_fingerprint and (active_dir / ".harness.toml").is_file():
+    if not record.config_fingerprint and config_paths(active_dir):
         patch["config_fingerprint"] = config_fingerprint(active_dir)
     record = store.transition(run_id, phase, **patch)
     return {

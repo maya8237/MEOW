@@ -19,9 +19,11 @@ first; it defines the `meow native` helper and review loop.
 1. **Request text**: whatever the user gave, unless they named a Jira issue
    (or asked for "the latest issue") -- then skip to step 1a instead.
    Otherwise if there's no text and no issue either, ask for a one-line
-   description. The project must have a `.harness.toml` at its root (see
+   description. The project uses `.meow/config.toml` at its root (with an
+   optional ignored `.meow/config.local.toml`; legacy `.harness.toml` is a
+   fallback; see
    the shared protocol if it does not).
-1a. **Jira-sourced build**: the project's `.harness.toml` must have
+1a. **Jira-sourced build**: the project's `.meow/config.toml` must have
    `[jira]` with `project_key` (`branch_prefix` optional, default
    `issue/`). The `[jira.mcp]` table is **not** used here: fetch through
    the Jira MCP tools already connected to this session (tool names

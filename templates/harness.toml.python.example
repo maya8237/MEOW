@@ -1,6 +1,7 @@
-# harness.toml.python.example -- a filled-in .harness.toml for a Python project.
+# harness.toml.python.example -- legacy-compatible Python config template.
 #
-# Copy to the project root as `.harness.toml`. This one assumes ruff for the
+# Copy to the project as `.meow/config.toml` (or retain `.harness.toml` only for
+# compatibility). This one assumes ruff for the
 # fast, auto-fixing gate and mypy as an advisory, project-wide type check --
 # adjust commands to whatever this project actually uses.
 #
@@ -8,7 +9,7 @@
 # language-neutral version of every field.
 
 max_rounds = 8
-docs_dir = "docs/exec-plans/active"
+docs_dir = ".meow/plans"
 
 [models]
 explorer = "haiku"

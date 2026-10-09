@@ -64,6 +64,7 @@ _VISIBLE_COMMANDS = (
     "worktree",
     "resume",
     "hooks",
+    "ipython",
 )
 
 
@@ -359,6 +360,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     hook_status.add_argument("host", choices=("claude",))
     _add_common_args(hook_status)
 
+    subparsers.add_parser(
+        "ipython", help="Open the interactive MEOW IPython session."
+    )
+
     return parser
 
 
@@ -472,7 +477,7 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
     review_parser.add_argument(
         "--artifact-dir",
         default=None,
-        help="CI artifact directory (default: .meow-ci-artifacts).",
+        help="CI artifact directory (default: .meow/ci-artifacts).",
     )
     review_parser.add_argument(
         "request",
@@ -775,6 +780,9 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         return
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+    if args.command == "ipython":
+        start_ipython()
+        return
     if args.command == "native":
         run_native(args)
         return
@@ -854,7 +862,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
             if plan_file is not None and not plan_file.is_file():
                 parser.error("--plan-file must name an existing file")
             artifact_dir = _resolve_input_path(
-                args.artifact_dir or ".meow-ci-artifacts", working_dir
+                args.artifact_dir or ".meow/ci-artifacts", working_dir
             )
             try:
                 result = run_ci_review(
@@ -895,12 +903,12 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         # (DirtyWorkingTreeError, PlanNotApprovedError, IssueUnresolvedError,
         # review's own ValueError) are already caught closer to their source
         # with a more specific message. Anything else that reaches here --
-        # a missing or malformed .harness.toml, a worktree/git failure, a
+        # a missing or malformed MEOW config, a worktree/git failure, a
         # review file in a flavor that can't be resumed, no plan file to
         # resume a review at, ... -- would otherwise surface as a raw
         # traceback instead of the clear, one-line error every other
         # failure in this CLI gets. FileNotFoundError is here specifically
-        # for a missing .harness.toml/plan file -- far and away the most
+        # for a missing MEOW config/plan file -- far and away the most
         # likely first mistake a new user makes.
         print(f"\n{exc}", file=sys.stderr)
         raise SystemExit(1) from exc

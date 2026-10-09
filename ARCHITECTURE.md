@@ -2,7 +2,9 @@
 
 MEOW is a configurable planner, generator, and reviewer loop. The engine lives
 under `src/meow/`; project-specific settings are loaded from the target
-project's `.harness.toml`.
+project's `.meow/config.toml`, with a higher-priority local overlay, a
+user-level `~/.meow/config.toml` fallback, and a legacy `.harness.toml`
+compatibility fallback at the project layer.
 
 ## Workflow
 
@@ -21,7 +23,7 @@ review-source helpers; `lint_fix.py` implements standalone lint-fix mode.
 
 | Area | Modules | Responsibility |
 |---|---|---|
-| Project and sprint state | `config.py`, `sprint.py` | Load `.harness.toml` and assemble shared workflow state. |
+| Project and sprint state | `config.py`, `sprint.py` | Load the shared/local MEOW config and assemble shared workflow state. |
 | Shared workflow support | `lint.py`, `worktree.py`, `rules.py`, `logging.py`, `plan_files.py` | Lint hooks and checks, worktree setup, project rules, logging, and plan/review file lookup. |
 | Agents | `agents/` | Explorer, planner, generator, reviewer, and fixer roles. |
 | Commands and orchestration | `cli.py`, `sprint_runner.py`, `review_cli.py`, `orchestrator.py` | Command-line dispatch and the shared execution loops. |

@@ -20,8 +20,9 @@ These are the commands meant for normal project work:
 | `meow resume` | Inspect or continue a saved run. |
 | `meow queue` | Enqueue tasks or run queued tasks serially in the current repository. |
 | `meow hooks` | Manage optional host hooks after reviewing what they install. |
+| `meow ipython` | Open the interactive MEOW IPython session. |
 
-Running `meow` without a command opens an IPython session. Inside it, the
+Running `meow` without a command or `meow ipython` opens an IPython session. Inside it, the
 top-level MEOW commands are available as bare commands, for example
 `status`, `run "Add CSV export" --name csv-export`, and `native verify`.
 The explicit `%meow ...` magic and regular `!meow ...` shell form are also
@@ -83,8 +84,9 @@ internally and can create selected knowledge documents as part of setup.
 ## Common options
 
 Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
-select a project directory. Sprint plans and reviews are written under that
-project's configured `docs_dir`.
+select a project directory. By default, MEOW-generated plans and reviews are
+written under `.meow/plans/`; an explicit `docs_dir` remains supported for
+existing projects. Project documentation stays under `docs/`.
 
 `run` and `plan` use a worktree by default. `--no-worktree` runs in the
 selected directory instead; in that mode, the feature name is optional.
@@ -140,6 +142,11 @@ diagnostic. Failed and interrupted runs retain their worktree and evidence.
 Completion requires an independent reviewer PASS, an enabled tester PASS, and
 current passing required lint, test, and build checks. Advisory failures remain
 visible. Status reports SDK turns, tokens, and USD cost accumulated from received agent results. The verbose view lists each result by role. Missing SDK metrics are shown as `unavailable`.
+
+Claude owns the conversation transcript and its retention. MEOW keeps only the
+small role-to-session-ID references needed to resume the generator or reviewer
+in the atomic run JSON; it does not duplicate Claude's transcript or event
+store.
 
 `meow cancel RUN_ID` requests cancellation of an active run. The runner checks
 the request between phases and while awaiting agents or verification commands.
@@ -216,7 +223,7 @@ meow review "Check API error handling"
 meow review --jira PROJ-123
 meow review --gitlab "https://gitlab.example.com/group/project/-/merge_requests/123"
 meow review --branch feature/add-csv-export --target main
-meow review --plan-file docs/exec-plans/active/add-csv-export.md
+meow review --plan-file .meow/plans/add-csv-export.md
 ```
 
 With no source, review uses the latest plan or falls back to a code-diff
@@ -237,9 +244,9 @@ working directory directly and do not require a clean tree.
 `--review-file PATH` (also `-r`) resumes fixing an existing prompt- or
 plan-based review. Pass the original prompt when resuming a prompt-based
 review. GitLab and branch reviews cannot be resumed this way; rerun the
-original source instead. Review files are saved under `docs_dir`, with names
-based on their source (`review.md`, `gitlab-review.md`, `branch-review.md`,
-or `<plan>-review.md`).
+original source instead. Review files are saved under the configured plan
+directory, which defaults to `.meow/plans/`, with names based on their source
+(`review.md`, `gitlab-review.md`, `branch-review.md`, or `<plan>-review.md`).
 
 Configure `[jira]`/`[jira.mcp]` for `--jira` or `[gitlab.mcp]` for `--gitlab`.
 See [INTEGRATIONS.md](INTEGRATIONS.md).
@@ -251,9 +258,15 @@ plans and generates, while a fresh subagent reviews each round. Jira and
 GitLab access comes from the MCP tools connected to that session. Ask for
 "CLI mode" (or headless mode) to run the `meow` CLI instead.
 
-Both modes read the same `.harness.toml`, use the same worktree rules and
-`max_rounds`, and write the same plans, reviews, and verdict format. The CLI
-is the option for unattended terminal or scheduled runs. See the shared
+Both modes read the same active MEOW configuration, use the same worktree rules
+and `max_rounds`, and write the same plans, reviews, and verdict format. The
+shareable project configuration is `.meow/config.toml`. Configuration priority
+is `.meow/config.local.toml`, project `.meow/config.toml`, user
+`~/.meow/config.toml`, then built-in defaults. `agent_skills.default` and
+`agent_skills.<role>` are the exception: their lists append across all config
+layers. A legacy `.harness.toml` is read as the project-level compatibility
+fallback. The CLI is the option for
+unattended terminal or scheduled runs. See the shared
 [native mode protocol](../skills/_shared/native-mode.md).
 
 ## Maintainer and internal commands
@@ -294,7 +307,7 @@ so GitLab MCP is unnecessary.
 The root `.gitlab-ci.yml` includes [the GitLab review job](../templates/gitlab-ci-review.yml)
 for detached merge request pipelines targeting `dev` and non-`dev` branch push pipelines. In merge request pipelines, the reviewer reads the MR description as the review brief; GitLab descriptions longer than 2,700 characters are truncated and flagged. Push pipelines have no MR brief and review the diff alone. The job fetches `dev` without moving HEAD,
 uses full Git history for a reliable merge base, and uploads
-`.meow-ci-artifacts/review.md` and `.meow-ci-artifacts/verdict.json` even when
+`.meow/ci-artifacts/review.md` and `.meow/ci-artifacts/verdict.json` even when
 the job fails. Provide the Claude Agent SDK credentials through masked CI
 variables. The job must install this project and fetch the target ref before
 running the command. Merged-result, tag, and other pipeline types are rejected.

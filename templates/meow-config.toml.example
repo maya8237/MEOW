@@ -1,0 +1,42 @@
+# meow-config.toml.example -- shared project configuration for MEOW.
+# Copy this file to the project as `.meow/config.toml` and remove settings you
+# do not use. Configuration priority is local project config, shared project
+# config, user `~/.meow/config.toml`, then MEOW defaults. Keep secrets and
+# user-specific project overrides in `.meow/config.local.toml` or the user
+# config instead of this shared file.
+
+max_rounds = 8
+docs_dir = ".meow/plans"
+
+# Commands are launched without shell evaluation. `$NAME`, `${NAME}`, and
+# `%NAME%` are expanded from the process environment on Windows and Linux.
+
+# Skills enabled for every role and optional role-specific additions. Built-in
+# MEOW skills remain enabled. These lists append across user/shared/local config
+# rather than overriding lower-level skill lists.
+[agent_skills]
+default = []
+# explorer = ["project-search"]
+# reviewer = ["security-review"]
+
+# Shared Jira project/server settings. Put credentials in the environment or
+# `.meow/config.local.toml`, never in this file.
+# [jira]
+# project_key = "PROJ"
+# branch_prefix = "issue/"
+# [jira.mcp]
+# command = "uvx"
+# args = ["mcp-atlassian"]
+
+# Shared GitLab MCP launcher settings. Put tokens in the environment or local
+# config. The URL can be shared; credentials should not be.
+# [gitlab.mcp]
+# command = "npx"
+# args = ["your-gitlab-mcp-package"]
+# [gitlab.mcp.env]
+# GITLAB_URL = "https://gitlab.example.com"
+
+# Add one or more project lint commands as needed.
+# [[lint]]
+# command = "python -m ruff check"
+# fix_flag = "--fix"

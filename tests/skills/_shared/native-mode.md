@@ -8,9 +8,11 @@ started. **CLI mode** (the `meow <command>` shell-out in each SKILL.md's
 "CLI mode" section) is used only when the user explicitly asks for it
 ("run it headless", "use the CLI", "separate process").
 
-Both modes read the same `.harness.toml` and write the same files, so a run
+Both modes read the same active MEOW configuration and write the same files, so a run
 started in one can be continued in the other (`meow review --fix`,
 `meow run --resume-at review`, `/meow:review`, ...).
+Configuration priority is local project config, shared project config, then the
+user fallback at `~/.meow/config.toml`.
 
 Release 2 run checkpoints are stored in `.meow/runs/`. Inspect one with
 `meow status [RUN_ID] [--verbose]` or `meow resume [RUN_ID]`. The latter only
@@ -29,7 +31,8 @@ reviewer PASS, and enabled tester PASS. SDK usage missing from evidence is
 on stderr, exit 1). It starts no agents. If `meow` is not on PATH, tell the
 user to install it (README: a venv with `pip install -e .`, or `pipx install -e .`)
 and stop; do not guess at a venv path. Flags shared by every command:
-`--working-dir PATH` (project root with `.harness.toml`; default cwd) and
+`--working-dir PATH` (project root with `.meow/config.toml`; legacy
+`.harness.toml` is a fallback; default cwd) and
 `--active-dir PATH` (the worktree that `prepare` returned; default = working dir).
 
 | Command | Purpose |
@@ -135,6 +138,7 @@ then stop." plus the full review text (same wording as the CLI).
 ## Files and conventions (identical to CLI mode)
 
 - Plan: `<docs_dir>/<name>.md` (or `plan.md`); review of it: `<name>-review.md`.
+  The default `docs_dir` is `.meow/plans`.
 - Prompt review: `review.md`. Merge request review: `gitlab-review.md`.
 - Verdict format: line 1 `SUMMARY: ...`, line 2 `STATUS: PASS` or `STATUS: FAIL`,
   then one line per criterion.
@@ -143,5 +147,5 @@ then stop." plus the full review text (same wording as the CLI).
   linked worktree; in-place native runs do not deliver automatically.
 - Worktree hygiene: when `use_worktree` is true, every change goes in `active_dir`;
   the main checkout must stay untouched.
-- If a `.harness.toml` is missing at the project root, tell the user and point
-  at meow's `GUIDE.md`; do not invent lint commands.
+- If no active MEOW config is present at the project root, use MEOW defaults and
+  point at onboarding for project setup; do not invent lint commands.

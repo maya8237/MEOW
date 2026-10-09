@@ -8,8 +8,11 @@ scheduled Jira runs, and error messages.
 
 ## Monorepo lint and tester
 
-`.harness.toml` is optional. If it is absent, MEOW starts with its built-in
-defaults and no lint commands. String values may reference environment
+`.meow/config.toml` is optional. If it is absent, MEOW starts with its built-in
+defaults and no lint commands. Configuration priority is the ignored local
+`.meow/config.local.toml`, project `.meow/config.toml`, user
+`~/.meow/config.toml`, then built-in defaults. A legacy `.harness.toml` is
+accepted as the project-level compatibility fallback. String values may reference environment
 variables with either POSIX syntax (`$HOME` or `${HOME}`) or Windows syntax
 (`%USERPROFILE%`); expansion is applied recursively to configured tables and
 lists. Unknown variables are left unchanged.
@@ -97,7 +100,7 @@ languages without forcing mechanical refactors.
 
 Its server reads its own credentials from the environment (`JIRA_URL` plus
 either `JIRA_USERNAME`+`JIRA_API_TOKEN` for Cloud or `JIRA_PERSONAL_TOKEN` for
-Server/Data Center) — never put them in `.harness.toml`.
+Server/Data Center) — never put them in the shared `.meow/config.toml`.
 
 ## `[gitlab.mcp]` — for `meow review --gitlab`
 
@@ -110,15 +113,11 @@ is passed on the command line each time.
 | `[gitlab.mcp].args` | No | `[]` | Its arguments. |
 | `[gitlab.mcp].env` | No | `{}` | Environment variables passed to the launched server, e.g. `GITLAB_URL`, `GITLAB_TOKEN`. |
 
-**Security note:** unlike `[jira.mcp]`, `[gitlab.mcp].env` is read straight
-from `.harness.toml` and passed to the launched server as-is. `.harness.toml`
-is an ordinary, committed project file — putting a real GitLab token in
-`[gitlab.mcp].env` commits that secret to your repo's history in plain text,
-hard to fully revoke even after rotating it. If that's not acceptable, keep
-the token in your actual shell/CI environment and reference it however your
-chosen GitLab MCP server supports variable expansion, or gitignore
-`.harness.toml` (or a local override of it) if your project's conventions
-allow that.
+**Security note:** `[gitlab.mcp].env` is passed to the launched server as-is.
+Keep tokens in the process environment or in the ignored
+`.meow/config.local.toml`; do not commit them to the shared
+`.meow/config.toml`. MEOW expands `$NAME`, `${NAME}`, and `%NAME%` in string
+configuration values without evaluating them as shell code.
 
 ---
 
@@ -139,7 +138,7 @@ on stdin for approval before the generator starts, and a scheduled task has no
 console attached to answer it, so the run just hangs instead of completing or
 failing cleanly.
 
-**Prerequisites**: `[jira]`/`[jira.mcp]` set in `.harness.toml` (above), a
+**Prerequisites**: `[jira]`/`[jira.mcp]` set in `.meow/config.toml` (above), a
 Jira MCP server reachable with those settings (this repo assumes
 [`mcp-atlassian`](https://github.com/sooperset/mcp-atlassian), installable
 with `uvx` so no separate install step is needed), its credentials in the
@@ -217,8 +216,8 @@ Enable and test it with `systemctl enable --now meow-run-jira.timer`, then
 
 | Missing / wrong | Result |
 |---|---|
-| `.harness.toml` absent | Built-in defaults are used; no lint commands are configured |
-| No `[[lint]]` entries or `lint_command` | `ValueError`: no lint command defined |
+| `.meow/config.toml` absent | Built-in defaults are used; no lint commands are configured. A legacy `.harness.toml` is also accepted. |
+| A lint field is present but no `[[lint]]` entry or `lint_command` is defined | `ValueError`: no lint command defined. Config files containing only models, skills, MCP, or other settings are valid. |
 | Unknown key in a `[[lint]]` table (often a top-level key placed after it) | `ValueError` naming the entry and key |
 | No architecture doc anywhere under `docs/` | No error — reviewer's SOLID/SRP pass finds nothing to Glob/Read, so it has no project-specific boundaries to check, just its generic mixed-responsibility rule |
 | Other `docs/` files (`tech-debt-tracker.md`, `core-beliefs.md`, etc.) | No error — no role goes looking for them specifically, only opportunistically via each role's docs scan |

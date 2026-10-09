@@ -174,7 +174,7 @@ class Agent:
 
     def skills(self, role: str, built_in: list[str] | None = None) -> list[str]:
         """Combine project defaults, role skills, and built-ins once."""
-        configured = self.context.config.get("agent_skills", {})
+        configured = getattr(self.context, "config", {}).get("agent_skills", {})
         values = []
         if isinstance(configured, dict):
             for key in ("default", role.lower()):

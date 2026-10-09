@@ -71,7 +71,7 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
     def test_no_unexpected_skill_directories(self):
         actual = {path.parent.name for path in SKILLS_DIR.glob("*/SKILL.md")}
 
-        self.assertEqual(actual - {"onboard"}, set(CLI_FALLBACKS))
+        self.assertEqual(actual - {"onboard", "migration"}, set(CLI_FALLBACKS))
 
     def test_each_skill_keeps_native_and_cli_sections(self):
         for name, command in CLI_FALLBACKS.items():

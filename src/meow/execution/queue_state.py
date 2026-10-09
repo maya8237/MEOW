@@ -10,6 +10,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+_WINDOWS_QUERY_LIMITED_INFORMATION = 0x1000
+_WINDOWS_ERROR_ACCESS_DENIED = 5
+
 
 class QueueStateError(ValueError):
     """Queue state is missing, corrupt, or unsafe to use."""
@@ -17,6 +20,41 @@ class QueueStateError(ValueError):
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _pid_is_alive(pid: int) -> bool:
+    if os.name == "nt":
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(
+            _WINDOWS_QUERY_LIMITED_INFORMATION,
+            False,
+            pid,
+        )
+        if handle:
+            kernel32.CloseHandle(handle)
+        return bool(handle) or ctypes.get_last_error() == _WINDOWS_ERROR_ACCESS_DENIED
+
+    alive = True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        alive = False
+    except PermissionError:
+        pass
+    except OSError:
+        alive = False
+    return alive
+
+
+def _lock_is_active(path: Path) -> bool | None:
+    try:
+        lock = json.loads(path.read_text(encoding="utf-8"))
+        pid = int(lock["pid"])
+    except (OSError, TypeError, ValueError, KeyError):
+        return None
+    return _pid_is_alive(pid)
 
 
 @dataclass
@@ -107,23 +145,22 @@ class QueueWorkerLock:
         payload = json.dumps(
             {"pid": os.getpid(), "host": socket.gethostname(), "started_at": _now()}
         )
-        try:
-            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
+        # A stale lock can be reclaimed once.  Keep the retry bounded so a
+        # concurrent worker cannot turn a missing lock into recursion.
+        for _attempt in range(2):
             try:
-                payload = json.loads(self.path.read_text(encoding="utf-8"))
-                pid = int(payload["pid"])
-                os.kill(pid, 0)
-            except ProcessLookupError:
-                self.path.unlink(missing_ok=True)
-                return self.acquire()
-            except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError):
+                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                if _lock_is_active(self.path) is False:
+                    self.path.unlink(missing_ok=True)
+                    continue
                 return False
-            return False
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            stream.write(payload)
-        self._owned = True
-        return True
+            else:
+                with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                    stream.write(payload)
+                self._owned = True
+                return True
+        return False
 
     def release(self) -> None:
         if self._owned:

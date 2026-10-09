@@ -88,6 +88,10 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
         check_cancel(store, run_id)
         _git(active, "add", "-A")
         _git(active, "reset", "-q", "--", ".meow", check=False)
+        # Re-stage the one shareable MEOW file; the update pass also handles
+        # its deletion without bringing runtime state back into the commit.
+        _git(active, "add", "-f", "--", ".meow/config.toml", check=False)
+        _git(active, "add", "-u", "--", ".meow/config.toml", check=False)
         if _git(active, "diff", "--cached", "--quiet", check=False).returncode:
             check_cancel(store, run_id)
             _git(active, "commit", "-m", f"MEOW run {run_id}: {record.request[:72]}")

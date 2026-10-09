@@ -14,7 +14,9 @@ Use **CLI mode** (bottom) only if the user explicitly asks for it.
 ## Native mode
 
 1. The feature request is whatever text the user gave. If none, ask for a
-   one-line description. The project needs a `.harness.toml` at its root.
+   one-line description. The project uses `.meow/config.toml` at its root;
+   onboarding can create it for a new project and legacy `.harness.toml` is a
+   fallback.
 2. Slugify a feature name (e.g. `add-csv-export`) and run
    `meow native prepare --name "<name>" --allow-dirty --working-dir "<project-path>"`
    (`meow plan` never required a clean tree). Add `--no-worktree` if the user

@@ -31,14 +31,16 @@ plan only. See [docs/CLI.md](docs/CLI.md) for full command behavior.
   and prompts before generation. `plan` does not accept it. Do not use it on
   scheduled Jira runs because no one can answer the prompt.
 - **Resume:** `run --resume-at {generate,review}` defaults to `generate`.
-  `review` skips planning, uses `--plan-file` or the latest plan in `docs_dir`,
+  `review` skips planning, uses `--plan-file` or the latest plan in `docs_dir`
+  (default `.meow/plans`),
   and reviews existing code before invoking the generator. `plan`, Jira runs,
   and lint-fix mode do not accept this option.
 
 `meow review` supports prompt, Jira, GitLab, branch-diff, plan-file, and
 review-file sources. It is report-only by default; `--fix` loops review and
 fixes up to `max_rounds`. Exactly one source may be given. With no source, it
-uses the latest plan in `docs_dir` or falls back to a prompt/diff review.
+uses the latest plan in `docs_dir` (default `.meow/plans`) or falls back to a
+prompt/diff review.
 
 - `--gitlab` requires `[gitlab.mcp]` and is always read-only; it cannot combine
   with `--fix`.
@@ -51,14 +53,20 @@ uses the latest plan in `docs_dir` or falls back to a prompt/diff review.
 - `--review-file PATH` resumes a prompt- or plan-based review. GitLab and
   branch reviews must be rerun from their source.
 
-Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`). Config
-lives in `.harness.toml`; plans, contracts, and reviews go in
-`docs/exec-plans/active/`. Integration configuration is in
+Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`). Shared
+config lives in `.meow/config.toml`; `.meow/config.local.toml` has highest
+priority, followed by the project config and user fallback
+`~/.meow/config.toml`; plans, contracts, reviews, runs, and evidence live
+under `.meow/` while project documentation stays in `docs/`; only
+MEOW-generated plans belong in `.meow/plans/`. Integration
+configuration is in
 [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
-To onboard another repo, use `/meow:onboard`. It inspects the project,
-configures the harness, and asks about optional integrations and project
-features using yes/no choices.
+To onboard another repo, use `/meow:onboard`. It sets up a current/clean
+project and repairs its `.gitignore` itself. Use `/meow:migration` separately
+for legacy `.harness.toml` layouts; migration also repairs `.gitignore` itself.
+Both skills ask about optional integrations and project features using yes/no
+choices.
 
 ## Native (in-session) skill execution
 
@@ -68,10 +76,14 @@ each round. The agent-free `meow native` helpers provide deterministic facts
 as JSON. **CLI** mode shells out to `meow <command>` and uses the Agent SDK;
 this is the headless path.
 
-Both modes share `.harness.toml` semantics, file names, and the
+Both modes share `.meow/config.toml` semantics, file names, and the
 `SUMMARY:`/`STATUS:` verdict format. The shared protocol is
 [skills/_shared/native-mode.md](skills/_shared/native-mode.md). Role prompts
 are defined in `src/meow/prompts.py`; update them there, not in a skill.
+
+Claude owns transcript retention. MEOW stores only role-to-session references in
+the atomic run JSON needed for resume; it does not copy Claude events into a
+second transcript database.
 Design: [native execution spec](docs/superpowers/specs/2026-09-29-native-skill-execution-design.md).
 
 ## Claude Code plugin
@@ -83,13 +95,13 @@ and fixes findings in the calling session. See `skills/*/SKILL.md`.
 
 ## Lint
 
-`ruff check` is the project-wide gate, configured in `.harness.toml`. The
+`ruff check` is the project-wide gate, configured in `.meow/config.toml`. The
 harness appends `--fix` when linting individual files touched by the generator;
 the reviewer runs the configured gate unmodified. Rule selection is in
 `pyproject.toml`.
 
 Projects may declare multiple `[[lint]]` commands. See
-`templates/harness.toml.example` for `per_file` and `gate` fields. MEOW itself
+`templates/meow-config.toml.example` for `per_file` and `gate` fields. MEOW itself
 uses one command.
 
 ## Layout

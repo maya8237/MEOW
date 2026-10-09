@@ -5,8 +5,11 @@
 MEOW (Management, Execution & Optimization of Workflows) is a configurable
 planner, generator, and reviewer loop for software projects. It uses the
 [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview) and keeps
-project-specific settings in the target repo's `.harness.toml` when the
-optional harness is enabled.
+shareable project settings in `.meow/config.toml`. Settings are resolved from
+highest to lowest priority as `.meow/config.local.toml`, project
+`.meow/config.toml`, the user fallback `~/.meow/config.toml`, and built-in
+defaults. The local project file is ignored; the shared project file is
+trackable.
 
 > **Start here:** Run `/meow:onboard` in the repository where you want to use
 > MEOW. It guides setup and enables the features you need. Harness
@@ -49,6 +52,8 @@ meow run "Add CSV export" --name "add-csv-export"
 - `meow review` reviews a plan or code diff.
 - `meow run --jira [ISSUE-KEY]` solves a Jira issue when Jira is configured.
 - `meow run --lint-fix` runs configured linters and fixes findings.
+- `meow ipython` opens the interactive session explicitly; bare `meow` does the
+  same when no arguments are supplied.
 
 All commands accept `--working-dir PATH`. See the [CLI guide](docs/CLI.md) for
 advanced options.
@@ -56,7 +61,8 @@ advanced options.
 ## Claude Code skills
 
 This repository is also a Claude Code plugin. It provides `/meow:run`,
-`/meow:plan`, `/meow:review`, `/meow:lint`, and `/meow:onboard` skills.
+`/meow:plan`, `/meow:review`, `/meow:lint`, `/meow:onboard`, and
+`/meow:migration` skills.
 
 ## Documentation
 

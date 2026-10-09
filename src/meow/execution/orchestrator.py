@@ -4,7 +4,7 @@ meow/orchestrator.py
 The shared generator<->reviewer round-loop engine: explorer, planner,
 generator, and reviewer as real peer agents, coordinated by plain Python
 control flow. Unlike the single-project version, all project-specific
-values (lint commands, models, round cap) are read from a `.harness.toml`
+values (lint commands, models, round cap) are read from `.meow/config.toml`
 file in the target project's root, not hardcoded here -- this file is meant
 to be installed once and reused across projects.
 

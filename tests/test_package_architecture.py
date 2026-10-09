@@ -50,4 +50,6 @@ def test_test_suite_is_grouped_by_responsibility():
         "test_logging.py",
         "test_plan_files.py",
         "test_shaping.py",
+        "test_claude_marketplace.py",
+        "test_meow_layout.py",
     }

@@ -125,7 +125,7 @@ def test_example_job_runs_for_merge_request_pipelines():
 )
 def test_runner_artifacts_and_exit(checkout, reply, verdict, code):
     repo, base, source, env = checkout
-    artifacts = repo / ".meow-ci-artifacts"
+    artifacts = repo / ".meow" / "ci-artifacts"
     with patch(
         "meow.integrations.ci_review.ReviewerAgent.review_ci_branch",
         new_callable=AsyncMock,
@@ -156,7 +156,7 @@ def test_sdk_failure_redacts_secret(checkout):
             {"models": {"reviewer": None}},
             env,
             "dev",
-            repo / ".meow-ci-artifacts",
+            repo / ".meow" / "ci-artifacts",
             None,
         )
     assert result.exit_code == 2  # ruff: ignore[magic-value-comparison] -- infrastructure exit status
@@ -179,7 +179,7 @@ def test_untracked_checkout_write_invalidates_pass(checkout):
             {"models": {"reviewer": None}},
             env,
             "dev",
-            repo / ".meow-ci-artifacts",
+            repo / ".meow" / "ci-artifacts",
             None,
         )
     assert result.verdict == "UNVERIFIED"

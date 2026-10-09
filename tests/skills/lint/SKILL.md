@@ -15,7 +15,7 @@ your work and racing your edits.
 
 ## Native mode
 
-1. The project needs a `.harness.toml` with at least one `[[lint]]` entry;
+1. The project needs `.meow/config.toml` with at least one `[[lint]]` entry;
    otherwise tell the user and stop (point at GUIDE.md).
 2. Run `meow native prepare --no-worktree --allow-dirty --working-dir "<project-path>"`
    for `max_rounds` and `docs_dir`, then

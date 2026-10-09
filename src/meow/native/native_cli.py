@@ -25,7 +25,7 @@ def _add_dirs(parser: argparse.ArgumentParser) -> None:
         "-d",
         dest="working_dir",
         default=".",
-        help="Project root holding .harness.toml (default: current directory).",
+        help="Project root holding .meow/config.toml (default: current directory).",
     )
     parser.add_argument(
         "--active-dir",

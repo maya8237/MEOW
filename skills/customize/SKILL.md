@@ -65,7 +65,12 @@ After understanding the proposed agent, ask whether the user also wants a dedica
 
 ### Add tools or MCP
 
-Expose only the required SDK tools, configure MCP servers through the supported project configuration, and inspect `.harness.toml` permission rules. A prompt or skill does not grant tool, filesystem, shell, network, or MCP access. Preserve existing allow/ask/deny boundaries unless the user explicitly requests a permission change.
+Expose only the required SDK tools, configure MCP servers through the supported
+project configuration, and inspect `.meow/config.toml`, the optional local
+override, and the user fallback `~/.meow/config.toml` for permission rules. A
+prompt or skill does not grant tool,
+filesystem, shell, network, or MCP access. Preserve existing allow/ask/deny
+boundaries unless the user explicitly requests a permission change.
 
 ## Native and CLI parity
 

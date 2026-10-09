@@ -24,7 +24,9 @@ def repository(tmp_path: Path) -> tuple[Path, Path]:
     git(repo, "config", "user.name", "Test")
     git(repo, "config", "user.email", "test@example.com")
     (repo / "file.txt").write_text("before", encoding="utf-8")
-    (repo / ".gitignore").write_text(".meow/\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        ".meow/*\n!.meow/\n!.meow/config.toml\n", encoding="utf-8"
+    )
     git(repo, "add", "file.txt", ".gitignore")
     git(repo, "commit", "-qm", "initial")
     git(repo, "init", "-q", "--bare", str(remote))
@@ -72,6 +74,20 @@ def test_in_place_requires_unattended(tmp_path):
     assert git(repo, "status", "--porcelain") == "M file.txt"
     assert deliver_verified_run(store, run_id, unattended=True) is True
     assert git(remote, "rev-parse", "HEAD") == git(repo, "rev-parse", "HEAD")
+
+
+def test_delivery_keeps_shared_config_outside_runtime_state(tmp_path):
+    repo, remote = repository(tmp_path)
+    meow = repo / ".meow"
+    meow.mkdir()
+    (meow / "config.toml").write_text("max_rounds = 4\n", encoding="utf-8")
+    store, run_id = record_for(repo, repo)
+
+    assert deliver_verified_run(store, run_id, unattended=True) is True
+
+    tree = git(remote, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+    assert ".meow/config.toml" in tree
+    assert not any(path.startswith(".meow/runs/") for path in tree)
 
 
 def test_missing_remote_preserves_verified_work(tmp_path):

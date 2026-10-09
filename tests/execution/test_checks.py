@@ -92,6 +92,21 @@ def test_revision_and_config_changes_invalidate_evidence(tmp_path):
     assert not checks_current([result], [check], tmp_path)
 
 
+def test_config_fingerprint_accepts_user_fallback_outside_project(
+    tmp_path, monkeypatch
+):
+    user_home = tmp_path / "user"
+    (user_home / ".meow").mkdir(parents=True)
+    (user_home / ".meow" / "config.toml").write_text(
+        'max_rounds = 3\n', encoding="utf-8"
+    )
+    monkeypatch.setattr("meow.project.config.Path.home", lambda: user_home)
+
+    fingerprint = config_fingerprint(tmp_path)
+
+    assert fingerprint
+
+
 def test_required_failure_blocks_but_advisory_failure_does_not(tmp_path):
     (tmp_path / ".harness.toml").write_text("", encoding="utf-8")
     failing = Check(

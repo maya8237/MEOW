@@ -110,7 +110,7 @@ def _snapshot(repo: Path) -> tuple[str, str]:
     changes = "\n".join(
         line
         for line in status.splitlines()
-        if not line[3:].replace("\\", "/").startswith(".meow-ci-artifacts/")
+        if not line[3:].replace("\\", "/").startswith(".meow/ci-artifacts/")
     )
     return _git(repo, "rev-parse", "HEAD"), changes
 
@@ -145,9 +145,9 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
     artifact_dir = artifact_dir.resolve()
     if (
         artifact_dir.is_relative_to(repo)
-        and artifact_dir != repo / ".meow-ci-artifacts"
+        and artifact_dir != repo / ".meow" / "ci-artifacts"
     ):
-        raise CiReviewError("checkout artifacts must use .meow-ci-artifacts")
+        raise CiReviewError("checkout artifacts must use .meow/ci-artifacts")
     context = None
     verdict = "UNVERIFIED"
     response = ""

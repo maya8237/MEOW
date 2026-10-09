@@ -123,7 +123,7 @@ def check_identity(check: Check) -> str:
 
 def normalize_build(raw: object) -> list[Check]:
     if not isinstance(raw, list):
-        raise ValueError(".harness.toml: [[build]] must be an array of tables")
+        raise ValueError(".meow/config.toml: [[build]] must be an array of tables")
     entries = []
     for position, item in enumerate(raw, 1):
         cwd, command, args, env = _command_fields(
@@ -155,7 +155,11 @@ def config_fingerprint(repo: Path) -> str:
         return hashlib.sha256(paths[0].read_bytes()).hexdigest()
     digest = hashlib.sha256()
     for path in paths:
-        digest.update(str(path.relative_to(repo)).encode())
+        try:
+            label = str(path.relative_to(repo))
+        except ValueError:
+            label = str(path.resolve())
+        digest.update(label.encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()
 

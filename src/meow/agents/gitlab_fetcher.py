@@ -79,7 +79,7 @@ class GitlabFetcherAgent(Agent):
         if not used_gitlab_tool or not succeeded:
             raise RuntimeError(
                 "No active GitLab MCP server responded. Check [gitlab.mcp] "
-                "in .harness.toml -- command/args to launch it, and "
+                "in .meow/config.toml -- command/args to launch it, and "
                 "[gitlab.mcp.env] for whatever credentials it needs -- see "
                 "docs/INTEGRATIONS.md."
             )
