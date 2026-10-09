@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING
 
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, query
 
-from meow.agents.base import Agent, AgentContext, _looks_like_a_crash
+from meow.agents.base import (
+    Agent,
+    AgentContext,
+    _looks_like_a_crash,
+    log_stream_message,
+)
 from meow.infrastructure.lint import LintGateEvidence, check_lint_evidence
 from meow.infrastructure.logging import get_logger
 from meow.project.prompts import (
@@ -189,6 +194,7 @@ class ReviewerAgent(Agent):
         parts = []
         completed = False
         async for message in query(prompt=prompt, options=options):
+            log_stream_message("reviewer", message, options=options)
             if isinstance(message, AssistantMessage):
                 parts.extend(
                     block.text

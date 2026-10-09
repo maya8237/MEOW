@@ -10,6 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 MAX_OUTPUT = 8000
+SCHEMA_VERSION = 1
 _SECRET_KEY = re.compile(
     r"(?:token|secret|password|credential|api.?key|authorization)", re.I
 )
@@ -91,6 +92,8 @@ class RunRecord:
     branch: str
     created_at: str
     updated_at: str
+    schema_version: int = SCHEMA_VERSION
+    sessions: dict[str, str] = field(default_factory=dict)
     phase: str = "created"
     attempt: int = 1
     round: int = 0
@@ -120,7 +123,7 @@ class RunStore:
 
     def _write(self, record: RunRecord) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(_safe(asdict(record)), indent=2, sort_keys=True)
+        payload = json.dumps(_safe(asdict(record)), indent=2, sort_keys=True) + "\n"
         temporary = None
         try:
             with tempfile.NamedTemporaryFile(
@@ -164,20 +167,44 @@ class RunStore:
         self._write(record)
         return self.load(record.id)
 
-    def load(self, run_id: str) -> RunRecord:
+    def load(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+        self, run_id: str
+    ) -> RunRecord:
         path = self._path(run_id)
         if not path.is_file():
             raise RunStateError(f"Run {run_id} is missing. Inspect with meow status.")
         try:
             raw = _safe(json.loads(path.read_text(encoding="utf-8")))
+            if not isinstance(raw, dict):
+                raise ValueError("record must be an object")
+            schema_version = raw.get("schema_version", SCHEMA_VERSION)
+            if schema_version != SCHEMA_VERSION:
+                raise ValueError("unsupported schema version")
+            raw.setdefault("schema_version", SCHEMA_VERSION)
+            raw.setdefault("sessions", {})
+            if not isinstance(raw["sessions"], dict) or any(
+                not isinstance(role, str)
+                or not role
+                or not isinstance(session_id, str)
+                or not session_id
+                for role, session_id in raw["sessions"].items()
+            ):
+                raise ValueError("invalid sessions")
             record = RunRecord(**raw)
             fields = (record.phase, record.repo, record.worktree, record.branch)
-            if (
-                record.id != run_id
-                or not isinstance(record.transitions, list)
-                or not isinstance(record.results, dict)
-                or not all(isinstance(value, str) for value in fields)
+            if record.id != run_id:
+                raise ValueError("invalid record")
+            if not isinstance(record.transitions, list):
+                raise ValueError("invalid transitions")
+            if not isinstance(record.results, dict):
+                raise ValueError("invalid results")
+            if not isinstance(record.schema_version, int) or isinstance(
+                record.schema_version, bool
             ):
+                raise ValueError("invalid schema version")
+            if not isinstance(record.sessions, dict):
+                raise ValueError("invalid sessions")
+            if not all(isinstance(value, str) for value in fields):
                 raise ValueError("invalid record")
             if (
                 datetime.fromisoformat(record.created_at).tzinfo is None
@@ -214,6 +241,21 @@ class RunStore:
         if not isinstance(entries, list):
             entries = []
         record.usage = {"entries": [*entries, _safe(entry)]}
+        record.updated_at = _now()
+        self._write(record)
+        return self.load(run_id)
+
+    def set_session(self, run_id: str, role: str, session_id: str) -> RunRecord:
+        """Retain only the Claude session reference needed for resume."""
+        if not isinstance(role, str) or not role.strip():
+            raise ValueError("session role must be a non-empty string")
+        if not isinstance(session_id, str) or not session_id.strip():
+            raise ValueError("session ID must be a non-empty string")
+        record = self.load(run_id)
+        role = role.strip().lower()
+        if record.sessions.get(role) == session_id:
+            return record
+        record.sessions[role] = session_id
         record.updated_at = _now()
         self._write(record)
         return self.load(run_id)

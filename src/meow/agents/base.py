@@ -11,6 +11,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ProcessError,
     ResultMessage,
+    SystemMessage,
     TextBlock,
     ThinkingBlock,
     ToolResultBlock,
@@ -66,9 +67,29 @@ def _log_user_block(role: str, block: object) -> None:
         logger.debug("agent_tool_result", role=role, is_error=bool(block.is_error))
 
 
-def log_stream_message(role: str, message: object) -> None:
+def _message_session_id(message: object) -> str | None:
+    if isinstance(message, ResultMessage):
+        return message.session_id or None
+    if isinstance(message, SystemMessage):
+        session_id = message.data.get("session_id")
+        return session_id if isinstance(session_id, str) and session_id else None
+    return None
+
+
+def _remember_session(options: object, message: object) -> None:
+    callback = getattr(options, "_meow_session_callback", None)
+    session_id = _message_session_id(message)
+    if callable(callback) and session_id:
+        callback(session_id)
+
+
+def log_stream_message(  # ruff: ignore[complex-structure]
+    role: str, message: object, *, options: ClaudeAgentOptions | object | None = None
+) -> None:
     """Log one SDK message as it streams in, so a long-running turn stays
     visibly alive instead of going silent until the final result."""
+    if options is not None:
+        _remember_session(options, message)
     if isinstance(message, AssistantMessage):
         for block in message.content:
             _log_assistant_block(role, block)
@@ -124,7 +145,7 @@ async def _consume_query(prompt: str, options: ClaudeAgentOptions, role: str) ->
     loop to handle."""
     messages: AsyncIterator = query(prompt=prompt, options=options)
     async for message in messages:
-        log_stream_message(role, message)
+        log_stream_message(role, message, options=options)
         if isinstance(message, ResultMessage) and message.subtype != "success":
             logger.error("agent_query_failed", role=role, subtype=message.subtype)
             raise RuntimeError(f"{role} failed: {message.subtype}")
@@ -151,7 +172,21 @@ class Agent:
     def __init__(self, context: AgentContext):
         self.context = context
 
-    def options(
+    def skills(self, role: str, built_in: list[str] | None = None) -> list[str]:
+        """Combine project defaults, role skills, and built-ins once."""
+        configured = self.context.config.get("agent_skills", {})
+        values = []
+        if isinstance(configured, dict):
+            for key in ("default", role.lower()):
+                entries = configured.get(key, [])
+                if isinstance(entries, list):
+                    values.extend(
+                        entry for entry in entries if isinstance(entry, str) and entry
+                    )
+        values.extend(entry for entry in built_in or [] if entry)
+        return list(dict.fromkeys(values))
+
+    def options(  # ruff: ignore[complex-structure, too-many-statements]
         self,
         *,
         system_prompt: str,
@@ -160,6 +195,9 @@ class Agent:
         **extra_options,
     ) -> ClaudeAgentOptions:
         """Build SDK options from project context and agent-specific values."""
+        extra_options["skills"] = self.skills(
+            role, extra_options.get("skills", [])
+        )
         policy = self.context.config.get("permissions")
         if isinstance(policy, PermissionPolicy):
             role_policy = policy.for_role(role)
@@ -169,13 +207,32 @@ class Agent:
                     unattended=bool(self.context.config.get("_unattended", False)),
                     project_root=self.context.active_working_dir(),
                 )
-        return ClaudeAgentOptions(
+        journal = self.context.config.get("_run_journal")
+        if journal is not None:
+            store, run_id = journal
+            record = store.load(run_id)
+            role_key = role.lower()
+            session_id = record.sessions.get(role_key)
+            required = self.context.config.get("_resume_required_roles", ())
+            if role_key in required and not session_id:
+                raise RuntimeError(
+                    f"Cannot resume: {role_key} session is missing from run {run_id}."
+                )
+            if session_id and "resume" not in extra_options:
+                extra_options["resume"] = session_id
+        options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=allowed_tools,
             model=self.context.model(role),
             cwd=str(self.context.active_working_dir()),
             **extra_options,
         )
+        if journal is not None:
+            store, run_id = journal
+            options._meow_session_callback = (
+                lambda session_id: store.set_session(run_id, role.lower(), session_id)
+            )
+        return options
 
     @staticmethod
     async def run_query(prompt: str, options: ClaudeAgentOptions, role: str) -> None:

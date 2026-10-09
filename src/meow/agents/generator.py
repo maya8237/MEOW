@@ -37,6 +37,7 @@ class GeneratorAgent(Agent):
                 ]
             },
         )
+        self._session_options = options
         self._client = ClaudeSDKClient(options=options)
 
     async def __aenter__(self):
@@ -51,7 +52,7 @@ class GeneratorAgent(Agent):
         await self._client.query(instruction)
         text = []
         async for message in self._client.receive_response():
-            log_stream_message("generator", message)
+            log_stream_message("generator", message, options=self._session_options)
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, TextBlock):
