@@ -183,7 +183,7 @@ async def check_lint_evidence(
     return LintGateEvidence(tuple(blocking), tuple(informational))
 
 
-async def _run_lint_on_file(  # ruff: ignore[complex-structure]
+async def run_lint_on_file(  # ruff: ignore[complex-structure]
     working_dir: Path,
     commands: list[LintCommand],
     file_path: str,
@@ -240,7 +240,7 @@ def make_lint_hook(working_dir: Path, commands: list[LintCommand], timeout: floa
             return {}
 
         logger.debug("lint_hook_running", file=file_path, commands=len(per_file))
-        problems = await _run_lint_on_file(working_dir, per_file, file_path, timeout)
+        problems = await run_lint_on_file(working_dir, per_file, file_path, timeout)
         if not problems:
             return {}  # clean or auto-fixed -- nothing fed back into context
 

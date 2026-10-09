@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from meow.infrastructure.lint import _run_lint_on_file
+from meow.infrastructure.lint import run_lint_on_file
 from meow.project.config import load_config
 from meow.project.plan_state import PlanStore
 
@@ -62,7 +62,7 @@ def lint_after_edit(event: dict) -> dict:  # ruff: ignore[too-many-return-statem
     try:
         config = load_config(root)
         failures = asyncio.run(
-            _run_lint_on_file(root, config["lint"], path, config["lint_timeout"])
+            run_lint_on_file(root, config["lint"], path, config["lint_timeout"])
         )
     except (OSError, ValueError) as exc:
         return {"ok": False, "kind": "diagnostic", "message": str(exc)}

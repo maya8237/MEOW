@@ -225,6 +225,17 @@ If the run is interrupted, continue it from its saved state:
 meow resume RUN_ID --continue
 ```
 
+### Review a whole repository and fix what it finds
+
+Review the entire project from scratch, then loop review and fixes until the
+review passes:
+
+```bash
+meow review "Review the entire MEOW repository from scratch for correctness, lint cleanliness, and test coverage issues." --fix
+```
+
+Without `--fix`, the same command produces a report-only review.
+
 ## What MEOW automates
 
 | You provide | MEOW handles | You get |

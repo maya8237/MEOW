@@ -138,17 +138,31 @@ class GeneratorContext(AgentContext, Protocol):
     def lint_hook(self) -> object: ...
 
 
+def _last_text_block(message: AssistantMessage) -> str:
+    """The text of the final `TextBlock` in an assistant message, or ""."""
+    texts = [b.text for b in message.content if isinstance(b, TextBlock)]
+    return texts[-1] if texts else ""
+
+
 async def _consume_query(prompt: str, options: ClaudeAgentOptions, role: str) -> None:
     """Run `query()` once to completion, raising `RuntimeError` on a
     non-success result. A `ProcessError` (the CLI subprocess crashed or
     otherwise failed) propagates unchanged for `Agent.run_query`'s retry
     loop to handle."""
     messages: AsyncIterator = query(prompt=prompt, options=options)
-    async for message in messages:
-        log_stream_message(role, message, options=options)
-        if isinstance(message, ResultMessage) and message.subtype != "success":
-            logger.error("agent_query_failed", role=role, subtype=message.subtype)
-            raise RuntimeError(f"{role} failed: {message.subtype}")
+    last_text = ""
+    try:
+        async for message in messages:
+            log_stream_message(role, message, options=options)
+            if isinstance(message, AssistantMessage):
+                last_text = _last_text_block(message) or last_text
+            if isinstance(message, ResultMessage) and message.subtype != "success":
+                logger.error("agent_query_failed", role=role, subtype=message.subtype)
+                raise RuntimeError(f"{role} failed: {message.subtype}")
+    except ProcessError as exc:
+        if not exc.stderr and last_text:
+            exc.stderr = last_text
+        raise
 
 
 def _process_error_message(

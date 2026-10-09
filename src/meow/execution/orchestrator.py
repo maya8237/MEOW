@@ -34,7 +34,7 @@ from meow.agents.base import ProjectContext
 from meow.agents.generator import Generator
 from meow.agents.review_fixer import ReviewFixAgent
 from meow.agents.reviewer import ReviewerAgent
-from meow.agents.tester import TesterAgent
+from meow.agents.tester import VerificationAgent
 from meow.execution.sprint import Sprint, build_sprint
 from meow.infrastructure.checks import code_revision
 from meow.infrastructure.logging import get_logger
@@ -44,8 +44,8 @@ from meow.infrastructure.quality import (
     record_concerns,
 )
 from meow.infrastructure.test_runner import (
-    TesterSetupError,
-    TestStageEvidence,
+    VerificationSetupError,
+    VerificationStageEvidence,
     prepared_test_stage,
 )
 from meow.infrastructure.worktree import _resolve_working_dir
@@ -99,7 +99,7 @@ class ReviewTestResult:
 
 
 def _tester_results(
-    reviewer_status: str, tester_status: str, evidence: TestStageEvidence
+    reviewer_status: str, tester_status: str, evidence: VerificationStageEvidence
 ) -> dict:
     result = {"reviewer": reviewer_status, "tester": tester_status}
     if evidence.browser:
@@ -142,10 +142,10 @@ async def review_then_test(
         async with prepared_test_stage(
             sprint.active_working_dir(), sprint.config
         ) as evidence:
-            tester_status, tester_verdict = await TesterAgent(sprint).test_plan(
+            tester_status, tester_verdict = await VerificationAgent(sprint).test_plan(
                 plan_file, evidence
             )
-    except TesterSetupError as exc:
+    except VerificationSetupError as exc:
         report = plan_file.with_name(plan_file.stem + "-test.md")
         raise RuntimeError(
             f"Tester stage setup failed for {plan_file}: {exc}. "

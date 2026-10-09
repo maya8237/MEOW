@@ -14,9 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meow.infrastructure.lint import (
-    _run_lint_on_file,
     apply_lint_fixes,
     check_lint_commands,
+    run_lint_on_file,
 )
 from meow.project.config import LintCommand, load_config
 
@@ -35,7 +35,7 @@ async def _lint_one_file(
 ) -> list[str]:
     per_file = [entry for entry in commands if entry.per_file]
     try:
-        return await _run_lint_on_file(active_dir, per_file, file_path, timeout)
+        return await run_lint_on_file(active_dir, per_file, file_path, timeout)
     except OSError as exc:
         return [f"Could not run lint on {file_path}: {exc}"]
 

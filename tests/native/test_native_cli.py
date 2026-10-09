@@ -33,11 +33,11 @@ def run_native(*argv: str) -> tuple[int, str, str]:
 class NativeVerifyTests(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "Windows executable quoting")
     def test_verify_recognizes_quoted_windows_launcher(self):
-        from meow.project.config import TestCommand
+        from meow.project.config import VerificationCommand
 
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
-            command = TestCommand(Path("."), f'"{sys.executable}" -c "pass"')
+            command = VerificationCommand(Path("."), f'"{sys.executable}" -c "pass"')
             with patch("meow.native.native.shutil.which", return_value=sys.executable):
                 result = native._verify_command(command, root)
         self.assertTrue(result["launcher_available"])

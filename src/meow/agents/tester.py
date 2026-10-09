@@ -5,7 +5,7 @@ from pathlib import Path
 from claude_agent_sdk import ClaudeAgentOptions
 
 from meow.agents.base import Agent
-from meow.infrastructure.test_runner import TestStageEvidence
+from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.project.prompts import tester_prompt
 
 TESTER_REPORT_SUFFIX = "-test.md"
@@ -46,7 +46,7 @@ def architecture_context(
     return "\n\n".join(sections)
 
 
-class TesterAgent(Agent):
+class VerificationAgent(Agent):
     """Tests a reviewed plan using configured evidence and normal tools."""
 
     def _mcp_servers(self) -> dict:
@@ -74,7 +74,7 @@ class TesterAgent(Agent):
         )
 
     async def test_plan(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches]
-        self, plan_file: Path, evidence: TestStageEvidence
+        self, plan_file: Path, evidence: VerificationStageEvidence
     ) -> tuple[str, str]:
         report_file = plan_file.with_name(plan_file.stem + TESTER_REPORT_SUFFIX)
         active_dir = self.context.active_working_dir()

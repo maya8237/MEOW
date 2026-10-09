@@ -13,14 +13,12 @@ from meow.execution.run_state import MAX_OUTPUT, CheckResult
 from meow.infrastructure.test_runner import prepared_test_stage
 from meow.project.config import (
     LintCommand,
-    TestCommand,
-    _command_fields,
-    _positive_timeout,
-    _typed_bool,
+    VerificationCommand,
     config_paths,
     resolve_command_cwd,
     split_command,
 )
+from meow.project.config_schema import _command_fields, _positive_timeout, _typed_bool
 
 
 @dataclass(frozen=True)
@@ -213,7 +211,7 @@ def configured_checks(config: dict) -> list[Check]:
             )
         )
     for index, entry in enumerate(config["tester"]["tests"], 1):
-        assert isinstance(entry, TestCommand)
+        assert isinstance(entry, VerificationCommand)
         checks.append(
             Check(
                 "test",
