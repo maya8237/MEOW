@@ -1,11 +1,8 @@
 """Explorer agent definition and setup."""
 
-from dataclasses import dataclass
-from pathlib import Path
-
 from claude_agent_sdk import AgentDefinition
 
-from meow.agents.base import Agent
+from meow.agents.base import Agent, AgentContext
 from meow.project.prompts import explorer_prompt
 
 
@@ -21,27 +18,11 @@ class ExplorerAgent(Agent):
             ),
             prompt=prompt,
             tools=["Read", "Grep", "Glob", "Bash"],
-            model=self.context.model("explorer"),
-            skills=self.skills("explorer", ["superpowers:systematic-debugging"]),
-        )
-
-    @classmethod
-    def from_legacy(cls, config: dict, working_dir: Path) -> AgentDefinition:
-        """Build the old function result from config and a working directory."""
-        return cls(_LegacyContext(config, working_dir)).definition()
+        model=self.context.model("explorer"),
+        skills=self.skills("explorer", ["superpowers:systematic-debugging"]),
+    )
 
 
-@dataclass(frozen=True)
-class _LegacyContext:
-    config: dict
-    working_dir: Path
-
-    def model(self, role: str) -> str | None:
-        return self.config["models"][role]
-
-    def active_working_dir(self) -> Path:
-        return self.working_dir
-
-
-def make_explorer_agent(config: dict, working_dir: Path) -> AgentDefinition:
-    return ExplorerAgent.from_legacy(config, working_dir)
+def make_explorer_agent(context: AgentContext) -> AgentDefinition:
+    """Build the explorer definition from the canonical agent context."""
+    return ExplorerAgent(context).definition()

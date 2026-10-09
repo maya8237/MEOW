@@ -1,37 +1,55 @@
-"""Import and compatibility checks for the responsibility packages."""
+"""Architecture checks for the responsibility packages."""
 
 from pathlib import Path
 
-from meow import branch_reviewer, native, native_cli
+from meow.cli import review_cli
 from meow.execution import orchestrator as execution_orchestrator
-from meow.infrastructure import testing_gates
-from meow.infrastructure import worktrees_lifecycle as worktree_lifecycle
-from meow.integrations import gitlab as integration_gitlab
-from meow.review import command as review_command
+from meow.infrastructure import checks, worktree
+from meow.integrations import branch_reviewer, gitlab_reviewer
+from meow.native import native, native_cli
 
-# These are deliberate compatibility facades and package entry points.  The
-# refactor keeps them at the package root so existing imports continue to work.
 ALLOWED_ROOT_FILES = {
     "__init__.py",
     "evaluation.py",
     "frontend.py",
-    "native.py",
     "plan_state.py",
+}
+REMOVED_COMPATIBILITY_MODULES = {
+    "native.py",
+    "cli/core.py",
+    "execution/runner.py",
+    "execution/state.py",
+    "infrastructure/testing_gates.py",
+    "infrastructure/testing_runner.py",
+    "infrastructure/worktrees_lifecycle.py",
+    "integrations/gitlab.py",
+    "integrations/jira.py",
+    "review/branch.py",
+    "review/command.py",
 }
 
 
-def test_responsibility_packages_expose_legacy_implementations():
+def test_responsibility_packages_expose_canonical_implementations():
     assert execution_orchestrator.review_then_test is not None
-    assert review_command.run_review_command is not None
-    assert integration_gitlab.__name__ == "meow.integrations.gitlab"
-    assert testing_gates.configured_checks is not None
-    assert worktree_lifecycle.__name__ == "meow.infrastructure.worktrees_lifecycle"
+    assert review_cli.run_review_command is not None
+    assert gitlab_reviewer._fetch_merge_request is not None
+    assert checks.configured_checks is not None
+    assert worktree._resolve_working_dir is not None
 
 
-def test_native_implementation_has_legacy_facades():
+def test_native_implementation_is_canonical():
     assert native.shape_create is not None
     assert native_cli.add_native_parser is not None
     assert branch_reviewer._sanitize is not None
+
+
+def test_compatibility_modules_are_removed():
+    root = Path(__file__).parents[1] / "src" / "meow"
+    assert [
+        relative
+        for relative in REMOVED_COMPATIBILITY_MODULES
+        if (root / relative).exists()
+    ] == []
 
 
 def test_package_root_has_no_flat_module_sprawl():

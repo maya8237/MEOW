@@ -2,7 +2,7 @@
 meow/native_state.py
 
 On-disk round-counter persistence for native (in-Claude-Code-session)
-execution -- the `round_state` helper `native.py` re-exports for
+execution -- the `round_state` helper exposed by `native.native` for
 `native_cli.py` to wire to `meow native round`. Split out on its own because
 tracking how many generator<->reviewer rounds a skill-driven sprint has run
 is a distinct concern from directory bootstrapping (`native_prepare.py`),

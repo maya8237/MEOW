@@ -9,17 +9,16 @@ Agent SDK process is involved. What the session cannot do reliably from
 prose alone are the mechanical facts the Python harness already owns:
 parsed MEOW configuration, worktree and branch resolution, plan/review
 lookup, lint execution, verdict parsing, the round counter, and the role
-prompts. `native_cli.py` wires the functions re-exported here to `meow
-native ...` and prints their results as JSON.
+prompts. `native_cli.py` wires the functions defined by this package to
+`meow native ...` and prints their results as JSON.
 
 Each concern that used to live in this one file now has its own module:
 `native_prepare.py` (worktree/clean-tree bootstrapping, directory
 resolution, and plan/review lookup), `native_lint.py` (lint execution),
 `native_state.py` (the on-disk round counter), and `native_prompt.py`
-(prompt/agent-wiring construction). This module just re-exports their
-public names, plus the one-line git-push wrapper, so `native_cli.py` and
-other callers keep a single `from meow import native` import and a stable
-`native.<name>` surface. Nothing here imports or starts the Agent SDK.
+(prompt/agent-wiring construction). This module provides the package's
+aggregate native API, plus the one-line git-push wrapper. Nothing here
+imports or starts the Agent SDK.
 """
 
 import os

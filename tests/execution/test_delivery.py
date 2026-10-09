@@ -103,7 +103,7 @@ def test_missing_remote_preserves_verified_work(tmp_path):
 
 
 def test_unattended_flag_rejects_non_build_and_interactive_modes():
-    from meow import cli
+    from meow.cli import cli
 
     parser = cli._build_arg_parser()
     for argv in (

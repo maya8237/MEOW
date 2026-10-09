@@ -8,35 +8,23 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from meow import cli, orchestrator, sprint_runner, worktree
-from meow import sprint as sprint_module
 from meow.agents import explorer as explorer_agent
 from meow.agents import generator as generator_agent
 from meow.agents import planner as planner_agent
 from meow.agents import reviewer as reviewer_agent
-from meow.agents.explorer import ExplorerAgent
+from meow.agents.base import ProjectContext
 from meow.agents.planner import PlannerAgent
 from meow.agents.reviewer import ReviewerAgent
+from meow.cli import cli
+from meow.execution import orchestrator, sprint_runner
+from meow.execution import sprint as sprint_module
 from meow.execution.sprint import Sprint
-
-
-class _LegacyExplorerContext:
-    """Minimal `AgentContext` built straight from config and a directory.
-
-    Mirrors what `_build_sprint` hands `make_explorer_agent`, independent of
-    `explorer.py`'s own private `_LegacyContext`, so the comparison below
-    doesn't just restate the production code under test.
-    """
-
-    def __init__(self, config: dict, working_dir: Path):
-        self._config = config
-        self._working_dir = working_dir
-
-    def model(self, role: str) -> str | None:
-        return self._config["models"][role]
-
-    def active_working_dir(self) -> Path:
-        return self._working_dir
+from meow.infrastructure import worktree
+from meow.project.plan_files import _latest_plan_file
+from meow.project.prompts import (
+    architecture_review_instructions,
+    no_prompt_review_instructions,
+)
 
 
 class CliCommandTests(  # ruff: ignore[too-many-public-methods]
@@ -128,8 +116,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             with self.assertRaises(SystemExit):
                 cli._validate_ci_flags(parser, args)
 
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_ci_review")
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_ci_review")
     def test_ci_dispatch_skips_boot_and_uses_result_status(self, mock_run, mock_boot):
         mock_run.return_value.exit_code = 1
         with (
@@ -157,9 +145,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             cli._validate_run_flags(parser, args)
 
     @staticmethod
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli._ensure_clean_tree")
-    @patch("meow.cli.run_issue_solver", new_callable=AsyncMock)
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli._ensure_clean_tree")
+    @patch("meow.cli.cli.run_issue_solver", new_callable=AsyncMock)
     def test_jira_test_flag_reaches_issue_solver(mock_solver, mock_clean, mock_boot):
         mock_solver.return_value = {"issue": "PROJ-1", "branch": "issue/PROJ-1"}
         with patch(
@@ -176,18 +164,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     # unittest gives every `test_*` a public method; splitting this fixture
     # class across files to satisfy max-public-methods would scatter closely
     # related CLI-dispatch coverage without adding clarity.
-    def test_orchestrator_reuses_shared_role_implementations(self):
-        self.assertIs(
-            orchestrator.make_explorer_agent,
-            explorer_agent.make_explorer_agent,
-        )
-        self.assertIs(orchestrator.run_planner, planner_agent.run_planner)
+    def test_orchestrator_uses_canonical_role_implementations(self):
         self.assertIs(orchestrator.Generator, generator_agent.Generator)
-        self.assertIs(
-            orchestrator.run_prompt_reviewer,
-            reviewer_agent.run_prompt_reviewer,
-        )
-        self.assertIs(orchestrator.run_reviewer, reviewer_agent.run_reviewer)
+        self.assertIs(orchestrator.ReviewerAgent, reviewer_agent.ReviewerAgent)
 
     def test_build_sprint_explorer_matches_explorer_agent_definition(self):
         config = {
@@ -208,7 +187,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
         self.assertEqual(
             sprint.explorer,
-            ExplorerAgent(_LegacyExplorerContext(config, working_dir)).definition(),
+            explorer_agent.make_explorer_agent(ProjectContext(working_dir, config)),
         )
 
     def test_run_sprint_drives_planner_and_reviewer_agent_classes(self):
@@ -246,12 +225,6 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 patch.object(
                     ReviewerAgent, "review_plan", new_callable=AsyncMock
                 ) as mock_review_plan,
-                patch(
-                    "meow.execution.orchestrator.run_planner", new_callable=AsyncMock
-                ) as mock_run_planner,
-                patch(
-                    "meow.execution.orchestrator.run_reviewer", new_callable=AsyncMock
-                ) as mock_run_reviewer,
             ):
                 mock_planner_run.return_value = plan_file
                 mock_review_plan.return_value = ("PASS", "STATUS: PASS\n")
@@ -267,8 +240,6 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
             self.assertEqual(mock_planner_run.await_count, 1)
             mock_review_plan.assert_awaited_once_with(plan_file)
-            self.assertEqual(mock_run_planner.call_count, 0)
-            self.assertEqual(mock_run_reviewer.call_count, 0)
 
     def test_run_sprint_raises_when_the_plan_is_not_approved(self):
         config = {
@@ -552,7 +523,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             mock_generator_cls.assert_not_called()
 
     def test_no_prompt_review_falls_back_to_full_project_when_diff_is_empty(self):
-        instructions = reviewer_agent._no_prompt_review_instructions(
+        instructions = no_prompt_review_instructions(
             has_diff=False, docs_dir="docs/exec-plans/active"
         )
 
@@ -562,7 +533,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         self.assertIn("Do not review", instructions)
 
     def test_no_prompt_review_uses_diff_when_diff_has_changes(self):
-        instructions = reviewer_agent._no_prompt_review_instructions(
+        instructions = no_prompt_review_instructions(
             has_diff=True, docs_dir="docs/exec-plans/active"
         )
 
@@ -699,7 +670,14 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "max_rounds": 1,
             },
             explorer=explorer_agent.make_explorer_agent(
-                {"models": {"explorer": "x"}}, worktree_root
+                ProjectContext(
+                    worktree_root,
+                    {
+                        "models": {"explorer": "x"},
+                        "lint": [],
+                    },
+                    use_worktree=True,
+                )
             ),
             lint_hook=None,
             working_dir=worktree_root,
@@ -936,10 +914,10 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     # assertions below.
     @staticmethod
     @patch("meow.execution.orchestrator.logger")
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_review_command", new_callable=AsyncMock)
-    @patch("meow.cli.run_plan", new_callable=AsyncMock)
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_review_command", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_plan", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_cli_logs_working_directory_once(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
         mock_sprint, mock_plan, mock_review, mock_boot, mock_logger
     ):
@@ -965,15 +943,15 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_sprint.assert_not_called()
         mock_plan.assert_not_called()
 
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_review_command", new_callable=AsyncMock)
-    @patch("meow.cli.run_plan", new_callable=AsyncMock)
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_review_command", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_plan", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_run_command_requires_worktree_when_not_disabled(
         self, mock_sprint, mock_plan, mock_review, mock_boot
     ):
         with (
-            patch("meow.cli._is_linked_worktree", return_value=False),
+            patch("meow.cli.cli._is_linked_worktree", return_value=False),
             patch(
                 "sys.argv",
                 [
@@ -996,11 +974,11 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_review.assert_not_called()
 
     @staticmethod
-    @patch("meow.cli._ensure_clean_tree")
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_review_command", new_callable=AsyncMock)
-    @patch("meow.cli.run_plan", new_callable=AsyncMock)
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._ensure_clean_tree")
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_review_command", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_plan", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_run_command_accepts_word_flags_and_short_aliases(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
         mock_sprint, mock_plan, mock_review, mock_boot, mock_clean_tree
     ):
@@ -1035,9 +1013,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_review.assert_not_called()
 
     @staticmethod
-    @patch("meow.cli._ensure_clean_tree")
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._ensure_clean_tree")
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_source_branch_is_passed_through_and_skips_the_clean_tree_check(
         mock_sprint, mock_boot, mock_clean_tree
     ):
@@ -1070,9 +1048,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         )
 
     @staticmethod
-    @patch("meow.cli._ensure_clean_tree")
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._ensure_clean_tree")
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_source_branch_accepts_the_from_alias(
         mock_sprint, mock_boot, mock_clean_tree
     ):
@@ -1094,9 +1072,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         )
 
     @staticmethod
-    @patch("meow.cli._ensure_clean_tree")
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._ensure_clean_tree")
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_worktree_mode_without_source_branch_still_requires_a_clean_tree(
         mock_sprint, mock_boot, mock_clean_tree
     ):
@@ -1119,9 +1097,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         )
 
     @staticmethod
-    @patch("meow.cli._ensure_clean_tree")
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._ensure_clean_tree")
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_source_branch_with_no_worktree_still_requires_a_clean_tree(
         mock_sprint, mock_boot, mock_clean_tree
     ):
@@ -1153,10 +1131,10 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         )
 
     @staticmethod
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_review_command", new_callable=AsyncMock)
-    @patch("meow.cli.run_plan", new_callable=AsyncMock)
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_review_command", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_plan", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_review_fix_flag_is_passed_through(
         mock_sprint, mock_plan, mock_review, mock_boot
     ):
@@ -1179,15 +1157,15 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_sprint.assert_not_called()
         mock_plan.assert_not_called()
 
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_review_command", new_callable=AsyncMock)
-    @patch("meow.cli.run_plan", new_callable=AsyncMock)
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_review_command", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_plan", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_plan_command_requires_worktree_when_not_disabled(
         self, mock_sprint, mock_plan, mock_review, mock_boot
     ):
         with (
-            patch("meow.cli._is_linked_worktree", return_value=False),
+            patch("meow.cli.cli._is_linked_worktree", return_value=False),
             patch("sys.argv", ["meow", "plan", "ship-it", "--work-dir", "."]),
             self.assertRaises(SystemExit),
         ):
@@ -1199,10 +1177,10 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_sprint.assert_not_called()
 
     @staticmethod
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_review_command", new_callable=AsyncMock)
-    @patch("meow.cli.run_plan", new_callable=AsyncMock)
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_review_command", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_plan", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_plan_command_is_supported(mock_sprint, mock_plan, mock_review, mock_boot):
         with patch(
             "sys.argv",
@@ -1224,10 +1202,12 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @staticmethod
     def test_review_prompt_source_is_supported():
         with (
-            patch("meow.cli._boot_repo") as mock_boot,
-            patch("meow.cli.run_review_command", new_callable=AsyncMock) as mock_review,
-            patch("meow.cli.run_plan", new_callable=AsyncMock) as mock_plan,
-            patch("meow.cli.run_sprint", new_callable=AsyncMock) as mock_sprint,
+            patch("meow.cli.cli._boot_repo") as mock_boot,
+            patch(
+                "meow.cli.cli.run_review_command", new_callable=AsyncMock
+            ) as mock_review,
+            patch("meow.cli.cli.run_plan", new_callable=AsyncMock) as mock_plan,
+            patch("meow.cli.cli.run_sprint", new_callable=AsyncMock) as mock_sprint,
             patch(
                 "sys.argv",
                 ["meow", "review", "add CSV export", "--work-dir", "."],
@@ -1254,10 +1234,10 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @staticmethod
     def test_jira_build_mode_is_supported():
         with (
-            patch("meow.cli._ensure_clean_tree"),
-            patch("meow.cli._boot_repo") as mock_boot,
+            patch("meow.cli.cli._ensure_clean_tree"),
+            patch("meow.cli.cli._boot_repo") as mock_boot,
             patch(
-                "meow.cli.run_issue_solver", new_callable=AsyncMock
+                "meow.cli.cli.run_issue_solver", new_callable=AsyncMock
             ) as mock_issue_solver,
             patch("sys.argv", ["meow", "run", "--jira", "PROJ-1", "--work-dir", "."]),
         ):
@@ -1275,10 +1255,10 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @staticmethod
     def test_jira_build_mode_accepts_no_issue_key():
         with (
-            patch("meow.cli._ensure_clean_tree"),
-            patch("meow.cli._boot_repo"),
+            patch("meow.cli.cli._ensure_clean_tree"),
+            patch("meow.cli.cli._boot_repo"),
             patch(
-                "meow.cli.run_issue_solver", new_callable=AsyncMock
+                "meow.cli.cli.run_issue_solver", new_callable=AsyncMock
             ) as mock_issue_solver,
             patch("sys.argv", ["meow", "run", "--jira", "--work-dir", "."]),
         ):
@@ -1295,8 +1275,10 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @staticmethod
     def test_review_gitlab_source_is_supported():
         with (
-            patch("meow.cli._boot_repo") as mock_boot,
-            patch("meow.cli.run_review_command", new_callable=AsyncMock) as mock_review,
+            patch("meow.cli.cli._boot_repo") as mock_boot,
+            patch(
+                "meow.cli.cli.run_review_command", new_callable=AsyncMock
+            ) as mock_review,
             patch(
                 "sys.argv",
                 [
@@ -1328,9 +1310,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @staticmethod
     def test_review_does_not_require_clean_tree():
         with (
-            patch("meow.cli._ensure_clean_tree") as mock_clean_tree,
-            patch("meow.cli._boot_repo"),
-            patch("meow.cli.run_review_command", new_callable=AsyncMock),
+            patch("meow.cli.cli._ensure_clean_tree") as mock_clean_tree,
+            patch("meow.cli.cli._boot_repo"),
+            patch("meow.cli.cli.run_review_command", new_callable=AsyncMock),
             patch(
                 "sys.argv",
                 ["meow", "review", "--gitlab", "https://gitlab.example.com/mr/1"],
@@ -1343,9 +1325,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @staticmethod
     def test_lint_fix_mode_is_supported():
         with (
-            patch("meow.cli._ensure_clean_tree"),
-            patch("meow.cli._boot_repo") as mock_boot,
-            patch("meow.cli.run_lint_fix", new_callable=AsyncMock) as mock_lint_fix,
+            patch("meow.cli.cli._ensure_clean_tree"),
+            patch("meow.cli.cli._boot_repo") as mock_boot,
+            patch("meow.cli.cli.run_lint_fix", new_callable=AsyncMock) as mock_lint_fix,
             patch("sys.argv", ["meow", "run", "--lint-fix", "--work-dir", "."]),
         ):
             cli.cli_main()
@@ -1356,9 +1338,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @staticmethod
     def test_lint_fix_mode_requires_clean_tree_by_default():
         with (
-            patch("meow.cli._ensure_clean_tree") as mock_clean_tree,
-            patch("meow.cli._boot_repo"),
-            patch("meow.cli.run_lint_fix", new_callable=AsyncMock),
+            patch("meow.cli.cli._ensure_clean_tree") as mock_clean_tree,
+            patch("meow.cli.cli._boot_repo"),
+            patch("meow.cli.cli.run_lint_fix", new_callable=AsyncMock),
             patch("sys.argv", ["meow", "run", "--lint-fix", "--work-dir", "."]),
         ):
             cli.cli_main()
@@ -1368,9 +1350,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @staticmethod
     def test_lint_fix_report_only_skips_the_clean_tree_check():
         with (
-            patch("meow.cli._ensure_clean_tree") as mock_clean_tree,
-            patch("meow.cli._boot_repo"),
-            patch("meow.cli.run_lint_fix", new_callable=AsyncMock) as mock_lint_fix,
+            patch("meow.cli.cli._ensure_clean_tree") as mock_clean_tree,
+            patch("meow.cli.cli._boot_repo"),
+            patch("meow.cli.cli.run_lint_fix", new_callable=AsyncMock) as mock_lint_fix,
             patch(
                 "sys.argv",
                 ["meow", "run", "--lint-fix", "--report-only", "--work-dir", "."],
@@ -1386,10 +1368,10 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         report_text = "$ ruff check\nF401 'os' imported but unused"
         buffer = io.StringIO()
         with (
-            patch("meow.cli._ensure_clean_tree"),
-            patch("meow.cli._boot_repo"),
+            patch("meow.cli.cli._ensure_clean_tree"),
+            patch("meow.cli.cli._boot_repo"),
             patch(
-                "meow.cli.run_lint_fix",
+                "meow.cli.cli.run_lint_fix",
                 new_callable=AsyncMock,
                 return_value=report_text,
             ),
@@ -1407,9 +1389,11 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     def test_lint_fix_report_only_prints_clean_when_nothing_remains():
         buffer = io.StringIO()
         with (
-            patch("meow.cli._ensure_clean_tree"),
-            patch("meow.cli._boot_repo"),
-            patch("meow.cli.run_lint_fix", new_callable=AsyncMock, return_value=None),
+            patch("meow.cli.cli._ensure_clean_tree"),
+            patch("meow.cli.cli._boot_repo"),
+            patch(
+                "meow.cli.cli.run_lint_fix", new_callable=AsyncMock, return_value=None
+            ),
             patch(
                 "sys.argv",
                 ["meow", "run", "--lint-fix", "--report-only", "--work-dir", "."],
@@ -1421,11 +1405,11 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         assert buffer.getvalue().strip() == "Lint is clean -- no issues found."
 
     @staticmethod
-    @patch("meow.cli._ensure_clean_tree")
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_review_command", new_callable=AsyncMock)
-    @patch("meow.cli.run_plan", new_callable=AsyncMock)
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._ensure_clean_tree")
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_review_command", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_plan", new_callable=AsyncMock)
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_no_worktree_flag_skips_boot(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
         mock_sprint, mock_plan, mock_review, mock_boot, mock_clean_tree
     ):
@@ -1452,7 +1436,7 @@ class ArchitectureReviewInstructionsTests(unittest.TestCase):
     def test_review_education_requires_original_working_dir_to_stay_clean_when_worktree_is_used(  # ruff: ignore[line-too-long]
         self,
     ):
-        instructions = reviewer_agent._architecture_review_instructions()
+        instructions = architecture_review_instructions()
 
         self.assertIn("worktree", instructions)
         self.assertIn("main working directory", instructions)
@@ -1460,7 +1444,7 @@ class ArchitectureReviewInstructionsTests(unittest.TestCase):
         self.assertIn("FAIL", instructions)
 
     def test_prompt_review_skips_worktree_hygiene_check(self):
-        instructions = reviewer_agent._architecture_review_instructions(
+        instructions = architecture_review_instructions(
             check_worktree_hygiene=False
         )
 
@@ -1481,7 +1465,7 @@ class LatestPlanFileTests(unittest.TestCase):
             # the exact situation that used to make it look like "the plan".
             os.utime(review_file, (os.path.getatime(plan_file) + 10,) * 2)
 
-            self.assertEqual(orchestrator._latest_plan_file(docs_dir), plan_file)
+            self.assertEqual(_latest_plan_file(docs_dir), plan_file)
 
     def test_still_ignores_plan_review_verdicts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1490,13 +1474,13 @@ class LatestPlanFileTests(unittest.TestCase):
             plan_file.write_text("# Plan", encoding="utf-8")
             (docs_dir / "plan-review.md").write_text("STATUS: PASS", encoding="utf-8")
 
-            self.assertEqual(orchestrator._latest_plan_file(docs_dir), plan_file)
+            self.assertEqual(_latest_plan_file(docs_dir), plan_file)
 
 
 class PlanApprovalPromptTests(unittest.TestCase):
     """`_prompt_plan_approval` is the default `approve_plan` callback for
     --manually-approve-plan -- established here since no interactive-prompt
-    testing pattern existed in this repo before: patch `meow.cli.input`
+    testing pattern existed in this repo before: patch `builtins.input`
     (never real stdin) and capture stdout with `redirect_stdout` rather
     than asserting against the live console."""
 
@@ -1511,7 +1495,7 @@ class PlanApprovalPromptTests(unittest.TestCase):
     def test_prints_the_plan_and_approves_on_y(self):
         out = io.StringIO()
         with (
-            patch("meow.cli.input", return_value="y") as mock_input,
+            patch("builtins.input", return_value="y") as mock_input,
             redirect_stdout(out),
         ):
             approved = cli._prompt_plan_approval(self.plan_file)
@@ -1523,22 +1507,22 @@ class PlanApprovalPromptTests(unittest.TestCase):
 
     def test_accepts_yes_case_insensitively(self):
         with (
-            patch("meow.cli.input", return_value="YES"),
+            patch("builtins.input", return_value="YES"),
             redirect_stdout(io.StringIO()),
         ):
             self.assertTrue(cli._prompt_plan_approval(self.plan_file))
 
     def test_declines_on_n(self):
-        with patch("meow.cli.input", return_value="n"), redirect_stdout(io.StringIO()):
+        with patch("builtins.input", return_value="n"), redirect_stdout(io.StringIO()):
             self.assertFalse(cli._prompt_plan_approval(self.plan_file))
 
     def test_declines_on_empty_answer(self):
-        with patch("meow.cli.input", return_value=""), redirect_stdout(io.StringIO()):
+        with patch("builtins.input", return_value=""), redirect_stdout(io.StringIO()):
             self.assertFalse(cli._prompt_plan_approval(self.plan_file))
 
     def test_declines_on_eof_instead_of_raising(self):
         with (
-            patch("meow.cli.input", side_effect=EOFError),
+            patch("builtins.input", side_effect=EOFError),
             redirect_stdout(io.StringIO()),
         ):
             self.assertFalse(cli._prompt_plan_approval(self.plan_file))
@@ -1549,9 +1533,9 @@ class ManuallyApprovePlanFlagTests(unittest.TestCase):
     mode and --jira build mode -- `meow plan` never runs the generator, so
     it has no approval gate to offer and does not take this flag."""
 
-    @patch("meow.cli._ensure_clean_tree")
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._ensure_clean_tree")
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_run_passes_the_prompt_callback_when_flag_is_given(
         self, mock_sprint, mock_boot, mock_clean_tree
     ):
@@ -1573,9 +1557,9 @@ class ManuallyApprovePlanFlagTests(unittest.TestCase):
             resume_at="generate",
         )
 
-    @patch("meow.cli._ensure_clean_tree")
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._ensure_clean_tree")
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_run_declining_the_plan_exits_cleanly_without_a_traceback(
         self, mock_sprint, mock_boot, mock_clean_tree
     ):
@@ -1593,10 +1577,10 @@ class ManuallyApprovePlanFlagTests(unittest.TestCase):
 
     def test_jira_build_passes_the_prompt_callback_when_flag_is_given(self):
         with (
-            patch("meow.cli._ensure_clean_tree"),
-            patch("meow.cli._boot_repo"),
+            patch("meow.cli.cli._ensure_clean_tree"),
+            patch("meow.cli.cli._boot_repo"),
             patch(
-                "meow.cli.run_issue_solver", new_callable=AsyncMock
+                "meow.cli.cli.run_issue_solver", new_callable=AsyncMock
             ) as mock_issue_solver,
             patch(
                 "sys.argv",
@@ -1620,10 +1604,10 @@ class ManuallyApprovePlanFlagTests(unittest.TestCase):
         from meow.integrations.issue_solver import IssueUnresolvedError
 
         with (
-            patch("meow.cli._ensure_clean_tree"),
-            patch("meow.cli._boot_repo"),
+            patch("meow.cli.cli._ensure_clean_tree"),
+            patch("meow.cli.cli._boot_repo"),
             patch(
-                "meow.cli.run_issue_solver",
+                "meow.cli.cli.run_issue_solver",
                 new=AsyncMock(
                     side_effect=IssueUnresolvedError(
                         "Plan /tmp/plan.md was not approved -- stopping "
@@ -1649,9 +1633,9 @@ class ResumeAtFlagTests(unittest.TestCase):
     `meow plan` never runs the generator, so it has nothing to resume, and
     --jira/--lint-fix reject it outright (see the plan doc)."""
 
-    @patch("meow.cli._ensure_clean_tree")
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._ensure_clean_tree")
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_resume_at_review_is_passed_through(
         self, mock_sprint, mock_boot, mock_clean_tree
     ):
@@ -1673,9 +1657,9 @@ class ResumeAtFlagTests(unittest.TestCase):
             resume_at="review",
         )
 
-    @patch("meow.cli._ensure_clean_tree")
-    @patch("meow.cli._boot_repo")
-    @patch("meow.cli.run_sprint", new_callable=AsyncMock)
+    @patch("meow.cli.cli._ensure_clean_tree")
+    @patch("meow.cli.cli._boot_repo")
+    @patch("meow.cli.cli.run_sprint", new_callable=AsyncMock)
     def test_resume_at_defaults_to_generate(
         self, mock_sprint, mock_boot, mock_clean_tree
     ):
@@ -1716,8 +1700,10 @@ class ReviewDispatchTests(unittest.TestCase):
     @staticmethod
     def test_branch_source_is_supported():
         with (
-            patch("meow.cli._boot_repo") as mock_boot,
-            patch("meow.cli.run_review_command", new_callable=AsyncMock) as mock_review,
+            patch("meow.cli.cli._boot_repo") as mock_boot,
+            patch(
+                "meow.cli.cli.run_review_command", new_callable=AsyncMock
+            ) as mock_review,
             patch(
                 "sys.argv",
                 [
@@ -1752,8 +1738,10 @@ class ReviewDispatchTests(unittest.TestCase):
     @staticmethod
     def test_branch_source_no_worktree_flag_skips_gitignore_boot():
         with (
-            patch("meow.cli._boot_repo") as mock_boot,
-            patch("meow.cli.run_review_command", new_callable=AsyncMock) as mock_review,
+            patch("meow.cli.cli._boot_repo") as mock_boot,
+            patch(
+                "meow.cli.cli.run_review_command", new_callable=AsyncMock
+            ) as mock_review,
             patch(
                 "sys.argv",
                 [
@@ -1788,8 +1776,10 @@ class ReviewDispatchTests(unittest.TestCase):
     @staticmethod
     def test_plan_file_source_is_supported():
         with (
-            patch("meow.cli._boot_repo"),
-            patch("meow.cli.run_review_command", new_callable=AsyncMock) as mock_review,
+            patch("meow.cli.cli._boot_repo"),
+            patch(
+                "meow.cli.cli.run_review_command", new_callable=AsyncMock
+            ) as mock_review,
             patch(
                 "sys.argv",
                 [
@@ -1821,8 +1811,10 @@ class ReviewDispatchTests(unittest.TestCase):
     @staticmethod
     def test_review_file_source_is_supported():
         with (
-            patch("meow.cli._boot_repo"),
-            patch("meow.cli.run_review_command", new_callable=AsyncMock) as mock_review,
+            patch("meow.cli.cli._boot_repo"),
+            patch(
+                "meow.cli.cli.run_review_command", new_callable=AsyncMock
+            ) as mock_review,
             patch(
                 "sys.argv",
                 [
@@ -1856,9 +1848,9 @@ class ReviewDispatchTests(unittest.TestCase):
         # without --target); this checks that _dispatch_review reports that
         # ValueError and exits 1 rather than letting it propagate raw.
         with (
-            patch("meow.cli._boot_repo"),
+            patch("meow.cli.cli._boot_repo"),
             patch(
-                "meow.cli.run_review_command",
+                "meow.cli.cli.run_review_command",
                 new=AsyncMock(
                     side_effect=ValueError(
                         "--branch and --target must be given together"
@@ -1887,9 +1879,9 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
 
     def test_plain_run_runtime_error_exits_cleanly(self):
         with (
-            patch("meow.cli._boot_repo"),
+            patch("meow.cli.cli._boot_repo"),
             patch(
-                "meow.cli.run_sprint",
+                "meow.cli.cli.run_sprint",
                 new=AsyncMock(
                     side_effect=RuntimeError(
                         "Failed to create worktree at .worktrees/x: fatal: ..."
@@ -1908,9 +1900,9 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
 
     def test_plan_value_error_exits_cleanly(self):
         with (
-            patch("meow.cli._boot_repo"),
+            patch("meow.cli.cli._boot_repo"),
             patch(
-                "meow.cli.run_plan",
+                "meow.cli.cli.run_plan",
                 new=AsyncMock(
                     side_effect=ValueError(
                         ".meow/config.toml: [[lint]] entry 1 must set 'command'"
@@ -1933,9 +1925,9 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
         # flavor rejection) -- _dispatch_review only ever caught ValueError
         # itself, so this specifically exercises cli_main's outer net.
         with (
-            patch("meow.cli._boot_repo"),
+            patch("meow.cli.cli._boot_repo"),
             patch(
-                "meow.cli.run_review_command",
+                "meow.cli.cli.run_review_command",
                 new=AsyncMock(
                     side_effect=RuntimeError(
                         "branch-review.md is a branch review -- `meow review` "
@@ -1958,9 +1950,9 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
         # meow before creating .meow/config.toml at all. load_config raises
         # FileNotFoundError, a type cli_main's net didn't originally cover.
         with (
-            patch("meow.cli._boot_repo"),
+            patch("meow.cli.cli._boot_repo"),
             patch(
-                "meow.cli.run_plan",
+                "meow.cli.cli.run_plan",
                 new=AsyncMock(
                     side_effect=FileNotFoundError(
                         "No MEOW configuration file found in /some/project. "
@@ -1981,9 +1973,9 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
 
     def test_resume_at_review_with_no_plan_file_exits_cleanly(self):
         with (
-            patch("meow.cli._boot_repo"),
+            patch("meow.cli.cli._boot_repo"),
             patch(
-                "meow.cli.run_sprint",
+                "meow.cli.cli.run_sprint",
                 new=AsyncMock(
                     side_effect=FileNotFoundError(
                         "No plan file found in docs/exec-plans/active. Run "
@@ -2032,8 +2024,8 @@ class FeatureNameRequirementTests(unittest.TestCase):
 
     def test_plain_run_without_name_or_no_worktree_is_rejected(self):
         with (
-            patch("meow.cli._is_linked_worktree", return_value=False),
-            patch("meow.cli._ensure_clean_tree"),
+            patch("meow.cli.cli._is_linked_worktree", return_value=False),
+            patch("meow.cli.cli._ensure_clean_tree"),
             patch("sys.argv", ["meow", "run", "do it", "--work-dir", "."]),
             self.assertRaises(SystemExit) as ctx,
         ):
@@ -2044,10 +2036,10 @@ class FeatureNameRequirementTests(unittest.TestCase):
     @staticmethod
     def test_plain_run_with_no_worktree_flag_does_not_require_a_name():
         with (
-            patch("meow.cli._is_linked_worktree", return_value=False),
-            patch("meow.cli._ensure_clean_tree"),
-            patch("meow.cli._boot_repo"),
-            patch("meow.cli.run_sprint", new_callable=AsyncMock) as mock_run,
+            patch("meow.cli.cli._is_linked_worktree", return_value=False),
+            patch("meow.cli.cli._ensure_clean_tree"),
+            patch("meow.cli.cli._boot_repo"),
+            patch("meow.cli.cli.run_sprint", new_callable=AsyncMock) as mock_run,
             patch(
                 "sys.argv",
                 ["meow", "run", "do it", "--no-worktree", "--work-dir", "."],
@@ -2063,10 +2055,10 @@ class FeatureNameRequirementTests(unittest.TestCase):
         # "work here", same as --no-worktree would, so --name must not be
         # demanded just because that flag itself wasn't also passed.
         with (
-            patch("meow.cli._is_linked_worktree", return_value=True),
-            patch("meow.cli._ensure_clean_tree"),
-            patch("meow.cli._boot_repo"),
-            patch("meow.cli.run_sprint", new_callable=AsyncMock) as mock_run,
+            patch("meow.cli.cli._is_linked_worktree", return_value=True),
+            patch("meow.cli.cli._ensure_clean_tree"),
+            patch("meow.cli.cli._boot_repo"),
+            patch("meow.cli.cli.run_sprint", new_callable=AsyncMock) as mock_run,
             patch("sys.argv", ["meow", "run", "do it", "--work-dir", "."]),
         ):
             cli.cli_main()

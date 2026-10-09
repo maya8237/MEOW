@@ -44,16 +44,16 @@ and lint commands. `Sprint` satisfies both `AgentContext` and the narrower
 The shared `Agent` base builds SDK options and runs one-shot queries. The
 explorer stays declarative and returns an `AgentDefinition` for nested use.
 The generator keeps a persistent `ClaudeSDKClient` across feedback rounds.
-Thin function-shaped wrappers remain for compatibility with existing imports.
+Callers use the canonical agent classes and responsibility packages directly.
 
 ## Native and CLI execution
 
 The CLI uses the Agent SDK to run agent roles. Native skill mode runs planning
 and generation in the calling session and dispatches a fresh reviewer for
 each round. Both modes share the role prompts from `prompts.py`, read the same
-configuration, and use the same file and verdict formats. `native.py` re-exports
-deterministic helpers implemented in `native_prepare.py`, `native_lint.py`,
-`native_state.py`, and `native_prompt.py`; `native_cli.py` exposes them through
-the `meow native` command.
+configuration, and use the same file and verdict formats. The `native` package
+provides deterministic helpers implemented in `native_prepare.py`,
+`native_lint.py`, `native_state.py`, and `native_prompt.py`; `native_cli.py`
+exposes them through the `meow native` command.
 
 See [shared skill protocol](skills/_shared/native-mode.md) for more detail.

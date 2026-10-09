@@ -9,7 +9,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from meow import cli, native
+from meow.cli import cli
+from meow.native import native
 from tests.test_native import TOML, git, make_repo
 
 
@@ -37,7 +38,7 @@ class NativeVerifyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
             command = TestCommand(Path("."), f'"{sys.executable}" -c "pass"')
-            with patch("meow.native.shutil.which", return_value=sys.executable):
+            with patch("meow.native.native.shutil.which", return_value=sys.executable):
                 result = native._verify_command(command, root)
         self.assertTrue(result["launcher_available"])
         self.assertEqual(result["status"], "ready_unchecked")
@@ -95,7 +96,7 @@ env = {TOKEN = "actual-secret-do-not-print"}
             def find_command(name):
                 return None if name == "missing-tester-mcp" else "/python"
 
-            with patch("meow.native.shutil.which", side_effect=find_command):
+            with patch("meow.native.native.shutil.which", side_effect=find_command):
                 result = native.verify(root, run_lint=False)
 
             tester = result["tester"]
@@ -147,7 +148,7 @@ env = {TOKEN = "actual-secret-do-not-print"}
         self.assertEqual(native._verify_gitlab({})["status"], "not_configured")
 
     def test_checks_mcp_command_and_environment_without_exposing_values(self):
-        with patch("meow.native.shutil.which", return_value="/usr/bin/uvx"):
+        with patch("meow.native.native.shutil.which", return_value="/usr/bin/uvx"):
             result = native._verify_jira({
                 "jira": {
                     "project_key": "MEOW",

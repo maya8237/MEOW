@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from meow import lint_fix
+from meow.infrastructure import lint_fix
 
 
 class RunLintFixReportOnlyTests(unittest.IsolatedAsyncioTestCase):

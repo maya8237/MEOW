@@ -133,6 +133,6 @@ generator's explorer definition and lint hook.
 
 The shared `Agent` base builds SDK options and runs one-shot queries. The
 explorer returns an `AgentDefinition` for nested use, while the generator
-keeps a persistent `ClaudeSDKClient` across feedback rounds. Thin function
-wrappers remain for compatibility with existing imports.
+keeps a persistent `ClaudeSDKClient` across feedback rounds. Internal callers
+use the canonical agent classes and responsibility packages directly.
 

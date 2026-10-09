@@ -216,7 +216,7 @@ Enable and test it with `systemctl enable --now meow-run-jira.timer`, then
 | Missing / wrong | Result |
 |---|---|
 | `.meow/config.toml` absent | Built-in defaults are used; no lint commands are configured. |
-| A lint field is present but no `[[lint]]` entry or `lint_command` is defined | `ValueError`: no lint command defined. Config files containing only models, skills, MCP, or other settings are valid. |
+| A lint field is present but no `[[lint]]` entry is defined | `ValueError`: no lint command defined. Config files containing only models, skills, MCP, or other settings are valid. |
 | Unknown key in a `[[lint]]` table (often a top-level key placed after it) | `ValueError` naming the entry and key |
 | No architecture doc anywhere under `docs/` | No error — reviewer's SOLID/SRP pass finds nothing to Glob/Read, so it has no project-specific boundaries to check, just its generic mixed-responsibility rule |
 | Other `docs/` files (`tech-debt-tracker.md`, `core-beliefs.md`, etc.) | No error — no role goes looking for them specifically, only opportunistically via each role's docs scan |

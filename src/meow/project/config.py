@@ -75,8 +75,6 @@ def split_command(command: str) -> list[str]:
 
 
 DEFAULT_CONFIG = {
-    "lint_command": None,  # legacy single-command form
-    "lint_fix_flag": DEFAULT_FIX_FLAG,
     "max_rounds": 8,
     "lint_timeout": 60,  # seconds before a per-file lint command is killed
     "docs_dir": ".meow/plans",
@@ -700,10 +698,10 @@ def _validate_os_compatibility(
 
 
 def _normalize_lint_commands(user_config: dict) -> list[LintCommand]:
-    """Collapse both config forms into one list, in configured order.
+    """Validate and normalize the configured lint commands.
 
-    Any number of commands is allowed. The list form is a TOML array of
-    tables, each with its own fix flag and its own role:
+    Any number of commands is allowed. The TOML array of tables gives each
+    command its own fix flag and role:
 
         [[lint]]
         command = "npx oxlint"
@@ -714,20 +712,15 @@ def _normalize_lint_commands(user_config: dict) -> list[LintCommand]:
         per_file = false          # project-wide only, never per file
         gate = false              # non-blocking: failure is not a sprint FAIL
 
-    The older single-command form still works and becomes one entry:
-
-        lint_command = "ruff check"
-        lint_fix_flag = "--fix"
+    Every project must use the ``[[lint]]`` form. There is no implicit
+    single-command configuration.
     """
-    entries = []
-
-    legacy = user_config.get("lint_command")
-    if legacy:
-        entries.append(
-            LintCommand(
-                command=legacy,
-                fix_flag=user_config.get("lint_fix_flag", DEFAULT_FIX_FLAG),
-            )
+    unsupported = {"lint_command", "lint_fix_flag"} & user_config.keys()
+    if unsupported:
+        names = ", ".join(sorted(unsupported))
+        raise ValueError(
+            f"{CONFIG_FILENAME}: unsupported lint configuration key(s): {names}. "
+            "Use [[lint]] entries instead."
         )
 
     raw_entries = user_config.get("lint", [])
@@ -735,15 +728,14 @@ def _normalize_lint_commands(user_config: dict) -> list[LintCommand]:
         raise ValueError(
             f"{CONFIG_FILENAME}: 'lint' must be a list of [[lint]] tables."
         )
-    entries.extend(
+    entries = [
         _lint_entry(raw, position) for position, raw in enumerate(raw_entries, start=1)
-    )
+    ]
 
     if not entries:
         raise ValueError(
             f"{CONFIG_FILENAME} must define at least one lint command -- "
-            "either a [[lint]] entry with a 'command' key, or the "
-            'single-command form lint_command = "ruff check".'
+            "add a [[lint]] entry with a 'command' key."
         )
 
     return entries
@@ -786,9 +778,7 @@ def load_config(working_dir: Path) -> dict:
 
     config = {**DEFAULT_CONFIG, **user_config}
     config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}
-    lint_configured = any(
-        key in user_config for key in ("lint", "lint_command", "lint_fix_flag")
-    )
+    lint_configured = "lint" in user_config
     config["lint"] = _normalize_lint_commands(user_config) if lint_configured else []
     _validate_os_compatibility(config["lint"])
     config["tester"] = _normalize_tester_config(user_config)

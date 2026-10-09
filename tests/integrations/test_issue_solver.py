@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from meow import issue_solver
+from meow.integrations import issue_solver
 
 
 class LoadJiraConfigTests(unittest.TestCase):

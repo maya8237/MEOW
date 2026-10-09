@@ -1,6 +1,6 @@
 import unittest
 
-from meow import gitlab_reviewer
+from meow.integrations import gitlab_reviewer
 
 
 class LoadGitlabConfigTests(unittest.TestCase):

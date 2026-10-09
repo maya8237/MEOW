@@ -16,9 +16,6 @@ from pathlib import Path
 from meow.execution.run_state import RunRecord, RunStore
 from meow.project.config import _expand_config_environment, _merge_config, config_paths
 
-# Keep the old ``background.core`` patch point working for existing callers.
-core = sys.modules[__name__]
-
 _TERMINAL = {
     "complete",
     "failed",
@@ -165,7 +162,7 @@ def launch_background(  # ruff: ignore[too-many-statements]
     command = [
         sys.executable,
         "-c",
-        "from meow.cli import cli_main; cli_main()",
+        "from meow.cli.cli import cli_main; cli_main()",
         "_worker",
         record.id,
         "--working-dir",

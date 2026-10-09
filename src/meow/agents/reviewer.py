@@ -18,7 +18,6 @@ from meow.agents.base import (
 from meow.infrastructure.lint import LintGateEvidence, check_lint_evidence
 from meow.infrastructure.logging import get_logger
 from meow.project.prompts import (
-    architecture_review_instructions,
     branch_review_prompt,
     ci_review_prompt,
     mr_review_prompt,
@@ -29,7 +28,6 @@ from meow.project.prompts import (
 
 if TYPE_CHECKING:
     from meow.integrations.ci_review import CiReviewContext
-from meow.execution.sprint import Sprint
 from meow.project.shaping import ShapeContext
 
 PROMPT_REVIEW_FILENAME = "review.md"
@@ -40,10 +38,6 @@ _GIT_RETRY_ATTEMPTS = 3
 _GIT_RETRY_BACKOFF = 0.5
 
 logger = get_logger(__name__)
-
-# Kept under its old private name for callers that reach it through this module.
-_architecture_review_instructions = architecture_review_instructions
-_no_prompt_review_instructions = no_prompt_review_instructions
 
 
 def _run_git_retrying(argv: list[str]) -> subprocess.CompletedProcess:
@@ -388,17 +382,3 @@ class ReviewerAgent(Agent):
         return self._apply_lint_gate(
             _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
         )
-
-
-async def run_prompt_reviewer(sprint: Sprint, prompt: str | None) -> tuple[str, str]:
-    """Compatibility entry point for prompt reviews."""
-    return await ReviewerAgent(sprint).review_prompt(prompt)
-
-
-async def run_reviewer(
-    sprint: Sprint, plan_file: Path, shape_context: ShapeContext | None = None
-) -> tuple[str, str]:
-    """Compatibility entry point for sprint-plan reviews."""
-    return await ReviewerAgent(sprint).review_plan(
-        plan_file, shape_context=shape_context
-    )

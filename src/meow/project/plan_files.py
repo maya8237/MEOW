@@ -3,8 +3,7 @@ meow/plan_files.py
 
 Plan/review file naming and lookup within a project's docs_dir: which file
 is the latest sprint plan, which review file goes with a plan, and what
-flavor (plan/prompt/gitlab) an existing review file is. Split out of
-orchestrator.py, which re-exports these for compatibility, because this is
+flavor (plan/prompt/gitlab) an existing review file is. This is
 file-naming/lookup logic -- distinct from the generator<->reviewer
 round-loop control flow orchestrator.py's own docstring says it holds.
 """
