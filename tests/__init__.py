@@ -1,1 +1,1 @@
-"""Repository test package used by compatibility and integration tests."""
+"""Repository test package used by integration tests."""

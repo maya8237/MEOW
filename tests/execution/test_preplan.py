@@ -146,10 +146,10 @@ def test_plan_command_prepares_project_context_behind_the_scenes(tmp_path):
     planner = AsyncMock(return_value=tmp_path / "plan.md")
     with (
         patch(
-            "meow.execution.sprint_runner.core._prepare_sprint",
+            "meow.execution.sprint_runner._prepare_sprint",
             return_value=(sprint, "feature", tmp_path),
         ),
-        patch("meow.execution.sprint_runner.core.PlannerAgent") as agent,
+        patch("meow.execution.sprint_runner.PlannerAgent") as agent,
     ):
         agent.return_value.run = planner
         asyncio.run(run_plan(tmp_path, "feature", "Fix the command"))

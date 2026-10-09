@@ -4,7 +4,8 @@ import re
 import unittest
 from pathlib import Path
 
-from meow import cli, native
+from meow.cli import cli
+from meow.native import native
 from meow.native.native_cli import add_native_parser
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"

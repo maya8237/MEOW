@@ -2,7 +2,7 @@
 
 import sys
 
-from meow.cli import cli_main
+from meow.cli.cli import cli_main
 from meow.cli.status_cli import status
 from meow.execution.run_state import RunStore
 from meow.infrastructure.quality import record_concerns
@@ -41,7 +41,7 @@ def test_cli_status_never_boots_repo(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
         sys, "argv", ["meow", "status", record.id, "--working-dir", str(tmp_path)]
     )
-    monkeypatch.setattr("meow.cli._boot_repo", lambda *args, **kwargs: 1 / 0)
+    monkeypatch.setattr("meow.cli.cli._boot_repo", lambda *args, **kwargs: 1 / 0)
     with __import__("pytest").raises(SystemExit) as exit_info:
         cli_main()
     assert exit_info.value.code == 0

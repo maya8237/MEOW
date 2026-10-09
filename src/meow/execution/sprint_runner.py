@@ -13,7 +13,6 @@ the engine module.
 import hashlib
 import json
 import subprocess
-import sys
 from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
@@ -45,9 +44,6 @@ from meow.project.preplan import gather_context, prepare_preplan
 from meow.project.shaping import ShapeContext, is_bug_request, load_shape_artifact
 from meow.tasks.model import load_task_graph
 from meow.tasks.runner import run_parallel_plan
-
-# Keep the old ``sprint_runner.core`` patch point working for existing callers.
-core = sys.modules[__name__]
 
 logger = get_logger(__name__)
 

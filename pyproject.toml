@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-meow = "meow.cli:cli_main"
+meow = "meow.cli.cli:cli_main"
 
 [build-system]
 requires = ["hatchling"]
@@ -44,14 +44,6 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "C90", "PLR"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/meow/__init__.py" = ["non-empty-init-module"]
-# These package facades intentionally mirror patchable legacy imports and
-# therefore contain runtime forwarding code in addition to re-exports.
-"src/meow/cli/__init__.py" = ["ALL"]
-"src/meow/issue_solver/__init__.py" = ["ALL"]
-"src/meow/lint_fix/__init__.py" = ["ALL"]
-"src/meow/orchestrator/__init__.py" = ["ALL"]
-"src/meow/review_cli/__init__.py" = ["ALL"]
-"src/meow/sprint_runner/__init__.py" = ["ALL"]
 "src/meow/project/shaping.py" = ["noqa-comments"]
 "src/meow/cli/cli.py" = ["complex-structure", "too-many-branches", "line-too-long"]
 "src/meow/project/config.py" = ["complex-structure", "too-many-statements", "too-many-branches", "line-too-long"]

@@ -170,10 +170,7 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
         return 1
     clear_cancel(store, record.id)
     store.transition(record.id, "resuming", attempt=record.attempt + 1)
-    import sys as _sys
-
-    runner = getattr(_sys.modules.get("meow.cli.resume_cli"), "run_sprint", run_sprint)
-    await runner(
+    await run_sprint(
         Path(record.worktree),
         None,
         record.request,

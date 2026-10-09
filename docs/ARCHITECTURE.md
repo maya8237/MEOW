@@ -1,8 +1,8 @@
 # MEOW package architecture
 
-`src/meow` is organized by responsibility. The package directories expose
-stable import paths while the original top-level modules remain compatibility
-facades for existing plugins and integrations.
+`src/meow` is organized by responsibility. Each package owns its canonical
+implementation modules; callers should import from the package that owns the
+workflow.
 
 - `agents/`: SDK role implementations. Role families should be split into
   subpackages when they gain unrelated responsibilities.
@@ -17,7 +17,7 @@ facades for existing plugins and integrations.
 
 New code belongs in the narrowest responsibility package. A package is split
 again when its files serve different workflows or require different
-dependencies; file count alone is not a threshold. Top-level imports such as
-`meow.native` and `meow.worktree` remain supported during the migration.
+dependencies; file count alone is not a threshold. The runtime has no
+top-level alias modules; use the responsibility packages listed above.
 Tests stay in the repository `tests/` package and are not copied into the
 runtime package.

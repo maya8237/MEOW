@@ -1,6 +1,6 @@
 import unittest
 
-from meow import branch_reviewer
+from meow.integrations import branch_reviewer
 
 
 class SanitizeTests(unittest.TestCase):

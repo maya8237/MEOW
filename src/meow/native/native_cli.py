@@ -2,7 +2,7 @@
 meow/native_cli.py
 
 The `meow native ...` command group: argparse wiring and JSON output for the
-deterministic helpers in `native.py`. Every subcommand prints exactly one
+deterministic helpers in `native.native`. Every subcommand prints exactly one
 JSON document on stdout and exits 0; any failure prints its message on
 stderr and exits 1 (logs also go to stderr, so stdout stays parseable).
 """
@@ -13,8 +13,8 @@ import json
 import sys
 from pathlib import Path
 
-from meow import native
 from meow.hooks.handlers import HANDLERS
+from meow.native import native
 from meow.project.config import load_config
 
 

@@ -7,10 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from meow import background
-from meow.cli import core as cli_core
+from meow.cli import cli as cli_core
 from meow.cli.status_cli import render
 from meow.execution.run_state import RunStore
+from meow.infrastructure import background
 
 
 def test_background_requires_unattended(tmp_path):
@@ -70,7 +70,7 @@ def test_launch_creates_checkpoint_and_worker_log(tmp_path, monkeypatch):
         spawned.append((argv, kwargs))
         return SimpleNamespace(pid=worker_pid)
 
-    monkeypatch.setattr(background.core.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(background.subprocess, "Popen", fake_popen)
     run_id = background.launch_background(
         tmp_path, ["run", "feature", "--name", "x", "--unattended", "--background"]
     )
@@ -79,7 +79,7 @@ def test_launch_creates_checkpoint_and_worker_log(tmp_path, monkeypatch):
     assert record.background["state"] == "starting"
     assert (RunStore(tmp_path).directory / f"{run_id}.log").is_file()
     assert spawned[0][0][:2] == [sys.executable, "-c"]
-    assert spawned[0][1]["stdin"] == background.core.subprocess.DEVNULL
+    assert spawned[0][1]["stdin"] == background.subprocess.DEVNULL
 
 
 def test_real_worker_survives_launcher_and_reports_failure(tmp_path):
@@ -110,7 +110,7 @@ def test_stale_pid_reconciles_as_interrupted(tmp_path, monkeypatch):
     store.update_background(
         record.id, pid=os.getpid(), start_identity="different", log="run.log"
     )
-    monkeypatch.setattr(background.core, "_process_identity", lambda _pid: "real")
+    monkeypatch.setattr(background, "_process_identity", lambda _pid: "real")
     assert background.reconcile_worker(store, record.id).state == "interrupted"
     assert store.load(record.id).phase == "interrupted_mutation"
     transition_count = len(store.load(record.id).transitions)
@@ -195,7 +195,7 @@ def test_notification_is_opt_in_and_sent_once_with_summary_only(
         calls.append(argv)
         return SimpleNamespace(returncode=0)
 
-    monkeypatch.setattr(background.core.subprocess, "run", fake_run)
+    monkeypatch.setattr(background.subprocess, "run", fake_run)
     background._notify_once(store, record.id)
     background._notify_once(store, record.id)
     assert len(calls) == 1

@@ -31,15 +31,9 @@ from pathlib import Path
 from typing import Literal
 
 from meow.agents.base import ProjectContext
-from meow.agents.explorer import make_explorer_agent
-from meow.agents.generator import Generator  # ruff: ignore[unused-import]
-from meow.agents.planner import run_planner
+from meow.agents.generator import Generator
 from meow.agents.review_fixer import ReviewFixAgent
-from meow.agents.reviewer import (
-    ReviewerAgent,
-    run_prompt_reviewer,
-    run_reviewer,
-)
+from meow.agents.reviewer import ReviewerAgent
 from meow.agents.tester import TesterAgent
 from meow.execution.sprint import Sprint, build_sprint
 from meow.infrastructure.checks import code_revision
@@ -49,28 +43,16 @@ from meow.infrastructure.quality import (
     extract_concern_candidates,
     record_concerns,
 )
-from meow.infrastructure.test_runner import (  # ruff: ignore[unused-import]
+from meow.infrastructure.test_runner import (
     TesterSetupError,
     TestStageEvidence,
     prepared_test_stage,
 )
 from meow.infrastructure.worktree import _resolve_working_dir
 from meow.project.config import load_config
-from meow.project.plan_files import (
-    _detect_review_flavor,
-    _latest_plan_file,
-    _latest_review_file,
-)
 from meow.project.shaping import ShapeContext
 
-assert run_prompt_reviewer  # re-exported for compatibility
-assert run_planner and run_reviewer  # re-exported for compatibility
-assert make_explorer_agent  # re-exported for compatibility
-assert _detect_review_flavor and _latest_plan_file  # re-exported for compatibility
-assert _latest_review_file  # re-exported for compatibility
-
 logger = get_logger(__name__)
-_PUBLIC_LOAD_CONFIG = load_config
 
 
 def _shape_context(sprint: Sprint) -> ShapeContext | None:
@@ -136,11 +118,6 @@ async def review_then_test(
     initial_verdict: tuple[str, str] | None = None,
 ) -> ReviewTestResult:
     """Run review and deterministic tests, then exploratory testing on PASS."""
-    import meow.execution.orchestrator as public_orchestrator
-
-    global ReviewerAgent, prepared_test_stage
-    ReviewerAgent = public_orchestrator.ReviewerAgent
-    prepared_test_stage = public_orchestrator.prepared_test_stage
     logger.info("review_test_gate_started", round=round_num, plan_file=str(plan_file))
     if initial_verdict is None:
         shape_context = _shape_context(sprint)
@@ -213,17 +190,7 @@ def _prepare_sprint(  # ruff: ignore[too-many-arguments] -- config root is an in
     Shared setup for `sprint_runner.run_sprint` and `run_plan`, which
     otherwise repeat this sequence almost verbatim.
     """
-    # Keep the package facade patchable for callers that historically patched
-    # ``meow.execution.orchestrator.load_config`` rather than this
-    # implementation module.
-    import meow.execution.orchestrator as public_orchestrator
-
-    config_loader = (
-        load_config
-        if public_orchestrator.load_config is _PUBLIC_LOAD_CONFIG
-        else public_orchestrator.load_config
-    )
-    config = config_loader(config_dir or working_dir)
+    config = load_config(config_dir or working_dir)
     active_dir, effective_name, is_worktree = _resolve_working_dir(
         working_dir,
         use_worktree=use_worktree,
@@ -246,15 +213,6 @@ def _prepare_sprint(  # ruff: ignore[too-many-arguments] -- config root is an in
 
 async def _run_rounds(sprint: Sprint, plan_file: Path, *, test: bool = False) -> bool:
     """Loop generator -> reviewer. True if the sprint passed."""
-    # Preserve the long-standing patch surface at ``meow.execution.orchestrator`` while
-    # keeping implementation code in this module.
-    import meow.execution.orchestrator as public_orchestrator
-
-    global Generator, run_planner, run_reviewer, review_then_test
-    Generator = public_orchestrator.Generator
-    run_planner = public_orchestrator.run_planner
-    run_reviewer = public_orchestrator.run_reviewer
-    review_then_test = public_orchestrator.review_then_test
     max_rounds = sprint.config.get("max_rounds", 3)
 
     async with Generator(sprint, plan_file) as generator:
@@ -350,12 +308,6 @@ async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-argume
     given, is passed to every `review_plan` call in the loop (not just the
     first), so a requested focus doesn't drift out of scope across rounds.
     """
-    import meow.execution.orchestrator as public_orchestrator
-
-    global Generator, ReviewerAgent, review_then_test
-    Generator = public_orchestrator.Generator
-    ReviewerAgent = public_orchestrator.ReviewerAgent
-    review_then_test = public_orchestrator.review_then_test
     max_rounds = sprint.config.get("max_rounds", 3)
 
     if test:

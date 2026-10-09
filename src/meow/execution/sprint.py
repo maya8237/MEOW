@@ -10,6 +10,7 @@ from pathlib import Path
 
 from claude_agent_sdk import AgentDefinition
 
+from meow.agents.base import ProjectContext
 from meow.agents.explorer import make_explorer_agent
 from meow.infrastructure.lint import make_lint_hook
 from meow.project.config import LintCommand
@@ -47,10 +48,13 @@ def build_sprint(
     """Wire up the explorer definition and lint hook, and assemble a Sprint."""
     commands = config["lint"]
     active_dir = working_dir or repo_dir
+    explorer_context = ProjectContext(
+        active_dir, config, use_worktree=use_worktree
+    )
     return Sprint(
         repo_dir=repo_dir,
         config=config,
-        explorer=make_explorer_agent(config, active_dir),
+        explorer=make_explorer_agent(explorer_context),
         lint_hook=make_lint_hook(active_dir, commands, config["lint_timeout"]),
         working_dir=active_dir,
         use_worktree=use_worktree,

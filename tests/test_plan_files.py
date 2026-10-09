@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from meow import plan_files
+from meow.project import plan_files
 
 
 class DetectReviewFlavorTests(unittest.TestCase):

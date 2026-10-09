@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from meow import cli
 from meow.agents.docs_updater import update_documentation
+from meow.cli import cli
 from meow.integrations.docs_update import (
     DocsUpdateError,
     prepare_docs_update,

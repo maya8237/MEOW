@@ -4,27 +4,27 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from meow.agents import explorer, generator, planner
+from meow.agents.base import ProjectContext
 from meow.execution.sprint import Sprint
 
 
 def make_sprint(tmp_path: Path) -> Sprint:
+    config = {
+        "models": {
+            "explorer": "test-model",
+            "planner": "test-model",
+            "generator": "test-model",
+            "reviewer": "test-model",
+        },
+        "lint": [],
+        "docs_dir": "docs/exec-plans/active",
+        "max_rounds": 1,
+        "lint_timeout": 60,
+    }
     return Sprint(
         repo_dir=tmp_path,
-        config={
-            "models": {
-                "explorer": "test-model",
-                "planner": "test-model",
-                "generator": "test-model",
-                "reviewer": "test-model",
-            },
-            "lint": [],
-            "docs_dir": "docs/exec-plans/active",
-            "max_rounds": 1,
-            "lint_timeout": 60,
-        },
-        explorer=explorer.make_explorer_agent(
-            {"models": {"explorer": "test-model"}}, tmp_path
-        ),
+        config=config,
+        explorer=explorer.make_explorer_agent(ProjectContext(tmp_path, config)),
         lint_hook=None,
         working_dir=tmp_path,
     )
@@ -36,7 +36,10 @@ class AgentSkillTests(unittest.TestCase):
 
     def test_explorer_uses_debugging_skill_for_read_only_investigation(self):
         agent = explorer.make_explorer_agent(
-            {"models": {"explorer": "test-model"}}, self.tmp_path
+            ProjectContext(
+                self.tmp_path,
+                {"models": {"explorer": "test-model"}, "lint": []},
+            )
         )
 
         self.assertEqual(agent.skills, ["superpowers:systematic-debugging"])
@@ -114,9 +117,9 @@ class AgentSkillTests(unittest.TestCase):
                 return_value="SUMMARY: checked\nSTATUS: PASS\n",
             ),
         ):
-            asyncio.run(reviewer.run_reviewer(sprint, plan_file))
+            asyncio.run(reviewer.ReviewerAgent(sprint).review_plan(plan_file))
             observed_options.append(run_query.call_args.args[1])
-            asyncio.run(reviewer.run_prompt_reviewer(sprint, "Request"))
+            asyncio.run(reviewer.ReviewerAgent(sprint).review_prompt("Request"))
             observed_options.append(run_query.call_args.args[1])
 
         self.assertEqual(len(observed_options), 2)

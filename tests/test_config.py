@@ -195,7 +195,7 @@ class LoadConfigOsValidationTests(unittest.TestCase):
             (working_dir / ".meow").mkdir()
             (working_dir / ".meow" / "config.toml").write_text(
                 'docs_dir = "%USERPROFILE%/meow-docs"\n'
-                'lint_command = "ruff check"\n'
+                '[[lint]]\ncommand = "ruff check"\n'
                 '[tester]\n'
                 'base_url = "$MEOW_BASE_URL/api"\n',
                 encoding="utf-8",
@@ -654,21 +654,12 @@ class NormalizeLintCommandsTests(unittest.TestCase):
             [c.command for c in commands], ["ruff check", "mypy .", "npx eslint ."]
         )
 
-    def test_legacy_single_command_form_becomes_one_entry(self):
-        commands = _normalize_lint_commands({
-            "lint_command": "ruff check",
-            "lint_fix_flag": "--fix",
-        })
-        self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, "ruff check")
-        self.assertEqual(commands[0].fix_flag, "--fix")
+    def test_single_command_config_keys_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, r"\[\[lint\]\]"):
+            _normalize_lint_commands({"lint_command": "ruff check"})
 
-    def test_legacy_form_and_list_form_combine_legacy_first(self):
-        commands = _normalize_lint_commands({
-            "lint_command": "ruff check",
-            "lint": [{"command": "mypy ."}],
-        })
-        self.assertEqual([c.command for c in commands], ["ruff check", "mypy ."])
+        with self.assertRaisesRegex(ValueError, r"\[\[lint\]\]"):
+            _normalize_lint_commands({"lint_fix_flag": "--fix"})
 
     def test_lint_not_a_list_raises(self):
         with self.assertRaisesRegex(ValueError, "must be a list"):
