@@ -4,7 +4,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB.svg)](https://www.python.org/downloads/)
 
 <p align="center">
-  <img src="logo.jfif" width="160" alt="MEOW pixel cat logo" />
+  <img src="logo.png" width="160" alt="MEOW pixel cat logo" />
 </p>
 
 > Tell MEOW what you want. Get the finished branch.
