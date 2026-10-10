@@ -48,7 +48,11 @@ function Test-Python312 {
         [Parameter(Mandatory = $false)][string[]]$Arguments = @()
     )
 
-    & $Executable @Arguments -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)" 2>$null
+    try {
+        & $Executable @Arguments -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)" 2>$null
+    } catch {
+        return $false
+    }
     return $LASTEXITCODE -eq 0
 }
 
@@ -97,8 +101,14 @@ function Find-ExistingMeowCheckout {
             continue
         }
 
-        $checkout = & $candidate.Executable @($candidate.Arguments) -c $query 2>$null | Select-Object -First 1
-        if (($LASTEXITCODE -eq 0) -and -not [string]::IsNullOrWhiteSpace([string]$checkout)) {
+        try {
+            $checkoutOutput = & $candidate.Executable @($candidate.Arguments) -c $query 2>$null
+            $checkoutExitCode = $LASTEXITCODE
+        } catch {
+            continue
+        }
+        $checkout = $checkoutOutput | Select-Object -First 1
+        if (($checkoutExitCode -eq 0) -and -not [string]::IsNullOrWhiteSpace([string]$checkout)) {
             return @{
                 Executable = $candidate.Executable
                 Arguments = @($candidate.Arguments)
