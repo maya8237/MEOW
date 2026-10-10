@@ -4,11 +4,14 @@ import socket
 import sys
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
+from unittest.mock import patch
 
 from meow.infrastructure.test_runner import (
     VerificationSetupError,
     _argv,
+    _probe,
     prepared_test_stage,
 )
 from meow.project.config_models import DevServerCommand, VerificationCommand
@@ -304,6 +307,20 @@ def _reachable(url: str) -> bool:
             return True
     except Exception:
         return False
+
+
+def test_probe_treats_http_error_as_ready_and_allows_slow_loopback():
+    error = urllib.error.HTTPError(
+        "http://127.0.0.1:12345/", 404, "Not Found", {}, None
+    )
+
+    with patch(
+        "meow.infrastructure.test_runner.urllib.request.urlopen",
+        side_effect=error,
+    ) as urlopen:
+        assert _probe("http://127.0.0.1:12345/") is None
+
+    urlopen.assert_called_once_with("http://127.0.0.1:12345/", timeout=1.0)
 
 
 if __name__ == "__main__":
