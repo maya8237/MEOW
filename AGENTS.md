@@ -14,6 +14,11 @@ meow run "<feature description>" --name "<feature-name>"
 `meow plan "<feature description>" --name "<feature-name>"` writes the sprint
 plan only. See [docs/CLI.md](docs/CLI.md) for full command behavior.
 
+`mw` is a short alias for `meow`, and commands have single-letter shortcuts
+(`r` run, `p` plan, `rv` review, `l` run --lint-fix, `s` status, `x` cancel,
+`c` resume, `q` queue, `w` worktree, `h` hooks, `i` ipython). Use the full
+`meow <command>` form in docs, scripts, and skills.
+
 - **Jira:** `meow run --jira [ISSUE-KEY]` fetches an issue and runs in its own
   worktree, committing and pushing after verification. It requires `[jira]`/`[jira.mcp]` and
   rejects `--name`, `--no-worktree`, `--source-branch`, `--resume-at`, and
