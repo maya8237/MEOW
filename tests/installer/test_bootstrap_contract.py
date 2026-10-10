@@ -320,7 +320,7 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
     (bin_dir / "meow.cmd").write_text(
         "@echo off\n"
         "if /I \"%~1\"==\"--version\" (\n"
-        "  echo meow 0.1.0\n"
+        "  echo meow 9.9.9\n"
         "  exit /b 0\n"
         ")\n"
         "exit /b 0\n",
