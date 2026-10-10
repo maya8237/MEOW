@@ -4,6 +4,11 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+trap {
+    Write-Host ("Failed: " + $_.Exception.Message) -ForegroundColor Red
+    exit 1
+}
+
 $repositoryUrl = "git@github.com:maya8237/MEOW.git"
 $originPyprojectUrl = "https://raw.githubusercontent.com/maya8237/MEOW/main/pyproject.toml"
 $defaultParent = "C:/Projects"
@@ -186,6 +191,7 @@ function Stop-ForExistingMeow {
 }
 
 if (Stop-ForExistingMeow) {
+    Write-Host "Done!" -ForegroundColor Green
     return
 }
 
@@ -229,3 +235,5 @@ Write-Host "Configuring Claude and onboarding projects..."
 if ($LASTEXITCODE -ne 0) {
     throw "MEOW post-install setup failed."
 }
+
+Write-Host "Done!" -ForegroundColor Green

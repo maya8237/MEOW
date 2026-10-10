@@ -154,3 +154,4 @@ def test_main_onboards_each_literal_destination_and_prints_next_steps(
     assert "/meow:onboard" in output
     assert 'meow run "Add CSV export" --name csv-export --work-dir <project>' in output
     assert "/meow:run Add CSV export" in output
+    assert "(no further menu)" not in output

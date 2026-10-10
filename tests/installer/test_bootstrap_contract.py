@@ -31,6 +31,7 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments]
     origin_version: str | None,
     existing_checkout: Path | None = None,
     input_text: str = "",
+    setup_exit_code: int = 0,
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     bash = _bash_path()
     if not bash.is_file():
@@ -56,7 +57,7 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments]
             "  case \"$*\" in",
             "    *'import meow'*) printf '%s\\n' \"$MEOW_EXISTING_CHECKOUT\" ;;",
             "    *'-m pip install -e'*) printf 'FAKE_PIP\\n' >&2 ;;",
-            "    *'-m meow.installer'*) printf 'FAKE_SETUP\\n' >&2 ;;",
+            "    *'-m meow.installer'*) printf 'FAKE_SETUP\\n' >&2; return \"$MEOW_SETUP_EXIT\" ;;",
         "  esac",
         "}",
     ]
@@ -83,6 +84,7 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments]
             f"export HOME='{_git_bash_path(tmp_path / 'home')}'",
             f"export MEOW_TEST_LOG='{_git_bash_path(log)}'",
             f"export MEOW_EXISTING_CHECKOUT='{existing_checkout_value}'",
+            f"export MEOW_SETUP_EXIT='{setup_exit_code}'",
             f"printf '%s' \"$MEOW_TEST_INPUT\" | source '{install_script}'",
         ]
     )
@@ -126,6 +128,10 @@ def test_bootstrap_scripts_stop_when_meow_is_already_on_path():
 
     assert "Find-ExistingMeowCheckout" in powershell
     assert "find_existing_checkout" in posix
+    assert "ForegroundColor Green" in powershell
+    assert "ForegroundColor Red" in powershell
+    assert "\\033[32mDone!" in posix
+    assert "\\033[31mFailed:" in posix
 
 
 def test_posix_bootstrap_uses_existing_meow_and_skips_install_when_older(
@@ -152,6 +158,7 @@ def test_posix_bootstrap_uses_existing_meow_and_skips_install_when_older(
     assert "FAKE_SETUP" in result.stderr
     assert "-m meow.installer" in log
     assert "Cloning MEOW" not in result.stdout
+    assert "\033[32mDone!\033[0m" in result.stdout
 
 
 def test_posix_bootstrap_warns_when_existing_checkout_cannot_be_located(tmp_path):
@@ -185,6 +192,23 @@ def test_posix_bootstrap_updates_existing_meow_when_approved(tmp_path):
     assert "FAKE_PIP" in result.stderr
     assert "-m pip install -e" in log
     assert "FAKE_SETUP" in result.stderr
+
+
+def test_posix_bootstrap_reports_failure_in_red(tmp_path):
+    existing_checkout = tmp_path / "existing-meow"
+    result, _log = _run_posix_installer(
+        tmp_path,
+        meow_version="0.1.0",
+        origin_version="0.2.0",
+        existing_checkout=existing_checkout,
+        input_text="n\n",
+        setup_exit_code=1,
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "\033[31mFailed:" in output
+    assert "Done!" not in output
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux installer integration test")
@@ -245,6 +269,7 @@ def test_linux_install_script_runs_from_ci_checkout_without_cloning(  # ruff: ig
     assert "Updating MEOW from existing checkout" not in output
     assert "Cloning MEOW" not in output
     assert "pip install -e" in output
+    assert "\033[32mDone!\033[0m" in output
 
 
 @pytest.mark.skipif(
@@ -308,6 +333,7 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
     assert "Updating MEOW from existing checkout" not in output
     assert "Cloning MEOW" not in output
     assert "pip install -e" in output
+    assert "Done!" in output
 
 
 def test_posix_bootstrap_installs_when_meow_is_not_on_path(tmp_path):
@@ -321,6 +347,7 @@ def test_posix_bootstrap_installs_when_meow_is_not_on_path(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "FAKE_PIP" in result.stderr
     assert "FAKE_SETUP" in result.stderr
+    assert "Done!" in result.stdout
 
 
 def test_posix_bootstrap_passes_shell_syntax():

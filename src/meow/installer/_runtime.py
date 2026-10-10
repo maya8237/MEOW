@@ -266,7 +266,7 @@ def _onboard_projects(ask: Callable[[str], str], output: Callable[[str], None]) 
 
 def _print_next_steps(output: Callable[[str], None]) -> None:
     output(
-        "\nNext options (no further menu):\n"
+        "\nNext options:\n"
         "- Continue optional integrations and feature setup with `/meow:onboard`.\n"
         '- Start from a terminal: `meow run "Add CSV export" --name csv-export '
         '--work-dir <project>`.\n'

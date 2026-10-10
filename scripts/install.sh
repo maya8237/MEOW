@@ -7,9 +7,20 @@ set -eu
 repository_url='git@github.com:maya8237/MEOW.git'
 origin_pyproject_url='https://raw.githubusercontent.com/maya8237/MEOW/main/pyproject.toml'
 default_parent=${HOME:-"$(pwd)"}
+failure_reported=0
+
+report_unexpected_failure() {
+    status=$?
+    if [ "$status" -ne 0 ] && [ "$failure_reported" -eq 0 ]; then
+        printf '\033[31mFailed: installer exited with status %s.\033[0m\n' "$status" >&2
+    fi
+}
+
+trap report_unexpected_failure 0
 
 die() {
-    printf '%s\n' "MEOW installer: $*" >&2
+    failure_reported=1
+    printf '\033[31mFailed: %s\033[0m\n' "$*" >&2
     exit 1
 }
 
@@ -138,6 +149,7 @@ stop_for_existing_meow() {
 }
 
 if stop_for_existing_meow; then
+    printf '\033[32mDone!\033[0m\n'
     exit 0
 fi
 
@@ -176,3 +188,5 @@ printf 'Installing MEOW with %s -m pip install -e ...\n' "$python_command"
 printf '%s\n' 'Configuring Claude and onboarding projects...'
 "$python_command" -m meow.installer --repo-dir "$clone_path" \
     || die 'MEOW post-install setup failed.'
+
+printf '\033[32mDone!\033[0m\n'
