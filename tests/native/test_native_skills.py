@@ -122,7 +122,7 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
 
         self.assertIn("--test", run)
         self.assertIn("CLI mode", run)
-        self.assertIn("meow review --plan-file PATH --test", review)
+        self.assertIn("meow review --plan PATH --test", review)
         self.assertIn("Without `--test`, keep the native flow", review)
         self.assertIn("configured servers stay alive", shared)
 

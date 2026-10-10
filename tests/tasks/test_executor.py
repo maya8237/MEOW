@@ -84,8 +84,10 @@ def test_prestart_cancellation_is_not_success(tmp_path):
     async def implement(_spec, _worktree):  # ruff: ignore[unused-async]
         raise AssertionError("cancelled run started a worker")
 
-    result = asyncio.run(execute_in_worktrees(
-        repo, graph, "c" * 32, implement, max_parallel=1, cancel=lambda: True
-    ))
+    result = asyncio.run(
+        execute_in_worktrees(
+            repo, graph, "c" * 32, implement, max_parallel=1, cancel=lambda: True
+        )
+    )
     assert not result.passed
     assert result.outcomes == ()

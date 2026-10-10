@@ -48,9 +48,7 @@ def build_sprint(
     """Wire up the explorer definition and lint hook, and assemble a Sprint."""
     commands = config["lint"]
     active_dir = working_dir or repo_dir
-    explorer_context = ProjectContext(
-        active_dir, config, use_worktree=use_worktree
-    )
+    explorer_context = ProjectContext(active_dir, config, use_worktree=use_worktree)
     return Sprint(
         repo_dir=repo_dir,
         config=config,

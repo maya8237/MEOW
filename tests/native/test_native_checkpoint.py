@@ -38,7 +38,7 @@ def test_native_checkpoint_cli_returns_run_id(tmp_path):
     code, output, error = run_native(
         "checkpoint",
         "planning",
-        "--working-dir",
+        "--work-dir",
         str(tmp_path),
         "--request",
         "do work",

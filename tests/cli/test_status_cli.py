@@ -39,7 +39,7 @@ def test_cli_status_never_boots_repo(tmp_path, monkeypatch, capsys):
         source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
     )
     monkeypatch.setattr(
-        sys, "argv", ["meow", "status", record.id, "--working-dir", str(tmp_path)]
+        sys, "argv", ["meow", "status", record.id, "--work-dir", str(tmp_path)]
     )
     monkeypatch.setattr("meow.cli.cli._boot_repo", lambda *args, **kwargs: 1 / 0)
     with __import__("pytest").raises(SystemExit) as exit_info:
@@ -87,10 +87,19 @@ def test_status_reads_persistent_concerns_from_main_repo(tmp_path, capsys):
     record = store.create(
         source="prompt", request="x", repo=main, worktree=active, branch="feature"
     )
-    record_concerns(main, record.id, [{
-        "path": "module.py", "evidence": "duplicate check", "impact": "maintenance",
-        "follow_up": "consolidate checks",
-    }], evidence_root=active)
+    record_concerns(
+        main,
+        record.id,
+        [
+            {
+                "path": "module.py",
+                "evidence": "duplicate check",
+                "impact": "maintenance",
+                "follow_up": "consolidate checks",
+            }
+        ],
+        evidence_root=active,
+    )
     assert status(main, record.id) == 0
     assert "Quality concern: module.py" in capsys.readouterr().out
 

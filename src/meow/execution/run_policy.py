@@ -16,10 +16,10 @@ def _is_plain_build(args) -> bool:
 
 _MISUSE_CHECKS = (
     ("--name", lambda a: a.feature_name is not None),
-    ("--source-branch", lambda a: a.source_branch is not None),
+    ("--from", lambda a: a.source_branch is not None),
     ("--no-worktree", lambda a: a.no_worktree),
     ("--resume-at", lambda a: a.resume_at != "generate"),
-    ("--plan/--plan-file/-p", lambda a: a.plan is not None),
+    ("--plan/-p", lambda a: a.plan is not None),
 )
 
 
@@ -45,7 +45,7 @@ def _requires_clean_tree(args) -> bool:
 
     Plain build mode skips the check only when BOTH hold: a worktree is
     being created for this invocation (worktree mode, i.e. not
-    --no-worktree) AND --source-branch was explicitly given for it -- the
+    --no-worktree) AND --from was explicitly given for it -- the
     worktree is then built from that branch, not the main checkout's
     current state, so the main checkout's own uncommitted changes are
     irrelevant to it. Every other combination -- no worktree, or a

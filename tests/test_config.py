@@ -193,7 +193,7 @@ class LoadConfigOsValidationTests(unittest.TestCase):
             (working_dir / ".meow" / "config.toml").write_text(
                 'docs_dir = "%USERPROFILE%/meow-docs"\n'
                 '[[lint]]\ncommand = "ruff check"\n'
-                '[tester]\n'
+                "[tester]\n"
                 'base_url = "$MEOW_BASE_URL/api"\n',
                 encoding="utf-8",
             )
@@ -216,27 +216,27 @@ class LoadConfigOsValidationTests(unittest.TestCase):
             meow_dir = working_dir / ".meow"
             meow_dir.mkdir()
             (meow_dir / "config.toml").write_text(
-                '[[lint]]\n'
-                'command = "python \\\"%USERPROFILE%/tools/lint.py\\\""\n'
+                "[[lint]]\n"
+                'command = "python \\"%USERPROFILE%/tools/lint.py\\""\n'
                 'args = ["$MEOW_ARG"]\n'
                 'env = { SHARED_MODE = "%SHARED_MODE%" }\n'
-                '[tester]\n'
+                "[tester]\n"
                 'base_url = "$MEOW_BASE_URL/api"\n'
-                '[[tester.mcp]]\n'
+                "[[tester.mcp]]\n"
                 'name = "browser"\n'
                 'command = "mcp-browser"\n'
                 'args = ["%USERPROFILE%/browser"]\n'
-                '[jira.mcp]\n'
+                "[jira.mcp]\n"
                 'command = "%USERPROFILE%/jira-mcp"\n'
                 'args = ["${MEOW_ARG}"]\n'
-                '[models]\n'
+                "[models]\n"
                 'explorer = "shared-model"\n',
                 encoding="utf-8",
             )
             (meow_dir / "config.local.toml").write_text(
-                '[tester]\n'
+                "[tester]\n"
                 'base_url = "$MEOW_LOCAL_URL"\n'
-                '[agent_skills]\n'
+                "[agent_skills]\n"
                 'default = ["my-local-skill"]\n',
                 encoding="utf-8",
             )
@@ -254,9 +254,7 @@ class LoadConfigOsValidationTests(unittest.TestCase):
                 config = load_config(working_dir)
 
         lint = config["lint"][0]
-        self.assertEqual(
-            lint.command, r'python "C:\Users\alice/tools/lint.py"'
-        )
+        self.assertEqual(lint.command, r'python "C:\Users\alice/tools/lint.py"')
         self.assertEqual(lint.args, ("--strict",))
         self.assertEqual(lint.env, {"SHARED_MODE": "shared"})
         self.assertEqual(config["tester"]["base_url"], "http://local")
@@ -301,35 +299,35 @@ class LoadConfigOsValidationTests(unittest.TestCase):
             (working_dir / ".meow").mkdir(parents=True)
             (user_home / ".meow").mkdir(parents=True)
             (user_home / ".meow" / "config.toml").write_text(
-                'max_rounds = 2\n'
-                '[models]\n'
+                "max_rounds = 2\n"
+                "[models]\n"
                 'explorer = "user-explorer"\n'
                 'reviewer = "user-reviewer"\n'
                 'generator = "user-generator"\n'
-                '[jira]\n'
+                "[jira]\n"
                 'project_key = "USER"\n'
-                '[agent_skills]\n'
+                "[agent_skills]\n"
                 'default = ["user-skill"]\n'
                 'reviewer = ["user-review-skill"]\n',
                 encoding="utf-8",
             )
             (working_dir / ".meow" / "config.toml").write_text(
-                'max_rounds = 4\n'
-                '[models]\n'
+                "max_rounds = 4\n"
+                "[models]\n"
                 'reviewer = "shared-reviewer"\n'
-                '[jira]\n'
+                "[jira]\n"
                 'project_key = "SHARED"\n'
-                '[agent_skills]\n'
+                "[agent_skills]\n"
                 'default = ["shared-skill"]\n'
                 'reviewer = ["shared-review-skill"]\n',
                 encoding="utf-8",
             )
             (working_dir / ".meow" / "config.local.toml").write_text(
-                '[models]\n'
+                "[models]\n"
                 'explorer = "local-explorer"\n'
-                '[jira.mcp]\n'
+                "[jira.mcp]\n"
                 'command = "local-mcp"\n'
-                '[agent_skills]\n'
+                "[agent_skills]\n"
                 'default = ["local-skill"]\n'
                 'reviewer = ["local-review-skill"]\n',
                 encoding="utf-8",

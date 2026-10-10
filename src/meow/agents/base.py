@@ -209,9 +209,7 @@ class Agent:
         **extra_options,
     ) -> ClaudeAgentOptions:
         """Build SDK options from project context and agent-specific values."""
-        extra_options["skills"] = self.skills(
-            role, extra_options.get("skills", [])
-        )
+        extra_options["skills"] = self.skills(role, extra_options.get("skills", []))
         policy = self.context.config.get("permissions")
         if isinstance(policy, PermissionPolicy):
             role_policy = policy.for_role(role)
@@ -243,8 +241,8 @@ class Agent:
         )
         if journal is not None:
             store, run_id = journal
-            options._meow_session_callback = (
-                lambda session_id: store.set_session(run_id, role.lower(), session_id)
+            options._meow_session_callback = lambda session_id: store.set_session(
+                run_id, role.lower(), session_id
             )
         return options
 

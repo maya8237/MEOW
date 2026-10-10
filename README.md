@@ -295,11 +295,7 @@ Use the CLI for scripts, CI, scheduled work, or a fully headless run:
 | `meow run --lint-fix` | Run configured linters and fix remaining findings. |
 | `meow status` / `meow resume` | Inspect or continue a saved run. |
 
-Prefer a shorter form? `mw` is an alias for `meow`, and `r`, `p`, `rv`, `l`,
-`s`, `x`, `c`, `q`, `w`, `h`, `i` are shortcuts for the commands above, for
-example `mw r "Add CSV export" --name csv-export`.
-
-All commands accept `--working-dir PATH`. See the [CLI guide](docs/CLI.md) for
+All commands accept `--work-dir PATH`. See the [CLI guide](docs/CLI.md) for
 worktrees, plan approval, background runs, testing, recovery, and advanced
 options.
 

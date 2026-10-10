@@ -34,21 +34,21 @@ for the headless/separate-process run.
    `<description>`. Feature name: `issue-<key>` lowercased with anything
    outside `A-Za-z0-9._-` turned into `-`. Branch:
    `<branch_prefix><KEY>`. Run `meow native prepare --name "<feature>"
-   --branch "<branch>" --working-dir "<project-path>"` instead of step 2's
+   --branch "<branch>" --work-dir "<project-path>"` instead of step 2's
    `prepare` call, then perform step 2's checkpoint and continue at step 3 -- do not pass
    `--worktree` when dispatching reviewers in this flow (CLI parity). On
    PASS (step 5), finalize commits and pushes the branch; report one line:
    `{"issue": "<key>", "branch":
    "<branch>"}` instead of step 5's normal report.
 2. Pick a safe feature name (slugify the request, e.g. `add-csv-export`). Run
-   `meow native prepare --name "<name>" --working-dir "<project-path>"`.
+   `meow native prepare --name "<name>" --work-dir "<project-path>"`.
    Add `--no-worktree` if the user wants the main repo instead of an isolated
-   worktree (then `--name` may be omitted); add `--source-branch <branch>` if
+   worktree (then `--name` may be omitted); add `--from <branch>` if
    they named one. On a nonzero exit (e.g. uncommitted changes), report the
    message verbatim and stop. Keep `active_dir`, `plan_file`, `review_file`,
    `max_rounds`, `use_worktree` from the JSON; do all further work in `active_dir`.
    Immediately call `meow native checkpoint preparing --request "<request>"
-   --working-dir "<project-path>" --active-dir "<active_dir>"` and keep its
+   --work-dir "<project-path>" --active-dir "<active_dir>"` and keep its
    `run_id`. Reuse `--run-id <run_id>` for every later checkpoint.
 3. Plan (skip if the user supplied an existing plan file, or asked to resume at
    review): `meow native round <plan_file> --reset --active-dir <active_dir>`,
@@ -68,7 +68,7 @@ for the headless/separate-process run.
    --review <review_file> --reviewer PASS|FAIL` after reading the verdict.
    Record an enabled tester verdict separately with `tester_finished
    --tester PASS|FAIL`. On final PASS, call `meow native finalize <run_id>
-   --working-dir "<project-path>" --active-dir "<active_dir>"`; report success
+   --work-dir "<project-path>" --active-dir "<active_dir>"`; report success
    only when its JSON says `"complete": true`.
 6. Report: on PASS, the plan file and review file paths (or, for a
    Jira-sourced build, step 1a's JSON report instead); when a round comes
@@ -86,9 +86,9 @@ tester agent. Pass `--test` through to `meow run` (including Jira and
 Runs `meow run` (separate Agent SDK sessions, works headless). From the project root:
 
 ```bash
-meow run "<feature request>" --name "<generated-feature-name>" --working-dir "<project-path>"
-meow run --jira [ISSUE-KEY] --working-dir "<project-path>"   # Jira-sourced, retained branch
-meow run "<feature request>" --name "<generated-feature-name>" --test --working-dir "<project-path>"
+meow run "<feature request>" --name "<generated-feature-name>" --work-dir "<project-path>"
+meow run --jira [ISSUE-KEY] --work-dir "<project-path>"   # Jira-sourced, retained branch
+meow run "<feature request>" --name "<generated-feature-name>" --test --work-dir "<project-path>"
 ```
 
 Add `--no-worktree` to operate in the main repo (name then optional; not

@@ -9,7 +9,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TypeVar
 
-from meow.execution.run_state import RunRecord, RunStore
+from meow.execution.run_state import TERMINAL_PHASES, RunRecord, RunStore
 
 T = TypeVar("T")
 
@@ -85,15 +85,7 @@ def request_cancel(store: RunStore, run_id: str) -> RunRecord:
     """Atomically request cancellation; never signal an unverified process ID."""
     with delivery_lock(store, run_id):
         record = store.load(run_id)
-        if record.phase in {
-            "complete",
-            "cancelled",
-            "exhausted",
-            "failed",
-            "delivered",
-            "delivery_failed",
-            "needs_user_decision",
-        }:
+        if record.phase in TERMINAL_PHASES:
             raise ValueError(f"Run {run_id} is already {record.phase}.")
         marker = _marker(store, run_id)
         try:

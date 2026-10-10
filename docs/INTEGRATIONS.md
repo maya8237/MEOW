@@ -24,7 +24,7 @@ project-wide lint runs every configured entry. `gate` defaults to `true`.
 sets its own `timeout`.
 
 `meow run --test` enables configured tests and exploratory testing after a
-passing plan review. `meow review --plan-file PATH --test` performs one
+passing plan review. `meow review --plan PATH --test` performs one
 report-only pass; add `--fix` to use the shared round budget. Tester mode is
 not available for other review sources or `--review-file`. Without configured
 tests, the tester can inspect and run documented project tests.
@@ -179,7 +179,7 @@ that fits the machine or CI environment that will run the command.
 ```powershell
 schtasks /Create /TN "meow-run-jira" /SC DAILY /ST 09:00 /RL LIMITED /TR (
     '"C:\path\to\meow\.venv\Scripts\meow.exe" run --jira' +
-    ' --working-dir "C:\path\to\target-project"'
+    ' --work-dir "C:\path\to\target-project"'
 )
 ```
 
@@ -200,7 +200,7 @@ JIRA_URL=https://jira.example.com
 JIRA_USERNAME=automation@example.com
 JIRA_API_TOKEN=...
 
-0 9 * * * /path/to/meow/.venv/bin/meow run --jira --working-dir /path/to/target-project
+0 9 * * * /path/to/meow/.venv/bin/meow run --jira --work-dir /path/to/target-project
 ```
 
 **Linux systemd timer** — prefer this when you want journal logs, explicit
@@ -212,7 +212,7 @@ environment files, or easier enable/disable controls:
 Type=oneshot
 Environment=MEOW_LOG_FILE=/var/log/meow-run-jira.log
 EnvironmentFile=/etc/meow/jira.env
-ExecStart=/path/to/meow/.venv/bin/meow run --jira --working-dir /path/to/target-project
+ExecStart=/path/to/meow/.venv/bin/meow run --jira --work-dir /path/to/target-project
 ```
 
 ```ini
@@ -239,7 +239,6 @@ Enable and test it with `systemctl enable --now meow-run-jira.timer`, then
 | A lint field is present but no `[[lint]]` entry is defined | `ValueError`: no lint command defined. Config files containing only models, skills, MCP, or other settings are valid. |
 | Unknown key in a `[[lint]]` table (often a top-level key placed after it) | `ValueError` naming the entry and key |
 | No architecture doc anywhere under `docs/` | No error — reviewer's SOLID/SRP pass finds nothing to Glob/Read, so it has no project-specific boundaries to check, just its generic mixed-responsibility rule |
-| Other `docs/` files (`tech-debt-tracker.md`, `core-beliefs.md`, etc.) | No error — no role goes looking for them specifically, only opportunistically via each role's docs scan |
 | `AGENTS.md` | No effect on meow — human-facing only |
 | `meow run --jira` run without `[jira]`/`[jira.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
 | `meow run --jira` run with no Jira MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__jira__*` tool call to succeed, not just a text claim of success |

@@ -94,9 +94,7 @@ def test_external_cancellation_waits_for_active_workers_to_stop():
             finally:
                 stopped.append(spec.id)
 
-        runner = asyncio.create_task(
-            run_task_graph(_graph(), worker, max_parallel=2)
-        )
+        runner = asyncio.create_task(run_task_graph(_graph(), worker, max_parallel=2))
         await started.wait()
         runner.cancel()
         with suppress(asyncio.CancelledError):

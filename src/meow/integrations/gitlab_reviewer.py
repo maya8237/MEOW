@@ -22,13 +22,13 @@ logger = get_logger(__name__)
 def _load_gitlab_config(config: dict) -> dict:
     """Validate `[gitlab]`/`[gitlab.mcp]` up front, with a clear error if absent.
 
-    Unlike `[jira.mcp]` (whose server reads its own credentials from the
-environment), `[gitlab.mcp.env]` is read directly from `.meow/config.toml`
-    and passed straight through as the launched server's environment --
-    see the security note on `[gitlab.mcp.env]` in
-`templates/meow-config.toml.example` before putting a real credential
-there: `.meow/config.toml` is an ordinary, typically-committed project
-    file, not a secrets store.
+        Unlike `[jira.mcp]` (whose server reads its own credentials from the
+    environment), `[gitlab.mcp.env]` is read directly from `.meow/config.toml`
+        and passed straight through as the launched server's environment --
+        see the security note on `[gitlab.mcp.env]` in
+    `templates/meow-config.toml.example` before putting a real credential
+    there: `.meow/config.toml` is an ordinary, typically-committed project
+        file, not a secrets store.
     """
     gitlab = config.get("gitlab")
     if not isinstance(gitlab, dict):
@@ -49,7 +49,7 @@ there: `.meow/config.toml` is an ordinary, typically-committed project
     mcp = gitlab.get("mcp")
     if not isinstance(mcp, dict) or not mcp.get("command"):
         raise ValueError(
-                "[gitlab.mcp] in .meow/config.toml must set 'command' (the program "
+            "[gitlab.mcp] in .meow/config.toml must set 'command' (the program "
             'that launches the GitLab MCP server, e.g. command = "uvx" '
             'with args = ["mcp-gitlab"]).'
         )

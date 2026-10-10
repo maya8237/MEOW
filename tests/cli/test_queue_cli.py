@@ -4,7 +4,7 @@ from meow.execution.queue_state import QueueStore
 
 
 def test_queue_parser_accepts_request_and_working_dir():
-    args = _build_arg_parser().parse_args(["queue", "task", "--working-dir", "."])
+    args = _build_arg_parser().parse_args(["queue", "task", "--work-dir", "."])
     assert args.command == "queue"
     assert args.request == "task"
 

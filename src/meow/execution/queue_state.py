@@ -142,9 +142,11 @@ class QueueWorkerLock:
 
     def acquire(self) -> bool:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(
-            {"pid": os.getpid(), "host": socket.gethostname(), "started_at": _now()}
-        )
+        payload = json.dumps({
+            "pid": os.getpid(),
+            "host": socket.gethostname(),
+            "started_at": _now(),
+        })
         # A stale lock can be reclaimed once.  Keep the retry bounded so a
         # concurrent worker cannot turn a missing lock into recursion.
         for _attempt in range(2):

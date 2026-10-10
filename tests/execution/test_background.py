@@ -30,7 +30,7 @@ def test_background_cli_requires_unattended(tmp_path, monkeypatch):
             "--name",
             "x",
             "--background",
-            "--working-dir",
+            "--work-dir",
             str(tmp_path),
         ],
     )
@@ -53,7 +53,7 @@ def test_background_cli_returns_run_id_without_running_agent(
             "x",
             "--unattended",
             "--background",
-            "--working-dir",
+            "--work-dir",
             str(tmp_path),
         ],
     )

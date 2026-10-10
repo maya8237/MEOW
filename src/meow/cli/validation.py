@@ -14,7 +14,7 @@ def _validate_feature_name_requirement(
     requires_name = (
         (args.command == "plan" or _is_plain_build(args))
         and not args.no_worktree
-        # --working-dir already pointing at a linked worktree means "work
+        # --work-dir already pointing at a linked worktree means "work
         # here", not "nest another worktree inside it" -- _resolve_working_dir
         # treats this exactly like --no-worktree, so the upfront requirement
         # must too, or a --name that will be silently ignored is demanded
@@ -22,9 +22,7 @@ def _validate_feature_name_requirement(
         and not _is_linked_worktree(working_dir)
     )
     if requires_name and args.feature_name is None:
-        parser.error(
-            "--name/--feature-name/-f is required unless --no-worktree/-n is supplied"
-        )
+        parser.error("--name/-f is required unless --no-worktree/-n is supplied")
 
 
 def _validate_lint_fix_flags(parser: argparse.ArgumentParser, args) -> None:

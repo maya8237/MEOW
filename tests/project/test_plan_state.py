@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from meow.project.plan_state import PlanStore, discover_plan
+from meow.project.plan_state import PlanOwnedError, PlanStore, discover_plan
 
 
 def _write(path: Path, text: str = "# Plan\n") -> Path:
@@ -40,6 +40,56 @@ def test_transition_cannot_move_lifecycle_backwards(tmp_path):
     store.transition(plan, "complete")
     with pytest.raises(ValueError, match="cannot move backwards"):
         store.transition(plan, "draft")
+
+
+def test_takeover_redrafts_plan_left_behind_by_a_finished_run(tmp_path):
+    plan = _write(tmp_path / "feature.md")
+    store = PlanStore(tmp_path)
+    store.transition(plan, "draft", "run-1")
+    store.transition(plan, "in-progress", "run-1")
+
+    meta = store.transition(plan, "draft", "run-2", takeover=True)
+
+    assert meta.lifecycle == "draft"
+    assert meta.run_id == "run-2"
+    assert store.read(plan).lifecycle == "draft"
+
+
+def test_redraft_without_takeover_is_refused_for_another_runs_plan(tmp_path):
+    plan = _write(tmp_path / "feature.md")
+    store = PlanStore(tmp_path)
+    store.transition(plan, "in-progress", "run-1")
+    with pytest.raises(ValueError, match="cannot move backwards"):
+        store.transition(plan, "draft", "run-2")
+
+
+def test_claim_takes_over_only_from_a_finished_owner(tmp_path):
+    plan = _write(tmp_path / "feature.md")
+    store = PlanStore(tmp_path)
+    store.transition(plan, "in-progress", "run-1")
+
+    meta = store.claim(plan, "run-2", owner_finished=lambda owner: owner == "run-1")
+
+    assert meta.run_id == "run-2"
+    assert meta.lifecycle == "draft"
+
+
+def test_claim_blocks_when_owner_cannot_be_verified(tmp_path):
+    plan = _write(tmp_path / "feature.md")
+    store = PlanStore(tmp_path)
+    store.transition(plan, "in-progress", "run-1")
+
+    with pytest.raises(PlanOwnedError, match="run run-1"):
+        store.claim(plan, "run-2", owner_finished=lambda owner: False)
+    assert store.read(plan).run_id == "run-1"
+
+
+def test_same_run_still_cannot_move_lifecycle_backwards(tmp_path):
+    plan = _write(tmp_path / "feature.md")
+    store = PlanStore(tmp_path)
+    store.transition(plan, "in-progress", "run-1")
+    with pytest.raises(ValueError, match="cannot move backwards"):
+        store.transition(plan, "draft", "run-1")
 
 
 def test_transition_rejects_unknown_lifecycle(tmp_path):

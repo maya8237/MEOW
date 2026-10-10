@@ -103,7 +103,7 @@ def test_config_fingerprint_accepts_user_fallback_outside_project(
     user_home = tmp_path / "user"
     (user_home / ".meow").mkdir(parents=True)
     (user_home / ".meow" / "config.toml").write_text(
-        'max_rounds = 3\n', encoding="utf-8"
+        "max_rounds = 3\n", encoding="utf-8"
     )
     monkeypatch.setattr("meow.project.config.Path.home", lambda: user_home)
 

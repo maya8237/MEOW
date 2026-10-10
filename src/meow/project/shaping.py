@@ -153,12 +153,22 @@ def reflect_breadboard(artifact: BreadboardArtifact) -> tuple[str, ...]:
     wiring_text = " ".join(artifact.wiring).casefold()
     for affordance in artifact.affordances:
         label = affordance.casefold()
-        if any(word in label for word in ("delete", "remove")) and "auth" not in wiring_text:
+        if (
+            any(word in label for word in ("delete", "remove"))
+            and "auth" not in wiring_text
+        ):
             findings.append(f"{affordance}: missing authorization path")
-        if artifact.wiring and any(word in label for word in ("delete", "save", "submit")) and "error" not in wiring_text:
+        if (
+            artifact.wiring
+            and any(word in label for word in ("delete", "save", "submit"))
+            and "error" not in wiring_text
+        ):
             findings.append(f"{affordance}: missing error path")
     if artifact.wiring:
         for slice_name in artifact.vertical_slices:
-            if not any(word in slice_name.casefold() for word in ("test", "verify", "observable", "response")):
+            if not any(
+                word in slice_name.casefold()
+                for word in ("test", "verify", "observable", "response")
+            ):
                 findings.append(f"{slice_name}: no verifiable outcome")
     return tuple(findings)
