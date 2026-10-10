@@ -20,6 +20,7 @@ from meow.project.config_schema import (
     _normalize_tester_config,
     _validate_max_rounds,
 )
+from meow.project.custom import CustomSource, discover, parse_sources
 
 __all__ = [
     "DEFAULT_CONFIG",
@@ -110,17 +111,33 @@ def config_root(project_dir: Path, active_dir: Path | None = None) -> Path:
     return active if (active / _CONFIG_FILENAME).is_file() else project
 
 
+def _layer_custom_sources(
+    layer: dict, config_path: Path, working_dir: Path
+) -> list[CustomSource]:
+    """Pop and resolve one layer's `[custom]` table against its own scope."""
+    project = Path(working_dir)
+    resolved = config_path.resolve()
+    if resolved == (project / _LOCAL_CONFIG_FILENAME).resolve():
+        scope, base = "local", project
+    elif resolved == (project / _CONFIG_FILENAME).resolve():
+        scope, base = "project", project
+    else:
+        scope, base = "user", config_path.parent
+    return parse_sources(layer.pop("custom", None), scope, base, config_path)
+
+
 def load_config(working_dir: Path) -> dict:
     from meow.infrastructure.checks import normalize_build
     from meow.infrastructure.worktree_setup import validate_setup
     from meow.project.permissions import parse_policy
 
     user_config = {}
+    custom_sources: list[CustomSource] = []
     for config_path in reversed(config_paths(working_dir)):
         with open(config_path, "rb") as f:
-            user_config = _merge_config(
-                user_config, _expand_config_environment(tomllib.load(f))
-            )
+            layer = _expand_config_environment(tomllib.load(f))
+        custom_sources.extend(_layer_custom_sources(layer, config_path, working_dir))
+        user_config = _merge_config(user_config, layer)
 
     config = {**DEFAULT_CONFIG, **user_config}
     config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}
@@ -154,5 +171,6 @@ def load_config(working_dir: Path) -> dict:
                     f"command {command.command!r} {problem}"
                 )
     _validate_max_rounds(config)
+    config["customizations"] = discover(custom_sources)
 
     return config

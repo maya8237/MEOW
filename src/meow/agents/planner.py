@@ -29,6 +29,7 @@ class PlannerAgent(Agent):
         docs_dir.mkdir(parents=True, exist_ok=True)
         plan_file = planned_plan_file(docs_dir, feature_name)
 
+        tools = ["Read", "Grep", "Glob", "Write", "Agent"]
         options = self.options(
             system_prompt=planner_prompt(
                 plan_file,
@@ -36,9 +37,12 @@ class PlannerAgent(Agent):
                 self.context.config.get("_preplan_context"),
                 bug_mode=bool(self.context.config.get("_bug_mode", False)),
             ),
-            allowed_tools=["Read", "Grep", "Glob", "Write", "Agent"],
+            allowed_tools=tools,
             role="planner",
-            agents={"explorer": ExplorerAgent(self.context).definition()},
+            agents={
+                **self.custom_agents("planner", tools),
+                "explorer": ExplorerAgent(self.context).definition(),
+            },
             skills=["superpowers:writing-plans"],
         )
         await self.run_query(request, options, "Planner")

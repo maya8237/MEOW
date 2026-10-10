@@ -19,6 +19,13 @@ default = []
 # explorer = ["project-search"]
 # reviewer = ["security-review"]
 
+# Custom skills (<dir>/<name>/SKILL.md) and agents (<dir>/<name>.md) kept in
+# this repository. Project paths must be relative and not git-ignored; put
+# personal directories in .meow/config.local.toml or ~/.meow/config.toml.
+# [custom]
+# skills = ["tools/meow/skills"]
+# agents = [{ path = "tools/meow/agents", roles = ["generator"] }]
+
 # Shared Jira project/server settings. Put credentials in the environment or
 # `.meow/config.local.toml`, never in this file.
 # [jira]

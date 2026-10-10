@@ -1,94 +1,124 @@
 ---
 name: customize
-description: Customize MEOW by helping users choose whether to edit an agent, add an existing skill, create a skill, create an agent, or connect behavior to a specific MEOW workflow phase.
+description: Create, attach, or remove custom MEOW skills and agents, choosing whether they live in the repository (project scope), in an ignored local config (local project scope), or anywhere on the user's computer (user scope). Use when a user wants MEOW roles to follow their own skill, delegate to their own agent, or change which roles receive one.
 ---
 
 # Customize MEOW
 
-Use this skill when a user wants to change how MEOW works, add capabilities to an agent, create a new agent or skill, or decide where custom behavior belongs in the MEOW workflow.
+MEOW discovers custom skills and agents from the directories listed in a
+`[custom]` table on every run, so nothing needs reinstalling. The full schema
+is in `docs/INTEGRATIONS.md` ("Custom skills and agents"); this skill walks a
+user through making and registering one.
 
-## Discover the requested customization
+## 1. Pin down the request
 
-Start by asking concise questions when the request does not already answer them:
+Ask only what the request leaves open:
 
-1. What should change?
-   - edit an existing agent
-   - add an existing skill to an agent
-   - create a new skill
-   - create a new agent
-   - add or configure MCP/tool access
-   - change workflow orchestration or prompts
-2. Where should it apply?
-   - native `/meow:*` execution
-   - headless `meow` CLI / Agent SDK execution
-   - both
-3. Which workflow phase or role owns it?
-   - setup/onboarding, exploration, planning, generation, review, fixing, testing, delivery, or another explicitly named phase
-4. Which existing agent, skill, or command should be the base, if any?
+1. **What:** a skill (instructions a role follows when relevant), an agent
+   (a delegate the planner or generator can hand work to), or both.
+   Prefer a skill unless the work needs its own context window or a narrower
+   tool set; then it is an agent.
+2. **Which roles:** skills may target `explorer`, `planner`, `generator`,
+   `reviewer`, `tester`, `review_fixer`, `lint_fixer`, `docs_updater`, or the
+   fetchers; omit `roles` for every role. Agents attach to `planner` and/or
+   `generator` (the roles that can delegate).
+3. **Scope and location:**
 
-Do not ask questions whose answers are already clear from the user's request. If a safe, narrow change is obvious, proceed and state the assumption.
+   | Scope | Config file | Directory rules | Use when |
+   |---|---|---|---|
+   | Project | `.meow/config.toml` | relative path inside the repo, not git-ignored | the team should share it in version control |
+   | Local project | `.meow/config.local.toml` | relative, absolute, or `~/...` | only this user, only this project |
+   | User | `~/.meow/config.toml` | absolute, `~/...`, or relative to `~/.meow` | this user, every project |
 
-## Explain the existing MEOW shape
+   Let the user choose the directory. Suggest `tools/meow/skills` and
+   `tools/meow/agents` for project scope and `~/.meow/skills` /
+   `~/.meow/agents` for user scope, but use whatever they prefer. For project
+   scope, confirm the directory is not ignored
+   (`git check-ignore -v <dir>` prints nothing).
 
-Before adding a role or changing orchestration, inspect the relevant files and explain the closest existing components:
+If a reasonable default is obvious, state it and continue.
 
-- **explorer:** read-only repository exploration, commonly exposed as a nested `AgentDefinition`.
-- **planner:** creates plans and Sprint Contracts.
-- **generator:** edits the worktree and participates in generator/reviewer rounds.
-- **reviewer:** inspects changes and produces pass/fail findings.
-- **tester:** runs configured validation and optional tester MCP servers.
-- **review_fixer** and **lint_fixer:** narrowly scoped edit-and-verify roles.
-- **issue_fetcher**, **gitlab_fetcher**, and **github_fetcher:** integration-specific read-only MCP roles.
-- **docs_updater:** the documentation-maintenance role. `setup` is a
-  permission-policy role for validated `[worktree_setup]` actions, not a
-  separate `src/meow/agents/setup.py` implementation.
+## 2. Check what already exists
 
-Use the smallest existing extension point that matches the request. Do not create a new agent when prompt guidance, a skill, a hook, an MCP configuration, or an existing role is sufficient.
+Run `meow native custom` (add `--working-dir` if needed). It lists every
+custom skill and agent in effect with its scope and directory, plus
+`overrides`. A new definition with an existing name in a **higher** scope
+replaces it; in the **same** scope it is a configuration error. Mention any
+override the user would create.
 
-## Route the customization
+## 3. Write the definition
 
-### Edit an existing agent
+**Skill:** `<dir>/<name>/SKILL.md`, where `<name>` is lowercase letters,
+digits, and single hyphens and matches the directory.
 
-Inspect its implementation under `src/meow/agents/`, its prompt in `src/meow/project/prompts.py`, SDK `allowed_tools` and `skills`, context contracts, lifecycle, orchestration call sites, and permission policy. Preserve unrelated behavior and keep tool access minimal.
+```markdown
+---
+name: house-style
+description: Apply this team's API naming and error-handling conventions when writing or reviewing endpoint code.
+---
 
-### Add an existing skill
+# House style
+...
+```
 
-For CLI mode, add the exact installed skill identifier to the target agent's `skills=[...]` in its `ClaudeAgentOptions`. For native mode, update the relevant instructions in `skills/_shared/native-mode.md` and the role prompt when needed. If the skill is missing, stop and offer to invoke `skill-creator`; do not invent, silently install, or substitute a skill.
+The description decides when a role reaches for the skill, so say when it
+applies. Supporting files may sit beside `SKILL.md`. When the user wants help
+writing a substantial skill, offer `skill-creator`.
 
-### Create a skill
+**Agent:** `<dir>/<name>.md`; the body is the prompt.
 
-Offer to invoke `skill-creator` and clarify whether the skill should be available automatically or only when explicitly invoked. When the skill affects a MEOW role, integrate its native and CLI paths separately and verify its underlying tool/MCP permissions.
+```markdown
+---
+name: migration-checker
+description: Check database migrations for locking, ordering, and rollback safety. Use after editing files under migrations/.
+tools: Read, Grep, Glob, Bash
+model: inherit
+skills: house-style
+---
 
-### Create an agent
+You review database migrations...
+```
 
-Offer to base it on the closest existing role. Implement the role under `src/meow/agents/`, register its prompt and lifecycle, update the supported permission roles, add native/CLI dispatch where applicable, and write focused tests. A new Python class is not complete until the intended workflow can construct and reach it.
+`tools` is capped to the parent role's tools (the planner has Read, Grep, Glob,
+Write; the generator adds Edit and Bash) and never includes Agent; omit it to
+inherit them. `explorer` is a reserved name. Claude Code-only keys such as
+`color` are ignored, so the file also works as a Claude Code subagent.
 
-After understanding the proposed agent, ask whether the user also wants a dedicated skill for invoking or coordinating it. If yes, offer to invoke `skill-creator`. If they instead want to attach an existing skill, route through the add-existing-skill path above. Do not create or attach either silently.
+## 4. Register the directory
 
-### Add tools or MCP
+Add or extend `[custom]` in the chosen config file. Do not touch other tables.
 
-Expose only the required SDK tools, configure MCP servers through the supported
-project configuration, and inspect `.meow/config.toml`, the optional local
-override, and the user fallback `~/.meow/config.toml` for permission rules. A
-prompt or skill does not grant tool,
-filesystem, shell, network, or MCP access. Preserve existing allow/ask/deny
-boundaries unless the user explicitly requests a permission change.
+```toml
+[custom]
+skills = ["tools/meow/skills"]
+agents = [{ path = "tools/meow/agents", roles = ["generator"] }]
+```
 
-## Native and CLI parity
+A directory only needs registering once; later files in it are discovered
+automatically. Never put a personal path in `.meow/config.toml`.
 
-When the user selects both modes, make the behavior explicit in both places:
+## 5. Verify and report
 
-- CLI/Agent SDK: agent options in `src/meow/agents/` and any configured MCP servers.
-- Native `/meow:*`: the relevant wrapper skill, `skills/_shared/native-mode.md`, and role prompts in `src/meow/project/prompts.py`.
+1. `meow native custom --role <role>` for each targeted role: the new entry is
+   listed with the expected scope.
+2. `meow native verify` succeeds (it loads and validates the whole config).
+3. For project scope, `git status` shows the new files as committable.
 
-Do not claim parity if only one path was changed.
+Report the definition's path, the config file changed, the roles that receive
+it, any override it creates, and what verification ran. Commit only if the
+user asks.
 
-## Verify and report
+## Removing or moving
 
-Run focused tests for changed agent construction, prompt generation, permissions, and workflow dispatch. Run `meow native verify` when native integration or configured MCP readiness is relevant; readiness alone does not prove a real MCP call. Report:
+Delete the file to remove one definition, or remove the directory's entry from
+`[custom]` to drop all of them. Moving a project definition to user scope means
+moving the file and registering its new directory in `~/.meow/config.toml`.
 
-- what customization was selected;
-- where it was connected in the MEOW flow;
-- which agents, skills, tools, and MCP servers changed;
-- any permission or installation step still required; and
-- what verification actually ran.
+## Changing MEOW itself
+
+Built-in roles, prompts, and orchestration are MEOW source code, not
+customizations. Only change them when the user is working on the MEOW
+repository: prompts live in `src/meow/project/prompts.py`, roles in
+`src/meow/agents/`, and native parity in `skills/_shared/native-mode.md`.
+Everything else belongs in `[custom]`, `[agent_skills]` (installed skills by
+identifier), or `[permissions]`.

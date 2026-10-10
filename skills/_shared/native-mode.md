@@ -49,6 +49,7 @@ and stop; do not guess at a venv path. Flags shared by every command:
 | `prompt ROLE [--plan F] [--focus T] [--target T --branch B] [--provider {gitlab,github}] [--worktree] [--shape F]` | Exact SDK system prompt, task message (reviewer roles include the harness lint evidence; `reviewer-mr` returns a `query_template` to fill instead), and model for a role |
 | `push BRANCH` | Push a named branch to origin |
 | `knowledge-audit` / `knowledge-check` / `knowledge-create` | Audit, validate, or create selected project knowledge documents |
+| `custom [--role ROLE]` | Custom skills (`skill_file` to read) and agents (`prompt`, `tools`, `model`) from `[custom]` in effect, optionally only those a role receives, plus scope `overrides` |
 | `onboard-status` | Report whether the project is onboarded (shared config plus a correct ignore boundary) and which optional add-ons (Jira, GitLab, GitHub, MCP, tester, hooks, worktree setup, and so on) are not configured yet |
 | `shape-assess` / `shape-create` / `shape-reflect` | Assess, create, or reflect on requirements shaping artifacts |
 | `hook NAME` | Run a Claude Code hook handler (`lint_after_edit`, `shaping_ripple`, `capture_completed_plan`, `validate_plan_stop`) on the hook event JSON from stdin; installed by `meow hooks install claude` |
@@ -84,6 +85,19 @@ only with an explicit plan file and rejects other sources and `--review-file`.
 | Jira issue fetcher | CLI mode reads through the configured Jira MCP server. Native run/review skills use the already-connected Jira MCP tools directly and pass the issue text to the planner or reviewer. |
 | GitLab merge-request fetcher | CLI mode reads through the configured GitLab MCP server. Native review uses the already-connected GitLab MCP tools directly to fetch the title, description, and diff, then dispatches `reviewer-mr`. |
 | GitHub pull-request fetcher | CLI mode reads through the configured GitHub MCP server. Native review uses the already-connected GitHub MCP tools directly to fetch the title, description, and diff, then dispatches `reviewer-mr --provider github`. |
+
+### Custom skills and agents
+
+When you play a role (planner, generator, review fixer, lint fixer) or brief a
+reviewer or explorer subagent, run `meow native custom --role <role>` first
+(use `reviewer` for every reviewer prompt, and underscores in role names).
+For each returned skill, read its `skill_file` and follow it whenever its
+description applies; pass the same files to a subagent you brief. Each
+returned agent is a delegate you may dispatch with the Agent tool
+(`general-purpose`): its prompt is the agent's `prompt` plus the task, its
+model is `model` when not null, and tell it to use only its listed `tools`
+(`inherit` means your own, never the Agent tool). The CLI enforces the same
+tool cap and `[permissions]` policy; in native mode you must respect them.
 
 ### Dispatching the reviewer
 

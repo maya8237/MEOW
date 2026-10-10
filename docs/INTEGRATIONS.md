@@ -142,6 +142,66 @@ role. `default` and role-specific lists append across config layers; built-in
 MEOW skills remain enabled. `[delivery].target_branch` (default `dev`) is the
 branch `meow review --ci` reviews against when `--target-ref` is omitted.
 
+### Custom skills and agents
+
+`[custom]` points MEOW at directories of your own skills and agent definitions.
+They are discovered every time configuration loads, so adding, editing, or
+deleting a file takes effect on the next run without reinstalling anything.
+
+```toml
+[custom]
+# Each skills directory holds <name>/SKILL.md (Claude Code skill format).
+skills = ["tools/meow/skills"]
+# Each agents directory holds <name>.md (Claude Code subagent format).
+agents = [{ path = "tools/meow/agents", roles = ["generator"] }]
+```
+
+An entry is a path string or a table with `path` and optional `roles`.
+
+| Scope | Declared in | Paths | Shared with |
+|---|---|---|---|
+| Local project | `.meow/config.local.toml` (git-ignored) | relative to the project root, absolute, or `~/...` | only you, in this project |
+| Project | `.meow/config.toml` | relative, inside the repository, and **not** git-ignored | everyone who clones the repository |
+| User | `~/.meow/config.toml` | absolute, `~/...`, or relative to `~/.meow` | every project on this computer |
+
+The directory can be anywhere you choose within those rules (for example
+`tools/meow/`, `docs/agents/`, or `~/dotfiles/meow-skills`). A project-scope
+path that escapes the repository or is git-ignored is rejected, because it
+would not reach your collaborators; declare it in the local config instead.
+
+**Precedence.** When the same skill or agent name appears in more than one
+scope, local project beats project, which beats user; `meow native custom`
+lists each override. The same name twice within one scope is an error.
+
+**Skills.** `SKILL.md` needs `name` (matching its directory; lowercase letters,
+digits, and hyphens) and `description`; supporting files beside it are kept.
+Without `roles`, a skill is enabled for every role; with it, only for the
+listed roles (`explorer`, `planner`, `generator`, `reviewer`, `tester`,
+`review_fixer`, `lint_fixer`, `docs_updater`, `issue_fetcher`,
+`gitlab_fetcher`, `github_fetcher`). In CLI mode MEOW serves them to the Agent
+SDK as a generated local plugin, so roles see them as `meow-custom:<name>`;
+built-in and `[agent_skills]` skills stay enabled alongside them.
+
+**Agents.** The Markdown body is the agent's prompt. Frontmatter reads `name`
+(defaults to the file name), `description` (required; it tells the parent
+role when to delegate), `tools` (comma-separated or a list; omitted means the
+parent role's tools), `model` (omitted or `inherit` uses the session model),
+and `skills` (custom skill names or installed skill identifiers). Other Claude
+Code keys, such as `color` or `permissionMode`, are ignored, so the same file
+also works as a Claude Code subagent. `explorer` is reserved. Custom agents are
+subagents of the roles that can delegate, `planner` and `generator` (both by
+default; restrict with `roles`).
+
+**Permission boundary.** A custom agent never gets more than its parent role:
+its tools are capped to the parent's tools, it cannot spawn further agents,
+and every call still passes the parent's `[permissions]` policy. Tools outside
+the cap are dropped with a `custom_agent_tools_dropped` log line. A skill or
+prompt never grants tools, shell, network, or MCP access by itself.
+
+Run `meow native custom [--role ROLE]` to see what is in effect, and
+`meow native verify` to validate the whole configuration. `/meow:customize`
+walks through creating and registering skills and agents.
+
 ## Reviewer architecture check
 
 Every MEOW reviewer performs a language-agnostic architecture pass in addition

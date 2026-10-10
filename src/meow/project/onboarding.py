@@ -197,6 +197,9 @@ def _local_config_text() -> str:
         "# Examples (uncomment only what you need):",
         "# [agent_skills]",
         '# default = ["my-installed-skill"]',
+        "# [custom]",
+        '# skills = ["~/my-meow/skills"]',
+        '# agents = ["~/my-meow/agents"]',
         "# [tester.mcp.env]",
         '# TOKEN = "$TOKEN"',
         "#",
@@ -305,6 +308,10 @@ _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
     "agent_skills": (
         ("agent_skills",),
         "Add [agent_skills] to give roles extra installed skills.",
+    ),
+    "custom": (
+        ("custom",),
+        "Add [custom] skill and agent directories (`/meow:customize`).",
     ),
 }
 

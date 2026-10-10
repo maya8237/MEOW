@@ -20,7 +20,10 @@ class GeneratorAgent(SessionAgent):
                 system_prompt=generator_prompt(plan_file),
                 allowed_tools=list(_TOOLS),
                 role="generator",
-                agents={"explorer": context.explorer},
+                agents={
+                    **self.custom_agents("generator", list(_TOOLS)),
+                    "explorer": context.explorer,
+                },
                 skills=[
                     "superpowers:executing-plans",
                     "superpowers:test-driven-development",

@@ -26,6 +26,7 @@ from claude_agent_sdk import (
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
 from meow.project.config_models import LintCommand
+from meow.project.custom import Customizations, skill_plugin_dir
 from meow.project.permissions import (
     PATH_KEYS,
     PermissionPolicy,
@@ -266,8 +267,55 @@ class Agent:
                     values.extend(
                         entry for entry in entries if isinstance(entry, str) and entry
                     )
+        values.extend(self.customizations().skills_for(role.lower()))
         values.extend(entry for entry in built_in or [] if entry)
         return list(dict.fromkeys(values))
+
+    def _apply_skills(self, role: str, extra_options: dict) -> None:
+        """Resolve the role's skills and load the custom-skill plugin if any."""
+        extra_options["skills"] = self.skills(role, extra_options.get("skills", []))
+        plugin = skill_plugin_dir(self.customizations().skills)
+        if plugin is not None:
+            extra_options["plugins"] = [
+                *extra_options.get("plugins", []),
+                {"type": "local", "path": str(plugin)},
+            ]
+
+    def customizations(self) -> Customizations:
+        custom = getattr(self.context, "config", {}).get("customizations")
+        return custom if isinstance(custom, Customizations) else Customizations()
+
+    def custom_agents(
+        self, role: str, parent_tools: list[str]
+    ) -> dict[str, AgentDefinition]:
+        """The role's custom subagents, each capped to the parent's tools.
+
+        A subagent never gains a tool its parent role lacks, and never the
+        Agent tool itself, so delegation cannot widen a role's access; the
+        parent's permission policy still decides every call.
+        """
+        ceiling = [tool for tool in parent_tools if tool != "Agent"]
+        definitions = {}
+        for agent in self.customizations().agents_for(role.lower()):
+            tools = ceiling
+            if agent.tools is not None:
+                tools = [tool for tool in agent.tools if tool in ceiling]
+                dropped = sorted(set(agent.tools) - set(tools))
+                if dropped:
+                    logger.warning(
+                        "custom_agent_tools_dropped",
+                        agent=agent.name,
+                        role=role,
+                        tools=dropped,
+                    )
+            definitions[agent.name] = AgentDefinition(
+                description=agent.description,
+                prompt=agent.prompt,
+                tools=tools,
+                model=agent.model,
+                skills=list(agent.skills),
+            )
+        return definitions
 
     def _apply_policy(
         self, role: str, allowed_tools: list[str], extra_options: dict
@@ -300,7 +348,7 @@ class Agent:
         **extra_options,
     ) -> ClaudeAgentOptions:
         """Build SDK options from project context and agent-specific values."""
-        extra_options["skills"] = self.skills(role, extra_options.get("skills", []))
+        self._apply_skills(role, extra_options)
         allowed_tools = self._apply_policy(role, allowed_tools, extra_options)
         journal = self.context.config.get("_run_journal")
         if journal is not None:
