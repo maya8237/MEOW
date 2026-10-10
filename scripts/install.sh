@@ -104,6 +104,26 @@ stop_for_existing_meow() {
     fi
 
     if find_existing_checkout; then
+        update_command="git -C \"$existing_checkout\" pull --ff-only origin main && $existing_python -m pip install -e \"$existing_checkout\""
+        printf '%s' 'Update MEOW now? [y/N]: '
+        update_answer=''
+        IFS= read -r update_answer || true
+        case "$update_answer" in
+            y|Y|yes|YES)
+                printf '%s\n' "Updating MEOW from existing checkout: $existing_checkout"
+                command -v git >/dev/null 2>&1 \
+                    || die 'Git is required to update the existing MEOW checkout.'
+                git -C "$existing_checkout" pull --ff-only origin main \
+                    || die 'MEOW source update failed.'
+                "$existing_python" -m pip install -e "$existing_checkout" \
+                    || die 'Editable MEOW update failed.'
+                printf '%s\n' 'MEOW updated successfully.'
+                ;;
+            *)
+                printf '%s\n' 'MEOW was not updated. To update it manually, run:'
+                printf '  %s\n' "$update_command"
+                ;;
+        esac
         printf '%s\n' "Configuring Claude and onboarding projects using existing MEOW checkout: $existing_checkout"
         "$existing_python" -m meow.installer --repo-dir "$existing_checkout" \
             || die 'MEOW post-install setup failed.'
@@ -111,6 +131,8 @@ stop_for_existing_meow() {
         printf '%s\n' \
             "Warning: could not locate the existing MEOW checkout; plugin registration and project onboarding were skipped." \
             >&2
+        printf '%s\n' 'To update MEOW manually, run:'
+        printf '  python3 -m pip install --upgrade git+https://github.com/maya8237/MEOW.git\n'
     fi
     return 0
 }
