@@ -23,50 +23,15 @@ In harness engineering terms, MEOW is the layer around Claude: it supplies the
 right context, templates, worktree, state, checks, recovery, and delivery path.
 You get the simple part—one request in, one finished branch out.
 
-## Install without cloning
-
-You can run the installer directly from the network. It clones MEOW over SSH,
-so configure GitHub SSH authentication first (`ssh -T git@github.com`). The
-installer selects the newest available system Python 3.12+ and completes setup
-automatically.
-
-Windows PowerShell (default clone parent: `C:/Projects`):
+## Install
 
 ```powershell
 irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
 ```
 
-Linux/macOS (default clone parent: your home directory):
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 ```
-
-The installer adds the checkout to `env.CLAUDE_CODE_PLUGIN_DIRS` in your
-user-wide Claude Code settings, preserving any plugin directories already
-there. It then repeatedly asks which projects to onboard. A literal path or
-`C:/Temp/*` visits only folders immediately inside `C:/Temp`; `C:/Temp/**`
-means recursive matching, explains the difference, asks whether you meant `*`,
-and requires a second confirmation before scanning nested folders. These are
-glob patterns, not regular expressions.
-
-After setup, the installer prints the next options and examples. It does not
-finish with a menu.
-
-The same next steps are:
-
-- Optional integrations and feature configuration: `/meow:onboard`
-- Terminal: `meow run "Add CSV export" --name csv-export --work-dir <project>`
-- Claude Code, from the project: `/meow:run Add CSV export`
-
-Try it first:
-
-```text
-/meow:run Add CSV export
-```
-
-No setup step: the first `meow run` (or any other command that needs a project
-config) sets the project up itself.
 
 ## One command. Done.
 
@@ -115,12 +80,7 @@ operating another workflow system around every feature.
 - **Use it anywhere.** Start from Claude Code, a terminal, CI, or an operating
   system scheduler.
 
-## Install
-
-Use one of the streamed installer scripts above. They clone MEOW over SSH,
-configure the Claude plugin globally for your user, and install the MEOW CLI.
-
-### Use a LiteLLM Claude proxy
+## Use a LiteLLM Claude proxy
 
 MEOW also supports LiteLLM Claude proxies through the Claude Agent SDK. Point
 the SDK at your proxy, choose a model configured in LiteLLM, and run the same
