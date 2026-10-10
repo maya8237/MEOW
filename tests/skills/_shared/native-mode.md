@@ -1,12 +1,13 @@
 # Native mode: shared protocol
 
-Every meow skill has two execution modes. This file defines **native mode**,
-the default when a skill is invoked from inside Claude Code: *you* (this
-session) do the planning, generating and orchestration, and you dispatch
-reviewer/explorer work to Task subagents. No separate Agent SDK process is
-started. **CLI mode** (the `meow <command>` shell-out in each SKILL.md's
-"CLI mode" section) is used only when the user explicitly asks for it
-("run it headless", "use the CLI", "separate process").
+The workflow skills `plan`, `review`, and `lint` use **native mode** by
+default when invoked inside Claude Code: *you* (this session) do the planning,
+generation, or fixes, and you dispatch reviewer/explorer work to Task
+subagents. No separate Agent SDK process is started. The `run` skill uses CLI
+mode by default and opts into this protocol only when the user asks for native
+execution. **CLI mode** is the `meow <command>` path documented in each
+workflow skill. The `onboard`, `migration`, and `customize` skills are
+guidance/configuration flows, not alternate execution engines.
 
 Both modes read the same active MEOW configuration and write the same files, so a run
 started in one can be continued in the other (`meow review --fix`,
@@ -120,7 +121,7 @@ compaction. **Never decide from memory whether rounds remain.**
 - Start of a fresh sprint (new or re-planned plan): `round <plan> --reset`.
   When resuming or re-reviewing an existing plan, do not reset.
 
-## Review loop (used by sprint, meow-review, review-fix-review)
+## Review loop (used by the native `run`, `review`, and `lint` workflows)
 
 ```
 repeat:

@@ -39,7 +39,9 @@ Before adding a role or changing orchestration, inspect the relevant files and e
 - **tester:** runs configured validation and optional tester MCP servers.
 - **review_fixer** and **lint_fixer:** narrowly scoped edit-and-verify roles.
 - **issue_fetcher**, **gitlab_fetcher**, and **github_fetcher:** integration-specific read-only MCP roles.
-- **docs_updater** and **setup:** specialized maintenance roles.
+- **docs_updater:** the documentation-maintenance role. `setup` is a
+  permission-policy role for validated `[worktree_setup]` actions, not a
+  separate `src/meow/agents/setup.py` implementation.
 
 Use the smallest existing extension point that matches the request. Do not create a new agent when prompt guidance, a skill, a hook, an MCP configuration, or an existing role is sufficient.
 

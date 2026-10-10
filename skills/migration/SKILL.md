@@ -59,7 +59,7 @@ evaluation.
 Move MEOW-generated plans from the legacy plan directory into `.meow/plans/`
 when their ownership is clear. Leave project documentation in `docs/`. Do not
 move a development-process plan into `.meow/plans/`; those plans belong under
-`docs/superpowers/plans/` or the repository's chosen documentation area.
+the repository's chosen tracked documentation area.
 Do not import legacy event databases, agent transcripts, or opaque checkpoints
 into the run journal. Claude owns its transcript persistence; MEOW retains only
 the role-to-session references needed to resume a run.

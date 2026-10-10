@@ -1,12 +1,13 @@
 # Native mode: shared protocol
 
-Every meow skill has two execution modes. This file defines **native mode**,
-the default when a skill is invoked from inside Claude Code: *you* (this
-session) do the planning, generating and orchestration, and you dispatch
-reviewer/explorer work to Task subagents. No separate Agent SDK process is
-started. **CLI mode** (the `meow <command>` shell-out in each SKILL.md's
-"CLI mode" section) is used only when the user explicitly asks for it
-("run it headless", "use the CLI", "separate process").
+The workflow skills `plan`, `review`, and `lint` use **native mode** by
+default when invoked inside Claude Code: *you* (this session) do the planning,
+generation, or fixes, and you dispatch reviewer/explorer work to Task
+subagents. No separate Agent SDK process is started. The `run` skill uses CLI
+mode by default and opts into this protocol only when the user asks for native
+execution. **CLI mode** is the `meow <command>` path documented in each
+workflow skill. The `onboard`, `migration`, and `customize` skills are
+guidance/configuration flows, not alternate execution engines.
 
 Both modes read the same active MEOW configuration and write the same files, so a run
 started in one can be continued in the other (`meow review --fix`,
@@ -31,14 +32,15 @@ reviewer PASS, and enabled tester PASS. SDK usage missing from evidence is
 on stderr, exit 1). It starts no agents. If `meow` is not on PATH, tell the
 user to install it (README: a venv with `pip install -e .`, or `pipx install -e .`)
 and stop; do not guess at a venv path. Flags shared by every command:
-`--work-dir PATH` (project root with `.meow/config.toml`; default cwd) and
-`--active-dir PATH` (the worktree that `prepare` returned; default = working dir).
+`--working-dir PATH` (also `--work-dir`/`-d`; project root with
+`.meow/config.toml`, default cwd) and, where applicable, `--active-dir PATH`
+(the worktree that `prepare` returned; default = working dir).
 
 | Command | Purpose |
 |---|---|
-| `prepare [--name N] [--fresh] [--no-worktree] [--from B] [--branch BR] [--existing-branch BR] [--allow-dirty]` | Startup guards + worktree; returns `name` (the one used; `--fresh` may add `-2`, ...), `active_dir`, `docs_dir`, `plan_file`, `review_file`, `max_rounds`, `models`, `lint` |
+| `prepare [--name N] [--fresh] [--no-worktree] [--from B] [--branch BR] [--existing-branch BR] [--allow-dirty]` | Startup guards + worktree; returns `name` (the one used; `--fresh` may add `-2`, ...), `active_dir`, `use_worktree`, `docs_dir`, `plan_file`, `review_file`, `max_rounds`, `models`, `lint`, and onboarding facts |
 | `verify [--no-lint]` | Validate config and report lint, tester, and integration readiness without starting agents, servers, or MCP connections |
-| `latest-plan` / `latest-review` | Newest plan / review file in `docs_dir` (`latest-review` also gives its `flavor`: plan, prompt, gitlab or github) |
+| `latest-plan` / `latest-review` | Newest plan / review file in `docs_dir` (`latest-review` also gives its `flavor`: plan, prompt, gitlab, github, or branch) |
 | `verdict FILE` | `{status: PASS\|FAIL, summary}` of a review file |
 | `lint [--file F] [--fix] [--all-blocking]` | Per-file (auto-fixing) or project-wide lint run. `--all-blocking` ignores `gate` and treats every command as blocking (what the `lint` skill needs; everything else wants the default gate/informational split) |
 | `round PLAN [--reset\|--show]` | On-disk round counter; default advances it |
@@ -120,7 +122,7 @@ compaction. **Never decide from memory whether rounds remain.**
 - Start of a fresh sprint (new or re-planned plan): `round <plan> --reset`.
   When resuming or re-reviewing an existing plan, do not reset.
 
-## Review loop (used by sprint, meow-review, review-fix-review)
+## Review loop (used by the native `run`, `review`, and `lint` workflows)
 
 ```
 repeat:

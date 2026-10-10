@@ -308,7 +308,10 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         "-u",
         "--unattended",
         action="store_true",
-        help="Commit and push a verified run even when working in place.",
+        help=(
+            "Deliver a verified isolated-worktree run without interactive "
+            "handoff; required for --background."
+        ),
     )
     run_parser.add_argument(
         "--background",
@@ -347,7 +350,7 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         "review",
         help=(
             "Review existing code (and, with --fix, fix it) from a "
-            "prompt, --jira, --gitlab, --github, --branch, or a plan file."
+            "prompt, --ci, --jira, --gitlab, --github, --branch, or a plan file."
         ),
     )
     review_parser.add_argument(
@@ -401,7 +404,7 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         "--fix",
         action="store_true",
         help=(
-            "Loop review-fix-review to max_rounds (raising if it never "
+            "Loop review and fixes to max_rounds (raising if it never "
             "passes) instead of a single report-only pass. Implied when "
             "--review-file is given."
         ),

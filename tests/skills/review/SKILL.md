@@ -5,9 +5,8 @@ description: Review existing code -- report-only, or loop fixing until it passes
 
 # review
 
-One consolidated review operation, replacing what used to be five separate
-skills (`meow-review`, `meow-cr`, `gitlab-review`, `branch-review`,
-`review-fix-review`). Runs **natively** by default. Read
+One consolidated review operation covering prompt, issue, remote-review,
+branch, plan, review-file, and CI sources. Runs **natively** by default. Read
 [`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this
 skill's base directory) first. Use **CLI mode** (bottom) only if explicitly
 asked.
