@@ -10,6 +10,7 @@ From the repo root with `.venv` active (`python -m pip install -e ".[dev]"`):
 ```bash
 python -m pytest -q        # the full suite; CI runs exactly this
 ruff check .               # the lint gate (rules in pyproject.toml)
+ruff format .              # formatting; CI runs `ruff format --check .`
 ```
 
 Tests mix `unittest.TestCase` classes and plain pytest functions, so always run

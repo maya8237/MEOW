@@ -14,14 +14,10 @@ def test_append_plugin_dir_preserves_existing_env_entries_and_settings(tmp_path)
     first = tmp_path / "one"
     second = tmp_path / "two"
     settings.write_text(
-        json.dumps(
-            {
-                "permissions": {"allow": ["Bash(git status)"]},
-                "env": {
-                    "CLAUDE_CODE_PLUGIN_DIRS": f"{first}{os.pathsep}{second}"
-                },
-            }
-        ),
+        json.dumps({
+            "permissions": {"allow": ["Bash(git status)"]},
+            "env": {"CLAUDE_CODE_PLUGIN_DIRS": f"{first}{os.pathsep}{second}"},
+        }),
         encoding="utf-8",
     )
 
@@ -76,7 +72,7 @@ def test_double_star_explains_star_and_requires_recursive_confirmation(tmp_path)
 
     matches = installer.expand_project_pattern(
         str(tmp_path / "**"),
-        ask=lambda question: (prompts.append(question) or next(answers)),
+        ask=lambda question: prompts.append(question) or next(answers),
         output=messages.append,
     )
 

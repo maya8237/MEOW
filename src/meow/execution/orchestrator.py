@@ -248,8 +248,7 @@ def _fix_instruction(verdict: str, *, test: bool) -> str:
     if test:
         return f"Fix the findings, then stop.\n{verdict}"
     return (
-        "The reviewer found issues. Fix them, then stop. "
-        f"Reviewer feedback:\n{verdict}"
+        f"The reviewer found issues. Fix them, then stop. Reviewer feedback:\n{verdict}"
     )
 
 

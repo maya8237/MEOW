@@ -136,9 +136,7 @@ def test_worktree_with_onboarded_main_checkout_only_repairs_boundary(tmp_path):
 def test_onboarding_failure_does_not_fail_run(tmp_path):
     repo = _git_dir(tmp_path / "repo")
 
-    with patch(
-        "meow.project.onboarding.onboard_project", side_effect=OSError("disk")
-    ):
+    with patch("meow.project.onboarding.onboard_project", side_effect=OSError("disk")):
         _run(repo)
 
     record = RunStore(repo).latest()

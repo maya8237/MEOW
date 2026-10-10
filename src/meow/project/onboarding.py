@@ -95,9 +95,7 @@ def _text_boundary_ok(root: Path) -> bool:
 
 
 def _git_boundary_ok(root: Path) -> bool:
-    return all(
-        _ignored(root, rel) is want for rel, want in _EXPECTED_IGNORED.items()
-    )
+    return all(_ignored(root, rel) is want for rel, want in _EXPECTED_IGNORED.items())
 
 
 def boundary_ok(root: Path) -> bool:
@@ -190,23 +188,21 @@ def _config_text(lint: tuple[str, str] | None, existing: set[str]) -> str:
 
 def _local_config_text() -> str:
     """Documentation-only local config template; every setting stays commented."""
-    return "\n".join(
-        [
-            "# Optional machine- and user-specific MEOW settings for this project.",
-            "# This file is ignored by Git and overrides .meow/config.toml locally.",
-            "# Keep credentials in environment variables or this ignored file,",
-            "# never in the shared project config.",
-            "#",
-            "# Examples (uncomment only what you need):",
-            '# [agent_skills]',
-            '# default = ["my-installed-skill"]',
-            '# [tester.mcp.env]',
-            '# TOKEN = "$TOKEN"',
-            "#",
-            "# See templates/meow-config.toml.example and docs/INTEGRATIONS.md.",
-            "",
-        ]
-    )
+    return "\n".join([
+        "# Optional machine- and user-specific MEOW settings for this project.",
+        "# This file is ignored by Git and overrides .meow/config.toml locally.",
+        "# Keep credentials in environment variables or this ignored file,",
+        "# never in the shared project config.",
+        "#",
+        "# Examples (uncomment only what you need):",
+        "# [agent_skills]",
+        '# default = ["my-installed-skill"]',
+        "# [tester.mcp.env]",
+        '# TOKEN = "$TOKEN"',
+        "#",
+        "# See templates/meow-config.toml.example and docs/INTEGRATIONS.md.",
+        "",
+    ])
 
 
 def _verify(root: Path) -> str | None:

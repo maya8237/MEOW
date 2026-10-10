@@ -197,9 +197,7 @@ def _branch_diff(active_dir: Path, target: str, branch: str) -> str:
 def _verdict_status(verdict_text: str) -> str:
     """PASS only when the first `STATUS:` line starts with the word PASS."""
     status_match = re.search(r"^\s*STATUS:(.*)$", verdict_text, re.MULTILINE)
-    passed = status_match is not None and re.match(
-        r"\s*PASS\b", status_match.group(1)
-    )
+    passed = status_match is not None and re.match(r"\s*PASS\b", status_match.group(1))
     return "PASS" if passed else "FAIL"
 
 

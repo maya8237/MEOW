@@ -22,6 +22,7 @@ python -m pip install -e ".[dev]"
    ```bash
    python -m pytest -q
    ruff check
+   ruff format --check
    ```
 
 5. Update the README, changelog, or integration docs when user-facing behavior

@@ -122,9 +122,7 @@ def _mr_review(context: ProjectContext, provider: str) -> dict:
     )
     # The skill fetches the request itself, so it gets the exact SDK task
     # message with placeholders to fill in.
-    template = remote_review_query(
-        request_label, "<title>", "<description>", "<diff>"
-    )
+    template = remote_review_query(request_label, "<title>", "<description>", "<diff>")
     return {
         "system_prompt": text,
         "query": None,

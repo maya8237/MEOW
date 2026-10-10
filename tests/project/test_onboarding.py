@@ -37,9 +37,7 @@ def repo(tmp_path) -> Path:
 
 
 def _ignored(root: Path, rel: str) -> bool:
-    result = subprocess.run(
-        ["git", "check-ignore", "-q", rel], cwd=root, check=False
-    )
+    result = subprocess.run(["git", "check-ignore", "-q", rel], cwd=root, check=False)
     return result.returncode == 0
 
 
@@ -123,9 +121,7 @@ def test_onboard_project_writes_boundary_then_config(repo):
 def test_onboard_project_writes_documented_shared_and_local_configs(repo):
     onboard_project(repo)
 
-    local_text = (repo / ".meow" / "config.local.toml").read_text(
-        encoding="utf-8"
-    )
+    local_text = (repo / ".meow" / "config.local.toml").read_text(encoding="utf-8")
     shared_text = (repo / ".meow" / "config.toml").read_text(encoding="utf-8")
     assert tomllib.loads(local_text) == {}
     assert "local" in local_text.lower()

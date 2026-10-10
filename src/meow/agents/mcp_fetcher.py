@@ -70,9 +70,7 @@ class McpFetcherAgent(Agent):
     async def check_active(self) -> None:
         """Raise RuntimeError unless the MCP server actually answers a call."""
         options = self._options(
-            system_prompt=mcp_probe_prompt(
-                self.label, self.server.upper(), self.probe
-            ),
+            system_prompt=mcp_probe_prompt(self.label, self.server.upper(), self.probe),
             allowed_tools=self._tools,
         )
         used_tool = succeeded = False

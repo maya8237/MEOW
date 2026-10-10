@@ -292,9 +292,7 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
             options = observed["options"]
             self.assertEqual(options.model, "model-for-planner")
             self.assertEqual(options.cwd, str(self.context.project_dir))
-            self.assertEqual(
-                options.agents["explorer"].model, "model-for-explorer"
-            )
+            self.assertEqual(options.agents["explorer"].model, "model-for-explorer")
 
     async def test_planner_raises_on_sdk_failure(self):
         failure = ResultMessage(
@@ -372,9 +370,7 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
             )
 
         client.receive_response.side_effect = [responses(), responses()]
-        with patch(
-            "meow.agents.base.ClaudeSDKClient", return_value=client
-        ) as sdk:
+        with patch("meow.agents.base.ClaudeSDKClient", return_value=client) as sdk:
             async with LintFixAgent(self.context) as fixer:
                 await fixer.fix("first batch")
                 result = await fixer.fix("second batch")
@@ -413,9 +409,7 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
             )
 
         client.receive_response.side_effect = [responses(), responses()]
-        with patch(
-            "meow.agents.base.ClaudeSDKClient", return_value=client
-        ) as sdk:
+        with patch("meow.agents.base.ClaudeSDKClient", return_value=client) as sdk:
             async with ReviewFixAgent(self.context) as fixer:
                 await fixer.fix("first batch")
                 result = await fixer.fix("second batch")

@@ -50,46 +50,40 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments]
     functions = [
         "#!/usr/bin/env bash",
         "git() {",
-        "  printf 'git %s\\n' \"$*\" >> \"$MEOW_TEST_LOG\"",
-        "  if [ \"$1\" = clone ]; then mkdir -p \"$3/.git\"; fi",
+        '  printf \'git %s\\n\' "$*" >> "$MEOW_TEST_LOG"',
+        '  if [ "$1" = clone ]; then mkdir -p "$3/.git"; fi',
         "}",
         "function python3.15 {",
-        "  printf 'python %s\\n' \"$*\" >> \"$MEOW_TEST_LOG\"",
-            "  case \"$*\" in",
-            "    *'import meow'*) printf '%s\\n' \"$MEOW_EXISTING_CHECKOUT\" ;;",
-            "    *'-m pip install -e'*) printf 'FAKE_PIP\\n' >&2 ;;",
-            "    *'-m meow.installer'*) printf 'FAKE_SETUP\\n' >&2; "
-            'return "$MEOW_SETUP_EXIT" ;;',
+        '  printf \'python %s\\n\' "$*" >> "$MEOW_TEST_LOG"',
+        '  case "$*" in',
+        "    *'import meow'*) printf '%s\\n' \"$MEOW_EXISTING_CHECKOUT\" ;;",
+        "    *'-m pip install -e'*) printf 'FAKE_PIP\\n' >&2 ;;",
+        "    *'-m meow.installer'*) printf 'FAKE_SETUP\\n' >&2; "
+        'return "$MEOW_SETUP_EXIT" ;;',
         "  esac",
         "}",
     ]
     if meow_version is not None:
-        functions.extend(
-            [
-                "meow() {",
-                f"  printf 'meow {meow_version}\\n'",
-                "}",
-            ]
-        )
+        functions.extend([
+            "meow() {",
+            f"  printf 'meow {meow_version}\\n'",
+            "}",
+        ])
     if origin_version is not None:
-        functions.extend(
-            [
-                "curl() {",
-                "  printf '[project]\\n'",
-                f"  printf 'version = \"{origin_version}\"\\n'",
-                "}",
-            ]
-        )
-    functions.extend(
-        [
-            "export PATH='/usr/bin:/bin'",
-            f"export HOME='{_git_bash_path(tmp_path / 'home')}'",
-            f"export MEOW_TEST_LOG='{_git_bash_path(log)}'",
-            f"export MEOW_EXISTING_CHECKOUT='{existing_checkout_value}'",
-            f"export MEOW_SETUP_EXIT='{setup_exit_code}'",
-            f"printf '%s' \"$MEOW_TEST_INPUT\" | source '{install_script}'",
-        ]
-    )
+        functions.extend([
+            "curl() {",
+            "  printf '[project]\\n'",
+            f"  printf 'version = \"{origin_version}\"\\n'",
+            "}",
+        ])
+    functions.extend([
+        "export PATH='/usr/bin:/bin'",
+        f"export HOME='{_git_bash_path(tmp_path / 'home')}'",
+        f"export MEOW_TEST_LOG='{_git_bash_path(log)}'",
+        f"export MEOW_EXISTING_CHECKOUT='{existing_checkout_value}'",
+        f"export MEOW_SETUP_EXIT='{setup_exit_code}'",
+        f"printf '%s' \"$MEOW_TEST_INPUT\" | source '{install_script}'",
+    ])
     wrapper.write_text("\n".join(functions) + "\n", encoding="utf-8")
     env = dict(os.environ)
     env["MEOW_TEST_INPUT"] = input_text
@@ -145,9 +139,9 @@ def test_powershell_existing_install_reports_up_to_date_and_forwards_setup_outpu
         powershell,
         re.DOTALL,
     )
-    assert (
-        "| ForEach-Object { Write-Host $_ }" in powershell
-    ), "post-install output must stay visible when the caller consumes function output"
+    assert "| ForEach-Object { Write-Host $_ }" in powershell, (
+        "post-install output must stay visible when the caller consumes function output"
+    )
     assert 'Write-Host "  py -3 -m pip install --upgrade' not in powershell
     assert 'Write-Host "  $manualPythonCommand -m pip install --upgrade' in powershell
 
@@ -253,7 +247,7 @@ def test_linux_install_script_runs_from_ci_checkout_without_cloning(  # ruff: ig
     bin_dir.mkdir()
     home.mkdir()
 
-    python_wrapper = "#!/bin/sh\nexec \"$MEOW_TEST_PYTHON\" \"$@\"\n"
+    python_wrapper = '#!/bin/sh\nexec "$MEOW_TEST_PYTHON" "$@"\n'
     # install.sh tries python3.15 ... python3.12 before python3; without a
     # wrapper for each, /bin/python3.12 (the runner's system Python, which
     # lacks MEOW's dependencies) would be picked instead.
@@ -261,15 +255,11 @@ def test_linux_install_script_runs_from_ci_checkout_without_cloning(  # ruff: ig
         _write_executable(bin_dir / name, python_wrapper)
     _write_executable(
         bin_dir / "meow",
-        "#!/bin/sh\n"
-        "if [ \"$1\" = \"--version\" ]; then\n"
-        "  printf 'meow 0.1.0\\n'\n"
-        "fi\n",
+        '#!/bin/sh\nif [ "$1" = "--version" ]; then\n  printf \'meow 0.1.0\\n\'\nfi\n',
     )
     _write_executable(
         bin_dir / "curl",
-        "#!/bin/sh\n"
-        "printf '[project]\\nversion = \"0.2.0\"\\n'\n",
+        "#!/bin/sh\nprintf '[project]\\nversion = \"0.2.0\"\\n'\n",
     )
 
     env = dict(os.environ)
@@ -321,7 +311,7 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
     home.mkdir()
     (bin_dir / "meow.cmd").write_text(
         "@echo off\n"
-        "if /I \"%~1\"==\"--version\" (\n"
+        'if /I "%~1"=="--version" (\n'
         "  echo meow 9.9.9\n"
         "  exit /b 0\n"
         ")\n"
@@ -432,9 +422,7 @@ def test_powershell_trims_destination_separators_as_characters():
     assert "TrimEnd([char[]]@(" in text
 
 
-@pytest.mark.skipif(
-    sys.platform != "win32", reason="Windows PowerShell syntax test"
-)
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell syntax test")
 def test_powershell_bootstrap_parses_in_windows_powershell_5_1():
     powershell = shutil.which("powershell")
     if powershell is None:

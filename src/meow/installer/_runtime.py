@@ -35,9 +35,7 @@ def _load_settings(settings_path: Path) -> dict[str, object]:
     return data
 
 
-def _settings_env(
-    data: dict[str, object], settings_path: Path
-) -> dict[str, object]:
+def _settings_env(data: dict[str, object], settings_path: Path) -> dict[str, object]:
     env = data.get("env")
     if env is None:
         env = {}
@@ -118,8 +116,7 @@ def _first_level_pattern_is_safe(pattern: str, output: Callable[[str], None]) ->
     ]
     if wildcard_positions and wildcard_positions[-1] != len(parts) - 1:
         output(
-            "`*` is limited to immediate child folders; use a final `*` "
-            "path component."
+            "`*` is limited to immediate child folders; use a final `*` path component."
         )
         return False
     return len(wildcard_positions) <= 1
@@ -185,8 +182,10 @@ def expand_project_pattern(
         if resolved is None:
             return ()
         pattern, recursive = resolved
-    if not recursive and "*" in pattern and not _first_level_pattern_is_safe(
-        pattern, output
+    if (
+        not recursive
+        and "*" in pattern
+        and not _first_level_pattern_is_safe(pattern, output)
     ):
         return ()
     return _literal_or_glob_matches(pattern, recursive=recursive, output=output)
@@ -269,7 +268,7 @@ def _print_next_steps(output: Callable[[str], None]) -> None:
         "\nNext options:\n"
         "- Continue optional integrations and feature setup with `/meow:onboard`.\n"
         '- Start from a terminal: `meow run "Add CSV export" --name csv-export '
-        '--work-dir <project>`.\n'
+        "--work-dir <project>`.\n"
         "- Start from Claude Code in a project: `/meow:run Add CSV export`."
     )
 

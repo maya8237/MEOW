@@ -92,9 +92,7 @@ def test_source_packages_are_not_empty():
     empty = []
     for init_file in root.rglob("__init__.py"):
         implementation_files = [
-            path
-            for path in init_file.parent.glob("*.py")
-            if path.name != "__init__.py"
+            path for path in init_file.parent.glob("*.py") if path.name != "__init__.py"
         ]
         if not implementation_files:
             empty.append(init_file.parent.relative_to(root).as_posix())
