@@ -22,11 +22,12 @@ jobs:
       - name: Install meow (editable, with dev extras)
         run: python -m pip install -e ".[dev]"
       # pytest also collects the plain `def test_*` modules that unittest
-      # discovery skips. The full installer scripts run in their own jobs below.
+      # discovery skips. The full installer scripts also run directly in the
+      # dedicated jobs below.
       - name: Run the test suite
         id: test-suite
         shell: bash
-        run: python -m pytest -q -p no:cacheprovider --ignore=tests/installer/test_bootstrap_contract.py 2>&1 | tee test-output.log
+        run: python -m pytest -q -p no:cacheprovider 2>&1 | tee test-output.log
       # Job logs need sign-in; annotations are public, so surface the tail
       # of the captured output there on failure.
       - name: Surface test-suite failures as an annotation
