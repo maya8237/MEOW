@@ -150,7 +150,9 @@ then stop." plus the full review text (same wording as the CLI).
   linked worktree; in-place native runs do not deliver automatically.
 - Worktree hygiene: when `use_worktree` is true, every change goes in `active_dir`;
   the main checkout must stay untouched.
-- `meow native prepare` onboards the project (a minimal `.meow/config.toml` and
-  the `.gitignore` boundary, in `active_dir`) when it was never onboarded, and
-  reports it in the JSON's `onboarding` field; mention any `onboarding.files` to
-  the user. Do not invent lint commands; `/meow:onboard` handles add-ons.
+- `meow native prepare` onboards the project (a documented `.meow/config.toml`,
+  a comment-only `.meow/config.local.toml` when missing, and the `.gitignore`
+  boundary, in `active_dir`) when it was never onboarded, and reports it in the
+  JSON's `onboarding` field; mention any `onboarding.files` to the user. Existing
+  config files are never overwritten. Do not invent lint commands;
+  `/meow:onboard` handles add-ons.

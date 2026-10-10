@@ -14,8 +14,9 @@ follow its agent instructions.
 ## 0. Check the onboarding state first
 
 MEOW already performs the base setup itself on a project's first config-dependent
-command (the `.gitignore` boundary and a minimal `.meow/config.toml`), so this
-skill is for add-ons. Run `meow native onboard-status --working-dir <project-root>`
+command (the `.gitignore` boundary, a documented `.meow/config.toml`, and a
+comment-only `.meow/config.local.toml` when missing), so this skill is for
+add-ons. Run `meow native onboard-status --working-dir <project-root>`
 and read the JSON:
 
 - `onboarded: false`: the project has never been onboarded (or only partly).
@@ -103,6 +104,11 @@ After editing, verify the boundary with `git check-ignore` (or the platform's
 equivalent): `config.toml` must be trackable and `config.local.toml` plus a
 sample runtime path must be ignored. Do not replace the boundary with a single
 `.meow/` rule.
+
+The deterministic base pass creates a documentation-only local config template
+when `.meow/config.local.toml` is absent. It never overwrites an existing local
+config or rewrites an existing shared config; uncomment or add local settings
+only after the user chooses the relevant add-on.
 
 ## 3. Configure
 

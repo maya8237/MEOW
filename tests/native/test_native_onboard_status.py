@@ -59,7 +59,11 @@ def test_prepare_onboards_the_feature_worktree(repo):
     assert code == 0, err
     data = json.loads(out)
     active = repo / ".worktrees" / "feat"
-    assert set(data["onboarding"]["files"]) == {".gitignore", ".meow/config.toml"}
+    assert set(data["onboarding"]["files"]) == {
+        ".gitignore",
+        ".meow/config.toml",
+        ".meow/config.local.toml",
+    }
     assert (active / ".meow" / "config.toml").is_file()
     assert not (repo / ".meow" / "config.toml").exists()
     assert data["lint"][0]["command"] == "python -m ruff check"
