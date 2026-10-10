@@ -28,6 +28,7 @@ from meow.infrastructure.lint import (
 )
 from meow.infrastructure.logging import get_logger
 from meow.project.config import load_config
+from meow.project.onboarding import onboard_if_needed
 
 logger = get_logger(__name__)
 
@@ -109,6 +110,7 @@ async def run_lint_fix(working_dir: Path, *, report_only: bool) -> str | None:
         branch=branch,
     )
     try:
+        onboard_if_needed(working_dir, working_dir)
         config = load_config(working_dir)
         describe_lint_plan(config["lint"])
         if report_only:

@@ -1,6 +1,7 @@
 # docs/INTEGRATIONS.md — Jira, GitLab, GitHub, and scheduled runs
 
-Reference material for optional project setup. Start with `/meow:onboard`;
+Reference material for optional project setup. MEOW sets up a project's base
+configuration itself on first use; run `/meow:onboard` for the add-ons below;
 this guide covers monorepo lint/test configuration, tester mode, integrations,
 scheduled Jira runs, and error messages.
 

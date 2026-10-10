@@ -156,22 +156,22 @@ def is_onboarded(root: Path) -> bool:
     return (root / CONFIG_RELPATH).is_file() and boundary_ok(root)
 
 
-def _config_text(lint: tuple[str, str] | None) -> str:
+def _config_text(lint: tuple[str, str] | None, existing: set[str]) -> str:
+    """Minimal shared config, leaving out anything local/user config already sets."""
     lines = [
         "# Created automatically by meow on the first run.",
         "# See templates/meow-config.toml.example for every option.",
-        "",
-        "max_rounds = 8",
-        'docs_dir = ".meow/plans"',
     ]
-    if lint:
+    if "max_rounds" not in existing:
+        lines += ["", "max_rounds = 8"]
+    if "docs_dir" not in existing:
+        lines += ["", 'docs_dir = ".meow/plans"']
+    if lint and "lint" not in existing:
         lines += ["", "[[lint]]", f'command = "{lint[0]}"', f'fix_flag = "{lint[1]}"']
     return "\n".join(lines) + "\n"
 
 
 def _verify(root: Path) -> str | None:
-    if not _in_git_repo(root):
-        return "not inside a git repository; ignore boundary could not be verified"
     if not _git_boundary_ok(root):
         return ".meow ignore boundary failed git check-ignore verification"
     return None
@@ -180,13 +180,16 @@ def _verify(root: Path) -> str | None:
 def _apply(
     root: Path, lint: tuple[str, str] | None, files: list[str], *, write_config: bool
 ) -> str | None:
+    if not _in_git_repo(root):
+        return "not inside a git repository; ignore boundary could not be verified"
     if repair_boundary(root):
         files.append(".gitignore")
     error = _verify(root)
     config = root / CONFIG_RELPATH
     if error is None and write_config and not config.is_file():
+        existing = {key for table in _config_tables(root) for key in table}
         config.parent.mkdir(parents=True, exist_ok=True)
-        config.write_text(_config_text(lint), encoding="utf-8")
+        config.write_text(_config_text(lint, existing), encoding="utf-8")
         files.append(CONFIG_RELPATH)
     return error
 
@@ -203,6 +206,24 @@ def onboard_project(root: Path, *, write_config: bool = True) -> OnboardingRepor
     return OnboardingReport(
         tuple(files), lint[0] if lint else None, SKIPPED_FEATURES, error
     )
+
+
+def onboard_if_needed(active_dir: Path, config_dir: Path) -> dict | None:
+    """Onboard `active_dir` unless the project is already onboarded.
+
+    `config_dir` is the checkout MEOW reads config from (the main checkout for a
+    linked worktree). A config already there is never duplicated, so only the
+    ignore boundary is repaired in that case. Returns the report as a dict
+    (with `error` set on failure), or None when nothing needed doing.
+    """
+    active_dir, config_dir = Path(active_dir), Path(config_dir)
+    if is_onboarded(config_dir) or is_onboarded(active_dir):
+        return None
+    write_config = not (config_dir / CONFIG_RELPATH).is_file()
+    try:
+        return onboard_project(active_dir, write_config=write_config).to_dict()
+    except (OSError, ValueError, RuntimeError) as exc:
+        return {"files": [], "lint": None, "skipped": [], "error": str(exc)}
 
 
 _GUIDE = "docs/INTEGRATIONS.md"

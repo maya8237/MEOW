@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from meow.project.config import load_config
+from meow.project.config import config_root, load_config
 from meow.project.onboarding import (
     BOUNDARY,
     boundary_ok,
@@ -16,6 +16,8 @@ from meow.project.onboarding import (
     onboard_project,
     repair_boundary,
 )
+
+FALLBACK_ROUNDS = 3
 
 
 @pytest.fixture(autouse=True)
@@ -155,6 +157,8 @@ def test_onboard_project_outside_git_repo_writes_no_config(tmp_path):
     report = onboard_project(root)
     assert report.error and "git" in report.error
     assert not (root / ".meow" / "config.toml").exists()
+    assert not (root / ".gitignore").exists()
+    assert not (root / ".gitignore").exists()
 
 
 def test_onboard_project_is_idempotent(repo):
@@ -231,3 +235,46 @@ def test_feature_gaps_architecture_doc(repo):
 def test_feature_gaps_tolerates_malformed_config(repo):
     _write_config(repo, "this is not = = toml")
     assert feature_gaps(repo)["jira"]["configured"] is False
+
+
+def test_config_root_prefers_project_then_onboarded_active(tmp_path):
+    project, active = tmp_path / "p", tmp_path / "a"
+    for path in (project, active):
+        path.mkdir()
+    assert config_root(project, active) == project
+    _write_config(active)
+    assert config_root(project, active) == active
+    _write_config(project)
+    assert config_root(project, active) == project
+    assert config_root(project) == project
+
+
+def test_config_does_not_override_user_fallback_settings(repo, tmp_path, monkeypatch):
+    fallback = tmp_path / "fallback.toml"
+    fallback.write_text(
+        'max_rounds = 3\n[[lint]]\ncommand = "mylint"\n', encoding="utf-8"
+    )
+    monkeypatch.setattr("meow.project.config.user_config_path", lambda: fallback)
+    (repo / "pyproject.toml").write_text("[tool.ruff]\n", encoding="utf-8")
+
+    onboard_project(repo)
+
+    text = (repo / ".meow" / "config.toml").read_text(encoding="utf-8")
+    assert "max_rounds" not in text
+    assert "[[lint]]" not in text
+    config = load_config(repo)
+    assert config["max_rounds"] == FALLBACK_ROUNDS
+    assert [c.command for c in config["lint"]] == ["mylint"]
+
+
+def test_config_does_not_override_local_settings(repo):
+    (repo / ".meow").mkdir()
+    (repo / ".meow" / "config.local.toml").write_text(
+        'docs_dir = "plans"\n', encoding="utf-8"
+    )
+
+    onboard_project(repo)
+
+    text = (repo / ".meow" / "config.toml").read_text(encoding="utf-8")
+    assert "docs_dir" not in text
+    assert "max_rounds = 8" in text

@@ -112,6 +112,16 @@ on, and plan, review, and test files take that name. Runs that continue
 existing work (`--plan`, `--resume-at review`, `meow resume`) reuse the
 existing worktree and take priority over a new source branch.
 
+On a project that was never onboarded, the first run onboards it automatically
+before planning: it repairs the `.gitignore` boundary (`.meow/*`, `!.meow/`,
+`!.meow/config.toml`) and writes a minimal `.meow/config.toml` with the lint
+command it detects (ruff or eslint). Nothing is prompted and there is no
+opt-out flag. The setup happens in the run's own checkout, so it is delivered
+with the feature from a linked worktree and left as local changes for an
+in-place run. `plan`, `review`, `run --lint-fix`, queued runs, and Jira runs
+onboard the same way; onboarding never overwrites an existing config and an
+onboarding failure never fails the command. `/meow:onboard` is for add-ons.
+
 After required checks and review pass, a feature run in a separate linked
 worktree commits and pushes its branch to `origin`. A detached feature worktree
 receives a `meow/RUN_ID` branch at delivery. An in-place run does this only
