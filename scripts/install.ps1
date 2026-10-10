@@ -13,6 +13,58 @@ $repositoryUrl = "git@github.com:maya8237/MEOW.git"
 $originPyprojectUrl = "https://raw.githubusercontent.com/maya8237/MEOW/main/pyproject.toml"
 $defaultParent = "C:/Projects"
 
+function Show-Banner {
+    Write-Host ""
+    Write-Host "  +--------------------------------------+" -ForegroundColor Cyan
+    Write-Host "  |           MEOW INSTALLER              |" -ForegroundColor Cyan
+    Write-Host "  |  Management, Execution & Optimization |" -ForegroundColor Cyan
+    Write-Host "  +--------------------------------------+" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+function Invoke-WithSpinner {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$ScriptBlock,
+        [Parameter(Mandatory = $true)][string]$Message
+    )
+
+    $job = Start-Job -ScriptBlock $ScriptBlock
+    $spinner = @('|', '/', '-', '\')
+    $index = 0
+
+    try {
+        while ($true) {
+            $currentJob = Get-Job -Id $job.Id
+            if ($currentJob.State -notin @("NotStarted", "Running")) {
+                break
+            }
+            Write-Host -NoNewline ("`r  [*] {0} {1}" -f $Message, $spinner[$index])
+            $index = ($index + 1) % $spinner.Count
+            Start-Sleep -Milliseconds 100
+        }
+
+        $job = Get-Job -Id $job.Id
+        $output = @(Receive-Job -Job $job -ErrorAction SilentlyContinue 2>&1)
+        if ($job.State -eq "Failed") {
+            $reason = $job.ChildJobs[0].JobStateInfo.Reason
+            if ($null -ne $reason) {
+                throw $reason
+            }
+            throw "$Message failed."
+        }
+
+        Write-Host ("`r  [OK] {0} Done!          " -f $Message) -ForegroundColor Green
+        $output | ForEach-Object { Write-Output $_ }
+    } catch {
+        Write-Host ("`r  [FAIL] {0} Failed.        " -f $Message) -ForegroundColor Red
+        throw
+    } finally {
+        if ($null -ne $job) {
+            Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Get-VersionFromText {
     param([AllowNull()][string]$Text)
 
@@ -168,13 +220,19 @@ function Stop-ForExistingMeow {
         if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
             throw "Git is required to update the existing MEOW checkout."
         }
-        & git -C $existingSetup.Checkout pull --ff-only origin main
-        if ($LASTEXITCODE -ne 0) {
-            throw "MEOW source update failed."
+        Invoke-WithSpinner -Message "Pulling MEOW source" -ScriptBlock {
+            $setup = $using:existingSetup
+            & git -C $setup.Checkout pull --ff-only origin main
+            if ($LASTEXITCODE -ne 0) {
+                throw "MEOW source update failed."
+            }
         }
-        & $existingSetup.Executable @($existingSetup.Arguments) -m pip install -e $existingSetup.Checkout
-        if ($LASTEXITCODE -ne 0) {
-            throw "Editable MEOW update failed."
+        Invoke-WithSpinner -Message "Installing editable MEOW update" -ScriptBlock {
+            $setup = $using:existingSetup
+            & $setup.Executable @($setup.Arguments) -m pip install -e $setup.Checkout
+            if ($LASTEXITCODE -ne 0) {
+                throw "Editable MEOW update failed."
+            }
         }
         Write-Host "MEOW updated successfully."
     } else {
@@ -189,6 +247,8 @@ function Stop-ForExistingMeow {
     }
     return $true
 }
+
+Show-Banner
 
 if (Stop-ForExistingMeow) {
     Write-Host "Done!" -ForegroundColor Green
@@ -216,18 +276,21 @@ if (Test-Path -LiteralPath $clonePath) {
     Write-Host "Using existing MEOW checkout: $clonePath"
 } else {
     New-Item -ItemType Directory -Force -Path $destination | Out-Null
-    Write-Host "Cloning MEOW over SSH into $clonePath"
-    & git clone $repositoryUrl $clonePath
-    if ($LASTEXITCODE -ne 0) {
-        throw "SSH clone failed. Check that GitHub SSH authentication works with: ssh -T git@github.com"
+    Invoke-WithSpinner -Message "Cloning MEOW over SSH into $clonePath" -ScriptBlock {
+        & git clone $using:repositoryUrl $using:clonePath
+        if ($LASTEXITCODE -ne 0) {
+            throw "SSH clone failed. Check that GitHub SSH authentication works with: ssh -T git@github.com"
+        }
     }
 }
 
 $python = Select-Python
-Write-Host "Installing MEOW with $($python.Executable) -m pip install -e ..."
-& $python.Executable @($python.Arguments) -m pip install -e $clonePath
-if ($LASTEXITCODE -ne 0) {
-    throw "Editable MEOW installation failed."
+Invoke-WithSpinner -Message "Installing MEOW with $($python.Executable) -m pip install -e ..." -ScriptBlock {
+    $selectedPython = $using:python
+    & $selectedPython.Executable @($selectedPython.Arguments) -m pip install -e $using:clonePath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Editable MEOW installation failed."
+    }
 }
 
 Write-Host "Configuring Claude and onboarding projects..."
