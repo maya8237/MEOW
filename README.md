@@ -14,9 +14,13 @@ and delivers software changes in isolated worktrees.
 
 ## Install
 
+### PowerShell
+
 ```powershell
 irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
 ```
+
+### Bash
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
