@@ -109,20 +109,29 @@ uses one command.
 
 ## Layout
 
-The engine is split by responsibility under `src/meow/`:
+The engine is split by responsibility under `src/meow/`. Keep the package root
+limited to package entry points; implementation belongs in the narrowest
+responsibility package:
 
-- `config.py`, `sprint.py`, `lint.py`, `test_runner.py`, `worktree.py`, `logging.py`,
-  and `plan_files.py` handle project settings and shared workflow support.
 - `agents/` contains the explorer, planner, generator, reviewer, and fixer
   roles, built on the shared agent base.
-- `orchestrator.py` owns the generator/reviewer round loops; `sprint_runner.py`
-  and `review_cli.py` implement the top-level command flows.
-- `issue_solver.py`, `gitlab_reviewer.py`, and `branch_reviewer.py` support
-  Jira, GitLab, and branch reviews; `lint_fix.py` implements lint-fix mode.
-- `prompts.py` supplies role prompts to both execution modes. `native_*.py`,
-  `native.py`, and `native_cli.py` provide deterministic helpers for native
-  skill execution.
-- `cli.py` wires up the `meow` console command.
+- `native/` contains deterministic in-session skill execution and its CLI,
+  lint, preparation, prompt, and checkpoint helpers.
+- `execution/` owns sprint orchestration, runners, and durable run state.
+- `project/` owns configuration, plans, shaping, prompts, and permissions.
+- `infrastructure/` owns checks, lint, test execution, logging, cancellation,
+  and worktree lifecycle support.
+- `integrations/` contains Jira, GitLab, GitHub, issue-solving, and knowledge
+  adapters.
+- `tasks/` contains task models, execution, scheduling, and integration.
+- `cli/` wires up the installed `meow` command.
+- `hooks/` and `installer/` contain hook and installation support.
+
+Prefer creating or reusing subpackages for related modules instead of adding
+many floating files to a package. Two to four directly owned files can make
+sense when the boundary is clear, but this is a guideline rather than a hard
+limit. Empty placeholder packages are not kept; see
+`docs/ARCHITECTURE.md` for the full package-ownership guidance.
 
 The `src/` layout is deliberate: code run from the repository root reaches the
 installed copy, so a broken editable install is caught rather than masked.
