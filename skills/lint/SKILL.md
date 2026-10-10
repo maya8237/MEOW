@@ -16,7 +16,8 @@ your work and racing your edits.
 ## Native mode
 
 1. The project needs `.meow/config.toml` with at least one `[[lint]]` entry;
-   otherwise tell the user and stop (point at GUIDE.md).
+otherwise tell the user and stop (point at `docs/INTEGRATIONS.md` for the
+`[[lint]]` schema, or invoke `/meow:onboard` to configure it).
 2. Run `meow native prepare --no-worktree --allow-dirty --work-dir "<project-path>"`
    for `max_rounds` and `docs_dir`, then
    `meow native round <docs_dir>/lint-fix.md --reset`.

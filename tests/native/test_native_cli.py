@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from meow.cli import cli
 from meow.native import native
-from tests.test_native import TOML, git, make_repo
+from tests.native.test_native import TOML, git, make_repo
 
 
 def run_native(*argv: str) -> tuple[int, str, str]:

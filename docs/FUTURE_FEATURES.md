@@ -1,10 +1,17 @@
 # Future features
 
-## Run events and hooks
+## Versioned run events and notifications
 
 **Status:** Deferred. Do not implement as part of the current feature work.
 
-MEOW could publish a small, versioned set of events at meaningful run boundaries: run started, plan accepted, phase started or completed, verification failed, run paused, and delivery completed. Each event would identify the run, phase, time, and path to supporting evidence. Checkpoints and `meow status` should reflect the same transitions.
+MEOW could publish a small, versioned set of events at meaningful run
+boundaries: run started, plan accepted, phase started or completed,
+verification failed, run paused, and delivery completed. Each event would
+identify the run, phase, time, and path to supporting evidence. Checkpoints and
+`meow status` should reflect the same transitions.
+
+This is separate from the shipped Claude Code host hooks, which are optional
+editor integrations installed and removed with `meow hooks`.
 
 Projects could configure optional handlers for uses such as CI status or notifications. Reporting handlers should not change a verified run's result when they fail. A handler explicitly configured as a required gate may block completion, and its failure should be recorded. Handlers need timeouts and declared permissions. In `--unattended` mode, they must never prompt for input; failures must leave a clear checkpoint and recovery path.
 
