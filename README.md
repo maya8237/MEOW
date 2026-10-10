@@ -33,13 +33,13 @@ installer uses the newest available system Python 3.12+ and installs MEOW with
 Windows PowerShell (default clone parent: `C:/Projects`):
 
 ```powershell
-irm https://raw.githubusercontent.com/maya8237/MEOW/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
 ```
 
 Linux/macOS (default clone parent: your home directory):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 ```
 
 The installer adds the checkout to `env.CLAUDE_CODE_PLUGIN_DIRS` in your

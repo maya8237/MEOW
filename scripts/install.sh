@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # Streamable MEOW installer. Run with:
-# curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/install.sh | sh
+# curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 
 set -eu
 

@@ -5,8 +5,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_bootstrap_scripts_use_ssh_clone_and_installed_runtime():
-    powershell = (ROOT / "install.ps1").read_text(encoding="utf-8")
-    posix = (ROOT / "install.sh").read_text(encoding="utf-8")
+    powershell = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
+    posix = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
 
     for script in (powershell, posix):
         assert "git@github.com:maya8237/MEOW.git" in script
@@ -24,7 +24,7 @@ def test_posix_bootstrap_passes_shell_syntax():
         return
 
     result = subprocess.run(
-        [str(bash), "-n", str(ROOT / "install.sh")],
+        [str(bash), "-n", str(ROOT / "scripts" / "install.sh")],
         capture_output=True,
         text=True,
         check=False,
@@ -36,11 +36,12 @@ def test_posix_bootstrap_passes_shell_syntax():
 def test_readme_starts_with_streamed_install_commands():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     powershell_command = (
-        "irm https://raw.githubusercontent.com/maya8237/MEOW/main/install.ps1 | iex"
+        "irm https://raw.githubusercontent.com/"
+        "maya8237/MEOW/main/scripts/install.ps1 | iex"
     )
     posix_command = (
         "curl -fsSL https://raw.githubusercontent.com/"
-        "maya8237/MEOW/main/install.sh | sh"
+        "maya8237/MEOW/main/scripts/install.sh | sh"
     )
 
     assert powershell_command in text
@@ -57,6 +58,6 @@ def test_readme_starts_with_streamed_install_commands():
 
 
 def test_powershell_trims_destination_separators_as_characters():
-    text = (ROOT / "install.ps1").read_text(encoding="utf-8")
+    text = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
 
     assert "TrimEnd([char[]]@(" in text
