@@ -359,12 +359,17 @@ async def _run_browser(active_dir: Path, tester: dict) -> BrowserEvidence | None
     )
 
 
-def _reachable(url: str) -> bool:
+def _probe(url: str) -> str | None:
+    """None when `url` answers; otherwise why it did not."""
     try:
         with urllib.request.urlopen(url, timeout=0.25):
-            return True
-    except (OSError, urllib.error.URLError, ValueError):
-        return False
+            return None
+    except (OSError, urllib.error.URLError, ValueError) as exc:
+        return f"{type(exc).__name__}: {exc}"
+
+
+def _reachable(url: str) -> bool:
+    return _probe(url) is None
 
 
 async def _start_server(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches]
@@ -412,6 +417,7 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
             server.command, cwd, f"could not own process tree: {exc}"
         ) from exc
     deadline = asyncio.get_running_loop().time() + server.startup_timeout
+    last_error = "never probed"
     try:
         while asyncio.get_running_loop().time() < deadline:
             if process.returncode is not None:
@@ -421,13 +427,15 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
                     f"server exited with code {process.returncode} before "
                     f"{server.ready_url} became ready",
                 )
-            if await asyncio.to_thread(_reachable, server.ready_url):
+            last_error = await asyncio.to_thread(_probe, server.ready_url)
+            if last_error is None:
                 return owned
             await asyncio.sleep(0.1)
         raise VerificationSetupError(
             server.command,
             cwd,
-            f"timed out after {server.startup_timeout}s waiting for {server.ready_url}",
+            f"timed out after {server.startup_timeout}s waiting for "
+            f"{server.ready_url} (last probe: {last_error})",
         )
     except BaseException:
         await _terminate(owned)
