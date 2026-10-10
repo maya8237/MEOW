@@ -41,14 +41,10 @@ from meow.native.native_prepare import (
 )
 from meow.native.native_prompt import PROMPT_ROLES, role_prompt
 from meow.native.native_state import checkpoint, finalize, round_state
-from meow.project.config import (
-    config_paths,
-    config_root,
-    load_config,
-    resolve_command_cwd,
-    split_command,
-    unresolved_environment_references,
-)
+from meow.project.command_policy import split_command
+from meow.project.config import config_paths, config_root, load_config
+from meow.project.config_env import unresolved_environment_references
+from meow.project.config_models import resolve_command_cwd
 from meow.project.onboarding import boundary_ok, feature_gaps, is_onboarded
 from meow.project.shaping import (
     assess_request,
@@ -214,7 +210,6 @@ def _verify_tester(config: dict, active_dir: Path) -> dict:
 
     architecture_paths = [
         active_dir / "docs" / "ARCHITECTURE.md",
-        active_dir / "ARCHITECTURE.md",
         *(active_dir / path for path in tester["architecture_files"]),
     ]
     unique_paths = list(dict.fromkeys(path.resolve() for path in architecture_paths))

@@ -11,7 +11,7 @@ from meow.infrastructure.test_runner import (
     _argv,
     prepared_test_stage,
 )
-from meow.project.config import DevServerCommand, VerificationCommand
+from meow.project.config_models import DevServerCommand, VerificationCommand
 
 
 def _port() -> int:

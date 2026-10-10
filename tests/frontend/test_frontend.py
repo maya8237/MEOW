@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 from meow.frontend import browser_capability
-from meow.project.config import DevServerCommand
+from meow.project.config_models import DevServerCommand
 
 
 def test_browser_capability_requires_start_and_provider():

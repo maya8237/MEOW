@@ -36,8 +36,7 @@ tester = "haiku"
 
 [tester]
 test_dirs = ["apps/web/tests", "services/api/tests"]
-# `architecture_files` is optional; default lookup is docs/ARCHITECTURE.md,
-# then ARCHITECTURE.md.
+# `architecture_files` is optional; the default is docs/ARCHITECTURE.md.
 architecture_files = ["docs/architecture/backend.md"]
 
 [[tester.tests]]

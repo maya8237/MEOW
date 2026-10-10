@@ -8,7 +8,7 @@ from meow.infrastructure.lint import (
     check_lint_commands,
     make_lint_hook,
 )
-from meow.project.config import LintCommand
+from meow.project.config_models import LintCommand
 
 
 def _write_script(directory: Path, name: str, body: str) -> Path:
