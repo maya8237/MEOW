@@ -134,6 +134,12 @@ function Select-Python {
     throw "MEOW requires system Python 3.12 or newer. Install it and run this installer again."
 }
 
+function Format-PythonCommand {
+    param([Parameter(Mandatory = $true)][hashtable]$Python)
+
+    return ((@($Python.Executable) + @($Python.Arguments)) -join " ")
+}
+
 function Find-ExistingMeowCheckout {
     $candidates = @(
         @{ Executable = "py"; Arguments = @("-3") },
@@ -204,7 +210,13 @@ function Stop-ForExistingMeow {
     if ($null -eq $existingSetup) {
         Write-Warning "Could not locate the existing MEOW checkout; plugin registration and project onboarding were skipped."
         Write-Host "To update MEOW manually, run:"
-        Write-Host "  py -3 -m pip install --upgrade git+https://github.com/maya8237/MEOW.git"
+        try {
+            $manualPython = Select-Python
+            $manualPythonCommand = Format-PythonCommand -Python $manualPython
+        } catch {
+            $manualPythonCommand = "<python>"
+        }
+        Write-Host "  $manualPythonCommand -m pip install --upgrade git+https://github.com/maya8237/MEOW.git"
         return $true
     }
 
