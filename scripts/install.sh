@@ -278,7 +278,7 @@ use_existing_meow() {
     case $comparison in
         older)
             printf '%s\n' \
-                "Warning: installed MEOW $current_version is older than origin/main $origin_version; using the existing installation without reinstalling it." \
+                "Warning: installed MEOW $current_version is older than origin/main $origin_version." \
                 >&2
             ;;
         equal)
@@ -289,7 +289,7 @@ use_existing_meow() {
             ;;
         *)
             printf '%s\n' \
-                "MEOW is already installed at $existing_location, but its version could not be compared with origin/main; using the existing installation without reinstalling it." \
+                "MEOW is already installed at $existing_location, but its version could not be compared with origin/main." \
                 >&2
             ;;
     esac
