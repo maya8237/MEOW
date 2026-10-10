@@ -11,6 +11,8 @@ rather than creating top-level compatibility modules.
   status/recovery, queues, hooks, IPython, and hidden maintenance commands.
 - `execution/`: sprint orchestration, delivery, plan approval, queue/run
   policy, and durable run-state coordination.
+- `evaluation/`: read-only evaluation reports over durable run journals.
+- `frontend/`: frontend and browser-capability discovery helpers.
 - `infrastructure/`: shared operational services such as lint/test execution,
   checks, logging, cancellation, background workers, usage accounting, and
   worktree lifecycle/setup.
@@ -23,14 +25,11 @@ rather than creating top-level compatibility modules.
 - `hooks/`: optional Claude Code host-hook handlers and installation support.
 - `installer/`: installation and plugin/package setup helpers.
 - `tasks/`: task models, execution, scheduling, and integration runners.
-- `frontend.py`: read-only frontend and browser-capability discovery helpers.
-- `evaluation.py`: run-quality evaluation for maintainers.
 
-`review/` is currently a namespace marker; the active review command is in
-`cli/review_cli.py`, with review roles in `agents/` and provider-specific
-flows in `integrations/`. `__main__.py` exposes the installed console entry
-point. Tests remain under the repository's `tests/` directory and are not
-copied into the runtime package.
+The active review command is in `cli/review_cli.py`, with review roles in
+`agents/` and provider-specific flows in `integrations/`. `__main__.py`
+exposes the installed console entry point. Tests remain under the repository's
+`tests/` directory and are not copied into the runtime package.
 
 The `src/` layout is deliberate: running from the repository root reaches the
 installed copy, so a broken editable install is caught rather than masked.
