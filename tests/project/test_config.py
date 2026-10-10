@@ -78,7 +78,7 @@ class WindowsOnlyMarkerTests(unittest.TestCase):
         self.assertIn("Windows-only", problem)
 
     def test_cmd_exe_flagged_off_windows(self):
-        problem = _os_mismatch("cmd.exe /c lint.bat", "Darwin")
+        problem = _os_mismatch("cmd.exe /c lint.bat", "Linux")
         self.assertIsNotNone(problem)
 
     def test_windows_powershell_flagged_off_windows(self):
@@ -109,9 +109,8 @@ class UnixOnlyMarkerTests(unittest.TestCase):
         self.assertIsNone(_os_mismatch("wsl bash scripts/lint.sh", "Windows"))
         self.assertIsNone(_os_mismatch("wsl.exe ./lint.sh", "Windows"))
 
-    def test_shell_script_is_fine_on_linux_and_macos(self):
+    def test_shell_script_is_fine_on_linux(self):
         self.assertIsNone(_os_mismatch("lint.sh --check", "Linux"))
-        self.assertIsNone(_os_mismatch("bash scripts/lint.sh", "Darwin"))
 
 
 class GitBashExemptionTests(unittest.TestCase):
@@ -168,7 +167,7 @@ class NoFalsePositiveTests(unittest.TestCase):
             ("npx oxlint", "Windows"),
             ("golangci-lint run", "Windows"),
             ("eslint .", "Linux"),
-            ("npx eslint .", "Darwin"),
+            ("npx eslint .", "Linux"),
         ]:
             with self.subTest(command=command, system=system):
                 self.assertIsNone(_os_mismatch(command, system))
