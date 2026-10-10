@@ -48,6 +48,7 @@ from meow.project.config import (
     split_command,
     unresolved_environment_references,
 )
+from meow.project.onboarding import boundary_ok, feature_gaps, is_onboarded
 from meow.project.shaping import (
     assess_request,
     load_shape_artifact,
@@ -67,6 +68,7 @@ __all__ = [
     "latest_plan",
     "latest_review",
     "lint",
+    "onboard_status",
     "prepare",
     "push",
     "role_prompt",
@@ -97,6 +99,16 @@ def knowledge_create(
         "result": create_selected_documents(
             root, findings, writer=EvidenceDocumentWriter(), overwrite=overwrite
         ).__dict__,
+    }
+
+
+def onboard_status(root: Path) -> dict:
+    """Deterministic facts for the `/onboard` add-on check."""
+    return {
+        "onboarded": is_onboarded(root),
+        "config_exists": (root / ".meow" / "config.toml").is_file(),
+        "boundary_ok": boundary_ok(root),
+        "gaps": feature_gaps(root),
     }
 
 

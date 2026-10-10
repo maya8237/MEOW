@@ -8,8 +8,12 @@ the `/onboard` skill offers those. Only the filesystem and `git` are touched.
 
 import json
 import subprocess
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+from meow.hooks.claude import inspect_claude_hooks
+from meow.project.config import config_paths
 
 BOUNDARY = (".meow/*", "!.meow/", "!.meow/config.toml")
 
@@ -199,3 +203,97 @@ def onboard_project(root: Path, *, write_config: bool = True) -> OnboardingRepor
     return OnboardingReport(
         tuple(files), lint[0] if lint else None, SKIPPED_FEATURES, error
     )
+
+
+_GUIDE = "docs/INTEGRATIONS.md"
+_GAPS: dict[str, tuple[tuple[str, ...], str]] = {
+    "jira": (
+        ("jira",),
+        f"Configure [jira] and [jira.mcp] ({_GUIDE}), run `meow native verify`, "
+        "then `meow run --jira ISSUE-KEY`.",
+    ),
+    "gitlab": (
+        ("gitlab",),
+        f"Configure [gitlab.mcp] ({_GUIDE}), then `meow review --gitlab <url>`.",
+    ),
+    "github": (
+        ("github",),
+        f"Configure [github.mcp] ({_GUIDE}), then `meow review --github <url>`.",
+    ),
+    "tester_tests": (
+        ("tester", "tests"),
+        "Add [[tester.tests]] commands, verify with `meow native verify`, "
+        "then run with `--test`.",
+    ),
+    "tester_mcp": (
+        ("tester", "mcp"),
+        "Add [[tester.mcp]] launchers for the tester role, then `meow native verify`.",
+    ),
+    "tester_browser": (
+        ("tester", "browser"),
+        f"Add [tester.browser] ({_GUIDE}) for browser-driven checks.",
+    ),
+    "build": (("build",), "Add [[build]] commands that must pass before delivery."),
+    "worktree_setup": (
+        ("worktree_setup",),
+        "Add [worktree_setup] copy/commands, verified in a disposable worktree.",
+    ),
+    "permissions": (
+        ("permissions",),
+        "Add [permissions] rules to constrain what roles may run.",
+    ),
+    "agent_skills": (
+        ("agent_skills",),
+        "Add [agent_skills] to give roles extra installed skills.",
+    ),
+}
+
+
+def _nonempty(value: object) -> bool:
+    if isinstance(value, dict):
+        return any(_nonempty(item) for item in value.values())
+    return bool(value)
+
+
+def _present(tables: list[dict], path: tuple[str, ...]) -> bool:
+    for table in tables:
+        value: object = table
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        if _nonempty(value):
+            return True
+    return False
+
+
+def _config_tables(root: Path) -> list[dict]:
+    tables = []
+    for path in config_paths(root):
+        try:
+            tables.append(tomllib.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            continue
+    return tables
+
+
+def feature_gaps(root: Path) -> dict[str, dict]:
+    """Report which optional capabilities the project has configured.
+
+    Only key presence is read from config files; values (which may hold
+    credentials) are never copied into the result.
+    """
+    root = Path(root)
+    tables = _config_tables(root)
+    gaps = {
+        key: {"configured": _present(tables, path), "enable": enable}
+        for key, (path, enable) in _GAPS.items()
+    }
+    hooks = inspect_claude_hooks(root)
+    gaps["hooks"] = {
+        "configured": any(v in {"active", "modified"} for v in hooks.values()),
+        "enable": "Review and install the Claude hooks (docs/INTEGRATIONS.md).",
+    }
+    gaps["architecture_doc"] = {
+        "configured": (root / "docs" / "ARCHITECTURE.md").is_file(),
+        "enable": "Run `meow native knowledge-audit`, then create the accepted doc.",
+    }
+    return gaps

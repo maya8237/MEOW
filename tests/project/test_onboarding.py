@@ -11,6 +11,7 @@ from meow.project.onboarding import (
     BOUNDARY,
     boundary_ok,
     detect_lint,
+    feature_gaps,
     is_onboarded,
     onboard_project,
     repair_boundary,
@@ -173,3 +174,60 @@ def test_report_lists_skipped_optional_features(repo):
         "Claude hooks",
         "Worktree setup",
     } <= skipped
+
+
+def test_feature_gaps_reports_configured_and_missing(repo):
+    _write_config(
+        repo,
+        '[jira]\nproject_key = "PROJ"\n\n[[tester.tests]]\ncommand = "pytest"\n',
+    )
+    gaps = feature_gaps(repo)
+    assert gaps["jira"]["configured"] is True
+    assert gaps["tester_tests"]["configured"] is True
+    assert gaps["github"]["configured"] is False
+    assert all(item["enable"] for item in gaps.values())
+    assert set(gaps) == {
+        "jira",
+        "gitlab",
+        "github",
+        "tester_tests",
+        "tester_mcp",
+        "tester_browser",
+        "build",
+        "worktree_setup",
+        "permissions",
+        "agent_skills",
+        "hooks",
+        "architecture_doc",
+    }
+
+
+def test_feature_gaps_never_includes_secret_values(repo):
+    _write_config(
+        repo,
+        '[github.mcp]\ncommand = "npx"\n[github.mcp.env]\n'
+        'GITHUB_PERSONAL_ACCESS_TOKEN = "sekret"\n',
+    )
+    gaps = feature_gaps(repo)
+    assert gaps["github"]["configured"] is True
+    assert "sekret" not in json.dumps(gaps)
+
+
+def test_feature_gaps_counts_local_config(repo):
+    (repo / ".meow").mkdir()
+    (repo / ".meow" / "config.local.toml").write_text(
+        '[agent_skills]\ndefault = ["x"]\n', encoding="utf-8"
+    )
+    assert feature_gaps(repo)["agent_skills"]["configured"] is True
+
+
+def test_feature_gaps_architecture_doc(repo):
+    assert feature_gaps(repo)["architecture_doc"]["configured"] is False
+    (repo / "docs").mkdir()
+    (repo / "docs" / "ARCHITECTURE.md").write_text("# A\n", encoding="utf-8")
+    assert feature_gaps(repo)["architecture_doc"]["configured"] is True
+
+
+def test_feature_gaps_tolerates_malformed_config(repo):
+    _write_config(repo, "this is not = = toml")
+    assert feature_gaps(repo)["jira"]["configured"] is False

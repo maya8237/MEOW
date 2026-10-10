@@ -229,6 +229,14 @@ def _add_knowledge(sub) -> None:
     parser.add_argument("--overwrite", action="store_true")
 
 
+def _add_onboard(sub) -> None:
+    parser = sub.add_parser(
+        "onboard-status",
+        help="Report onboarding state and unconfigured add-on features.",
+    )
+    _add_dirs(parser)
+
+
 def _add_hook(sub) -> None:
     parser = sub.add_parser("hook", help="Run a Claude Code JSON hook handler.")
     _add_dirs(parser)
@@ -271,6 +279,7 @@ def add_native_parser(
     _add_prompt(sub)
     _add_push(sub)
     _add_knowledge(sub)
+    _add_onboard(sub)
     _add_hook(sub)
 
 
@@ -362,6 +371,7 @@ _HANDLERS = {
     "knowledge-create": lambda args, wd, active: native.knowledge_create(
         active, args.finding, overwrite=args.overwrite
     ),
+    "onboard-status": lambda args, wd, active: native.onboard_status(active),
     "shape-assess": lambda args, wd, active: native.shape_assess(args.request),
     "shape-create": lambda args, wd, active: native.shape_create(
         _resolve(args.path, active), json.loads(args.json)
