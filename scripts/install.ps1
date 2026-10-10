@@ -87,7 +87,7 @@ function Find-ExistingMeowCheckout {
         @{ Executable = "python3"; Arguments = @() },
         @{ Executable = "python"; Arguments = @() }
     )
-    $query = 'from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); print(next((str(root) for root in (package.parents[2], package.parents[3]) if (root/".git").exists() and (root/"skills").is_dir()), ""))'
+    $query = 'from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); print(next((str(root) for root in (package.parents[2], package.parents[3]) if (root/''.git'').exists() and (root/''skills'').is_dir()), ''''))'
 
     foreach ($candidate in $candidates) {
         if (-not (Get-Command $candidate.Executable -ErrorAction SilentlyContinue)) {
