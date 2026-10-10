@@ -206,8 +206,19 @@ update_existing_checkout() {
     printf '%s\n' "Updating MEOW from existing checkout: $existing_checkout"
     command -v git >/dev/null 2>&1 \
         || die 'Git is required to update the existing MEOW checkout.'
-    run_with_spinner 'Pulling MEOW source' git -C "$existing_checkout" pull --ff-only origin main \
-        || die 'MEOW source update failed.'
+    if [ "${1:-pull}" = reset ]; then
+        # Moving to an older origin/main cannot fast-forward, so reset to it.
+        [ -z "$(git -C "$existing_checkout" status --porcelain 2>/dev/null)" ] \
+            || die 'The MEOW checkout has uncommitted changes; commit or stash them, then run the installer again.'
+        run_with_spinner 'Fetching origin/main' git -C "$existing_checkout" fetch origin main \
+            || die 'MEOW source update failed.'
+        run_with_spinner 'Resetting MEOW source to origin/main' \
+            git -C "$existing_checkout" reset --hard FETCH_HEAD \
+            || die 'MEOW source update failed.'
+    else
+        run_with_spinner 'Pulling MEOW source' git -C "$existing_checkout" pull --ff-only origin main \
+            || die 'MEOW source update failed.'
+    fi
     reinstall_existing_checkout
 
     updated_source=$(checkout_version "$existing_checkout")
@@ -274,7 +285,7 @@ use_existing_meow() {
             printf '%s\n' "MEOW $current_version is already up to date :)"
             ;;
         newer)
-            printf '%s\n' "MEOW $current_version is newer than origin/main $origin_version; keeping your version."
+            printf '%s\n' "MEOW $current_version is newer than origin/main $origin_version."
             ;;
         *)
             printf '%s\n' \
@@ -303,6 +314,16 @@ use_existing_meow() {
                 printf '%s\n' 'MEOW was not updated. To update it manually, run:'
                 printf '  git -C "%s" pull --ff-only origin main && %s -m pip install -e "%s"\n' \
                     "$existing_checkout" "$existing_python" "$existing_checkout"
+                ;;
+        esac
+    elif [ "$comparison" = newer ]; then
+        ask "Switch to the origin/main version ($origin_version), discarding local commits? [y/N]: "
+        case $reply in
+            y|Y|yes|YES)
+                update_existing_checkout reset
+                ;;
+            *)
+                printf '%s\n' "Keeping MEOW $current_version."
                 ;;
         esac
     elif [ "$package_out_of_sync" -eq 1 ]; then

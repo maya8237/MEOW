@@ -278,17 +278,38 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
     # Pulls the checkout, reinstalls it, then checks the result instead of trusting
     # the commands' exit codes alone.
     function Update-ExistingCheckout {
-        param([Parameter(Mandatory = $true)][hashtable]$Setup, [AllowNull()][string]$OriginVersion)
+        param([Parameter(Mandatory = $true)][hashtable]$Setup, [AllowNull()][string]$OriginVersion, [switch]$Reset)
 
         Write-Host "Updating MEOW from existing checkout: $($Setup.Checkout)"
         if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
             throw "Git is required to update the existing MEOW checkout."
         }
-        Invoke-WithSpinner -Message "Pulling MEOW source" -ScriptBlock {
-            $setup = $using:Setup
-            & git -C $setup.Checkout pull --ff-only origin main
-            if ($LASTEXITCODE -ne 0) {
-                throw "MEOW source update failed."
+        if ($Reset) {
+            # Moving to an older origin/main cannot fast-forward, so reset to it.
+            if (& git -C $Setup.Checkout status --porcelain) {
+                throw "The MEOW checkout has uncommitted changes; commit or stash them, then run the installer again."
+            }
+            Invoke-WithSpinner -Message "Fetching origin/main" -ScriptBlock {
+                $setup = $using:Setup
+                & git -C $setup.Checkout fetch origin main
+                if ($LASTEXITCODE -ne 0) {
+                    throw "MEOW source update failed."
+                }
+            }
+            Invoke-WithSpinner -Message "Resetting MEOW source to origin/main" -ScriptBlock {
+                $setup = $using:Setup
+                & git -C $setup.Checkout reset --hard FETCH_HEAD
+                if ($LASTEXITCODE -ne 0) {
+                    throw "MEOW source update failed."
+                }
+            }
+        } else {
+            Invoke-WithSpinner -Message "Pulling MEOW source" -ScriptBlock {
+                $setup = $using:Setup
+                & git -C $setup.Checkout pull --ff-only origin main
+                if ($LASTEXITCODE -ne 0) {
+                    throw "MEOW source update failed."
+                }
             }
         }
         Install-ExistingCheckout -Setup $Setup
@@ -353,7 +374,7 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         } elseif ($comparison -eq "equal") {
             Write-Host "MEOW $currentVersion is already up to date :)" -ForegroundColor Green
         } elseif ($comparison -eq "newer") {
-            Write-Host "MEOW $currentVersion is newer than origin/main $originVersion; keeping your version."
+            Write-Host "MEOW $currentVersion is newer than origin/main $originVersion."
         } else {
             Write-Warning "MEOW is already installed at $existingPath, but its version could not be compared with origin/main. Using the existing installation without reinstalling it."
         }
@@ -387,6 +408,17 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
             } else {
                 Write-Host "MEOW was not updated. To update it manually, run:"
                 Write-Host "  $updateCommand"
+            }
+        } elseif ($comparison -eq "newer") {
+            try {
+                $switchAnswer = Read-Host "Switch to the origin/main version ($originVersion), discarding local commits? [y/N]"
+            } catch {
+                $switchAnswer = ""
+            }
+            if ($switchAnswer -match "^(y|yes)$") {
+                Update-ExistingCheckout -Setup $existingSetup -OriginVersion $originVersion -Reset
+            } else {
+                Write-Host "Keeping MEOW $currentVersion."
             }
         } elseif ($packageOutOfSync) {
             try {
