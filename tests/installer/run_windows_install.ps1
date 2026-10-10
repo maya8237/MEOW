@@ -10,9 +10,6 @@ if (-not (Test-Path -LiteralPath (Join-Path $repoDir ".git"))) {
 if (-not (Test-Path -LiteralPath (Join-Path $repoDir "skills"))) {
     throw "The CI checkout is not a MEOW repository."
 }
-if (-not (Get-Command meow -ErrorAction SilentlyContinue)) {
-    throw "The editable MEOW install is not on PATH."
-}
 
 $powershellCommand = Get-Command pwsh -ErrorAction SilentlyContinue
 if ($null -eq $powershellCommand) {
@@ -36,7 +33,10 @@ try {
     $startInfo = [Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $powershellCommand.Path
     $escapedScriptPath = $scriptPath.Replace("'", "''")
-    $streamedScript = "[Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes('$escapedScriptPath')) | Invoke-Expression"
+    $streamedScript = @(
+        "[Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes('$escapedScriptPath')) | Invoke-Expression"
+        "[Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes('$escapedScriptPath')) | Invoke-Expression"
+    ) -join [Environment]::NewLine
     $startInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"$streamedScript`""
     $startInfo.WorkingDirectory = $repoDir
     $startInfo.UseShellExecute = $false
@@ -47,7 +47,7 @@ try {
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     [void]$process.Start()
-    $process.StandardInput.Write("`n`n")
+    $process.StandardInput.Write("`n`n`n`n")
     $process.StandardInput.Close()
 
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
@@ -59,14 +59,14 @@ try {
     if ($process.ExitCode -ne 0) {
         throw "The Windows installer failed with exit code $($process.ExitCode)."
     }
-    if ($output -notmatch "Done!") {
-        throw "The installer did not report success."
+    if ([regex]::Matches($output, "Done!").Count -lt 2) {
+        throw "The installer did not report success twice."
     }
     if ($output -match "Cloning MEOW") {
         throw "The installer attempted to clone despite the CI checkout."
     }
-    if ($output -notmatch "existing MEOW checkout") {
-        throw "The installer did not use the CI checkout."
+    if ([regex]::Matches($output, "existing MEOW checkout").Count -lt 2) {
+        throw "The installer did not use the CI checkout twice."
     }
 }
 finally {

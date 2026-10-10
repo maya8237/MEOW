@@ -149,19 +149,45 @@
         return $null
     }
 
-    # $true when Installed is older than Latest, $false when not, $null when the
-    # versions cannot be compared.
-    function Test-VersionOlder {
+    # How Current compares with Latest: older, equal, newer, or unknown.
+    function Compare-MeowVersion {
         param(
-            [Parameter(Mandatory = $true)][string]$Installed,
+            [Parameter(Mandatory = $true)][string]$Current,
             [Parameter(Mandatory = $true)][string]$Latest
         )
 
         try {
-            return ([Version]::Parse($Installed) -lt [Version]::Parse($Latest))
+            $currentVersion = [Version]::Parse($Current)
+            $latestVersion = [Version]::Parse($Latest)
         } catch {
+            return "unknown"
+        }
+        if ($currentVersion -lt $latestVersion) { return "older" }
+        if ($currentVersion -gt $latestVersion) { return "newer" }
+        return "equal"
+    }
+
+    # The version declared in a checkout's pyproject.toml, or $null.
+    function Get-CheckoutVersion {
+        param([Parameter(Mandatory = $true)][string]$Checkout)
+
+        $pyproject = Join-Path $Checkout "pyproject.toml"
+        if (-not (Test-Path -LiteralPath $pyproject)) {
             return $null
         }
+        $content = Get-Content -LiteralPath $pyproject -Raw
+        if ($content -match '(?m)^\s*version\s*=\s*["\x27](?<version>[^"\x27]+)["\x27]') {
+            return $Matches.version
+        }
+        return $null
+    }
+
+    # The version of the installed MEOW package (its pip metadata), or $null.
+    function Get-PackageVersion {
+        param([Parameter(Mandatory = $true)][hashtable]$Python)
+
+        $output = & $Python.Executable @($Python.Arguments) -c "import importlib.metadata as m; print(m.version('meow'))" 2>$null
+        return (Get-VersionFromText (($output | Select-Object -First 1) -as [string]))
     }
 
     function Test-Python312 {
@@ -236,8 +262,23 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         return $null
     }
 
-    function Update-ExistingCheckout {
+    # Reinstalls the checkout in editable mode so the package matches its source.
+    function Install-ExistingCheckout {
         param([Parameter(Mandatory = $true)][hashtable]$Setup)
+
+        Invoke-WithSpinner -Message "Installing editable MEOW update" -ScriptBlock {
+            $setup = $using:Setup
+            & $setup.Executable @($setup.Arguments) -m pip install -e $setup.Checkout
+            if ($LASTEXITCODE -ne 0) {
+                throw "Editable MEOW update failed."
+            }
+        }
+    }
+
+    # Pulls the checkout, reinstalls it, then checks the result instead of trusting
+    # the commands' exit codes alone.
+    function Update-ExistingCheckout {
+        param([Parameter(Mandatory = $true)][hashtable]$Setup, [AllowNull()][string]$OriginVersion)
 
         Write-Host "Updating MEOW from existing checkout: $($Setup.Checkout)"
         if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -250,14 +291,18 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
                 throw "MEOW source update failed."
             }
         }
-        Invoke-WithSpinner -Message "Installing editable MEOW update" -ScriptBlock {
-            $setup = $using:Setup
-            & $setup.Executable @($setup.Arguments) -m pip install -e $setup.Checkout
-            if ($LASTEXITCODE -ne 0) {
-                throw "Editable MEOW update failed."
-            }
+        Install-ExistingCheckout -Setup $Setup
+
+        $updatedSource = Get-CheckoutVersion -Checkout $Setup.Checkout
+        $updatedPackage = Get-PackageVersion -Python $Setup
+        $now = if ($updatedSource) { " (now $updatedSource)" } else { "" }
+        Write-Host "MEOW updated successfully$now."
+        if ($OriginVersion -and $updatedSource -and ((Compare-MeowVersion -Current $updatedSource -Latest $OriginVersion) -eq "older")) {
+            Write-Warning "The checkout is still at $updatedSource but origin/main has $OriginVersion; check that 'git -C ""$($Setup.Checkout)"" status' is on main."
         }
-        Write-Host "MEOW updated successfully."
+        if ($updatedSource -and $updatedPackage -and ($updatedSource -ne $updatedPackage)) {
+            Write-Warning "The installed package ($updatedPackage) still differs from the checkout ($updatedSource)."
+        }
     }
 
     # Records which interpreter and checkout the post-install setup should use.
@@ -280,24 +325,37 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         if ($null -ne $existing) {
             $existingPath = if ($existing.Path) { $existing.Path } else { $existing.Name }
             $versionOutput = & $existing.Name --version 2>$null
+            $installedVersion = Get-VersionFromText (($versionOutput | Select-Object -First 1) -as [string])
         } else {
             $existingPath = $existingSetup.Checkout
-            $versionOutput = & $existingSetup.Executable @($existingSetup.Arguments) -c "import importlib.metadata as m; print(m.version('meow'))" 2>$null
+            $installedVersion = Get-PackageVersion -Python $existingSetup
         }
-        $installedVersion = Get-VersionFromText (($versionOutput | Select-Object -First 1) -as [string])
         $originVersion = Get-OriginMainVersion
-        $comparison = if ($installedVersion -and $originVersion) {
-            Test-VersionOlder -Installed $installedVersion -Latest $originVersion
-        } else {
-            $null
+
+        # The checkout's own pyproject.toml is the source of truth for an editable
+        # install; the package metadata can lag behind it after a pull or checkout.
+        $sourceVersion = if ($null -ne $existingSetup) { Get-CheckoutVersion -Checkout $existingSetup.Checkout } else { $null }
+        $currentVersion = if ($sourceVersion) { $sourceVersion } else { $installedVersion }
+
+        $packageOutOfSync = $sourceVersion -and $installedVersion -and ($sourceVersion -ne $installedVersion)
+        if ($packageOutOfSync) {
+            Write-Warning "The installed MEOW package ($installedVersion) does not match the checkout ($sourceVersion)."
         }
 
-        if ($comparison -eq $true) {
-            Write-Warning "Installed MEOW $installedVersion at $existingPath is older than origin/main $originVersion. Using the existing installation without reinstalling it."
-        } elseif ($null -eq $comparison) {
-            Write-Warning "MEOW is already installed at $existingPath, but its version could not be compared with origin/main. Using the existing installation without reinstalling it."
+        $comparison = if ($currentVersion -and $originVersion) {
+            Compare-MeowVersion -Current $currentVersion -Latest $originVersion
         } else {
-            Write-Host "MEOW $installedVersion is already up to date :)" -ForegroundColor Green
+            "unknown"
+        }
+
+        if ($comparison -eq "older") {
+            Write-Warning "Installed MEOW $currentVersion at $existingPath is older than origin/main $originVersion. Using the existing installation without reinstalling it."
+        } elseif ($comparison -eq "equal") {
+            Write-Host "MEOW $currentVersion is already up to date :)" -ForegroundColor Green
+        } elseif ($comparison -eq "newer") {
+            Write-Host "MEOW $currentVersion is newer than origin/main $originVersion; keeping your version."
+        } else {
+            Write-Warning "MEOW is already installed at $existingPath, but its version could not be compared with origin/main. Using the existing installation without reinstalling it."
         }
 
         if ($null -eq $existingSetup) {
@@ -312,7 +370,7 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
             return $true
         }
 
-        if ($comparison -ne $false) {
+        if (($comparison -eq "older") -or ($comparison -eq "unknown")) {
             $updateCommand = (
                 'git -C "' + $existingSetup.Checkout +
                 '" pull --ff-only origin main; if ($?) { ' +
@@ -325,10 +383,23 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
                 $updateAnswer = ""
             }
             if ($updateAnswer -match "^(y|yes)$") {
-                Update-ExistingCheckout -Setup $existingSetup
+                Update-ExistingCheckout -Setup $existingSetup -OriginVersion $originVersion
             } else {
                 Write-Host "MEOW was not updated. To update it manually, run:"
                 Write-Host "  $updateCommand"
+            }
+        } elseif ($packageOutOfSync) {
+            try {
+                $reinstallAnswer = Read-Host "Reinstall MEOW from the checkout now? [y/N]"
+            } catch {
+                $reinstallAnswer = ""
+            }
+            if ($reinstallAnswer -match "^(y|yes)$") {
+                Install-ExistingCheckout -Setup $existingSetup
+                Write-Host "MEOW reinstalled."
+            } else {
+                Write-Host "MEOW was not reinstalled. To fix it manually, run:"
+                Write-Host ("  " + (Format-PythonCommand -Python $existingSetup) + ' -m pip install -e "' + $existingSetup.Checkout + '"')
             }
         }
 
