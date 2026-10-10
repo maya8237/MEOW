@@ -272,31 +272,35 @@ def _project_patterns(ask_path: Callable[[str], str], output: Callable[[str], No
         yield raw
 
 
-def _onboard_one(project: Path, output: Callable[[str], None]) -> None:
+def _onboard_one(project: Path, output: Callable[[str], None]) -> bool:
+    """Onboard one project; True when it was set up (not skipped or failed)."""
     try:
         report = onboard_project(project)
     except (OSError, ValueError, RuntimeError) as exc:
         output(f"{project}: onboarding failed ({exc})")
-        return
+        return False
     _print_report(project, report, output)
+    return not report.error
 
 
 def _onboard_projects(
     ask: Callable[[str], str],
     output: Callable[[str], None],
     ask_path: Callable[[str], str] | None = None,
-) -> bool:
-    """Onboard the projects the user enters; False when they chose not to."""
+    onboarded: list[Path] | None = None,
+) -> None:
+    """Onboard the projects the user enters, recording each success in ``onboarded``."""
+    done = onboarded if onboarded is not None else []
     if not _wants_projects_now(ask, output):
-        return False
-    onboarded: set[Path] = set()
+        return
+    seen: set[Path] = set()
     for raw in _project_patterns(ask_path or ask, output):
         for project in expand_project_pattern(raw, ask=ask, output=output):
-            if project in onboarded:
+            if project in seen:
                 continue
-            onboarded.add(project)
-            _onboard_one(project, output)
-    return True
+            seen.add(project)
+            if _onboard_one(project, output):
+                done.append(project)
 
 
 def _print_next_steps(output: Callable[[str], None]) -> None:
@@ -312,12 +316,26 @@ def _print_next_steps(output: Callable[[str], None]) -> None:
     output(NEWLINE.join(lines))
 
 
+def _cancelled_message(onboarded: int) -> str:
+    if onboarded == 0:
+        projects = "no projects were set up"
+    else:
+        plural = "" if onboarded == 1 else "s"
+        projects = f"{onboarded} project{plural} set up before you stopped"
+    return (
+        "Setup stopped. MEOW is installed and registered with Claude Code; "
+        f"{projects}. "
+        "Run `claude /meow:onboard` in a project to set up the rest."
+    )
+
+
 def _setup_projects() -> int:
     """Run the project prompts; Ctrl+C cancels the whole installer."""
+    onboarded: list[Path] = []
     try:
-        _onboard_projects(input, print, path_prompt())
+        _onboard_projects(input, print, path_prompt(), onboarded)
     except KeyboardInterrupt:
-        print(NEWLINE + "Cancelled.")
+        print(NEWLINE + _cancelled_message(len(onboarded)))
         return EXIT_INTERRUPTED
     return 0
 
