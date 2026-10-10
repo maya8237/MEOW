@@ -370,13 +370,13 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         }
 
         if ($comparison -eq "older") {
-            Write-Warning "Installed MEOW $currentVersion at $existingPath is older than origin/main $originVersion. Using the existing installation without reinstalling it."
+            Write-Warning "Installed MEOW $currentVersion at $existingPath is older than origin/main $originVersion."
         } elseif ($comparison -eq "equal") {
             Write-Host "MEOW $currentVersion is already up to date :)" -ForegroundColor Green
         } elseif ($comparison -eq "newer") {
             Write-Host "MEOW $currentVersion is newer than origin/main $originVersion."
         } else {
-            Write-Warning "MEOW is already installed at $existingPath, but its version could not be compared with origin/main. Using the existing installation without reinstalling it."
+            Write-Warning "MEOW is already installed at $existingPath, but its version could not be compared with origin/main."
         }
 
         if ($null -eq $existingSetup) {
