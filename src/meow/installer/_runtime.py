@@ -10,6 +10,7 @@ import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from meow.installer._prompt import path_prompt
 from meow.project.onboarding import onboard_project
 
 PLUGIN_DIRS_ENV = "CLAUDE_CODE_PLUGIN_DIRS"
@@ -201,8 +202,6 @@ def _print_report(path: Path, report, output: Callable[[str], None]) -> None:
         return
     changed = ", ".join(report.files) or "no files changed"
     output(f"{path}: onboarded ({changed})")
-    if report.skipped:
-        output("  Optional features not enabled: " + ", ".join(report.skipped))
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -227,15 +226,23 @@ def _register_plugin(repo_dir: Path, output: Callable[[str], None]) -> bool:
     return True
 
 
-def _project_patterns(ask: Callable[[str], str], output: Callable[[str], None]):
+def _example_path(leaf: str) -> str:
+    root = "C:\\Projects" if os.name == "nt" else "/home/user/projects"
+    return root + os.sep + leaf
+
+
+def _project_patterns(ask_path: Callable[[str], str], output: Callable[[str], None]):
     output(
-        "Enter project directories to onboard one at a time. Press Enter on a "
-        "blank line when finished. Use `/path/*` for immediate folders only; "
-        "`/path/**` is recursive and requires confirmation."
+        "Add the projects MEOW should set up, one at a time "
+        f"(Tab autocompletes paths; `{_example_path('*')}` adds every git "
+        "repository directly inside it, top level only):"
     )
     while True:
         try:
-            raw = ask("Project directory or glob (blank to finish): ").strip()
+            raw = ask_path(
+                f"Project directory path, e.g. {_example_path('MyApp')} "
+                "(Enter on an empty line to finish): "
+            ).strip()
         except EOFError:
             output("")
             return
@@ -253,9 +260,13 @@ def _onboard_one(project: Path, output: Callable[[str], None]) -> None:
     _print_report(project, report, output)
 
 
-def _onboard_projects(ask: Callable[[str], str], output: Callable[[str], None]) -> None:
+def _onboard_projects(
+    ask: Callable[[str], str],
+    output: Callable[[str], None],
+    ask_path: Callable[[str], str] | None = None,
+) -> None:
     onboarded: set[Path] = set()
-    for raw in _project_patterns(ask, output):
+    for raw in _project_patterns(ask_path or ask, output):
         for project in expand_project_pattern(raw, ask=ask, output=output):
             if project in onboarded:
                 continue
@@ -266,10 +277,11 @@ def _onboard_projects(ask: Callable[[str], str], output: Callable[[str], None]) 
 def _print_next_steps(output: Callable[[str], None]) -> None:
     output(
         "\nNext options:\n"
-        "- Continue optional integrations and feature setup with `/meow:onboard`.\n"
+        "- Continue optional integrations and feature setup with "
+        "`claude /meow:onboard` in your project.\n"
         '- Start from a terminal: `meow run "Add CSV export" --name csv-export '
         "--work-dir <project>`.\n"
-        "- Start from Claude Code in a project: `/meow:run Add CSV export`."
+        "- Start from Claude Code in a project: `claude /meow:run Add CSV export`."
     )
 
 
@@ -283,6 +295,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not _register_plugin(repo_dir, print):
         return 1
 
-    _onboard_projects(input, print)
+    _onboard_projects(input, print, path_prompt())
     _print_next_steps(print)
     return 0
