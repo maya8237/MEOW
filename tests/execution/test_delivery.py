@@ -112,3 +112,34 @@ def test_unattended_flag_rejects_non_build_and_interactive_modes():
     ):
         with pytest.raises(SystemExit):
             cli._validate_run_flags(parser, parser.parse_args(argv))
+
+
+def test_commit_message_lists_onboarded_files(tmp_path):
+    repo, _remote = repository(tmp_path)
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "--detach", str(active))
+    (active / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, active)
+    store.transition(
+        run_id,
+        "checks_finished",
+        results={"onboarding": {"files": [".gitignore", ".meow/config.toml"]}},
+    )
+
+    deliver_verified_run(store, run_id)
+
+    assert "Onboarded: .gitignore, .meow/config.toml" in git(
+        active, "log", "-1", "--format=%b"
+    )
+
+
+def test_commit_message_has_no_onboarding_note_by_default(tmp_path):
+    repo, _remote = repository(tmp_path)
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "--detach", str(active))
+    (active / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, active)
+
+    deliver_verified_run(store, run_id)
+
+    assert "Onboarded" not in git(active, "log", "-1", "--format=%b")

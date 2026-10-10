@@ -14,7 +14,7 @@ import hashlib
 import json
 import subprocess
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from meow.agents.planner import PlannerAgent
@@ -26,6 +26,7 @@ from meow.execution.orchestrator import (
     _run_rounds,
 )
 from meow.execution.run_state import TERMINAL_PHASES, RunStateError, RunStore
+from meow.execution.sprint import Sprint
 from meow.infrastructure.cancellation import RunCancelled, cancellable, check_cancel
 from meow.infrastructure.checks import (
     completion_ready,
@@ -33,11 +34,12 @@ from meow.infrastructure.checks import (
     configured_checks,
     run_final_checks,
 )
-from meow.infrastructure.lint import describe_lint_plan
+from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import usage_scope
 from meow.infrastructure.worktree_setup import WorktreeSetupError, run_setup
-from meow.project.config import config_paths
+from meow.project.config import config_paths, load_config
+from meow.project.onboarding import is_onboarded, onboard_project
 from meow.project.plan_files import _latest_plan_file, planned_plan_file
 from meow.project.plan_state import PlanOwnedError, PlanStore
 from meow.project.preplan import gather_context, prepare_preplan
@@ -70,6 +72,39 @@ def _worktree_name_of(working_dir: Path, plan_file: Path) -> str | None:
     except ValueError:
         return None
     return relative.parts[0] if len(relative.parts) > 1 else None
+
+
+def _run_onboarding(
+    store: RunStore, run_id: str, sprint: Sprint, dirs: tuple[Path, Path]
+) -> tuple[Sprint, Path]:
+    """Onboard a never-onboarded project inside the run's active directory.
+
+    Returns the sprint (rebuilt when a new config was written) and the directory
+    later config checks must read. A failure is recorded and never fails the run.
+    """
+    active_dir, config_dir = dirs
+    if is_onboarded(config_dir) or is_onboarded(active_dir):
+        return sprint, config_dir
+    store.transition(run_id, "onboarding")
+    write_config = not (config_dir / ".meow" / "config.toml").is_file()
+    checks_dir = config_dir
+    try:
+        report = onboard_project(active_dir, write_config=write_config).to_dict()
+        if ".meow/config.toml" in report["files"]:
+            fresh = load_config(active_dir)
+            sprint.config.update(fresh)
+            sprint = replace(
+                sprint,
+                lint_hook=make_lint_hook(
+                    active_dir, fresh["lint"], fresh["lint_timeout"]
+                ),
+            )
+            checks_dir = active_dir
+    except (OSError, ValueError, RuntimeError) as exc:
+        report = {"files": [], "lint": None, "skipped": [], "error": str(exc)}
+    logger.info("onboarding_finished", **report)
+    store.transition(run_id, "onboarded", results={"onboarding": report})
+    return sprint, checks_dir
 
 
 async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, too-many-locals, complex-structure, too-many-branches]
@@ -219,6 +254,9 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
                 store.transition(record.id, "failed", last_failure=str(exc))
             raise
         store.transition(record.id, "prepared", results={"setup_complete": True})
+    sprint, checks_dir = _run_onboarding(
+        store, record.id, sprint, (active_dir, config_dir)
+    )
     test = test or bool(sprint.config.get("tester", {}).get("tests"))
     describe_lint_plan(sprint.config["lint"])
     check_cancel(store, record.id)
@@ -312,7 +350,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
             else None
         ),
         config_fingerprint=(
-            config_fingerprint(config_dir) if config_paths(config_dir) else None
+            config_fingerprint(checks_dir) if config_paths(checks_dir) else None
         ),
     )
     PlanStore(active_dir).claim(
@@ -358,7 +396,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
             store.transition(record.id, "failed", last_failure=str(exc))
         raise
     if passed:
-        if config_paths(config_dir):
+        if config_paths(checks_dir):
             store.transition(record.id, "checking")
             try:
                 results = await cancellable(
