@@ -48,6 +48,13 @@ class Rule:
 class RolePolicy:
     rules: tuple[Rule, ...]
 
+    def gated_tools(self) -> set[str]:
+        """Tools whose calls this policy must see (path rules also gate Bash/Agent)."""
+        gated = {rule.tool for rule in self.rules}
+        if any(rule.path is not None for rule in self.rules):
+            gated |= {"Bash", "Agent"}
+        return gated
+
     def decision(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-branches]
         self, tool: str, tool_input: dict[str, Any], *, project_root: Path | None = None
     ) -> str | None:

@@ -41,7 +41,9 @@ def test_agent_options_resumes_and_records_only_session_ids(tmp_path):
         source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
     )
     store.set_session(record.id, "planner", "saved-session")
-    options = Agent(_context(tmp_path, store, record.id)).options(
+    context = _context(tmp_path, store, record.id)
+    context.config["_resume_required_roles"] = {"planner"}
+    options = Agent(context).options(
         system_prompt="test",
         allowed_tools=["Read"],
         role="planner",
@@ -84,3 +86,23 @@ def test_required_resume_session_cannot_start_fresh(tmp_path):
         Agent(context).options(
             system_prompt="test", allowed_tools=["Read"], role="planner"
         )
+
+
+def test_saved_sessions_resume_only_once_and_only_when_resuming(tmp_path):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    store.set_session(record.id, "planner", "saved-session")
+    context = _context(tmp_path, store, record.id)
+
+    def build():
+        return Agent(context).options(
+            system_prompt="test", allowed_tools=["Read"], role="planner"
+        )
+
+    # A normal run's later rounds start a fresh session.
+    assert build().resume is None
+    context.config["_resume_required_roles"] = {"planner"}
+    assert build().resume == "saved-session"
+    assert build().resume is None

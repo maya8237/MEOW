@@ -186,6 +186,12 @@ class NativeCliTests(unittest.TestCase):  # ruff: ignore[too-many-public-methods
             self.assertTrue(Path(data["active_dir"]).is_dir())
             self.assertEqual(data["max_rounds"], 2)
 
+    def test_shape_assess_accepts_shared_directory_flags(self):
+        code, out, err = run_native("shape-assess", "add csv export")
+
+        self.assertEqual(code, 0, err)
+        self.assertIsInstance(json.loads(out), dict)
+
     def test_dirty_tree_exits_nonzero_with_message_on_stderr(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)

@@ -12,7 +12,12 @@ from claude_agent_sdk import (
     query,
 )
 
-from meow.agents.base import Agent, AgentContext, log_stream_message
+from meow.agents.base import (
+    Agent,
+    AgentContext,
+    log_stream_message,
+    restrict_writes,
+)
 from meow.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -101,6 +106,7 @@ class GitlabFetcherAgent(Agent):
             ),
             allowed_tools=[*_GITLAB_TOOLS, "Write"],
         )
+        restrict_writes(options, output_file, self.context.active_working_dir())
         await self.run_query(
             "Fetch the GitLab merge request.", options, "gitlab_fetcher"
         )

@@ -70,7 +70,7 @@ class AgentSkillTests(unittest.TestCase):
         self.assertIn("execution-method handoff", options.system_prompt)
 
     def test_generator_uses_plan_implementation_and_review_skills(self):
-        with patch("meow.agents.generator.ClaudeSDKClient") as client:
+        with patch("meow.agents.base.ClaudeSDKClient") as client:
             generator.Generator(make_sprint(self.tmp_path), self.tmp_path / "plan.md")
 
         options = client.call_args.kwargs["options"]

@@ -2,16 +2,18 @@
 
 import asyncio
 import subprocess
+from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from meow.execution.orchestrator import ReviewTestResult, _run_rounds
+from meow.execution.orchestrator import _run_rounds
 from meow.execution.run_state import RunStore
 from meow.execution.sprint import Sprint
 from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.checks import code_revision
+from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.infrastructure.worktree import _ensure_clean_tree
 
 
@@ -169,17 +171,31 @@ def test_tester_failure_keeps_independent_reviewer_verdict(tmp_path):
     generator.__aenter__ = AsyncMock(return_value=generator)
     generator.__aexit__ = AsyncMock(return_value=False)
     generator.implement = AsyncMock()
+
+    @asynccontextmanager
+    async def stage(_active_dir, _config):
+        yield VerificationStageEvidence()
+
     with (
         patch("meow.execution.orchestrator.Generator", return_value=generator),
         patch(
-            "meow.execution.orchestrator.review_then_test",
-            new=AsyncMock(
-                return_value=ReviewTestResult("FAIL", "tester fail", "PASS", "FAIL")
-            ),
+            "meow.execution.orchestrator.ReviewerAgent.review_plan",
+            new=AsyncMock(return_value=("PASS", "STATUS: PASS")),
+        ),
+        patch("meow.execution.orchestrator.prepared_test_stage", new=stage),
+        patch(
+            "meow.execution.orchestrator.VerificationAgent.test_plan",
+            new=AsyncMock(return_value=("FAIL", "STATUS: FAIL")),
         ),
     ):
         assert not asyncio.run(_run_rounds(sprint, tmp_path / "plan.md", test=True))
-    assert store.load(record.id).results["reviewer"] == "PASS"
+    saved = store.load(record.id)
+    assert saved.results["reviewer"] == "PASS"
+    assert saved.results["tester"] == "FAIL"
+    phases = [step["phase"] for step in saved.transitions]
+    # Reviewer verdict is journaled once, before the tester's.
+    assert phases.count("reviewer_finished") == 1
+    assert phases.index("reviewer_finished") < phases.index("tester_finished")
 
 
 def test_final_check_exception_records_failure(tmp_path):

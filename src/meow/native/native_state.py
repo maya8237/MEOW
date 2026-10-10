@@ -12,7 +12,6 @@ lint execution (`native_lint.py`), or prompt construction
 
 import hashlib
 import json
-import subprocess
 from dataclasses import asdict
 from pathlib import Path
 
@@ -25,6 +24,7 @@ from meow.infrastructure.checks import (
     configured_checks,
     run_final_checks,
 )
+from meow.infrastructure.worktree import current_branch
 from meow.project.config import config_paths, config_root, load_config
 
 STATE_SUFFIX = ".native-state.json"
@@ -86,22 +86,12 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
     store = RunStore(repo)
     patch: dict = {}
     if run_id is None:
-        branch = (
-            subprocess.run(
-                ["git", "branch", "--show-current"],
-                cwd=active_dir,
-                capture_output=True,
-                text=True,
-                check=False,
-            ).stdout.strip()
-            or "detached"
-        )
         record = store.create(
             source="native",
             request=request,
             repo=repo,
             worktree=active_dir,
-            branch=branch,
+            branch=current_branch(active_dir),
         )
         run_id = record.id
     else:

@@ -5,7 +5,7 @@ from pathlib import Path
 from meow.cli import review_cli
 from meow.execution import orchestrator as execution_orchestrator
 from meow.infrastructure import checks, worktree
-from meow.integrations import branch_reviewer, github_reviewer, gitlab_reviewer
+from meow.integrations import github_reviewer, gitlab_reviewer
 from meow.native import native, native_cli
 
 ALLOWED_ROOT_FILES = {
@@ -24,6 +24,7 @@ REMOVED_COMPATIBILITY_MODULES = {
     "integrations/jira.py",
     "review/branch.py",
     "review/command.py",
+    "integrations/branch_reviewer.py",
 }
 
 
@@ -47,7 +48,7 @@ def test_responsibility_packages_expose_canonical_implementations():
 def test_native_implementation_is_canonical():
     assert native.shape_create is not None
     assert native_cli.add_native_parser is not None
-    assert branch_reviewer._sanitize is not None
+    assert worktree.sanitize_name is not None
 
 
 def test_compatibility_modules_are_removed():

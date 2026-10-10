@@ -12,7 +12,6 @@ the engine module.
 
 import hashlib
 import json
-import subprocess
 from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -37,6 +36,7 @@ from meow.infrastructure.checks import (
 from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import usage_scope
+from meow.infrastructure.worktree import current_branch
 from meow.infrastructure.worktree_setup import WorktreeSetupError, run_setup
 from meow.project.config import config_paths, load_config
 from meow.project.onboarding import onboard_if_needed
@@ -199,14 +199,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
     except BaseException as exc:
         store.transition(record.id, "failed", last_failure=str(exc))
         raise
-    branch_result = subprocess.run(
-        ["git", "branch", "--show-current"],
-        cwd=active_dir,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    branch = branch_result.stdout.strip() or "detached"
+    branch = current_branch(active_dir)
     sprint.config["_run_journal"] = (store, record.id)
     sprint.config["_unattended"] = unattended
     sprint.config["_bug_mode"] = is_bug_request(request)

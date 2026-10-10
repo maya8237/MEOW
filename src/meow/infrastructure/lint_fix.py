@@ -15,7 +15,6 @@ check-only mode and returns their raw output, because in that mode fixing
 what's reported is the calling Claude session's job, not meow's.
 """
 
-import subprocess
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
@@ -27,6 +26,7 @@ from meow.infrastructure.lint import (
     describe_lint_plan,
 )
 from meow.infrastructure.logging import get_logger
+from meow.infrastructure.worktree import current_branch
 from meow.project.config import load_config
 from meow.project.onboarding import onboard_if_needed
 
@@ -92,22 +92,12 @@ async def run_lint_fix(working_dir: Path, *, report_only: bool) -> str | None:
     instead, matching `run_review_command`'s failure convention.
     """
     store = RunStore(working_dir)
-    branch = (
-        subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=working_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout.strip()
-        or "detached"
-    )
     record = store.create(
         source="lint-fix",
         request="",
         repo=working_dir,
         worktree=working_dir,
-        branch=branch,
+        branch=current_branch(working_dir),
     )
     try:
         onboard_if_needed(working_dir, working_dir)

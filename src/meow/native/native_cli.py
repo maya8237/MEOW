@@ -242,9 +242,13 @@ def _add_hook(sub) -> None:
     parser = sub.add_parser("hook", help="Run a Claude Code JSON hook handler.")
     _add_dirs(parser)
     parser.add_argument("name", choices=tuple(HANDLERS))
+
+
+def _add_shape(sub) -> None:
     parser = sub.add_parser(
         "shape-assess", help="Assess whether optional shaping is useful."
     )
+    _add_dirs(parser)
     parser.add_argument("request")
     parser = sub.add_parser("shape-create", help="Persist a shape artifact from JSON.")
     _add_dirs(parser)
@@ -282,6 +286,7 @@ def add_native_parser(
     _add_knowledge(sub)
     _add_onboard(sub)
     _add_hook(sub)
+    _add_shape(sub)
 
 
 def _resolve(path: str | None, base: Path) -> Path | None:

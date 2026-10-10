@@ -10,6 +10,7 @@ from meow.execution.run_state import RunRecord, RunStateError, RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.cancellation import clear_cancel
 from meow.infrastructure.checks import config_fingerprint
+from meow.infrastructure.worktree import current_branch
 
 
 def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-branches, too-many-statements]
@@ -38,16 +39,7 @@ def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, to
         common_dirs.append(Path(identity.stdout.strip()).resolve())
     if common_dirs[0] != common_dirs[1]:
         return "Worktree belongs to another repository. Restore the saved worktree."
-    branch = (
-        subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=worktree,
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout.strip()
-        or "detached"
-    )
+    branch = current_branch(worktree)
     if branch != record.branch:
         return (
             f"Branch mismatch: saved {record.branch}, found {branch}. "

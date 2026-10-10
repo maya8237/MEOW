@@ -328,7 +328,7 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
             )
 
         client.receive_response.side_effect = [responses(), responses()]
-        with patch("meow.agents.generator.ClaudeSDKClient", return_value=client) as sdk:
+        with patch("meow.agents.base.ClaudeSDKClient", return_value=client) as sdk:
             async with GeneratorAgent(self.context, plan_file) as generator:
                 await generator.implement("first instruction")
                 result = await generator.implement("second instruction")
@@ -365,7 +365,7 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
 
         client.receive_response.side_effect = [responses(), responses()]
         with patch(
-            "meow.agents.lint_fixer.ClaudeSDKClient", return_value=client
+            "meow.agents.base.ClaudeSDKClient", return_value=client
         ) as sdk:
             async with LintFixAgent(self.context) as fixer:
                 await fixer.fix("first batch")
@@ -406,7 +406,7 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
 
         client.receive_response.side_effect = [responses(), responses()]
         with patch(
-            "meow.agents.review_fixer.ClaudeSDKClient", return_value=client
+            "meow.agents.base.ClaudeSDKClient", return_value=client
         ) as sdk:
             async with ReviewFixAgent(self.context) as fixer:
                 await fixer.fix("first batch")

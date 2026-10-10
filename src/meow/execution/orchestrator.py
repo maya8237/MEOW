@@ -111,31 +111,43 @@ def _tester_results(
     return result
 
 
-async def review_then_test(
+def _review_file(plan_file: Path) -> Path:
+    return plan_file.with_name(plan_file.stem + "-review.md")
+
+
+async def _review_plan(
+    sprint: Sprint, plan_file: Path, focus: str | None = None
+) -> tuple[str, str]:
+    kwargs: dict = {"focus": focus} if focus else {}
+    shape_context = _shape_context(sprint)
+    if shape_context:
+        kwargs["shape_context"] = shape_context
+    return await ReviewerAgent(sprint).review_plan(plan_file, **kwargs)
+
+
+async def review_then_test(  # ruff: ignore[too-many-arguments]
     sprint: Sprint,
     plan_file: Path,
     round_num: int,
     *,
     initial_verdict: tuple[str, str] | None = None,
+    focus: str | None = None,
 ) -> ReviewTestResult:
     """Run review and deterministic tests, then exploratory testing on PASS."""
     logger.info("review_test_gate_started", round=round_num, plan_file=str(plan_file))
     if initial_verdict is None:
-        shape_context = _shape_context(sprint)
-        review_status, verdict = await ReviewerAgent(sprint).review_plan(
-            plan_file, **({"shape_context": shape_context} if shape_context else {})
-        )
+        review_status, verdict = await _review_plan(sprint, plan_file, focus)
     else:
         review_status, verdict = initial_verdict
 
     _capture_quality(sprint, verdict)
+    _journal(
+        sprint,
+        "reviewer_finished",
+        review_file=str(_review_file(plan_file)),
+        results={"reviewer": review_status},
+    )
     if review_status != "PASS":
-        _journal(
-            sprint,
-            "reviewer_finished",
-            review_file=str(plan_file.with_name(plan_file.stem + "-review.md")),
-            results={"reviewer": review_status},
-        )
         label = "Lint" if "Blocking lint failures" in verdict else "Reviewer"
         return ReviewTestResult("FAIL", f"{label} feedback:\n{verdict}", review_status)
 
@@ -152,20 +164,15 @@ async def review_then_test(
             f"Tester stage setup failed for {plan_file}: {exc}. "
             f"Tester report path: {report}"
         ) from exc
-    if tester_status != "PASS" or evidence.blocking_failed:
-        _journal(
-            sprint,
-            "tester_finished",
-            results=_tester_results(review_status, tester_status, evidence),
-        )
-        return ReviewTestResult(
-            "FAIL", f"Tester feedback:\n{tester_verdict}", review_status, tester_status
-        )
     _journal(
         sprint,
         "tester_finished",
         results=_tester_results(review_status, tester_status, evidence),
     )
+    if tester_status != "PASS" or evidence.blocking_failed:
+        return ReviewTestResult(
+            "FAIL", f"Tester feedback:\n{tester_verdict}", review_status, tester_status
+        )
     return ReviewTestResult("PASS", tester_verdict, review_status, tester_status)
 
 
@@ -215,69 +222,85 @@ def _prepare_sprint(  # ruff: ignore[too-many-arguments] -- config root is an in
 # ---------------------------------------------------------------------------
 
 
+async def _review_round(  # ruff: ignore[too-many-arguments]
+    sprint: Sprint,
+    plan_file: Path,
+    round_num: int,
+    *,
+    test: bool,
+    focus: str | None = None,
+    initial_verdict: tuple[str, str] | None = None,
+) -> tuple[str, str]:
+    """One review (and, with `test`, tester) gate, journaled exactly once."""
+    max_rounds = sprint.config.get("max_rounds")
+    logger.info("reviewer_round_started", round=round_num, max_rounds=max_rounds)
+    _journal(sprint, "reviewer_started", round=round_num)
+    if test:
+        gate = await review_then_test(
+            sprint,
+            plan_file,
+            round_num,
+            initial_verdict=initial_verdict,
+            focus=focus,
+        )
+        status, verdict = gate.status, gate.feedback
+    else:
+        status, verdict = await _review_plan(sprint, plan_file, focus)
+        _capture_quality(sprint, verdict)
+        _journal(
+            sprint,
+            "reviewer_finished",
+            round=round_num,
+            review_file=str(_review_file(plan_file)),
+            results={"reviewer": status},
+        )
+    logger.info(
+        "reviewer_round_finished",
+        round=round_num,
+        status=status,
+        summary=_review_summary(verdict) or "",
+    )
+    return status, verdict
+
+
+def _fix_instruction(verdict: str, *, test: bool) -> str:
+    if test:
+        return f"Fix the findings, then stop.\n{verdict}"
+    return (
+        "The reviewer found issues. Fix them, then stop. "
+        f"Reviewer feedback:\n{verdict}"
+    )
+
+
+async def _generate(
+    generator, sprint: Sprint, instruction: str, round_num: int
+) -> None:
+    logger.info(
+        "generator_round_started",
+        round=round_num,
+        max_rounds=sprint.config.get("max_rounds"),
+    )
+    _journal(sprint, "generator_started", round=round_num)
+    try:
+        await generator.implement(instruction)
+    except BaseException:
+        _journal(sprint, "interrupted_mutation", round=round_num)
+        raise
+    _journal(sprint, "generator_finished", round=round_num)
+
+
 async def _run_rounds(sprint: Sprint, plan_file: Path, *, test: bool = False) -> bool:
     """Loop generator -> reviewer. True if the sprint passed."""
-    max_rounds = sprint.config.get("max_rounds", 3)
-
     async with Generator(sprint, plan_file) as generator:
         instruction = f"Implement the tasks in {plan_file}."
-        for round_num in range(1, max_rounds + 1):
-            logger.info(
-                "generator_round_started", round=round_num, max_rounds=max_rounds
+        for round_num in range(1, sprint.config["max_rounds"] + 1):
+            await _generate(generator, sprint, instruction, round_num)
+            status, verdict = await _review_round(
+                sprint, plan_file, round_num, test=test
             )
-            _journal(sprint, "generator_started", round=round_num)
-            try:
-                await generator.implement(instruction)
-            except BaseException:
-                _journal(sprint, "interrupted_mutation", round=round_num)
-                raise
-            _journal(sprint, "generator_finished", round=round_num)
-
-            logger.info(
-                "reviewer_round_started", round=round_num, max_rounds=max_rounds
-            )
-            _journal(sprint, "reviewer_started", round=round_num)
-            if test:
-                gate = await review_then_test(sprint, plan_file, round_num)
-                status, verdict = gate.status, gate.feedback
-                reviewer_status = gate.reviewer_status
-            else:
-                shape_context = _shape_context(sprint)
-                status, verdict = await ReviewerAgent(sprint).review_plan(
-                    plan_file,
-                    **({"shape_context": shape_context} if shape_context else {}),
-                )
-                reviewer_status = status
-            _capture_quality(sprint, verdict)
-            summary = "\n".join(
-                line.strip()
-                for line in verdict.splitlines()
-                if line.strip() and not line.startswith("STATUS:")
-            )[:400]
-            logger.info(
-                "reviewer_round_finished",
-                round=round_num,
-                status=status,
-                summary=summary,
-            )
-            _journal(
-                sprint,
-                "reviewer_finished",
-                round=round_num,
-                review_file=str(plan_file.with_name(plan_file.stem + "-review.md")),
-                results={"reviewer": reviewer_status},
-            )
-
             if status == "PASS":
                 return True
-
-            instruction = (
-                f"Fix the findings, then stop.\n{verdict}"
-                if test
-                else "The reviewer found issues. Fix them, then stop. "
-                f"Reviewer feedback:\n{verdict}"
-            )
-
+            instruction = _fix_instruction(verdict, test=test)
     return False
 
 
@@ -292,7 +315,7 @@ def _review_summary(verdict: str) -> str | None:
     )
 
 
-async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-arguments, too-many-branches]
+async def _run_review_rounds(  # ruff: ignore[too-many-arguments]
     sprint: Sprint,
     plan_file: Path,
     *,
@@ -307,116 +330,34 @@ async def _run_review_rounds(  # ruff: ignore[complex-structure, too-many-argume
     something to fix. True if the plan ends up passing.
 
     `initial_verdict`, when given, is used as round 1's verdict instead of
-    running a fresh review -- for `meow review --review-file`, whose
-    round 1 verdict is the existing review file it started from. `focus`, when
-    given, is passed to every `review_plan` call in the loop (not just the
-    first), so a requested focus doesn't drift out of scope across rounds.
+    running a fresh review -- for `meow review --review-file`. `focus` is
+    passed to every review in the loop, so it doesn't drift out of scope.
     """
-    max_rounds = sprint.config.get("max_rounds", 3)
-
-    if test:
-        _journal(sprint, "reviewer_started", round=1)
-        gate = await review_then_test(
-            sprint, plan_file, 1, initial_verdict=initial_verdict
-        )
-        status, verdict = gate.status, gate.feedback
-        reviewer_status = gate.reviewer_status
-    elif initial_verdict is None:
-        logger.info("reviewer_round_started", round=1, max_rounds=max_rounds)
-        _journal(sprint, "reviewer_started", round=1)
-        shape_context = _shape_context(sprint)
-        review_kwargs = {"focus": focus}
-        if shape_context:
-            review_kwargs["shape_context"] = shape_context
-        status, verdict = await ReviewerAgent(sprint).review_plan(
-            plan_file, **review_kwargs
-        )
-        reviewer_status = status
-        _capture_quality(sprint, verdict)
-        logger.info(
-            "reviewer_round_finished",
-            round=1,
-            status=status,
-            summary=_review_summary(verdict) or "",
-        )
-        _journal(
-            sprint,
-            "reviewer_finished",
-            round=1,
-            review_file=str(plan_file.with_name(plan_file.stem + "-review.md")),
-            results={"reviewer": reviewer_status},
-        )
-    else:
+    if initial_verdict is not None and not test:
         status, verdict = initial_verdict
         _capture_quality(sprint, verdict)
-
+    else:
+        status, verdict = await _review_round(
+            sprint,
+            plan_file,
+            1,
+            test=test,
+            focus=focus,
+            initial_verdict=initial_verdict,
+        )
     if status == "PASS":
         return True
 
     async with Generator(sprint, plan_file) as generator:
-        instruction = (
-            "The reviewer found issues. Fix them, then stop. "
-            f"Reviewer feedback:\n{verdict}"
-        )
-        for round_num in range(2, max_rounds + 1):
-            logger.info(
-                "generator_round_started", round=round_num, max_rounds=max_rounds
+        instruction = _fix_instruction(verdict, test=False)
+        for round_num in range(2, sprint.config["max_rounds"] + 1):
+            await _generate(generator, sprint, instruction, round_num)
+            status, verdict = await _review_round(
+                sprint, plan_file, round_num, test=test, focus=focus
             )
-            _journal(sprint, "generator_started", round=round_num)
-            try:
-                await generator.implement(instruction)
-            except BaseException:
-                _journal(sprint, "interrupted_mutation", round=round_num)
-                raise
-            _journal(sprint, "generator_finished", round=round_num)
-
-            logger.info(
-                "reviewer_round_started", round=round_num, max_rounds=max_rounds
-            )
-            _journal(sprint, "reviewer_started", round=round_num)
-            if test:
-                gate = await review_then_test(sprint, plan_file, round_num)
-                status, verdict = gate.status, gate.feedback
-                reviewer_status = gate.reviewer_status
-            else:
-                shape_context = _shape_context(sprint)
-                review_kwargs = {"focus": focus}
-                if shape_context:
-                    review_kwargs["shape_context"] = shape_context
-                status, verdict = await ReviewerAgent(sprint).review_plan(
-                    plan_file, **review_kwargs
-                )
-                reviewer_status = status
-            _capture_quality(sprint, verdict)
-            summary = "\n".join(
-                line.strip()
-                for line in verdict.splitlines()
-                if line.strip() and not line.startswith("STATUS:")
-            )[:400]
-            logger.info(
-                "reviewer_round_finished",
-                round=round_num,
-                status=status,
-                summary=summary,
-            )
-            _journal(
-                sprint,
-                "reviewer_finished",
-                round=round_num,
-                review_file=str(plan_file.with_name(plan_file.stem + "-review.md")),
-                results={"reviewer": reviewer_status},
-            )
-
             if status == "PASS":
                 return True
-
-            instruction = (
-                f"Fix the findings, then stop.\n{verdict}"
-                if test
-                else "The reviewer found issues. Fix them, then stop. "
-                f"Reviewer feedback:\n{verdict}"
-            )
-
+            instruction = _fix_instruction(verdict, test=test)
     return False
 
 
@@ -435,7 +376,7 @@ async def _run_prompt_fix_rounds(
     (unlike `_run_review_rounds`, this has no "run a fresh review first"
     mode -- every caller already has one).
     """
-    max_rounds = context.config.get("max_rounds", 3)
+    max_rounds = context.config["max_rounds"]
     status, verdict = initial_verdict
     if status == "PASS":
         return True

@@ -1,19 +1,21 @@
 """GitHub pull-request fetcher agent backed by a configured MCP server."""
 
 from pathlib import Path
-from typing import Any
 
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
-    PermissionResultAllow,
-    PermissionResultDeny,
     ResultMessage,
     ToolUseBlock,
     query,
 )
 
-from meow.agents.base import Agent, AgentContext, log_stream_message
+from meow.agents.base import (
+    Agent,
+    AgentContext,
+    log_stream_message,
+    restrict_writes,
+)
 from meow.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -21,7 +23,6 @@ logger = get_logger(__name__)
 GITHUB_MCP_NAME = "github"
 _GITHUB_TOOLS = [f"mcp__{GITHUB_MCP_NAME}__*"]
 _GITHUB_TOOL_PREFIX = f"mcp__{GITHUB_MCP_NAME}__"
-_WRITE_PATH_KEYS = ("file_path", "path", "notebook_path")
 
 
 def _used_github_tool(message: object) -> bool:
@@ -31,42 +32,6 @@ def _used_github_tool(message: object) -> bool:
         isinstance(block, ToolUseBlock) and block.name.startswith(_GITHUB_TOOL_PREFIX)
         for block in message.content
     )
-
-
-def _resolve_write_path(tool_input: dict[str, Any], project_dir: Path) -> Path | None:
-    raw_path = next(
-        (tool_input[key] for key in _WRITE_PATH_KEYS if key in tool_input), None
-    )
-    if not isinstance(raw_path, str):
-        return None
-    candidate = Path(raw_path)
-    if not candidate.is_absolute():
-        candidate = project_dir / candidate
-    try:
-        return candidate.resolve()
-    except (OSError, RuntimeError):
-        return None
-
-
-def _scoped_write_permission(
-    output_file: Path, project_dir: Path, existing_callback: Any
-):
-    target = output_file.resolve()
-
-    async def can_use_tool(tool: str, tool_input: dict[str, Any], context: object):
-        if tool == "Write" and _resolve_write_path(tool_input, project_dir) != target:
-            return PermissionResultDeny(
-                message=(
-                    "GitHub fetcher may only write its temporary pull "
-                    f"request output file: {target}"
-                ),
-                interrupt=True,
-            )
-        if existing_callback is not None:
-            return await existing_callback(tool, tool_input, context)
-        return PermissionResultAllow()
-
-    return can_use_tool
 
 
 class GithubFetcherAgent(Agent):
@@ -134,9 +99,7 @@ class GithubFetcherAgent(Agent):
             ),
             allowed_tools=[*_GITHUB_TOOLS, "Write"],
         )
-        options.can_use_tool = _scoped_write_permission(
-            output_file, self.context.active_working_dir(), options.can_use_tool
-        )
+        restrict_writes(options, output_file, self.context.active_working_dir())
         await self.run_query(
             "Fetch the GitHub pull request.", options, "github_fetcher"
         )

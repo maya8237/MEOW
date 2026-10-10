@@ -1,11 +1,8 @@
 """Agent for explicit, evidence-bounded documentation maintenance."""
 
-from collections.abc import Callable
 from pathlib import Path
 
-from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
-
-from meow.agents.base import Agent, ProjectContext
+from meow.agents.base import Agent, ProjectContext, guard_tools
 from meow.integrations.docs_update import DocsUpdateInput
 from meow.project.config import load_config
 from meow.project.prompts import docs_update_prompt
@@ -28,19 +25,6 @@ def _allowed_edit_path(repo: Path, raw_path: object) -> bool:
     )
 
 
-def _docs_only_callback(repo: Path, project_callback: Callable | None):
-    async def docs_only(tool: str, tool_input: dict, context: object):
-        if tool in {"Edit", "Write"} and not _allowed_edit_path(
-            repo, tool_input.get("file_path") or tool_input.get("path")
-        ):
-            return PermissionResultDeny(message="Docs updater may edit prose only")
-        if project_callback is not None:
-            return await project_callback(tool, tool_input, context)
-        return PermissionResultAllow()
-
-    return docs_only
-
-
 async def update_documentation(prepared: DocsUpdateInput) -> None:
     config = load_config(prepared.repo)
     options = Agent(ProjectContext(prepared.repo, config)).options(
@@ -48,7 +32,15 @@ async def update_documentation(prepared: DocsUpdateInput) -> None:
         allowed_tools=["Read", "Grep", "Glob", "Edit", "Write"],
         role="docs_updater",
     )
-    options.can_use_tool = _docs_only_callback(prepared.repo, options.can_use_tool)
+    guard_tools(
+        options,
+        {"Edit", "Write"},
+        lambda tool_input: None
+        if _allowed_edit_path(
+            prepared.repo, tool_input.get("file_path") or tool_input.get("path")
+        )
+        else "Docs updater may edit prose only",
+    )
     await Agent.run_query(
         "Changed paths: "
         + ", ".join(prepared.changed_paths)

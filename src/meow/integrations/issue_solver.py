@@ -13,7 +13,6 @@ creates its own worktree on one instead of the usual detached one.
 """
 
 import json
-import re
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -24,13 +23,12 @@ from meow.execution.run_state import RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.cancellation import cancellable
 from meow.infrastructure.logging import get_logger
-from meow.infrastructure.worktree import _ensure_branch_worktree
+from meow.infrastructure.worktree import _ensure_branch_worktree, sanitize_name
 from meow.project.config import load_config
 
 logger = get_logger(__name__)
 
 DEFAULT_BRANCH_PREFIX = "issue/"
-_BRANCH_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 class IssueUnresolvedError(RuntimeError):
@@ -75,10 +73,6 @@ def _load_jira_config(config: dict) -> dict:
         "branch_prefix": jira.get("branch_prefix", DEFAULT_BRANCH_PREFIX),
         "mcp": {"command": mcp["command"], "args": mcp.get("args", [])},
     }
-
-
-def _sanitize(component: str) -> str:
-    return _BRANCH_UNSAFE.sub("-", component).strip("-")
 
 
 async def _fetch_issue(
@@ -165,7 +159,7 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
         else await _fetch_issue(working_dir, config, jira_config, issue_key)
     )
 
-    sanitized_key = _sanitize(issue["key"])
+    sanitized_key = sanitize_name(issue["key"])
     feature_name = f"issue-{sanitized_key}".lower()
     branch_name = f"{jira_config['branch_prefix']}{issue['key']}"
 

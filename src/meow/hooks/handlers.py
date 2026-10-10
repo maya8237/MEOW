@@ -27,6 +27,19 @@ def _root(event: dict) -> Path | None:
     return Path(value).resolve() if isinstance(value, str) and value else None
 
 
+def _edited_path(event: dict) -> str | None:
+    """The edited file: Claude Code nests it under `tool_input`."""
+    tool_input = event.get("tool_input")
+    nested = tool_input if isinstance(tool_input, dict) else {}
+    value = (
+        nested.get("file_path")
+        or nested.get("path")
+        or event.get("file_path")
+        or event.get("path")
+    )
+    return value if isinstance(value, str) and value else None
+
+
 def _plan_path(event: dict, root: Path) -> Path | None:
     value = event.get("plan_file") or event.get("plan")
     if not isinstance(value, str) or not value:
@@ -54,8 +67,8 @@ def lint_after_edit(event: dict) -> dict:  # ruff: ignore[too-many-return-statem
             "quiet": True,
             "reason": "MEOW SDK lint already handles this edit",
         }
-    path, root = event.get("file_path") or event.get("path"), _root(event)
-    if not isinstance(path, str) or root is None:
+    path, root = _edited_path(event), _root(event)
+    if path is None or root is None:
         return {"ok": True, "quiet": True, "reason": "no project edit"}
     if event.get("tool_name") not in {None, "Write", "Edit"}:
         return {"ok": True, "quiet": True, "reason": "not a file edit"}
@@ -78,7 +91,7 @@ def shaping_ripple(event: dict) -> dict:
     event, error = _event(event)
     if error:
         return error
-    path = str(event.get("file_path") or event.get("path") or "")
+    path = _edited_path(event) or ""
     if not any(
         token in path.lower() for token in ("shape", "breadboard", "requirements")
     ):

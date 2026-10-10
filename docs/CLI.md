@@ -341,7 +341,8 @@ should not invoke it directly; use `meow status`, `meow cancel`, and
 # GitLab CI review
 
 `meow review --ci` reviews the exact GitLab pipeline checkout against the
-fetched `refs/remotes/origin/dev` commit. It accepts a detached source checkout
+fetched `refs/remotes/origin/<target_branch>` commit (`[delivery].target_branch`,
+default `dev`). It accepts a detached source checkout
 when `HEAD` matches `CI_COMMIT_SHA`. The review is report-only: it does not
 plan, fix, commit, push, or open a merge request. It uses the local Git history,
 so GitLab MCP is unnecessary.

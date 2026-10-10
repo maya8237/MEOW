@@ -39,6 +39,12 @@ _WINDOWS_RESERVED_NAMES = frozenset(
 
 
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+_UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def sanitize_name(component: str) -> str:
+    """Turn a branch or issue key into one safe worktree-name component."""
+    return _UNSAFE_NAME_CHARS.sub("-", component).strip("-")
 
 
 def _reject_reserved_name(feature_name: str) -> None:
@@ -340,6 +346,15 @@ def _run_git(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         argv, cwd=cwd, capture_output=True, text=True, check=False, encoding="utf-8"
     )
+
+
+def current_branch(directory: Path, default: str = "detached") -> str:
+    """The checked-out branch name, or `default` (detached HEAD, no git)."""
+    try:
+        result = _run_git(["git", "branch", "--show-current"], cwd=directory)
+    except OSError:
+        return default
+    return result.stdout.strip() or default
 
 
 def _ref_exists(git: str, working_dir: Path, ref: str) -> bool:

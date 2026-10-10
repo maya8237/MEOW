@@ -393,7 +393,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 )
 
             self.assertIsNone(result)
-            mock_review_plan.assert_awaited_once_with(plan_file, focus=None)
+            mock_review_plan.assert_awaited_once_with(plan_file)
             mock_generator_cls.assert_not_called()
             mock_planner_run.assert_not_called()
 
@@ -438,7 +438,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 )
 
             self.assertIsNone(result)
-            mock_review_plan.assert_awaited_once_with(plan_file, focus=None)
+            mock_review_plan.assert_awaited_once_with(plan_file)
             mock_generator_cls.assert_not_called()
 
     def test_run_sprint_resume_at_review_still_gates_on_approval(self):

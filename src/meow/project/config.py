@@ -45,10 +45,7 @@ DEFAULT_CONFIG = {
         "review_fixer": None,
         "tester": None,
     },
-    "delivery": {
-        "target_branch": "dev",
-        "gitlab": {"enabled": False},
-    },
+    "delivery": {"target_branch": "dev"},
 }
 
 
@@ -142,13 +139,7 @@ def load_config(working_dir: Path) -> dict:
         raise ValueError(
             f"{_CONFIG_FILENAME}: [delivery].target_branch must be a branch name"
         )
-    gitlab = delivery.get("gitlab", {})
-    if not isinstance(gitlab, dict):
-        raise ValueError(f"{_CONFIG_FILENAME}: [delivery.gitlab] must be a table")
-    config["delivery"] = {
-        "target_branch": target,
-        "gitlab": {"enabled": bool(gitlab.get("enabled", False))},
-    }
+    config["delivery"] = {"target_branch": target}
     for table_name, commands in (
         ("[[tester.tests]]", config["tester"]["tests"]),
         ("[[tester.dev_server]]", config["tester"]["dev_server"]),

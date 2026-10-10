@@ -139,9 +139,8 @@ not dirty the feature revision.
 
 `[agent_skills]` adds installed skill identifiers to every role or to a named
 role. `default` and role-specific lists append across config layers; built-in
-MEOW skills remain enabled. The config loader also normalizes
-`[delivery].target_branch` (default `dev`) and `[delivery.gitlab].enabled`
-(default `false`); these fields do not store credentials.
+MEOW skills remain enabled. `[delivery].target_branch` (default `dev`) is the
+branch `meow review --ci` reviews against when `--target-ref` is omitted.
 
 ## Reviewer architecture check
 
