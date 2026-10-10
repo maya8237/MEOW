@@ -46,15 +46,13 @@ def test_readme_starts_with_streamed_install_commands():
 
     assert powershell_command in text
     assert posix_command in text
+    assert text.count("## Install") == 1
     first_workflow_section = text.index("## One command. Done.")
     assert text.index(powershell_command) < first_workflow_section
     assert text.index(posix_command) < first_workflow_section
-    assert "/meow:onboard" in text
-    assert 'meow run "Add CSV export" --name csv-export --work-dir <project>' in text
-    assert "/meow:run Add CSV export" in text
-    assert "does not\nfinish with a menu" in text
     assert "pip install" not in text.lower()
     assert "claude plugin marketplace" not in text.lower()
+    assert "The installer" not in text
 
 
 def test_powershell_trims_destination_separators_as_characters():
