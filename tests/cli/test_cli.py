@@ -2114,3 +2114,53 @@ class FeatureNameRequirementTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CliShortcutTests(unittest.TestCase):
+    def test_shortcuts_expand_to_canonical_commands(self):
+        parser = cli._build_arg_parser()
+        for short, command in (
+            ("r", "run"),
+            ("p", "plan"),
+            ("rv", "review"),
+            ("s", "status"),
+            ("x", "cancel"),
+            ("c", "resume"),
+            ("q", "queue"),
+            ("w", "worktree"),
+            ("h", "hooks"),
+            ("i", "ipython"),
+            ("pounce", "run"),
+            ("purr", "review"),
+        ):
+            with self.subTest(short=short):
+                argv = [short]
+                if command == "plan":
+                    argv.append("a request")
+                if command == "cancel":
+                    argv.append("run-1")
+                if command == "worktree":
+                    argv.append("list")
+                if command == "hooks":
+                    argv += ["status", "claude"]
+                self.assertEqual(parser.parse_args(argv).command, command)
+
+    def test_l_means_run_lint_fix(self):
+        args = cli._build_arg_parser().parse_args(["l", "--report-only"])
+
+        self.assertEqual(args.command, "run")
+        self.assertTrue(args.lint_fix)
+        self.assertTrue(args.report_only)
+
+    def test_fun_shortcuts_only_listed_with_help_fun(self):
+        plain, fun = io.StringIO(), io.StringIO()
+
+        with redirect_stdout(plain), self.assertRaises(SystemExit):
+            cli._build_arg_parser().parse_args(["--help"])
+        with redirect_stdout(fun), self.assertRaises(SystemExit):
+            cli._build_arg_parser().parse_args(["--help", "--fun"])
+
+        self.assertNotIn("pounce", plain.getvalue())
+        self.assertNotIn("--fun", plain.getvalue())
+        self.assertIn("v=review", plain.getvalue())
+        self.assertIn("pounce=run", fun.getvalue())

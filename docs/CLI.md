@@ -22,6 +22,11 @@ These are the commands meant for normal project work:
 | `meow hooks` | Manage optional host hooks after reviewing what they install. |
 | `meow ipython` | Open the interactive MEOW IPython session. |
 
+`mw` is a shorter alias for the `meow` binary, and each command has a
+single-letter shortcut: `r` run, `p` plan, `rv` review, `l` lint (`run
+--lint-fix`), `s` status, `x` cancel, `c` resume, `q` queue, `w` worktree,
+`h` hooks, `i` ipython. For example, `mw r "Add CSV export" --name csv-export`.
+
 Running `meow` without a command or `meow ipython` opens an IPython session. Inside it, the
 top-level MEOW commands are available as bare commands, for example
 `status`, `run "Add CSV export" --name csv-export`, and `native verify`.

@@ -1,6 +1,7 @@
 """argparse wiring for the meow command-line interface."""
 
 import argparse
+import sys
 from importlib.metadata import version
 
 from meow.native.native_cli import add_native_parser
@@ -16,6 +17,67 @@ _VISIBLE_COMMANDS = (
     "hooks",
     "ipython",
 )
+
+
+# Shortcut -> argv replacing it. `l` has no subcommand of its own; it is
+# `run --lint-fix`.
+_SHORTCUTS = {
+    "r": ("run",),
+    "p": ("plan",),
+    "rv": ("review",),
+    "l": ("run", "--lint-fix"),
+    "s": ("status",),
+    "x": ("cancel",),
+    "c": ("resume",),
+    "q": ("queue",),
+    "w": ("worktree",),
+    "h": ("hooks",),
+    "i": ("ipython",),
+}
+
+# Easter egg: always parseable, only listed by `--help --fun`.
+_FUN_SHORTCUTS = {
+    "pounce": ("run",),
+    "hunt": ("run",),
+    "sniff": ("plan",),
+    "stalk": ("plan",),
+    "purr": ("review",),
+    "lick": ("review",),
+    "groom": ("run", "--lint-fix"),
+    "scratch": ("run", "--lint-fix"),
+    "peek": ("status",),
+    "hiss": ("cancel",),
+    "wake": ("resume",),
+    "herd": ("queue",),
+    "nest": ("worktree",),
+    "claws": ("hooks",),
+    "lab": ("ipython",),
+}
+
+
+def _format_shortcuts(shortcuts: dict[str, tuple[str, ...]]) -> str:
+    return "  ".join(f"{k}={' '.join(v)}" for k, v in shortcuts.items())
+
+
+def expand_shortcuts(argv: list[str]) -> list[str]:
+    """Rewrite a leading shortcut command into its canonical argv."""
+    if argv and not argv[0].startswith("-"):
+        target = _SHORTCUTS.get(argv[0]) or _FUN_SHORTCUTS.get(argv[0])
+        if target:
+            return [*target, *argv[1:]]
+    return argv
+
+
+class _MeowParser(argparse.ArgumentParser):
+    """Root parser: expands command shortcuts and the hidden `--help --fun`."""
+
+    def parse_known_args(self, args=None, namespace=None):
+        argv = list(sys.argv[1:] if args is None else args)
+        if "--fun" in argv and ("--help" in argv or "-h" in argv):
+            self.print_help()
+            print(f"\ncat shortcuts:\n  {_format_shortcuts(_FUN_SHORTCUTS)}")
+            self.exit()
+        return super().parse_known_args(expand_shortcuts(argv), namespace)
 
 
 def _add_common_args(parser: argparse.ArgumentParser):
@@ -98,13 +160,18 @@ def _add_hidden_parser(
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-statements, too-many-locals]
-    parser = argparse.ArgumentParser(prog="meow")
+    parser = _MeowParser(
+        prog="meow",
+        epilog=f"shortcuts:\n  {_format_shortcuts(_SHORTCUTS)}",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "--version",
         action="version",
         version=f"meow {version('meow')}",
     )
     subparsers = parser.add_subparsers(
+        parser_class=argparse.ArgumentParser,
         dest="command",
         required=True,
         metavar="{" + ",".join(_VISIBLE_COMMANDS) + "}",
