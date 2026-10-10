@@ -5,7 +5,72 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repositoryUrl = "git@github.com:maya8237/MEOW.git"
+$originPyprojectUrl = "https://raw.githubusercontent.com/maya8237/MEOW/main/pyproject.toml"
 $defaultParent = "C:/Projects"
+
+function Get-VersionFromText {
+    param([AllowNull()][string]$Text)
+
+    if ($Text -match '(?<version>\d+(?:\.\d+)+)') {
+        return $Matches.version
+    }
+    return $null
+}
+
+function Get-OriginMainVersion {
+    try {
+        $content = (Invoke-WebRequest -Uri $originPyprojectUrl -UseBasicParsing -ErrorAction Stop).Content
+    } catch {
+        return $null
+    }
+    if ($content -match '(?m)^\s*version\s*=\s*["''](?<version>[^"'']+)["'']') {
+        return $Matches.version
+    }
+    return $null
+}
+
+function Test-VersionOlder {
+    param(
+        [Parameter(Mandatory = $true)][string]$Installed,
+        [Parameter(Mandatory = $true)][string]$Latest
+    )
+
+    try {
+        return ([Version]::Parse($Installed) -lt [Version]::Parse($Latest))
+    } catch {
+        return $null
+    }
+}
+
+function Stop-ForExistingMeow {
+    $existing = Get-Command meow -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $existing) {
+        return $false
+    }
+
+    $existingPath = if ($existing.Path) { $existing.Path } else { $existing.Name }
+    $versionOutput = & $existing.Name --version 2>$null
+    $installedVersion = Get-VersionFromText (($versionOutput | Select-Object -First 1) -as [string])
+    $originVersion = Get-OriginMainVersion
+    $comparison = if ($installedVersion -and $originVersion) {
+        Test-VersionOlder -Installed $installedVersion -Latest $originVersion
+    } else {
+        $null
+    }
+
+    if ($comparison -eq $true) {
+        Write-Warning "Installed MEOW $installedVersion at $existingPath is older than origin/main $originVersion. Using the existing installation without changes."
+    } elseif ($null -eq $comparison) {
+        Write-Warning "MEOW is already installed at $existingPath, but its version could not be compared with origin/main. Using the existing installation without changes."
+    } else {
+        Write-Host "MEOW is already installed at $existingPath; using the existing installation without changes."
+    }
+    return $true
+}
+
+if (Stop-ForExistingMeow) {
+    return
+}
 
 function Test-Python312 {
     param(

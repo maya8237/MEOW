@@ -5,6 +5,7 @@
 set -eu
 
 repository_url='git@github.com:maya8237/MEOW.git'
+origin_pyproject_url='https://raw.githubusercontent.com/maya8237/MEOW/main/pyproject.toml'
 default_parent=${HOME:-"$(pwd)"}
 
 die() {
@@ -22,6 +23,65 @@ select_python() {
     done
     return 1
 }
+
+version_is_older() {
+    awk -v installed="$1" -v latest="$2" '
+        BEGIN {
+            split(installed, left, /\./)
+            split(latest, right, /\./)
+            for (i = 1; i <= 3; i++) {
+                if (left[i] == "") left[i] = 0
+                if (right[i] == "") right[i] = 0
+                if (left[i] !~ /^[0-9]+$/ || right[i] !~ /^[0-9]+$/) exit 2
+                if ((left[i] + 0) < (right[i] + 0)) exit 0
+                if ((left[i] + 0) > (right[i] + 0)) exit 1
+            }
+            exit 1
+        }
+    '
+}
+
+stop_for_existing_meow() {
+    existing_meow=$(command -v meow 2>/dev/null || true)
+    [ -n "$existing_meow" ] || return 1
+
+    installed_version=$(meow --version 2>/dev/null \
+        | sed -nE 's/^[^0-9]*([0-9]+(\.[0-9]+)+).*/\1/p' \
+        | head -n 1)
+    origin_version=''
+    if command -v curl >/dev/null 2>&1; then
+        origin_version=$(curl -fsSL --max-time 10 "$origin_pyproject_url" 2>/dev/null \
+            | sed -nE "s/^[[:space:]]*version[[:space:]]*=[[:space:]]*[\"']([^\"']+)[\"'].*/\1/p" \
+            | head -n 1)
+    fi
+
+    if [ -z "$installed_version" ] || [ -z "$origin_version" ]; then
+        printf '%s\n' \
+            "MEOW is already installed at $existing_meow, but its version could not be compared with origin/main; using the existing installation without changes." \
+            >&2
+    else
+        if version_is_older "$installed_version" "$origin_version"; then
+            printf '%s\n' \
+                "Warning: installed MEOW $installed_version is older than origin/main $origin_version; using the existing installation without changes." \
+                >&2
+        else
+            comparison_status=$?
+            if [ "$comparison_status" -eq 2 ]; then
+                printf '%s\n' \
+                    "MEOW is already installed at $existing_meow, but its version could not be compared with origin/main; using the existing installation without changes." \
+                    >&2
+            else
+                printf '%s\n' \
+                    "MEOW is already installed at $existing_meow; using the existing installation without changes."
+            fi
+        fi
+    fi
+    return 0
+}
+
+if stop_for_existing_meow; then
+    exit 0
+fi
 
 printf 'Parent directory for MEOW [%s]: ' "$default_parent"
 IFS= read -r destination || true
