@@ -36,6 +36,11 @@ file unless the user explicitly chooses a merge. Otherwise write the
 shareable project settings to `.meow/config.toml` and keep the legacy file as a
 read-only rollback reference until the user removes it.
 
+Do not carry a legacy `docs_dir` into the shared file. Omit it so the default
+`.meow/plans` applies, matching where step 3 moves MEOW-generated plans. Keep
+an explicit `docs_dir` only if the user chooses to leave plans in place, and
+then skip moving them.
+
 Put project-specific machine MCP commands, private environment values, API-key
 references, and user-installed skills in `.meow/config.local.toml`; user-wide
 defaults may live in `~/.meow/config.toml`. Never copy secret values into the
