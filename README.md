@@ -27,8 +27,8 @@ You get the simple part—one request in, one finished branch out.
 
 You can run the installer directly from the network. It clones MEOW over SSH,
 so configure GitHub SSH authentication first (`ssh -T git@github.com`). The
-installer uses the newest available system Python 3.12+ and installs MEOW with
-`pip install -e`.
+installer selects the newest available system Python 3.12+ and completes setup
+automatically.
 
 Windows PowerShell (default clone parent: `C:/Projects`):
 
@@ -58,12 +58,6 @@ The same next steps are:
 - Optional integrations and feature configuration: `/meow:onboard`
 - Terminal: `meow run "Add CSV export" --name csv-export --work-dir <project>`
 - Claude Code, from the project: `/meow:run Add CSV export`
-
-Install it in one paste:
-
-```bash
-claude plugin marketplace add maya8237/MEOW && claude plugin install meow@meow
-```
 
 Try it first:
 
@@ -123,51 +117,8 @@ operating another workflow system around every feature.
 
 ## Install
 
-### Install the Claude Code plugin
-
-In a Claude Code session, add the MEOW marketplace once and install the plugin:
-
-```text
-/plugin marketplace add maya8237/MEOW
-/plugin install meow@meow
-```
-
-From a shell, use the equivalent commands:
-
-```bash
-claude plugin marketplace add maya8237/MEOW
-claude plugin install meow@meow
-```
-
-Verify the plugin is available:
-
-```bash
-claude plugin list
-```
-
-You should see `meow@meow` in the installed plugins.
-
-### Install the MEOW CLI
-
-The plugin provides the `/meow:*` skills. Install the Python package as well
-to run the checkpointed CLI workflow:
-
-```bash
-# Python 3.12+
-python -m pip install "git+https://github.com/maya8237/MEOW.git"
-```
-
-For a local checkout or contributor setup:
-
-```bash
-python -m venv .venv
-
-# Windows
-.venv\Scripts\python -m pip install -e .
-
-# macOS or Linux
-.venv/bin/python -m pip install -e .
-```
+Use one of the streamed installer scripts above. They clone MEOW over SSH,
+configure the Claude plugin globally for your user, and install the MEOW CLI.
 
 ### Use a LiteLLM Claude proxy
 
@@ -394,7 +345,6 @@ notes, scheduled runs, and troubleshooting.
 ## Development
 
 ```bash
-python -m pip install -e ".[dev]"
 python -m pytest -q
 ruff check
 ```
