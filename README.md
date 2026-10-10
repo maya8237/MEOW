@@ -60,7 +60,7 @@ advanced options.
 MEOW supports Jira, GitLab, GitHub, LiteLLM, testing, hooks, and scheduling.
 See the [integration guide](docs/INTEGRATIONS.md).
 
-## Docs and development
+## Docs
 
 - [Architecture](ARCHITECTURE.md)
 - [Project instructions](AGENTS.md)
@@ -68,8 +68,3 @@ See the [integration guide](docs/INTEGRATIONS.md).
 - [Roadmap](docs/ROADMAP.md)
 - [Changelog](CHANGELOG.md)
 - [License](LICENSE)
-
-```bash
-python -m pytest -q
-ruff check
-```
