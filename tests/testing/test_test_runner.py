@@ -315,12 +315,11 @@ def test_probe_treats_http_error_as_ready_and_allows_slow_loopback():
     )
 
     with patch(
-        "meow.infrastructure.test_runner.urllib.request.urlopen",
-        side_effect=error,
-    ) as urlopen:
+        "meow.infrastructure.test_runner._DIRECT.open", side_effect=error
+    ) as opened:
         assert _probe("http://127.0.0.1:12345/") is None
 
-    urlopen.assert_called_once_with("http://127.0.0.1:12345/", timeout=1.0)
+    opened.assert_called_once_with("http://127.0.0.1:12345/", timeout=1.0)
 
 
 if __name__ == "__main__":
