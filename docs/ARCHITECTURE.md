@@ -23,5 +23,10 @@ dependencies; file count alone is not a threshold. The runtime has no
 top-level alias modules; use the responsibility packages listed above.
 Empty placeholder packages are not kept: a directory exists only when it
 contains implementation modules or a documented package boundary.
+Within a responsibility package, prefer creating or reusing subpackages for
+related modules instead of accumulating many floating files at the package
+root. Two to four directly owned files can be reasonable when the boundary is
+clear, but this is a guideline rather than a hard limit; keep the package
+focused and use subpackages whenever they improve discoverability.
 Tests stay in the repository `tests/` package and are not copied into the
 runtime package.
