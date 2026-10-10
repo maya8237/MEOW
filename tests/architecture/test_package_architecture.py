@@ -29,6 +29,14 @@ REMOVED_COMPATIBILITY_MODULES = {
 }
 
 
+def _project_root() -> Path:
+    return next(
+        parent
+        for parent in Path(__file__).resolve().parents
+        if (parent / "src" / "meow").is_dir()
+    )
+
+
 def test_responsibility_packages_expose_canonical_implementations():
     assert execution_orchestrator.review_then_test is not None
     assert review_cli.run_review_command is not None
@@ -45,7 +53,7 @@ def test_native_implementation_is_canonical():
 
 
 def test_compatibility_modules_are_removed():
-    root = Path(__file__).parents[1] / "src" / "meow"
+    root = _project_root() / "src" / "meow"
     assert [
         relative
         for relative in REMOVED_COMPATIBILITY_MODULES
@@ -54,21 +62,41 @@ def test_compatibility_modules_are_removed():
 
 
 def test_package_root_has_no_flat_module_sprawl():
-    root = Path(__file__).parents[1] / "src" / "meow"
+    root = _project_root() / "src" / "meow"
     free_files = {path.name for path in root.glob("*.py")}
     assert free_files <= ALLOWED_ROOT_FILES, sorted(free_files)
 
 
 def test_test_suite_is_grouped_by_responsibility():
-    root = Path(__file__).parent
-    free_tests = {path.name for path in root.glob("test_*.py")}
-    assert free_tests <= {
-        "test_native.py",
-        "test_package_architecture.py",
-        "test_config.py",
-        "test_logging.py",
-        "test_plan_files.py",
-        "test_shaping.py",
-        "test_claude_marketplace.py",
-        "test_meow_layout.py",
-    }
+    root = _project_root() / "tests"
+    assert sorted(path.name for path in root.glob("test_*.py")) == []
+
+
+def test_test_directories_are_not_empty():
+    root = _project_root() / "tests"
+    empty = []
+    for directory in root.iterdir():
+        if not directory.is_dir() or directory.name == "__pycache__":
+            continue
+        files = [
+            path
+            for path in directory.rglob("*")
+            if path.is_file() and path.suffix != ".pyc"
+        ]
+        if not files:
+            empty.append(directory.relative_to(root).as_posix())
+    assert empty == []
+
+
+def test_source_packages_are_not_empty():
+    root = _project_root() / "src" / "meow"
+    empty = []
+    for init_file in root.rglob("__init__.py"):
+        implementation_files = [
+            path
+            for path in init_file.parent.glob("*.py")
+            if path.name != "__init__.py"
+        ]
+        if not implementation_files:
+            empty.append(init_file.parent.relative_to(root).as_posix())
+    assert empty == []

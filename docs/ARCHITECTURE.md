@@ -9,15 +9,19 @@ workflow.
 - `native/`: deterministic, in-session skill execution and its CLI, lint,
   preparation, prompt, and checkpoint components.
 - `execution/`: sprint orchestration, runners, and durable run state.
-- `review/`: review command and branch review flows.
-- `integrations/`: Jira, GitLab, and GitHub adapters.
-- `testing/`: test execution and verification gates.
-- `worktrees/`: Git worktree lifecycle.
+- `project/`: configuration, plans, shaping, prompts, and permissions.
+- `infrastructure/`: checks, lint, tests, logging, cancellation, and
+  worktree lifecycle.
+- `integrations/`: Jira, GitLab, GitHub, issue-solving, and knowledge
+  adapters.
+- `tasks/`: task models, execution, scheduling, and integration.
 - `cli/`: the installed command entry point.
 
 New code belongs in the narrowest responsibility package. A package is split
 again when its files serve different workflows or require different
 dependencies; file count alone is not a threshold. The runtime has no
 top-level alias modules; use the responsibility packages listed above.
+Empty placeholder packages are not kept: a directory exists only when it
+contains implementation modules or a documented package boundary.
 Tests stay in the repository `tests/` package and are not copied into the
 runtime package.
