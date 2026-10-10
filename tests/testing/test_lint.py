@@ -182,7 +182,9 @@ class ProjectWideLintTests(unittest.IsolatedAsyncioTestCase):
             "id",
             None,
         )
-        self.assertEqual(marker.read_text(), str(web.resolve()) + "|src\\a.py")
+        self.assertEqual(
+            marker.read_text(), str(web.resolve()) + "|" + str(Path("src/a.py"))
+        )
         marker.unlink()
         await hook(
             {

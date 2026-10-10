@@ -197,7 +197,11 @@ def test_linux_install_script_runs_from_ci_checkout_without_cloning(  # ruff: ig
     home.mkdir()
 
     python_wrapper = "#!/bin/sh\nexec \"$MEOW_TEST_PYTHON\" \"$@\"\n"
-    _write_executable(bin_dir / "python3", python_wrapper)
+    # install.sh tries python3.15 ... python3.12 before python3; without a
+    # wrapper for each, /bin/python3.12 (the runner's system Python, which
+    # lacks MEOW's dependencies) would be picked instead.
+    for name in ("python3.15", "python3.14", "python3.13", "python3.12", "python3"):
+        _write_executable(bin_dir / name, python_wrapper)
     _write_executable(
         bin_dir / "meow",
         "#!/bin/sh\n"
