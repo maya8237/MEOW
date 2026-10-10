@@ -195,4 +195,12 @@ def test_main_exits_quietly_on_ctrl_c(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", interrupt)
 
     assert installer.main(["--repo-dir", str(repo)]) == _runtime.EXIT_INTERRUPTED
-    assert "Cancelled." in capsys.readouterr().out
+    assert "Setup stopped." in capsys.readouterr().out
+
+
+def test_cancelled_message_says_how_many_projects_were_set_up():
+    assert "no projects were set up" in _runtime._cancelled_message(0)
+    assert "1 project set up before you stopped" in _runtime._cancelled_message(1)
+    two = _runtime._cancelled_message(2)
+    assert "2 projects set up before you stopped" in two
+    assert "claude /meow:onboard" in two
