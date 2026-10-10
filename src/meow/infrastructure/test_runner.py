@@ -12,11 +12,11 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
-from meow.project.config import (
+from meow.project.command_policy import split_command
+from meow.project.config_models import (
     DevServerCommand,
     VerificationCommand,
     resolve_command_cwd,
-    split_command,
 )
 
 MAX_OUTPUT_CHARS = 8000

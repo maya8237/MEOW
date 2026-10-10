@@ -23,7 +23,8 @@ from meow.infrastructure.worktree import (
     _require_branch_checked_out,
     _resolve_working_dir,
 )
-from meow.project.config import LintCommand, config_root, load_config
+from meow.project.config import config_root, load_config
+from meow.project.config_models import LintCommand
 from meow.project.onboarding import CONFIG_RELPATH, onboard_if_needed
 from meow.project.plan_files import (
     _detect_review_flavor,

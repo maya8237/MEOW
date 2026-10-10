@@ -29,7 +29,6 @@ exclude = [
     "/.gitlab-ci.yml",
     "/.pylintrc",
     "/AGENTS.md",
-    "/ARCHITECTURE.md",
 ]
 
 [project.optional-dependencies]

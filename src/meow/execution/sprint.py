@@ -13,7 +13,7 @@ from claude_agent_sdk import AgentDefinition
 from meow.agents.base import ProjectContext
 from meow.agents.explorer import make_explorer_agent
 from meow.infrastructure.lint import make_lint_hook
-from meow.project.config import LintCommand
+from meow.project.config_models import LintCommand
 
 
 @dataclass(frozen=True)

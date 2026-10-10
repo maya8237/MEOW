@@ -8,8 +8,9 @@ from meow.project.command_policy import (
     _program_name,
     _validate_os_compatibility,
 )
-from meow.project.config import LintCommand, load_config, resolve_command_cwd
+from meow.project.config import load_config
 from meow.project.config_env import _expand_config_environment
+from meow.project.config_models import LintCommand, resolve_command_cwd
 from meow.project.config_schema import (
     _lint_entry,
     _normalize_lint_commands,
@@ -21,6 +22,40 @@ from meow.project.config_schema import (
 def _which_stub(result):
     """Stub `which` only where command_policy resolves it, not on stdlib shutil."""
     return patch("meow.project.command_policy.shutil", **{"which.return_value": result})
+
+
+class ModuleSurfaceTests(unittest.TestCase):
+    def test_config_does_not_reexport_sibling_symbols(self):
+        from meow.project import config
+
+        sibling_exports = {
+            "CONFIG_FILENAME",
+            "DEFAULT_FIX_FLAG",
+            "LINT_ENTRY_KEYS",
+            "LOCAL_CONFIG_FILENAME",
+            "MCP_ENTRY_KEYS",
+            "SERVER_ENTRY_KEYS",
+            "TESTER_KEYS",
+            "TEST_ENTRY_KEYS",
+            "USER_CONFIG_FILENAME",
+            "DevServerCommand",
+            "LintCommand",
+            "VerificationCommand",
+            "resolve_command_cwd",
+            "split_command",
+            "unresolved_environment_references",
+        }
+        for name in sibling_exports:
+            self.assertFalse(hasattr(config, name), name)
+        self.assertEqual(
+            set(config.__all__),
+            {
+                "DEFAULT_CONFIG",
+                "config_paths",
+                "load_config",
+                "user_config_path",
+            },
+        )
 
 
 class ProgramNameTests(unittest.TestCase):
