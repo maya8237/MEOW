@@ -135,6 +135,21 @@ def test_bootstrap_scripts_stop_when_meow_is_already_on_path():
     assert "\\033[31mFailed:" in posix
 
 
+def test_bootstrap_scripts_include_dependency_free_pretty_progress():
+    powershell = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
+    posix = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+
+    for script in (powershell, posix):
+        assert "MEOW INSTALLER" in script
+
+    assert "run_with_spinner()" in posix
+    assert "\\033[?25l" in posix
+    assert "\\033[?25h" in posix
+    assert "function Invoke-WithSpinner" in powershell
+    assert "Start-Job" in powershell
+    assert "Write-Host -NoNewline" in powershell
+
+
 def test_posix_bootstrap_uses_existing_meow_and_skips_install_when_older(
     tmp_path,
 ):

@@ -9,6 +9,47 @@ origin_pyproject_url='https://raw.githubusercontent.com/maya8237/MEOW/main/pypro
 default_parent=${HOME:-"$(pwd)"}
 failure_reported=0
 
+show_banner() {
+    printf '\033[36m\n'
+    printf '%s\n' '  +--------------------------------------+'
+    printf '%s\n' '  |           MEOW INSTALLER              |'
+    printf '%s\n' '  |  Management, Execution & Optimization |'
+    printf '%s\n' '  +--------------------------------------+'
+    printf '\033[0m\n'
+}
+
+run_with_spinner() (
+    spinner_message=$1
+    shift
+    spinner_chars='|/-\'
+
+    printf '  %s ' "$spinner_message"
+    printf '\033[?25l'
+    "$@" &
+    spinner_pid=$!
+    while kill -0 "$spinner_pid" 2>/dev/null; do
+        spinner_char=${spinner_chars%"${spinner_chars#?}"}
+        printf '\033[36m[%s]\033[0m' "$spinner_char"
+        spinner_chars=${spinner_chars#?}$spinner_char
+        sleep 0.1 || true
+        printf '\b\b\b'
+    done
+
+    if wait "$spinner_pid"; then
+        spinner_status=0
+    else
+        spinner_status=$?
+    fi
+
+    printf '\033[?25h\r\033[2K'
+    if [ "$spinner_status" -eq 0 ]; then
+        printf '\033[32m  [OK] %s\033[0m\n' "$spinner_message"
+    else
+        printf '\033[31m  [FAIL] %s\033[0m\n' "$spinner_message"
+    fi
+    exit "$spinner_status"
+)
+
 report_unexpected_failure() {
     status=$?
     if [ "$status" -ne 0 ] && [ "$failure_reported" -eq 0 ]; then
@@ -124,9 +165,9 @@ stop_for_existing_meow() {
                 printf '%s\n' "Updating MEOW from existing checkout: $existing_checkout"
                 command -v git >/dev/null 2>&1 \
                     || die 'Git is required to update the existing MEOW checkout.'
-                git -C "$existing_checkout" pull --ff-only origin main \
+                run_with_spinner 'Pulling MEOW source' git -C "$existing_checkout" pull --ff-only origin main \
                     || die 'MEOW source update failed.'
-                "$existing_python" -m pip install -e "$existing_checkout" \
+                run_with_spinner 'Installing editable MEOW update' "$existing_python" -m pip install -e "$existing_checkout" \
                     || die 'Editable MEOW update failed.'
                 printf '%s\n' 'MEOW updated successfully.'
                 ;;
@@ -147,6 +188,8 @@ stop_for_existing_meow() {
     fi
     return 0
 }
+
+show_banner
 
 if stop_for_existing_meow; then
     printf '\033[32mDone!\033[0m\n'
@@ -173,16 +216,14 @@ if [ -e "$clone_path" ]; then
     printf 'Using existing MEOW checkout: %s\n' "$clone_path"
 else
     mkdir -p "$destination"
-    printf 'Cloning MEOW over SSH into %s\n' "$clone_path"
-    git clone "$repository_url" "$clone_path" \
+    run_with_spinner "Cloning MEOW over SSH into $clone_path" git clone "$repository_url" "$clone_path" \
         || die 'SSH clone failed. Check that GitHub SSH authentication works with: ssh -T git@github.com'
 fi
 
 python_command=$(select_python) \
     || die 'MEOW requires system Python 3.12 or newer. Install it and run this installer again.'
 
-printf 'Installing MEOW with %s -m pip install -e ...\n' "$python_command"
-"$python_command" -m pip install -e "$clone_path" \
+run_with_spinner "Installing MEOW with $python_command -m pip install -e ..." "$python_command" -m pip install -e "$clone_path" \
     || die 'Editable MEOW installation failed.'
 
 printf '%s\n' 'Configuring Claude and onboarding projects...'
