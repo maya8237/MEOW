@@ -360,11 +360,18 @@ async def _run_browser(active_dir: Path, tester: dict) -> BrowserEvidence | None
 
 
 def _probe(url: str) -> str | None:
-    """None when `url` answers; otherwise why it did not."""
+    """None when `url` answers; otherwise why it did not.
+
+    Any HTTP response (even 404) means a server is listening. The 1s response
+    window matters on macOS, where loopback replies can exceed 0.25s; the
+    caller's startup deadline still bounds the total wait.
+    """
     try:
-        with urllib.request.urlopen(url, timeout=0.25):
+        with urllib.request.urlopen(url, timeout=1.0):
             return None
-    except (OSError, urllib.error.URLError, ValueError) as exc:
+    except urllib.error.HTTPError:
+        return None
+    except (OSError, ValueError) as exc:
         return f"{type(exc).__name__}: {exc}"
 
 
