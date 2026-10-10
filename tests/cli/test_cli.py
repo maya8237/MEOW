@@ -39,7 +39,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             parser.parse_args(["--version"])
 
         self.assertEqual(ctx.exception.code, 0)
-        self.assertEqual(output.getvalue(), "meow 0.1.0\n")
+        self.assertEqual(output.getvalue(), "meow 0.1.1\n")
 
     def test_top_level_help_shows_only_primary_user_commands(self):
         parser = cli._build_arg_parser()
