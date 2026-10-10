@@ -1,3 +1,5 @@
+import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -506,8 +508,12 @@ class LintEntryTests(unittest.TestCase):  # ruff: ignore[too-many-public-methods
             self.assertEqual(entry.timeout, 12.5)
             self.assertEqual(entry.env, {"MODE": "fast"})
             self.assertEqual(entry.args, ("--output-file", "a report.json"))
+            expected_command = (
+                "ruff" if os.name == "nt" else shutil.which("ruff") or "ruff"
+            )
             self.assertEqual(
-                entry.argv(), ["ruff", "check", "--output-file", "a report.json"]
+                entry.argv(),
+                [expected_command, "check", "--output-file", "a report.json"],
             )
             self.assertEqual(
                 resolve_command_cwd(root, entry.cwd), (root / "apps/web").resolve()
