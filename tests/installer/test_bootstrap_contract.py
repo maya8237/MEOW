@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+INTERRUPTED = 130
 
 
 def _bash_path() -> Path:
@@ -133,16 +134,13 @@ def test_bootstrap_scripts_stop_when_meow_is_already_on_path():
 def test_powershell_existing_install_reports_up_to_date_and_forwards_setup_output():
     powershell = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
 
-    assert (
-        'Write-Host ("MEOW $installedVersion is up to date " + [char]0x2713)'
-        in powershell
-    )
+    assert 'Write-Host "MEOW $installedVersion is already up to date :)"' in powershell
     assert re.search(
-        r"is up to date.*?if \(\$comparison -ne \$false\).*?Read-Host",
+        r"already up to date.*?if \(\$comparison -ne \$false\).*?Read-Host",
         powershell,
         re.DOTALL,
     )
-    assert "Invoke-MeowSetup -Python $existingSetup" in powershell
+    assert "Set-PendingSetup -Python $existingSetup" in powershell
     assert "meow.installer" in powershell
     assert 'Write-Host "  py -3 -m pip install --upgrade' not in powershell
     assert 'Write-Host "  $manualPythonCommand -m pip install --upgrade' in powershell
@@ -356,7 +354,7 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
         in output
     )
     assert str(ROOT) in output
-    assert "MEOW 9.9.9 is up to date ✓" in output
+    assert "MEOW 9.9.9 is already up to date :)" in output
     assert "Update MEOW now?" not in output
     assert "Get started:" in output
     assert output.index("Done!") < output.index("Get started:")
@@ -464,3 +462,18 @@ def test_posix_bootstrap_uses_importable_meow_when_command_is_not_on_path(tmp_pa
     assert "FAKE_SETUP" in result.stderr
     assert "Cloning MEOW" not in result.stdout
     assert "git clone" not in log
+
+
+def test_posix_bootstrap_exits_quietly_when_setup_is_cancelled(tmp_path):
+    result, log = _run_posix_installer(
+        tmp_path,
+        meow_version="0.1.0",
+        origin_version="0.1.0",
+        existing_checkout=tmp_path / "existing-meow",
+        setup_exit_code=INTERRUPTED,
+    )
+
+    assert result.returncode == INTERRUPTED
+    assert "Failed:" not in result.stdout + result.stderr
+    assert "Done!" not in result.stdout
+    assert "--next-steps" not in log
