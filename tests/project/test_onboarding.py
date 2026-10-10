@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -104,7 +105,11 @@ def test_onboard_project_writes_boundary_then_config(repo):
     (repo / "pyproject.toml").write_text("[tool.ruff]\n", encoding="utf-8")
     report = onboard_project(repo)
     assert report.error is None
-    assert set(report.files) == {".gitignore", ".meow/config.toml"}
+    assert set(report.files) == {
+        ".gitignore",
+        ".meow/config.toml",
+        ".meow/config.local.toml",
+    }
     text = (repo / ".meow" / "config.toml").read_text(encoding="utf-8")
     assert 'command = "python -m ruff check"' in text
     assert 'fix_flag = "--fix"' in text
@@ -113,6 +118,29 @@ def test_onboard_project_writes_boundary_then_config(repo):
     assert _ignored(repo, ".meow/config.local.toml")
     assert _ignored(repo, ".meow/runs/x.json")
     assert is_onboarded(repo)
+
+
+def test_onboard_project_writes_documented_shared_and_local_configs(repo):
+    onboard_project(repo)
+
+    local_text = (repo / ".meow" / "config.local.toml").read_text(
+        encoding="utf-8"
+    )
+    shared_text = (repo / ".meow" / "config.toml").read_text(encoding="utf-8")
+    assert tomllib.loads(local_text) == {}
+    assert "local" in local_text.lower()
+    assert "max_rounds" in shared_text
+    assert "automatically" in shared_text.lower()
+
+
+def test_onboard_project_never_rewrites_existing_local_config(repo):
+    local = repo / ".meow" / "config.local.toml"
+    local.parent.mkdir()
+    local.write_text('docs_dir = "private-plans"\n', encoding="utf-8")
+
+    onboard_project(repo)
+
+    assert local.read_text(encoding="utf-8") == 'docs_dir = "private-plans"\n'
 
 
 def test_onboard_project_detects_eslint(repo):
@@ -147,7 +175,7 @@ def test_onboard_project_never_overwrites_config(repo):
 
 def test_onboard_project_write_config_false_only_repairs_boundary(repo):
     report = onboard_project(repo, write_config=False)
-    assert report.files == (".gitignore",)
+    assert set(report.files) == {".gitignore", ".meow/config.local.toml"}
     assert not (repo / ".meow" / "config.toml").exists()
 
 

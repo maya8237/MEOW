@@ -90,6 +90,7 @@ def test_first_run_onboards_active_dir(tmp_path):
     assert set(record.results["onboarding"]["files"]) == {
         ".gitignore",
         ".meow/config.toml",
+        ".meow/config.local.toml",
     }
     assert "onboarded" in _phases(repo)
 

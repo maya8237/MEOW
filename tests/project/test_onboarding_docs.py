@@ -14,6 +14,13 @@ def test_onboard_skill_checks_state_and_focuses_on_add_ons():
     assert "meow native onboard-status" in text
     assert "add-ons" in text
     assert "never been onboarded" in text
+    assert "comment-only" in text
+
+
+def test_native_protocol_documents_the_local_onboarding_template():
+    text = _read("skills", "_shared", "native-mode.md")
+    assert "config.local.toml" in text
+    assert "comment-only" in text
 
 
 def test_readme_says_first_run_onboards_automatically():

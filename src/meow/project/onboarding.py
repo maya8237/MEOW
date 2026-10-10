@@ -18,6 +18,7 @@ from meow.project.config import config_paths
 BOUNDARY = (".meow/*", "!.meow/", "!.meow/config.toml")
 
 CONFIG_RELPATH = ".meow/config.toml"
+LOCAL_CONFIG_RELPATH = ".meow/config.local.toml"
 
 SKIPPED_FEATURES = (
     "Jira",
@@ -160,15 +161,52 @@ def _config_text(lint: tuple[str, str] | None, existing: set[str]) -> str:
     """Minimal shared config, leaving out anything local/user config already sets."""
     lines = [
         "# Created automatically by meow on the first run.",
-        "# See templates/meow-config.toml.example for every option.",
+        "# This shared file is safe to commit; keep private values in the local",
+        "# config or environment variables. See templates/meow-config.toml.example",
+        "# for every option and docs/INTEGRATIONS.md for feature setup.",
     ]
     if "max_rounds" not in existing:
-        lines += ["", "max_rounds = 8"]
+        lines += [
+            "",
+            "# Maximum generator/reviewer rounds before MEOW pauses for review.",
+            "max_rounds = 8",
+        ]
     if "docs_dir" not in existing:
-        lines += ["", 'docs_dir = ".meow/plans"']
+        lines += [
+            "",
+            "# Directory for MEOW-generated plans, reviews, and evidence.",
+            'docs_dir = ".meow/plans"',
+        ]
     if lint and "lint" not in existing:
-        lines += ["", "[[lint]]", f'command = "{lint[0]}"', f'fix_flag = "{lint[1]}"']
+        lines += [
+            "",
+            "# Detected lint command; MEOW uses this for per-file and gate checks.",
+            "[[lint]]",
+            f'command = "{lint[0]}"',
+            f'fix_flag = "{lint[1]}"',
+        ]
     return "\n".join(lines) + "\n"
+
+
+def _local_config_text() -> str:
+    """Documentation-only local config template; every setting stays commented."""
+    return "\n".join(
+        [
+            "# Optional machine- and user-specific MEOW settings for this project.",
+            "# This file is ignored by Git and overrides .meow/config.toml locally.",
+            "# Keep credentials in environment variables or this ignored file,",
+            "# never in the shared project config.",
+            "#",
+            "# Examples (uncomment only what you need):",
+            '# [agent_skills]',
+            '# default = ["my-installed-skill"]',
+            '# [tester.mcp.env]',
+            '# TOKEN = "$TOKEN"',
+            "#",
+            "# See templates/meow-config.toml.example and docs/INTEGRATIONS.md.",
+            "",
+        ]
+    )
 
 
 def _verify(root: Path) -> str | None:
@@ -191,6 +229,11 @@ def _apply(
         config.parent.mkdir(parents=True, exist_ok=True)
         config.write_text(_config_text(lint, existing), encoding="utf-8")
         files.append(CONFIG_RELPATH)
+    local = root / LOCAL_CONFIG_RELPATH
+    if error is None and not local.is_file():
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_text(_local_config_text(), encoding="utf-8")
+        files.append(LOCAL_CONFIG_RELPATH)
     return error
 
 
