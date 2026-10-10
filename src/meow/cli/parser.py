@@ -305,6 +305,7 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     run_parser.add_argument(
+        "-u",
         "--unattended",
         action="store_true",
         help="Commit and push a verified run even when working in place.",
