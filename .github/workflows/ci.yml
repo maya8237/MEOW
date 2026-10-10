@@ -24,7 +24,12 @@ jobs:
       - name: Run the test suite
         run: python -m unittest discover -s tests -v 2>&1 | tee test-output.log
       - name: Run installer script tests
-        run: python -m pytest tests/installer/test_bootstrap_contract.py -q
+        run: python -m pytest tests/installer/test_bootstrap_contract.py -q 2>&1 | tee installer-test-output.log
+      - name: Surface installer-test failures as an annotation
+        if: failure()
+        shell: bash
+        run: |
+          tail -n 120 installer-test-output.log | sed 's/%/%25/g; s/\r/%0D/g' | awk '{printf "%s%%0A", $0}' | { printf '::error::'; cat; printf '\n'; }
       # GitHub's own log viewer requires sign-in even for a public repo, so
       # a failure's actual output is otherwise invisible to anyone without
       # an account. Annotations are readable through the public,
