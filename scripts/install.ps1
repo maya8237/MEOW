@@ -42,36 +42,6 @@ function Test-VersionOlder {
     }
 }
 
-function Stop-ForExistingMeow {
-    $existing = Get-Command meow -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($null -eq $existing) {
-        return $false
-    }
-
-    $existingPath = if ($existing.Path) { $existing.Path } else { $existing.Name }
-    $versionOutput = & $existing.Name --version 2>$null
-    $installedVersion = Get-VersionFromText (($versionOutput | Select-Object -First 1) -as [string])
-    $originVersion = Get-OriginMainVersion
-    $comparison = if ($installedVersion -and $originVersion) {
-        Test-VersionOlder -Installed $installedVersion -Latest $originVersion
-    } else {
-        $null
-    }
-
-    if ($comparison -eq $true) {
-        Write-Warning "Installed MEOW $installedVersion at $existingPath is older than origin/main $originVersion. Using the existing installation without changes."
-    } elseif ($null -eq $comparison) {
-        Write-Warning "MEOW is already installed at $existingPath, but its version could not be compared with origin/main. Using the existing installation without changes."
-    } else {
-        Write-Host "MEOW is already installed at $existingPath; using the existing installation without changes."
-    }
-    return $true
-}
-
-if (Stop-ForExistingMeow) {
-    return
-}
-
 function Test-Python312 {
     param(
         [Parameter(Mandatory = $true)][string]$Executable,
@@ -101,6 +71,84 @@ function Select-Python {
     }
 
     throw "MEOW requires system Python 3.12 or newer. Install it and run this installer again."
+}
+
+function Find-ExistingMeowCheckout {
+    $candidates = @(
+        @{ Executable = "py"; Arguments = @("-3") },
+        @{ Executable = "py"; Arguments = @("-3.15") },
+        @{ Executable = "py"; Arguments = @("-3.14") },
+        @{ Executable = "py"; Arguments = @("-3.13") },
+        @{ Executable = "py"; Arguments = @("-3.12") },
+        @{ Executable = "python3.15"; Arguments = @() },
+        @{ Executable = "python3.14"; Arguments = @() },
+        @{ Executable = "python3.13"; Arguments = @() },
+        @{ Executable = "python3.12"; Arguments = @() },
+        @{ Executable = "python3"; Arguments = @() },
+        @{ Executable = "python"; Arguments = @() }
+    )
+    $query = 'from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); print(next((str(root) for root in (package.parents[2], package.parents[3]) if (root/".git").exists() and (root/"skills").is_dir()), ""))'
+
+    foreach ($candidate in $candidates) {
+        if (-not (Get-Command $candidate.Executable -ErrorAction SilentlyContinue)) {
+            continue
+        }
+        if (-not (Test-Python312 -Executable $candidate.Executable -Arguments $candidate.Arguments)) {
+            continue
+        }
+
+        $checkout = & $candidate.Executable @($candidate.Arguments) -c $query 2>$null | Select-Object -First 1
+        if (($LASTEXITCODE -eq 0) -and -not [string]::IsNullOrWhiteSpace([string]$checkout)) {
+            return @{
+                Executable = $candidate.Executable
+                Arguments = @($candidate.Arguments)
+                Checkout = ([string]$checkout).Trim()
+            }
+        }
+    }
+    return $null
+}
+
+function Stop-ForExistingMeow {
+    $existing = Get-Command meow -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $existing) {
+        return $false
+    }
+
+    $existingPath = if ($existing.Path) { $existing.Path } else { $existing.Name }
+    $versionOutput = & $existing.Name --version 2>$null
+    $installedVersion = Get-VersionFromText (($versionOutput | Select-Object -First 1) -as [string])
+    $originVersion = Get-OriginMainVersion
+    $comparison = if ($installedVersion -and $originVersion) {
+        Test-VersionOlder -Installed $installedVersion -Latest $originVersion
+    } else {
+        $null
+    }
+
+    if ($comparison -eq $true) {
+        Write-Warning "Installed MEOW $installedVersion at $existingPath is older than origin/main $originVersion. Using the existing installation without reinstalling it."
+    } elseif ($null -eq $comparison) {
+        Write-Warning "MEOW is already installed at $existingPath, but its version could not be compared with origin/main. Using the existing installation without reinstalling it."
+    } else {
+        Write-Host "MEOW is already installed at $existingPath; using the existing installation without reinstalling it."
+    }
+
+    $existingSetup = Find-ExistingMeowCheckout
+    if ($null -eq $existingSetup) {
+        Write-Warning "Could not locate the existing MEOW checkout; plugin registration and project onboarding were skipped."
+        return $true
+    }
+
+    Write-Host "Configuring Claude and onboarding projects using existing MEOW checkout: $($existingSetup.Checkout)"
+    & $existingSetup.Executable @($existingSetup.Arguments) -m meow.installer --repo-dir $existingSetup.Checkout
+    if ($LASTEXITCODE -ne 0) {
+        throw "MEOW post-install setup failed."
+    }
+    return $true
+}
+
+if (Stop-ForExistingMeow) {
+    return
 }
 
 $destination = Read-Host "Parent directory for MEOW [$defaultParent]"
