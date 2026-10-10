@@ -427,3 +427,31 @@ def test_powershell_trims_destination_separators_as_characters():
     text = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
 
     assert "TrimEnd([char[]]@(" in text
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Windows PowerShell syntax test"
+)
+def test_powershell_bootstrap_parses_in_windows_powershell_5_1():
+    powershell = shutil.which("powershell")
+    if powershell is None:
+        pytest.skip("Windows PowerShell is required for the syntax test")
+
+    command = (
+        "$tokens = $null; "
+        "$errors = $null; "
+        "[System.Management.Automation.Language.Parser]::ParseFile("
+        "(Join-Path (Get-Location) 'scripts/install.ps1'), "
+        "[ref]$tokens, [ref]$errors) > $null; "
+        "if ($errors.Count -gt 0) { "
+        "$errors | ForEach-Object { $_.Message }; exit 1 }"
+    )
+    result = subprocess.run(
+        [powershell, "-NoProfile", "-NonInteractive", "-Command", command],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr

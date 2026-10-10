@@ -1,4 +1,4 @@
-# Streamable MEOW installer. Run with:
+﻿# Streamable MEOW installer. Run with:
 # irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
@@ -154,7 +154,9 @@ function Find-ExistingMeowCheckout {
         @{ Executable = "python3"; Arguments = @() },
         @{ Executable = "python"; Arguments = @() }
     )
-    $query = 'from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); print(next((str(root) for root in (package.parents[2], package.parents[3]) if (root/''.git'').exists() and (root/''skills'').is_dir()), ''''))'
+    $query = @'
+from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); print(next((str(root) for root in (package.parents[2], package.parents[3]) if (root/'.git').exists() and (root/'skills').is_dir()), ''))
+'@
 
     foreach ($candidate in $candidates) {
         if (-not (Get-Command $candidate.Executable -ErrorAction SilentlyContinue)) {
@@ -222,7 +224,12 @@ function Stop-ForExistingMeow {
 
     if ($comparison -ne $false) {
         $pythonCommand = (@($existingSetup.Executable) + @($existingSetup.Arguments)) -join " "
-        $updateCommand = "git -C `"$($existingSetup.Checkout)`" pull --ff-only origin main; if (`$?) { $pythonCommand -m pip install -e `"$($existingSetup.Checkout)`" }"
+        $updateCommand = (
+            'git -C "' + $existingSetup.Checkout +
+            '" pull --ff-only origin main; if ($?) { ' +
+            $pythonCommand + ' -m pip install -e "' +
+            $existingSetup.Checkout + '" }'
+        )
         try {
             $updateAnswer = Read-Host "Update MEOW now? [y/N]"
         } catch {
@@ -275,7 +282,7 @@ if ([string]::IsNullOrWhiteSpace($destination)) {
 }
 $destination = [Environment]::ExpandEnvironmentVariables($destination.Trim().Trim('"'))
 $destination = [IO.Path]::GetFullPath($destination)
-$trimmedDestination = $destination.TrimEnd([char[]]@('\', '/'))
+$trimmedDestination = $destination.TrimEnd([char[]]@("\", "/"))
 $leaf = [IO.Path]::GetFileName($trimmedDestination)
 $clonePath = if ($leaf -ieq "MEOW") { $destination } else { Join-Path $destination "MEOW" }
 
