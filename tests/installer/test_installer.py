@@ -149,6 +149,14 @@ def test_main_onboards_each_literal_destination_and_prints_next_steps(
     assert calls == [project]
     assert "one at a time" in output
     assert "Optional features not enabled" not in output
+    assert "Get started" not in output  # shown after the scripts' "Done!"
+
+
+def test_next_steps_flag_prints_only_the_closing_guidance(capsys):
+    assert installer.main(["--next-steps"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Get started:" in output
     assert "claude /meow:onboard" in output
     assert 'meow run "Add CSV export" --name csv-export --work-dir <project>' in output
     assert "claude /meow:run Add CSV export" in output

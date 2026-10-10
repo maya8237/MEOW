@@ -210,8 +210,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--repo-dir",
-        required=True,
         help="Absolute or relative path to the cloned MEOW checkout.",
+    )
+    parser.add_argument(
+        "--next-steps",
+        action="store_true",
+        help="Only print the closing guidance (the scripts show it after Done!).",
     )
     return parser
 
@@ -276,8 +280,8 @@ def _onboard_projects(
 
 def _print_next_steps(output: Callable[[str], None]) -> None:
     output(
-        "\nNext options:\n"
-        "- Continue optional integrations and feature setup with "
+        "\nGet started:\n"
+        "- Continue project-level integrations like Jira, GitLab and GitHub with "
         "`claude /meow:onboard` in your project.\n"
         '- Start from a terminal: `meow run "Add CSV export" --name csv-export '
         "--work-dir <project>`.\n"
@@ -287,7 +291,13 @@ def _print_next_steps(output: Callable[[str], None]) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the interactive portion shared by the PowerShell and POSIX scripts."""
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.next_steps:
+        _print_next_steps(print)
+        return 0
+    if not args.repo_dir:
+        parser.error("--repo-dir is required")
     repo_dir = Path(args.repo_dir).expanduser().resolve()
     if not repo_dir.is_dir():
         print(f"MEOW checkout does not exist: {repo_dir}")
@@ -296,5 +306,4 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     _onboard_projects(input, print, path_prompt())
-    _print_next_steps(print)
     return 0

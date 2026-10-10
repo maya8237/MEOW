@@ -15,6 +15,9 @@
     $repositoryUrl = "git@github.com:maya8237/MEOW.git"
     $originPyprojectUrl = "https://raw.githubusercontent.com/maya8237/MEOW/main/pyproject.toml"
     $defaultParent = "C:/Projects"
+    # The interpreter that ran the post-install setup, kept so the closing guidance
+    # can be shown after "Done!".
+    $setupState = @{ Python = $null }
 
     function Show-Banner {
         Write-Host ""
@@ -261,6 +264,7 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
     function Invoke-MeowSetup {
         param([Parameter(Mandatory = $true)][hashtable]$Python, [Parameter(Mandatory = $true)][string]$Checkout)
 
+        $setupState.Python = $Python
         $arguments = @($Python.Arguments) + @("-m", "meow.installer", "--repo-dir", ('"' + $Checkout + '"'))
         $process = Start-Process -FilePath $Python.Executable -ArgumentList $arguments -NoNewWindow -Wait -PassThru
         if ($process.ExitCode -ne 0) {
@@ -389,6 +393,9 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
             Install-FreshMeow
         }
         Write-Host "Done!" -ForegroundColor Green
+        if ($null -ne $setupState.Python) {
+            & $setupState.Python.Executable @($setupState.Python.Arguments) -m meow.installer --next-steps | Out-Host
+        }
     } catch {
         Write-Host ("Failed: " + $_.Exception.Message) -ForegroundColor Red
         # `exit` would close the caller's terminal when streamed with `| iex`, so
