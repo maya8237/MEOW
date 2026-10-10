@@ -60,7 +60,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     def test_unattended_flag_accepts_short_alias(self):
         parser = cli._build_arg_parser()
 
-        self.assertTrue(parser.parse_args(["run", "feature", "--unattended"]).unattended)
+        self.assertTrue(
+            parser.parse_args(["run", "feature", "--unattended"]).unattended
+        )
         self.assertTrue(parser.parse_args(["run", "feature", "-u"]).unattended)
 
     def test_hidden_top_level_commands_remain_parseable(self):
