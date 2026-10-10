@@ -47,9 +47,11 @@ def test_readme_starts_with_streamed_install_commands():
     assert powershell_command in text
     assert posix_command in text
     assert text.count("## Install") == 1
-    first_workflow_section = text.index("## One command. Done.")
-    assert text.index(powershell_command) < first_workflow_section
-    assert text.index(posix_command) < first_workflow_section
+    assert "## Run" in text
+    assert text.index(powershell_command) < text.index("## Run")
+    assert text.index(posix_command) < text.index("## Run")
+    assert text.count("/meow:run") == 1
+    assert text.count("meow run") == 1
     assert "pip install" not in text.lower()
     assert "claude plugin marketplace" not in text.lower()
     assert "The installer" not in text

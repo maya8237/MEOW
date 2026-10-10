@@ -26,8 +26,8 @@ def test_native_protocol_documents_the_local_onboarding_template():
 def test_readme_says_first_run_onboards_automatically():
     text = _read("README.md")
     assert "Set up once" not in text
-    assert "first `meow run`" in text
-    assert "add-ons" in text
+    assert "set up automatically on first use" in text
+    assert "/meow:onboard" in text
 
 
 def test_cli_guide_documents_automatic_onboarding():
