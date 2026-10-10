@@ -92,7 +92,6 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
     run_id: str | None = None,
     *,
     continue_run: bool = False,
-    auto_resume: bool = False,
 ) -> int:
     store = RunStore(working_dir)
     try:
@@ -101,7 +100,7 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
         print(str(exc), file=sys.stderr)
         return 1
     print(render(record))
-    if not (continue_run or auto_resume):
+    if not continue_run:
         return 0
     if record.phase == "complete":
         print("Run already complete.", file=sys.stderr)

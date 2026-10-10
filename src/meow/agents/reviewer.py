@@ -50,6 +50,21 @@ REMOTE_REVIEW_SPECS = {
 }
 
 
+def _prepare_review_file(review_file: Path) -> None:
+    """Remove any prior verdict so only this review can establish status."""
+    review_file.unlink(missing_ok=True)
+
+
+def _read_review_file(review_file: Path) -> str:
+    """Read the fresh verdict and report a clear error when it is absent."""
+    try:
+        return review_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise RuntimeError(
+            f"Reviewer did not produce a readable verdict at {review_file}"
+        ) from exc
+
+
 def new_review_filename(flavor: str) -> str:
     """A review file name no concurrent review of the same kind can share."""
     if flavor not in REVIEW_FLAVORS:
@@ -299,6 +314,7 @@ class ReviewerAgent(Agent):
         review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
         review_dir.mkdir(parents=True, exist_ok=True)
         review_file = review_dir / new_review_filename("prompt")
+        _prepare_review_file(review_file)
         review_basis = (prompt or "").strip()
         docs_dir = self.context.config["docs_dir"]
         git_context, has_diff = _git_review_context(self.context)
@@ -324,7 +340,7 @@ class ReviewerAgent(Agent):
             lint_report=lint_evidence.report(),
         )
         await self.run_query(query_prompt, options, "Reviewer")
-        verdict_text = review_file.read_text(encoding="utf-8")
+        verdict_text = _read_review_file(review_file)
         return self._apply_lint_gate(
             _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
         )
@@ -349,6 +365,7 @@ class ReviewerAgent(Agent):
         review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
         review_dir.mkdir(parents=True, exist_ok=True)
         review_file = review_dir / new_review_filename(flavor)
+        _prepare_review_file(review_file)
         options = self.options(
             system_prompt=remote_review_prompt(
                 review_file,
@@ -365,7 +382,7 @@ class ReviewerAgent(Agent):
             f"{request_label} diff:\n{diff}"
         )
         await self.run_query(query_prompt, options, "Reviewer")
-        verdict_text = review_file.read_text(encoding="utf-8")
+        verdict_text = _read_review_file(review_file)
         return _verdict_status(verdict_text), verdict_text
 
     async def review_branch(self, target: str, branch: str) -> tuple[str, str]:
@@ -379,6 +396,7 @@ class ReviewerAgent(Agent):
         review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
         review_dir.mkdir(parents=True, exist_ok=True)
         review_file = review_dir / new_review_filename("branch")
+        _prepare_review_file(review_file)
         diff_text = _branch_diff(self.context.active_working_dir(), target, branch)
         lint_evidence = await self._lint_evidence()
         options = self.options(
@@ -397,7 +415,7 @@ class ReviewerAgent(Agent):
             target, branch, diff_text, lint_evidence.report()
         )
         await self.run_query(query_prompt, options, "Reviewer")
-        verdict_text = review_file.read_text(encoding="utf-8")
+        verdict_text = _read_review_file(review_file)
         return self._apply_lint_gate(
             _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
         )
@@ -417,6 +435,7 @@ class ReviewerAgent(Agent):
         prompt argument into every round's grading, not just the first.
         """
         review_file = plan_file.with_name(plan_file.stem + "-review.md")
+        _prepare_review_file(review_file)
         lint_evidence = await self._lint_evidence()
         options = self.options(
             system_prompt=plan_review_prompt(
@@ -434,7 +453,7 @@ class ReviewerAgent(Agent):
         await self.run_query(
             plan_review_query(plan_file, lint_evidence.report()), options, "Reviewer"
         )
-        verdict_text = review_file.read_text(encoding="utf-8")
+        verdict_text = _read_review_file(review_file)
         return self._apply_lint_gate(
             _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
         )

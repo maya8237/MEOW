@@ -104,18 +104,23 @@ class GithubFetcherFetchTests(unittest.IsolatedAsyncioTestCase):
         self.agent = GithubFetcherAgent(self.context, {"command": "uvx", "args": []})
 
     async def test_raises_when_the_agent_never_wrote_the_output_file(self):
-        async def fake_query(*, prompt, options):
-            await asyncio.sleep(0)
-            yield _result("success")
+        with tempfile.TemporaryDirectory() as tmp:
+            output_file = Path(tmp) / "pull_request.json"
+            output_file.write_text("stale", encoding="utf-8")
 
-        with (
-            patch("meow.agents.base.query", fake_query),
-            self.assertRaisesRegex(RuntimeError, "did not write"),
-        ):
-            await self.agent.fetch(
-                "https://github.com/example/project/pull/1",
-                Path("/tmp/does-not-exist.json"),
-            )
+            async def fake_query(*, prompt, options):
+                await asyncio.sleep(0)
+                yield _result("success")
+
+            with (
+                patch("meow.agents.base.query", fake_query),
+                self.assertRaisesRegex(RuntimeError, "did not write"),
+            ):
+                await self.agent.fetch(
+                    "https://github.com/example/project/pull/1", output_file
+                )
+
+            self.assertFalse(output_file.exists())
 
     async def test_write_permission_is_scoped_to_the_output_file(self):
         with tempfile.TemporaryDirectory() as tmp:

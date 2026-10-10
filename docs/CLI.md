@@ -164,13 +164,12 @@ meow status
 meow status RUN_ID --verbose
 meow resume RUN_ID
 meow resume RUN_ID --continue
-meow resume RUN_ID --auto-resume
 ```
 
-`resume` inspects and exits by default. Both continuation flags validate the
-saved repository, worktree, branch, plan, and configuration before starting
-agents. A run interrupted during a possible edit reviews the saved worktree
-against its plan before any generator retry. A mismatch stops with a recovery
+`resume` inspects and exits by default. `--continue` validates the saved
+repository, worktree, branch, plan, and configuration before starting agents.
+A run interrupted during a possible edit reviews the saved worktree against
+its plan before any generator retry. A mismatch stops with a recovery
 diagnostic. Failed and interrupted runs retain their worktree and evidence.
 Completion requires an independent reviewer PASS, an enabled tester PASS, and
 current passing required lint, test, and build checks. Advisory failures remain

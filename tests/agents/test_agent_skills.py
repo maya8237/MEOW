@@ -55,6 +55,7 @@ class AgentSkillTests(unittest.TestCase):
         with (
             patch("meow.agents.base.query", side_effect=empty_query) as query,
             patch.object(Path, "mkdir"),
+            patch.object(Path, "is_file", return_value=True),
         ):
             result = asyncio.run(
                 planner.run_planner(make_sprint(self.tmp_path), "feature", "Request")

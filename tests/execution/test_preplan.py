@@ -143,7 +143,9 @@ def test_plan_command_prepares_project_context_behind_the_scenes(tmp_path):
     from meow.execution.sprint import Sprint
 
     sprint = Sprint(tmp_path, {"docs_dir": ".", "lint": []}, None, None)
-    planner = AsyncMock(return_value=tmp_path / "plan.md")
+    plan_file = tmp_path / "plan.md"
+    plan_file.write_text("# Plan\n", encoding="utf-8")
+    planner = AsyncMock(return_value=plan_file)
     with (
         patch(
             "meow.execution.sprint_runner._prepare_sprint",

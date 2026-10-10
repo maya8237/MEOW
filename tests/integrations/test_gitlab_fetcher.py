@@ -1,4 +1,5 @@
 import asyncio
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -103,18 +104,24 @@ class GitlabFetcherFetchTests(unittest.IsolatedAsyncioTestCase):
         self.agent = GitlabFetcherAgent(self.context, {"command": "uvx", "args": []})
 
     async def test_raises_when_the_agent_never_wrote_the_output_file(self):
-        async def fake_query(*, prompt, options):
-            await asyncio.sleep(0)
-            yield _result("success")
+        with tempfile.TemporaryDirectory() as tmp:
+            output_file = Path(tmp) / "merge_request.json"
+            output_file.write_text("stale", encoding="utf-8")
 
-        with (
-            patch("meow.agents.base.query", fake_query),
-            self.assertRaisesRegex(RuntimeError, "did not write"),
-        ):
-            await self.agent.fetch(
-                "https://gitlab.example.com/group/project/-/merge_requests/1",
-                Path("/tmp/does-not-exist.json"),
-            )
+            async def fake_query(*, prompt, options):
+                await asyncio.sleep(0)
+                yield _result("success")
+
+            with (
+                patch("meow.agents.base.query", fake_query),
+                self.assertRaisesRegex(RuntimeError, "did not write"),
+            ):
+                await self.agent.fetch(
+                    "https://gitlab.example.com/group/project/-/merge_requests/1",
+                    output_file,
+                )
+
+            self.assertFalse(output_file.exists())
 
 
 if __name__ == "__main__":

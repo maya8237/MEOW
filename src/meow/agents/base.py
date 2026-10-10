@@ -109,6 +109,11 @@ def restrict_writes(
     )
 
 
+def prepare_output_file(output_file: Path) -> None:
+    """Remove a prior output so a later existence check cannot accept stale data."""
+    output_file.unlink(missing_ok=True)
+
+
 def _preview(text: str) -> str:
     text = text.strip().replace("\n", " ")
     return text if len(text) <= _PREVIEW_LEN else text[:_PREVIEW_LEN] + "..."
