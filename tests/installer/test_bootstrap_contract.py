@@ -347,6 +347,7 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
         input="\n\n",
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=env,
         check=False,
     )
