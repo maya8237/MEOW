@@ -420,7 +420,9 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         $destination = [IO.Path]::GetFullPath($destination)
         $trimmedDestination = $destination.TrimEnd([char[]]@("\", "/"))
         $leaf = [IO.Path]::GetFileName($trimmedDestination)
-        $clonePath = if ($leaf -ieq "MEOW") { $destination } else { Join-Path $destination "MEOW" }
+        $isCheckout = (Test-Path -LiteralPath (Join-Path $destination ".git")) -and
+            (Test-Path -LiteralPath (Join-Path $destination "skills") -PathType Container)
+        $clonePath = if ($isCheckout -or ($leaf -ieq "MEOW")) { $destination } else { Join-Path $destination "MEOW" }
 
         if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
             throw "Git is required. Install Git and run this installer again."

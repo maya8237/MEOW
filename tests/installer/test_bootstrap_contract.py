@@ -4,6 +4,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import venv
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 INTERRUPTED = 130
 NEWLINE = chr(10)
-INSTALLER_RUNS = 2
 
 
 def _bash_path() -> Path:
@@ -384,7 +384,7 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
     assert "Done!" in output
 
 
-def test_ci_installer_jobs_do_not_install_meow_before_running_checkout_scripts():
+def test_ci_installer_jobs_only_preinstall_meow_for_the_preinstalled_case():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     for job in ("installer-linux", "installer-windows"):
@@ -394,11 +394,50 @@ def test_ci_installer_jobs_do_not_install_meow_before_running_checkout_scripts()
             re.MULTILINE | re.DOTALL,
         )
         assert match is not None
-        assert "python -m pip install -e" not in match.group(1)
+        job_config = match.group(1)
+        assert "installation: [fresh, preinstalled]" in job_config
+        assert re.search(
+            r"if: matrix\.installation == 'preinstalled'\s+"
+            r"run: python -m pip install -e \.",
+            job_config,
+        )
+
+
+@pytest.fixture
+def installer_checkout(tmp_path):
+    checkout = tmp_path / "checkout with spaces"
+    for directory in ("src", "scripts", "tests/installer"):
+        shutil.copytree(
+            ROOT / directory,
+            checkout / directory,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+    for filename in ("pyproject.toml", "README.md"):
+        shutil.copy2(ROOT / filename, checkout / filename)
+    (checkout / ".git").mkdir()
+    (checkout / "skills").mkdir()
+    return checkout
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux installer integration test")
-def test_linux_ci_installer_uses_checkout_without_meow_on_path(tmp_path):
+@pytest.mark.parametrize("installation", ["fresh", "preinstalled"])
+def test_linux_ci_installer_uses_checkout(tmp_path, installation, installer_checkout):
+    venv.create(tmp_path / "venv", with_pip=True)
+    venv_bin = tmp_path / "venv" / "bin"
+    if installation == "preinstalled":
+        subprocess.run(
+            [
+                str(venv_bin / "python"),
+                "-m",
+                "pip",
+                "install",
+                "-e",
+                str(installer_checkout),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
 
@@ -412,12 +451,16 @@ def test_linux_ci_installer_uses_checkout_without_meow_on_path(tmp_path):
 
     env = dict(os.environ)
     env.update(
-        PATH=f"{bin_dir}:/usr/bin:/bin",
-        MEOW_TEST_PYTHON=sys.executable,
+        PATH=f"{bin_dir}:{venv_bin}:/usr/bin:/bin",
+        MEOW_TEST_PYTHON=str(venv_bin / "python"),
     )
     result = subprocess.run(
-        ["/bin/bash", str(ROOT / "tests" / "installer" / "run_linux_install.sh")],
-        cwd=ROOT,
+        [
+            "/bin/bash",
+            str(installer_checkout / "tests" / "installer" / "run_linux_install.sh"),
+            installation,
+        ],
+        cwd=installer_checkout,
         capture_output=True,
         text=True,
         env=env,
@@ -426,13 +469,10 @@ def test_linux_ci_installer_uses_checkout_without_meow_on_path(tmp_path):
 
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
-    assert output.count("Done!") >= INSTALLER_RUNS
-    assert (
-        output.count(
-            "Configuring Claude and onboarding projects using existing MEOW checkout"
-        )
-        >= INSTALLER_RUNS
-    )
+    assert ("Installing MEOW with" in output) == (installation == "fresh")
+    assert "Installed MEOW " in output
+    assert "Done!" in output
+    assert "existing MEOW checkout" in output
     assert "The editable MEOW install is not on PATH." not in output
     assert "Cloning MEOW" not in output
 
@@ -440,19 +480,34 @@ def test_linux_ci_installer_uses_checkout_without_meow_on_path(tmp_path):
 @pytest.mark.skipif(
     sys.platform != "win32", reason="Windows installer integration test"
 )
-def test_windows_ci_installer_uses_checkout_without_meow_on_path(tmp_path):
+@pytest.mark.parametrize("installation", ["fresh", "preinstalled"])
+def test_windows_ci_installer_uses_checkout(  # ruff: ignore[too-many-statements]
+    tmp_path, installation, installer_checkout
+):
     powershell = shutil.which("pwsh") or shutil.which("powershell")
     if powershell is None:
         pytest.skip("PowerShell is required for the Windows installer test")
 
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    (bin_dir / "python3.15.cmd").write_text(
-        f'@echo off\r\n"{sys.executable}" %*\r\n',
-        encoding="utf-8",
-    )
+    venv.create(tmp_path / "venv", with_pip=True)
+    bin_dir = tmp_path / "venv" / "Scripts"
+    if installation == "preinstalled":
+        subprocess.run(
+            [
+                str(bin_dir / "python.exe"),
+                "-m",
+                "pip",
+                "install",
+                "-e",
+                str(installer_checkout),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
 
-    path_parts = [str(bin_dir), str(Path(powershell).parent)]
+    git = shutil.which("git")
+    assert git is not None, "Git is required for the Windows installer test"
+    path_parts = [str(bin_dir), str(Path(powershell).parent), str(Path(git).parent)]
     system_root = os.environ.get("SYSTEMROOT")
     if system_root:
         path_parts.append(str(Path(system_root) / "System32"))
@@ -465,9 +520,11 @@ def test_windows_ci_installer_uses_checkout_without_meow_on_path(tmp_path):
             "-ExecutionPolicy",
             "Bypass",
             "-File",
-            str(ROOT / "tests" / "installer" / "run_windows_install.ps1"),
+            str(installer_checkout / "tests" / "installer" / "run_windows_install.ps1"),
+            "-Installation",
+            installation,
         ],
-        cwd=ROOT,
+        cwd=installer_checkout,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -477,8 +534,10 @@ def test_windows_ci_installer_uses_checkout_without_meow_on_path(tmp_path):
 
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
-    assert output.count("Done!") >= INSTALLER_RUNS
-    assert output.count("existing MEOW checkout") >= INSTALLER_RUNS
+    assert ("Installing MEOW with" in output) == (installation == "fresh")
+    assert "Installed MEOW " in output
+    assert "Done!" in output
+    assert "existing MEOW checkout" in output
     assert "The editable MEOW install is not on PATH." not in output
     assert "Cloning MEOW" not in output
 
@@ -495,6 +554,24 @@ def test_posix_bootstrap_installs_when_meow_is_not_on_path(tmp_path):
     assert "FAKE_PIP" in result.stderr
     assert "FAKE_SETUP" in result.stderr
     assert "Done!" in result.stdout
+
+
+def test_posix_bootstrap_installs_an_existing_checkout_with_any_name(tmp_path):
+    checkout = tmp_path / "checkout with spaces"
+    (checkout / ".git").mkdir(parents=True)
+    (checkout / "skills").mkdir()
+    destination = _git_bash_path(checkout)
+
+    result, log = _run_posix_installer(
+        tmp_path,
+        meow_version=None,
+        origin_version=None,
+        input_text=destination + "\n",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "git clone" not in log
+    assert f"python -m pip install -e {destination}\n" in log
 
 
 def test_posix_bootstrap_passes_shell_syntax():

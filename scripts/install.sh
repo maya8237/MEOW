@@ -333,10 +333,14 @@ install_fresh_meow() {
     esac
     destination=${destination%/}
 
-    case $destination in
-        */MEOW) clone_path=$destination ;;
-        *) clone_path=$destination/MEOW ;;
-    esac
+    if [ -e "$destination/.git" ] && [ -d "$destination/skills" ]; then
+        clone_path=$destination
+    else
+        case $destination in
+            */MEOW) clone_path=$destination ;;
+            *) clone_path=$destination/MEOW ;;
+        esac
+    fi
 
     command -v git >/dev/null 2>&1 || die 'Git is required. Install Git and run this installer again.'
     python_command=$(select_python) \
