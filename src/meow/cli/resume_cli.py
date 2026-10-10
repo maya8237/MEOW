@@ -18,7 +18,7 @@ def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, to
     repo = Path(record.repo).resolve()
     worktree = Path(record.worktree).resolve()
     if repo != working_dir.resolve():
-        return f'Repository mismatch. Use --working-dir "{record.repo}".'
+        return f'Repository mismatch. Use --work-dir "{record.repo}".'
     if not worktree.is_dir():
         return f"Worktree missing: {worktree}. Restore it before continuing."
     common_dirs = []
@@ -172,7 +172,7 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
     store.transition(record.id, "resuming", attempt=record.attempt + 1)
     await run_sprint(
         Path(record.worktree),
-        None,
+        record.results.get("feature_name"),
         record.request,
         use_worktree=False,
         plan_file=Path(record.plan_file) if record.plan_file else None,

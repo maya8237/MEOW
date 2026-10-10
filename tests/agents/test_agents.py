@@ -541,7 +541,9 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self,
     ):
         review_file = (
-            self.context.project_dir / self.context.config["docs_dir"] / "review.md"
+            self.context.project_dir
+            / self.context.config["docs_dir"]
+            / "prompt.00000000.review.md"
         )
         verdict = "SUMMARY: reviewed\nSTATUS: FAIL\nrequirement: FAIL"
 
@@ -554,6 +556,10 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
                 ReviewerAgent, "run_query", new_callable=AsyncMock
             ) as run_query,
             patch.object(Path, "read_text", return_value=verdict) as read_text,
+            patch(
+                "meow.agents.reviewer.new_review_filename",
+                return_value="prompt.00000000.review.md",
+            ),
         ):
             status, received_verdict = await ReviewerAgent(self.context).review_prompt(
                 "Ship the feature"

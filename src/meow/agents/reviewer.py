@@ -1,6 +1,7 @@
 """Reviewer agent setup, review context, and verdict parsing."""
 
 import re
+import secrets
 import shutil
 import subprocess
 import time
@@ -35,10 +36,26 @@ GITLAB_REVIEW_FILENAME = "gitlab-review.md"
 GITHUB_REVIEW_FILENAME = "github-review.md"
 BRANCH_REVIEW_FILENAME = "branch-review.md"
 
+REVIEW_FLAVORS = ("prompt", "gitlab", "github", "branch")
+# `<flavor>.<token>.review.md`: ends in "review.md" so plan lookups skip it, and
+# the flavor prefix keeps it identifiable. The legacy fixed names above are
+# still recognised, so older review files keep resuming.
+REVIEW_FILE_PATTERN = re.compile(
+    rf"({'|'.join(REVIEW_FLAVORS)})\.[0-9a-f]{{8}}\.review\.md\Z"
+)
+
 REMOTE_REVIEW_SPECS = {
-    "gitlab": (GITLAB_REVIEW_FILENAME, "GitLab merge request"),
-    "github": (GITHUB_REVIEW_FILENAME, "GitHub pull request"),
+    "gitlab": ("gitlab", "GitLab merge request"),
+    "github": ("github", "GitHub pull request"),
 }
+
+
+def new_review_filename(flavor: str) -> str:
+    """A review file name no concurrent review of the same kind can share."""
+    if flavor not in REVIEW_FLAVORS:
+        raise ValueError(f"unknown review flavor: {flavor}")
+    return f"{flavor}.{secrets.token_hex(4)}.review.md"
+
 
 _GIT_RETRY_ATTEMPTS = 3
 _GIT_RETRY_BACKOFF = 0.5
@@ -74,7 +91,7 @@ def _run_git_retrying(argv: list[str]) -> subprocess.CompletedProcess:
 
 
 def _git_review_context(context: AgentContext) -> tuple[str, bool]:
-    """Capture the active worktree and original working-directory status."""
+    """Capture the active worktree and original work-dir status."""
     git = shutil.which("git")
     if not git:
         return (
@@ -111,9 +128,9 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
         ])
         repo_diff = _run_git_retrying([git, "-C", str(context.repo_dir), "diff", "--"])
         review_context += (
-            "\n\nOriginal working-directory status (must be clean while a "
+            "\n\nOriginal work-dir status (must be clean while a "
             f"worktree is active):\n{repo_status.stdout.strip() or '(no status)'}\n\n"
-            "Original working-directory diff:\n"
+            "Original work-dir diff:\n"
             f"{repo_diff.stdout.strip() or '(no diff at original working directory)'}"
         )
 
@@ -248,7 +265,7 @@ class ReviewerAgent(Agent):
         """Grade the working tree against a free-text prompt, or the git diff."""
         review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
         review_dir.mkdir(parents=True, exist_ok=True)
-        review_file = review_dir / PROMPT_REVIEW_FILENAME
+        review_file = review_dir / new_review_filename("prompt")
         review_basis = (prompt or "").strip()
         docs_dir = self.context.config["docs_dir"]
         git_context, has_diff = _git_review_context(self.context)
@@ -293,12 +310,12 @@ class ReviewerAgent(Agent):
         reflect this diff.
         """
         try:
-            filename, request_label = REMOTE_REVIEW_SPECS[provider]
+            flavor, request_label = REMOTE_REVIEW_SPECS[provider]
         except KeyError as exc:
             raise ValueError(f"unsupported remote review provider: {provider}") from exc
         review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
         review_dir.mkdir(parents=True, exist_ok=True)
-        review_file = review_dir / filename
+        review_file = review_dir / new_review_filename(flavor)
         options = self.options(
             system_prompt=remote_review_prompt(
                 review_file,
@@ -328,7 +345,7 @@ class ReviewerAgent(Agent):
         """
         review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
         review_dir.mkdir(parents=True, exist_ok=True)
-        review_file = review_dir / BRANCH_REVIEW_FILENAME
+        review_file = review_dir / new_review_filename("branch")
         diff_text = _branch_diff(self.context.active_working_dir(), target, branch)
         lint_evidence = await self._lint_evidence()
         options = self.options(

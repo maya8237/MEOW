@@ -17,21 +17,25 @@ Use **CLI mode** (bottom) only if the user explicitly asks for it.
    one-line description. The project uses `.meow/config.toml` at its root;
    onboarding can create it for a new project.
 2. Slugify a feature name (e.g. `add-csv-export`) and run
-   `meow native prepare --name "<name>" --allow-dirty --working-dir "<project-path>"`
-   (`meow plan` never required a clean tree). Add `--no-worktree` if the user
-   wants the main repo (name then optional), `--source-branch <branch>` if given.
+   `meow native prepare --name "<name>" --fresh --allow-dirty --work-dir "<project-path>"`
+   (`meow plan` never required a clean tree). `--fresh` never reuses an
+   existing worktree: a taken name becomes `<name>-2`, ... -- use the JSON
+   `name`, `plan_file` and `active_dir` it returns, not your own name. Add `--no-worktree` if the user
+   wants the main repo (name then optional), `--from <branch>` if given.
    Report failures verbatim and stop.
 3. As planner, write `plan_file` (inside `active_dir`) following the shared
    protocol's Planner row. Use an explorer subagent for any codebase research
    you don't need in full. Read the file back and confirm the task list and
    `## Sprint Contract` exist. Write no application code.
-4. Report the plan file's path. If they want it built: `/meow:run` (full loop)
-   or, once code exists, `/meow:review`.
+4. Report the plan file's path and the worktree name (JSON `name`). If they
+   want it built: `/meow:run` (full loop) -- tell it to continue that worktree
+   and plan, which is a resume, so it will not create a new worktree -- or, once
+   code exists, `/meow:review`.
 
 ## CLI mode
 
 ```bash
-meow plan "<feature request>" --name "<generated-feature-name>" --working-dir "<project-path>"
+meow plan "<feature request>" --name "<generated-feature-name>" --work-dir "<project-path>"
 ```
 
 Add `--no-worktree` to use the main repo instead of an isolated worktree. If

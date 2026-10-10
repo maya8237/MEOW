@@ -4,6 +4,8 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 
+from meow.infrastructure.worktree import _reject_reserved_name
+
 MAX_TASKS = 16
 
 
@@ -44,8 +46,12 @@ class TaskGraph:
         ids = [task.id for task in self.tasks]
         if any(not task_id or not task_id.isidentifier() for task_id in ids):
             raise ValueError("task IDs must be nonempty identifiers")
-        if len(set(ids)) != len(ids):
+        # Task IDs become file and worktree names; compare them the way a
+        # case-insensitive filesystem would, and refuse Windows device names.
+        if len({task_id.casefold() for task_id in ids}) != len(ids):
             raise ValueError("duplicate task ID")
+        for task_id in ids:
+            _reject_reserved_name(task_id)
         by_id = {task.id: task for task in self.tasks}
         for task in self.tasks:
             if not task.owned_paths:

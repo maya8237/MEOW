@@ -11,6 +11,17 @@ from uuid import uuid4
 
 MAX_OUTPUT = 8000
 SCHEMA_VERSION = 1
+# Phases after which a run no longer drives work. The single source for worker
+# reconciliation, cancellation, and plan-ownership checks.
+TERMINAL_PHASES = frozenset({
+    "complete",
+    "delivered",
+    "delivery_failed",
+    "exhausted",
+    "failed",
+    "cancelled",
+    "needs_user_decision",
+})
 _SECRET_KEY = re.compile(
     r"(?:token|secret|password|credential|api.?key|authorization)", re.I
 )
@@ -225,10 +236,14 @@ class RunStore:
             ) from exc
         return record
 
+    def record_paths(self) -> list[Path]:
+        """Run records only; sidecars such as `<id>.preplan.json` are skipped."""
+        return [
+            path for path in self.directory.glob("*.json") if _ID.fullmatch(path.stem)
+        ]
+
     def latest(self) -> RunRecord:
-        paths = sorted(
-            self.directory.glob("*.json"), key=lambda p: p.stat().st_mtime_ns
-        )
+        paths = sorted(self.record_paths(), key=lambda p: p.stat().st_mtime_ns)
         if not paths:
             raise RunStateError("No runs found. Start one with meow run.")
         return self.load(paths[-1].stem)

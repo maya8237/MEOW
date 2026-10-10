@@ -110,10 +110,7 @@ def list_worktrees(repo: Path) -> list[WorktreeInspection]:
     store = RunStore(repo)
     if not store.directory.is_dir():
         return []
-    return [
-        inspect_worktree(repo, path.stem)
-        for path in sorted(store.directory.glob("*.json"))
-    ]
+    return [inspect_worktree(repo, path.stem) for path in sorted(store.record_paths())]
 
 
 def clean_worktree(repo: Path, run_id: str) -> WorktreeInspection:

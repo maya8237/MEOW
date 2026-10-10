@@ -15,7 +15,31 @@ from meow.agents.reviewer import (
     GITHUB_REVIEW_FILENAME,
     GITLAB_REVIEW_FILENAME,
     PROMPT_REVIEW_FILENAME,
+    REVIEW_FILE_PATTERN,
 )
+
+
+def planned_plan_file(docs_dir: Path, feature_name: str | None) -> Path:
+    """Where the planner writes the plan for ``feature_name``."""
+    return docs_dir / (f"{feature_name}.md" if feature_name else "plan.md")
+
+
+def reject_report_name(feature_name: str | None) -> None:
+    """Refuse names whose plan file would read as a report file.
+
+    ``add-code-review.md`` and ``foo-test.md`` are skipped by the latest-plan
+    lookup, and ``foo-review.md`` / ``foo-test.md`` are the names plan ``foo``'s
+    reviewer and tester write, so such a plan could neither be found nor kept.
+    """
+    if feature_name is None:
+        return
+    lowered = feature_name.lower()
+    if lowered.endswith(("review", "-test")):
+        raise ValueError(
+            f"{feature_name!r} can't be a feature name: names ending in "
+            "'review' or '-test' collide with review and tester report files. "
+            "Pick a different --name."
+        )
 
 
 def _latest_plan_file(docs_dir: Path) -> Path:
@@ -33,7 +57,7 @@ def _latest_plan_file(docs_dir: Path) -> Path:
     if not candidates:
         raise FileNotFoundError(
             f"No plan file found in {docs_dir}. Run `meow plan "
-            '"<feature>"` first, or pass --plan-file explicitly.'
+            '"<feature>"` first, or pass --plan explicitly.'
         )
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
@@ -43,6 +67,9 @@ def _detect_review_flavor(review_file: Path) -> str:
     verdict formats each have a distinct, deterministic naming convention,
     so no ambiguity and no guessing is needed here."""
     name = review_file.name
+    match = REVIEW_FILE_PATTERN.fullmatch(name)
+    if match:
+        return match.group(1)
     flavor = {
         GITLAB_REVIEW_FILENAME: "gitlab",
         GITHUB_REVIEW_FILENAME: "github",

@@ -14,11 +14,10 @@ from pathlib import Path
 
 from meow.agents.base import ProjectContext
 from meow.agents.reviewer import (
-    BRANCH_REVIEW_FILENAME,
-    PROMPT_REVIEW_FILENAME,
     REMOTE_REVIEW_SPECS,
     _branch_diff,
     _git_review_context,
+    new_review_filename,
 )
 from meow.project.config import load_config
 from meow.project.prompts import (
@@ -81,7 +80,8 @@ def _plan_review(
 
 def _prompt_review(context: ProjectContext, basis: str | None) -> dict:
     docs_dir = context.config["docs_dir"]
-    review_file = context.active_working_dir() / docs_dir / PROMPT_REVIEW_FILENAME
+    review_dir = context.active_working_dir() / docs_dir
+    review_file = review_dir / new_review_filename("prompt")
     git_context, has_diff = _git_review_context(context)
     text = prompt_review_prompt(
         (basis or "").strip(),
@@ -101,10 +101,11 @@ def _prompt_review(context: ProjectContext, basis: str | None) -> dict:
 
 def _mr_review(context: ProjectContext, provider: str) -> dict:
     try:
-        filename, request_label = REMOTE_REVIEW_SPECS[provider]
+        flavor, request_label = REMOTE_REVIEW_SPECS[provider]
     except KeyError as exc:
         raise ValueError(f"unsupported remote review provider: {provider}") from exc
-    review_file = context.active_working_dir() / context.config["docs_dir"] / filename
+    review_dir = context.active_working_dir() / context.config["docs_dir"]
+    review_file = review_dir / new_review_filename(flavor)
     text = remote_review_prompt(
         review_file, request_label, check_worktree_hygiene=context.use_worktree
     )
@@ -113,7 +114,8 @@ def _mr_review(context: ProjectContext, provider: str) -> dict:
 
 def _branch_review(context: ProjectContext, target: str, branch: str) -> dict:
     docs_dir = context.config["docs_dir"]
-    review_file = context.active_working_dir() / docs_dir / BRANCH_REVIEW_FILENAME
+    review_dir = context.active_working_dir() / docs_dir
+    review_file = review_dir / new_review_filename("branch")
     diff_text = _branch_diff(context.active_working_dir(), target, branch)
     text = branch_review_prompt(
         target,

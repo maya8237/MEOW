@@ -83,6 +83,7 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
         store.transition(
             run_id,
             "delivery_started",
+            branch=branch,
             delivery={**previous, "branch": branch, "remote": remote},
         )
         check_cancel(store, run_id)

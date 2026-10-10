@@ -263,7 +263,7 @@ class NativeCliTests(unittest.TestCase):  # ruff: ignore[too-many-public-methods
 
             self.assertEqual(code, 0)
             data = json.loads(out)
-            self.assertTrue(data["review_file"].endswith("github-review.md"))
+            self.assertTrue(Path(data["review_file"]).name.startswith("github."))
             self.assertIn("GitHub pull request", data["system_prompt"])
 
     def test_lint_command_reports_json(self):

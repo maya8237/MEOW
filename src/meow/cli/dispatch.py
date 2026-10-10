@@ -100,9 +100,7 @@ def _dispatch_review(args, working_dir: Path) -> None:
         raise SystemExit(1) from exc
 
 
-def _dispatch(
-    args, working_dir: Path, *, use_worktree: bool
-) -> None:
+def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
     if args.command == "hooks":
         if args.host != "claude":
             raise ValueError("unsupported host")
@@ -126,7 +124,7 @@ def _dispatch(
         return
     if args.command == "queue":
         raise SystemExit(queue(working_dir, args.request, args.feature_name))
-    asyncio.run(
+    plan_file = asyncio.run(
         run_plan(
             working_dir,
             args.feature_name,
@@ -135,3 +133,5 @@ def _dispatch(
             source_branch=args.source_branch,
         )
     )
+    # The name may differ from --name when that worktree was already taken.
+    print(f"Plan written: {plan_file}")

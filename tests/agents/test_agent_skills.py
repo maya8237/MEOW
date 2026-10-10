@@ -133,7 +133,7 @@ class AgentSkillTests(unittest.TestCase):
             str(self.tmp_path / "plan-review.md"),
             observed_options[0].system_prompt,
         )
-        self.assertIn(
-            str(self.tmp_path / "docs/exec-plans/active/review.md"),
+        self.assertRegex(
             observed_options[1].system_prompt,
+            r"exec-plans[\\/]active[\\/]prompt\.[0-9a-f]{8}\.review\.md",
         )

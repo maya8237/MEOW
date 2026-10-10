@@ -28,6 +28,8 @@ from meow.project.plan_files import (
     _detect_review_flavor,
     _latest_plan_file,
     _latest_review_file,
+    planned_plan_file,
+    reject_report_name,
 )
 
 
@@ -41,6 +43,7 @@ class PrepareOptions:
     branch: str | None = None
     existing_branch: str | None = None
     require_clean: bool = True
+    fresh: bool = False
 
 
 def _lint_plan(commands: list[LintCommand]) -> list[dict]:
@@ -56,24 +59,28 @@ def _lint_plan(commands: list[LintCommand]) -> list[dict]:
 
 
 def _plan_paths(docs_dir: Path, name: str | None) -> tuple[Path, Path]:
-    plan_file = docs_dir / (f"{name}.md" if name else "plan.md")
+    plan_file = planned_plan_file(docs_dir, name)
     return plan_file, plan_file.with_name(plan_file.stem + "-review.md")
 
 
 def _resolve_active_dir(
     working_dir: Path, options: PrepareOptions
-) -> tuple[Path, bool]:
+) -> tuple[Path, bool, str | None]:
     """Pick the directory to work in: a branch worktree (issue flow), an
     existing-branch worktree (branch-review flow), a feature worktree
     (run/plan), or the project itself."""
     if options.branch:
         if not options.name:
             raise ValueError("--name is required together with --branch")
-        return _ensure_branch_worktree(working_dir, options.name, options.branch), True
+        return (
+            _ensure_branch_worktree(working_dir, options.name, options.branch),
+            True,
+            options.name,
+        )
     if options.existing_branch:
         if not options.use_worktree:
             _require_branch_checked_out(working_dir, options.existing_branch)
-            return working_dir, False
+            return working_dir, False, options.name
         if not options.name:
             raise ValueError("--name is required together with --existing-branch")
         return (
@@ -81,14 +88,16 @@ def _resolve_active_dir(
                 working_dir, options.name, options.existing_branch
             ),
             True,
+            options.name,
         )
-    active_dir, _, is_worktree = _resolve_working_dir(
+    active_dir, name, is_worktree = _resolve_working_dir(
         working_dir,
         use_worktree=options.use_worktree,
         feature_name=options.name,
         source_branch=options.source_branch,
+        fresh=options.fresh,
     )
-    return active_dir, is_worktree
+    return active_dir, is_worktree, name
 
 
 def prepare(working_dir: Path, options: PrepareOptions) -> dict:
@@ -98,6 +107,8 @@ def prepare(working_dir: Path, options: PrepareOptions) -> dict:
     check (skipped, like the CLI, when a worktree is built from an explicit
     source branch), `.gitignore` upkeep, then worktree resolution.
     """
+    if not (options.branch or options.existing_branch):
+        reject_report_name(options.name)
     config = load_config(working_dir)
     worktree_wanted = options.use_worktree or bool(options.branch)
     skip_clean = options.use_worktree and options.source_branch
@@ -105,10 +116,21 @@ def prepare(working_dir: Path, options: PrepareOptions) -> dict:
         _ensure_clean_tree(working_dir)
     _boot_repo(working_dir, include_gitignore=worktree_wanted)
 
-    active_dir, is_worktree = _resolve_active_dir(working_dir, options)
+    active_dir, is_worktree, name = _resolve_active_dir(working_dir, options)
     docs_dir = active_dir / config["docs_dir"]
-    plan_file, review_file = _plan_paths(docs_dir, options.name)
+    plan_file, review_file = _plan_paths(docs_dir, name)
+    if options.fresh:
+        # Same guard `run_sprint` applies before planning: don't hand a skill a
+        # plan path that another active run still owns.
+        from meow.execution.run_state import RunStore
+        from meow.execution.sprint_runner import _owner_finished
+        from meow.project.plan_state import PlanStore
+
+        PlanStore(active_dir).assert_available(
+            plan_file, lambda owner: _owner_finished(RunStore(working_dir), owner)
+        )
     return {
+        "name": name,
         "project_dir": str(working_dir),
         "active_dir": str(active_dir),
         "use_worktree": is_worktree,

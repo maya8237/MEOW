@@ -34,24 +34,39 @@ first; it defines the `meow native` helper and review loop.
    `<description>`. Feature name: `issue-<key>` lowercased with anything
    outside `A-Za-z0-9._-` turned into `-`. Branch:
    `<branch_prefix><KEY>`. Run `meow native prepare --name "<feature>"
-   --branch "<branch>" --working-dir "<project-path>"` instead of step 2's
+   --branch "<branch>" --work-dir "<project-path>"` instead of step 2's
    `prepare` call, then perform step 2's checkpoint and continue at step 3 -- do not pass
    `--worktree` when dispatching reviewers in this flow (CLI parity). On
    PASS (step 5), finalize commits and pushes the branch; report one line:
    `{"issue": "<key>", "branch":
    "<branch>"}` instead of step 5's normal report.
 2. Pick a safe feature name (slugify the request, e.g. `add-csv-export`). Run
-   `meow native prepare --name "<name>" --working-dir "<project-path>"`.
+   `meow native prepare --name "<name>" --fresh --work-dir "<project-path>"`.
+   `--fresh` gives a new run its own worktree (`<name>-2`, ... if the name is
+   taken) and the JSON `name` is the one used -- take `plan_file` and
+   `review_file` from the JSON, never rebuild them from your own name.
+   **Resuming:** if the user asks to continue, resume, pick up, or build on
+   existing code, an earlier run, a worktree, or a plan -- in any wording --
+   leave `--fresh` off so the existing `.worktrees/<name>` is reused (use the
+   name they gave, or the one matching `.worktrees/`; ask only if several
+   fit), then follow "Resume check" below.
    Add `--no-worktree` if the user wants the main repo instead of an isolated
-   worktree (then `--name` may be omitted); add `--source-branch <branch>` if
+   worktree (then `--name` may be omitted); add `--from <branch>` if
    they named one. On a nonzero exit (e.g. uncommitted changes), report the
    message verbatim and stop. Keep `active_dir`, `plan_file`, `review_file`,
    `max_rounds`, `use_worktree` from the JSON; do all further work in `active_dir`.
    Immediately call `meow native checkpoint preparing --request "<request>"
-   --working-dir "<project-path>" --active-dir "<active_dir>"` and keep its
+   --work-dir "<project-path>" --active-dir "<active_dir>"` and keep its
    `run_id`. Reuse `--run-id <run_id>` for every later checkpoint.
-3. Plan (skip if the user supplied an existing plan file, or asked to resume at
-   review): `meow native round <plan_file> --reset --active-dir <active_dir>`,
+   **Resume check:** run `meow native latest-plan --work-dir
+   "<project-path>" --active-dir "<active_dir>"`. If it returns a plan and that
+   file has a numbered task list and a `## Sprint Contract`, the plan is ready:
+   use it, write a `planned` checkpoint with `--plan <plan_file>`, skip step 3
+   and go to step 5, reviewing the existing code first. If there is no plan
+   or it is incomplete, say so and plan normally in step 3 (still without
+   `--fresh`, in the same worktree).
+3. Plan (skip if the user supplied an existing plan file, or the resume check
+   found a ready plan): `meow native round <plan_file> --reset --active-dir <active_dir>`,
    then, as planner, write `plan_file` per the shared protocol's Planner row.
    Read it back and confirm it has a numbered task list and a `## Sprint Contract`.
    Write a `planned` checkpoint with `--plan <plan_file>`.
@@ -68,7 +83,7 @@ first; it defines the `meow native` helper and review loop.
    --review <review_file> --reviewer PASS|FAIL` after reading the verdict.
    Record an enabled tester verdict separately with `tester_finished
    --tester PASS|FAIL`. On final PASS, call `meow native finalize <run_id>
-   --working-dir "<project-path>" --active-dir "<active_dir>"`; report success
+   --work-dir "<project-path>" --active-dir "<active_dir>"`; report success
    only when its JSON says `"complete": true`.
 6. Report: on PASS, the plan file and review file paths (or, for a
    Jira-sourced build, step 1a's JSON report instead); when a round comes
@@ -86,10 +101,21 @@ stay alive throughout tester validation.
 Runs `meow run` (separate Agent SDK sessions, works headless). From the project root:
 
 ```bash
-meow run "<feature request>" --name "<generated-feature-name>" --working-dir "<project-path>"
-meow run --jira [ISSUE-KEY] --working-dir "<project-path>"   # Jira-sourced, retained branch
-meow run "<feature request>" --name "<generated-feature-name>" --test --working-dir "<project-path>"
+meow run "<feature request>" --name "<generated-feature-name>" --work-dir "<project-path>"
+meow run --jira [ISSUE-KEY] --work-dir "<project-path>"   # Jira-sourced, retained branch
+meow run "<feature request>" --name "<generated-feature-name>" --test --work-dir "<project-path>"
 ```
+
+**Resuming in CLI mode:** if the user asks to continue, resume, pick up, or
+build on existing code, a worktree, or an earlier plan (any wording), do not
+start a fresh run -- a plain `meow run --name X` plans from scratch in its own
+new worktree. Look in `<project-path>/.worktrees/<name>/<docs_dir>` for a plan
+(`meow native latest-plan --work-dir "<project-path>" --active-dir
+"<project-path>/.worktrees/<name>"`). If one exists with a numbered task list
+and a `## Sprint Contract`, run `meow run "<request>" --name "<name>"
+--resume-at review --plan "<plan_file>" --work-dir "<project-path>"`,
+which reviews the existing code and generates only what is missing. If there
+is none, or it is incomplete, tell the user and run normally.
 
 Add `--no-worktree` to operate in the main repo (name then optional; not
 applicable to `--jira`, which always uses its own pushable-branch worktree).

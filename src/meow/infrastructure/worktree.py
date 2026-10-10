@@ -5,6 +5,8 @@ orchestration: this module only ever touches the filesystem and `git`, and
 has no dependency on `Sprint`, config, or any agent.
 """
 
+import contextlib
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -36,6 +38,9 @@ _WINDOWS_RESERVED_NAMES = frozenset(
 )
 
 
+_SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
 def _reject_reserved_name(feature_name: str) -> None:
     """Raise if `feature_name` is a Windows-reserved device name.
 
@@ -48,6 +53,17 @@ def _reject_reserved_name(feature_name: str) -> None:
     meow right now: a feature name that only breaks on a teammate's Windows
     machine is still worth rejecting up front, consistently, everywhere.
     """
+    if (
+        not _SAFE_NAME.fullmatch(feature_name)
+        or ".." in feature_name
+        or feature_name.endswith(".")
+    ):
+        raise RuntimeError(
+            f"{feature_name!r} is not a usable name: use letters, digits, '.', "
+            "'_' and '-' only (no slashes, spaces or '..'), starting with a "
+            "letter or digit. It becomes a directory under .worktrees/ and "
+            "the plan file name, so it must be a single path component."
+        )
     stem = feature_name.split(".", 1)[0].lower()
     if stem in _WINDOWS_RESERVED_NAMES:
         raise RuntimeError(
@@ -133,7 +149,7 @@ def _ensure_clean_tree(working_dir: Path) -> None:
 
 
 def _boot_repo(working_dir: Path, *, include_gitignore: bool = True) -> None:
-    """Run working-directory boot checks every meow command needs."""
+    """Run work-dir boot checks every meow command needs."""
     if include_gitignore:
         _ensure_gitignore_entry(working_dir)
         for entry in (
@@ -145,17 +161,24 @@ def _boot_repo(working_dir: Path, *, include_gitignore: bool = True) -> None:
             _ensure_gitignore_entry(working_dir, entry)
 
 
-def _resolve_working_dir(
+def _resolve_working_dir(  # ruff: ignore[too-many-arguments]
     working_dir: Path,
     *,
     use_worktree: bool,
     feature_name: str | None,
     source_branch: str | None = None,
+    fresh: bool = False,
 ) -> tuple[Path, str | None, bool]:
     """Return the active directory and optional feature name.
 
+    `fresh` marks a run that plans from scratch: it never reuses an existing
+    `.worktrees/<feature_name>`, and takes `<feature_name>-2`, `-3`, ... when
+    the name is taken. The returned feature name is the one actually used, so
+    plan and review files line up with the worktree. Without `fresh`, an
+    existing worktree is reused by name -- continuing earlier work.
+
     If `working_dir` is already a linked git worktree, it is used in place,
-    the same as if `use_worktree` were False -- pointing `--working-dir` at
+    the same as if `use_worktree` were False -- pointing `--work-dir` at
     an existing worktree means "work here", not "nest another worktree
     inside it". `source_branch`, when given, is the branch a freshly
     created worktree checks out instead of the main checkout's current
@@ -166,13 +189,10 @@ def _resolve_working_dir(
     if not feature_name:
         raise ValueError("feature_name is required when use_worktree=True")
 
-    return (
-        _ensure_feature_worktree(
-            working_dir, feature_name, source_branch=source_branch
-        ),
-        feature_name,
-        True,
+    worktree_dir = _ensure_feature_worktree(
+        working_dir, feature_name, source_branch=source_branch, fresh=fresh
     )
+    return worktree_dir, (worktree_dir.name if fresh else feature_name), True
 
 
 def _registered_worktree_paths(git: str, working_dir: Path) -> set[Path]:
@@ -187,8 +207,43 @@ def _registered_worktree_paths(git: str, working_dir: Path) -> set[Path]:
     }
 
 
+_MAX_FRESH_WORKTREE_ATTEMPTS = 1000
+
+
+def _claim_fresh_worktree_dir(
+    worktrees_dir: Path, feature_name: str, registered: set[Path]
+) -> Path:
+    """Atomically create the first unused `<feature_name>[-N]` directory.
+
+    `mkdir` is the claim, so two runs starting with the same name at the same
+    moment cannot both end up in one directory. Names git still has
+    registered are skipped even when their directory is gone -- `git worktree
+    add` refuses those until they are pruned.
+    """
+    worktrees_dir.mkdir(parents=True, exist_ok=True)
+    for attempt in range(1, _MAX_FRESH_WORKTREE_ATTEMPTS + 1):
+        name = feature_name if attempt == 1 else f"{feature_name}-{attempt}"
+        candidate = worktrees_dir / name
+        if candidate.resolve() in registered:
+            continue
+        try:
+            candidate.mkdir(parents=True)
+        except FileExistsError:
+            continue
+        return candidate
+    raise RuntimeError(
+        f"No free worktree name for {feature_name!r} under {worktrees_dir} "
+        f"after {_MAX_FRESH_WORKTREE_ATTEMPTS} attempts. Clean up old "
+        "worktrees or pick a different --name."
+    )
+
+
 def _ensure_feature_worktree(
-    working_dir: Path, feature_name: str, *, source_branch: str | None = None
+    working_dir: Path,
+    feature_name: str,
+    *,
+    source_branch: str | None = None,
+    fresh: bool = False,
 ) -> Path:
     """Create a per-feature worktree under the repo's .worktrees directory.
 
@@ -206,6 +261,9 @@ def _ensure_feature_worktree(
     existing worktree is being reused rather than created, since resuming
     one takes priority over re-branching it.
 
+    `fresh` never reuses: if `.worktrees/<feature_name>` exists, the next free
+    `<feature_name>-N` is created instead, so `source_branch` always applies.
+
     Callers must not pass a `working_dir` that is itself already a linked
     worktree -- `_resolve_working_dir` routes that case around this
     function entirely, using it in place instead of nesting another one
@@ -216,19 +274,9 @@ def _ensure_feature_worktree(
     worktree_dir = worktrees_dir / feature_name
     git = shutil.which("git")
 
-    if worktree_dir.exists():
-        if git and worktree_dir.resolve() not in _registered_worktree_paths(
-            git, working_dir
-        ):
-            raise RuntimeError(
-                f"{worktree_dir} exists but is not a registered git "
-                f"worktree of {working_dir} -- it may have been removed "
-                "with `git worktree remove` while the directory itself was "
-                "left behind, or created without git. Delete it and rerun."
-            )
+    if not fresh and worktree_dir.exists():
+        _require_registered_worktree(git, working_dir, worktree_dir)
         return worktree_dir
-
-    worktrees_dir.mkdir(parents=True, exist_ok=True)
 
     if not git:
         raise RuntimeError(
@@ -236,33 +284,84 @@ def _ensure_feature_worktree(
             f"worktree at {worktree_dir}."
         )
 
-    argv = [
-        git,
-        "-C",
-        str(working_dir),
-        "worktree",
-        "add",
-        "--detach",
-        str(worktree_dir),
-    ]
+    if fresh:
+        worktree_dir = _claim_fresh_worktree_dir(
+            worktrees_dir, feature_name, _registered_worktree_paths(git, working_dir)
+        )
+    else:
+        worktrees_dir.mkdir(parents=True, exist_ok=True)
+    _add_detached_worktree(
+        git, working_dir, worktree_dir, source_branch, release_on_failure=fresh
+    )
+    return worktree_dir
+
+
+def _require_registered_worktree(
+    git: str | None, working_dir: Path, worktree_dir: Path
+) -> None:
+    if git and worktree_dir.resolve() not in _registered_worktree_paths(
+        git, working_dir
+    ):
+        raise RuntimeError(
+            f"{worktree_dir} exists but is not a registered git "
+            f"worktree of {working_dir} -- it may have been removed "
+            "with `git worktree remove` while the directory itself was "
+            "left behind, or created without git. Delete it and rerun."
+        )
+
+
+def _add_detached_worktree(  # ruff: ignore[too-many-arguments]
+    git: str,
+    working_dir: Path,
+    worktree_dir: Path,
+    source_branch: str | None,
+    *,
+    release_on_failure: bool,
+) -> None:
+    argv = [git, "-C", str(working_dir), "worktree", "add", "--detach"]
+    argv.append(str(worktree_dir))
     if source_branch:
         argv.append(source_branch)
-
     try:
         subprocess.run(
             argv, check=True, capture_output=True, text=True, encoding="utf-8"
         )
     except subprocess.CalledProcessError as exc:
+        if release_on_failure:
+            # Free the claimed (still empty) directory so the name is reusable.
+            with contextlib.suppress(OSError):
+                worktree_dir.rmdir()
         raise RuntimeError(
             f"Failed to create worktree at {worktree_dir}: {exc.stderr.strip() or exc}"
         ) from exc
-
-    return worktree_dir
 
 
 def _run_git(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         argv, cwd=cwd, capture_output=True, text=True, check=False, encoding="utf-8"
+    )
+
+
+def _ref_exists(git: str, working_dir: Path, ref: str) -> bool:
+    result = _run_git([git, "rev-parse", "--verify", "--quiet", ref], cwd=working_dir)
+    return result.returncode == 0
+
+
+def _require_worktree_on_branch(worktree_dir: Path, branch_name: str) -> None:
+    """Refuse to reuse a named worktree that is on some other branch.
+
+    Names derived from branches are lossy (`feat/x` and `feat-x` both become
+    `feat-x`), and a feature worktree can hold a name like `issue-PROJ-2`;
+    reusing either would silently work on the wrong checkout.
+    """
+    result = _run_git(["git", "branch", "--show-current"], cwd=worktree_dir)
+    current = result.stdout.strip()
+    if result.returncode == 0 and current == branch_name:
+        return
+    raise RuntimeError(
+        f"{worktree_dir} is checked out on {current or 'a detached HEAD'}, not "
+        f"'{branch_name}'. A different run already uses this worktree name; "
+        "remove that worktree (`git worktree remove`) or pick another --name."
     )
 
 
@@ -278,6 +377,7 @@ def _ensure_branch_worktree(
     _reject_reserved_name(feature_name)
     worktree_dir = working_dir / ".worktrees" / feature_name
     if worktree_dir.exists():
+        _require_worktree_on_branch(worktree_dir, branch_name)
         return worktree_dir
 
     git = shutil.which("git")
@@ -322,6 +422,7 @@ def _ensure_existing_branch_worktree(
     _reject_reserved_name(feature_name)
     worktree_dir = working_dir / ".worktrees" / feature_name
     if worktree_dir.exists():
+        _require_worktree_on_branch(worktree_dir, branch_name)
         return worktree_dir
 
     git = shutil.which("git")
@@ -331,25 +432,10 @@ def _ensure_existing_branch_worktree(
         )
 
     (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)
-    local_exists = (
-        _run_git(
-            [git, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch_name}"],
-            cwd=working_dir,
-        ).returncode
-        == 0
-    )
-
-    if local_exists:
+    if _ref_exists(git, working_dir, f"refs/heads/{branch_name}"):
         argv = [git, "worktree", "add", str(worktree_dir), branch_name]
     else:
-        remote_ref = f"refs/remotes/origin/{branch_name}"
-        remote_exists = (
-            _run_git(
-                [git, "rev-parse", "--verify", "--quiet", remote_ref], cwd=working_dir
-            ).returncode
-            == 0
-        )
-        if not remote_exists:
+        if not _ref_exists(git, working_dir, f"refs/remotes/origin/{branch_name}"):
             raise RuntimeError(
                 f"Branch '{branch_name}' was not found locally or as "
                 f"'origin/{branch_name}'. Fetch it first (`git fetch origin "

@@ -1,6 +1,8 @@
+import shutil
 import subprocess
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from meow.infrastructure.worktree import (
@@ -9,6 +11,7 @@ from meow.infrastructure.worktree import (
     _ensure_feature_worktree,
     _reject_reserved_name,
     _require_branch_checked_out,
+    _resolve_working_dir,
 )
 
 
@@ -161,6 +164,106 @@ class RejectReservedNameTests(unittest.TestCase):
                 _ensure_existing_branch_worktree(root, "prn", "feature/real-branch")
 
             self.assertFalse((root / ".worktrees" / "prn").exists())
+
+
+class FreshFeatureWorktreeTests(unittest.TestCase):
+    def test_default_reuses_existing_worktree_by_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            first = _ensure_feature_worktree(root, "feat")
+            self.assertEqual(_ensure_feature_worktree(root, "feat"), first)
+
+    def test_fresh_takes_the_next_free_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            first = _ensure_feature_worktree(root, "feat", fresh=True)
+            second = _ensure_feature_worktree(root, "feat", fresh=True)
+            third = _ensure_feature_worktree(root, "feat", fresh=True)
+
+            self.assertEqual(
+                [first.name, second.name, third.name], ["feat", "feat-2", "feat-3"]
+            )
+            self.assertTrue((second / "README.md").exists())
+
+    def test_fresh_skips_a_name_taken_by_a_user_chosen_worktree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            _ensure_feature_worktree(root, "feat")
+            _ensure_feature_worktree(root, "feat-2")
+
+            self.assertEqual(
+                _ensure_feature_worktree(root, "feat", fresh=True).name, "feat-3"
+            )
+
+    def test_fresh_skips_a_leftover_unregistered_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            (root / ".worktrees" / "feat").mkdir(parents=True)
+            (root / ".worktrees" / "feat" / "stale.txt").write_text("x")
+
+            self.assertEqual(
+                _ensure_feature_worktree(root, "feat", fresh=True).name, "feat-2"
+            )
+
+    def test_fresh_skips_a_name_git_still_registers_after_its_directory_is_gone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            gone = _ensure_feature_worktree(root, "feat", fresh=True)
+            shutil.rmtree(gone)
+
+            self.assertEqual(
+                _ensure_feature_worktree(root, "feat", fresh=True).name, "feat-2"
+            )
+
+    def test_fresh_concurrent_starts_never_share_a_worktree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                names = list(
+                    pool.map(
+                        lambda _: (
+                            _ensure_feature_worktree(root, "feat", fresh=True).name
+                        ),
+                        range(6),
+                    )
+                )
+
+            self.assertEqual(len(set(names)), 6)
+
+    def test_fresh_releases_its_claim_when_git_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+
+            with self.assertRaisesRegex(RuntimeError, "Failed to create worktree"):
+                _ensure_feature_worktree(
+                    root, "feat", source_branch="no-such-branch", fresh=True
+                )
+
+            self.assertFalse((root / ".worktrees" / "feat").exists())
+
+    def test_resolve_working_dir_returns_the_name_actually_used(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            _resolve_working_dir(
+                root, use_worktree=True, feature_name="feat", fresh=True
+            )
+            active, name, is_worktree = _resolve_working_dir(
+                root, use_worktree=True, feature_name="feat", fresh=True
+            )
+
+            self.assertEqual(
+                (active.name, name, is_worktree), ("feat-2", "feat-2", True)
+            )
+
+    def test_resolve_working_dir_without_fresh_keeps_the_given_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            _resolve_working_dir(root, use_worktree=True, feature_name="feat")
+            active, name, _ = _resolve_working_dir(
+                root, use_worktree=True, feature_name="feat"
+            )
+
+            self.assertEqual((active.name, name), ("feat", "feat"))
 
 
 if __name__ == "__main__":

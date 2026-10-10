@@ -31,12 +31,12 @@ reviewer PASS, and enabled tester PASS. SDK usage missing from evidence is
 on stderr, exit 1). It starts no agents. If `meow` is not on PATH, tell the
 user to install it (README: a venv with `pip install -e .`, or `pipx install -e .`)
 and stop; do not guess at a venv path. Flags shared by every command:
-`--working-dir PATH` (project root with `.meow/config.toml`; default cwd) and
+`--work-dir PATH` (project root with `.meow/config.toml`; default cwd) and
 `--active-dir PATH` (the worktree that `prepare` returned; default = working dir).
 
 | Command | Purpose |
 |---|---|
-| `prepare [--name N] [--no-worktree] [--source-branch B] [--branch BR] [--existing-branch BR] [--allow-dirty]` | Startup guards + worktree; returns `active_dir`, `docs_dir`, `plan_file`, `review_file`, `max_rounds`, `models`, `lint` |
+| `prepare [--name N] [--fresh] [--no-worktree] [--from B] [--branch BR] [--existing-branch BR] [--allow-dirty]` | Startup guards + worktree; returns `name` (the one used; `--fresh` may add `-2`, ...), `active_dir`, `docs_dir`, `plan_file`, `review_file`, `max_rounds`, `models`, `lint` |
 | `verify [--no-lint]` | Validate config and report lint, tester, and integration readiness without starting agents, servers, or MCP connections |
 | `latest-plan` / `latest-review` | Newest plan / review file in `docs_dir` (`latest-review` also gives its `flavor`: plan, prompt, gitlab or github) |
 | `verdict FILE` | `{status: PASS\|FAIL, summary}` of a review file |
@@ -62,7 +62,7 @@ architecture files are optional context.
 
 ## Tester mode
 
-`/meow:run --test` and `/meow:review --plan-file PATH --test` use the matching
+`/meow:run --test` and `/meow:review --plan PATH --test` use the matching
 CLI flow so configured servers stay alive during the tester agent's run.
 Without `--test`, native skill behavior is unchanged. Review accepts `--test`
 only with an explicit plan file and rejects other sources and `--review-file`.
@@ -139,8 +139,9 @@ then stop." plus the full review text (same wording as the CLI).
 
 - Plan: `<docs_dir>/<name>.md` (or `plan.md`); review of it: `<name>-review.md`.
   The default `docs_dir` is `.meow/plans`.
-- Prompt review: `review.md`. Remote reviews: `gitlab-review.md` or
-  `github-review.md`.
+- Other reviews: `<flavor>.<id>.review.md` (flavor `prompt`, `branch`, `gitlab`
+  or `github`; `<id>` random hex). Always use the `review_file` path that
+  `meow native prompt` returns; never guess the name.
 - Verdict format: line 1 `SUMMARY: ...`, line 2 `STATUS: PASS` or `STATUS: FAIL`,
   then one line per criterion.
 - Never edit files under `docs_dir` other than the plan and the review verdicts.
