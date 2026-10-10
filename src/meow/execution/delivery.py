@@ -95,7 +95,11 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
         _git(active, "add", "-u", "--", ".meow/config.toml", check=False)
         if _git(active, "diff", "--cached", "--quiet", check=False).returncode:
             check_cancel(store, run_id)
-            _git(active, "commit", "-m", f"MEOW run {run_id}: {record.request[:72]}")
+            message = ["-m", f"MEOW run {run_id}: {record.request[:72]}"]
+            onboarded = record.results.get("onboarding", {}).get("files")
+            if onboarded:
+                message += ["-m", "Onboarded: " + ", ".join(onboarded)]
+            _git(active, "commit", *message)
         commit = _git(active, "rev-parse", "HEAD").stdout.strip()
         store.transition(
             run_id,
