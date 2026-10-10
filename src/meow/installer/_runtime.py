@@ -14,6 +14,8 @@ from meow.installer._prompt import path_prompt
 from meow.project.onboarding import onboard_project
 
 PLUGIN_DIRS_ENV = "CLAUDE_CODE_PLUGIN_DIRS"
+NEWLINE = chr(10)
+EXIT_INTERRUPTED = 130
 
 
 def _path_key(value: str | Path) -> str:
@@ -201,7 +203,8 @@ def _print_report(path: Path, report, output: Callable[[str], None]) -> None:
         output(f"{path}: onboarding skipped ({report.error})")
         return
     changed = ", ".join(report.files) or "no files changed"
-    output(f"{path}: onboarded ({changed})")
+    lint = report.lint or "none detected"
+    output(f"{path}: onboarded ({changed}); lint: {lint}")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -235,11 +238,25 @@ def _example_path(leaf: str) -> str:
     return root + os.sep + leaf
 
 
+def _wants_projects_now(
+    ask: Callable[[str], str], output: Callable[[str], None]
+) -> bool:
+    try:
+        answer = ask(
+            "Set up MEOW in your projects now? You can also do it later with "
+            "`claude /meow:onboard`. [Y/n]: "
+        )
+    except EOFError:
+        output("")
+        return False
+    return answer.strip().lower() in {"", "y", "yes"}
+
+
 def _project_patterns(ask_path: Callable[[str], str], output: Callable[[str], None]):
     output(
-        "Add the projects MEOW should set up, one at a time "
+        "Add projects one at a time "
         f"(Tab autocompletes paths; `{_example_path('*')}` adds every git "
-        "repository directly inside it, top level only):"
+        "repository directly inside it, top level only)"
     )
     while True:
         try:
@@ -268,7 +285,10 @@ def _onboard_projects(
     ask: Callable[[str], str],
     output: Callable[[str], None],
     ask_path: Callable[[str], str] | None = None,
-) -> None:
+) -> bool:
+    """Onboard the projects the user enters; False when they chose not to."""
+    if not _wants_projects_now(ask, output):
+        return False
     onboarded: set[Path] = set()
     for raw in _project_patterns(ask_path or ask, output):
         for project in expand_project_pattern(raw, ask=ask, output=output):
@@ -276,17 +296,30 @@ def _onboard_projects(
                 continue
             onboarded.add(project)
             _onboard_one(project, output)
+    return True
 
 
 def _print_next_steps(output: Callable[[str], None]) -> None:
-    output(
-        "\nGet started:\n"
-        "- Continue project-level integrations like Jira, GitLab and GitHub with "
-        "`claude /meow:onboard` in your project.\n"
+    lines = (
+        "",
+        "Get started:",
+        "- Configure Jira, GitLab, GitHub, custom linting and testing with "
+        "`claude /meow:onboard` in your project.",
         '- Start from a terminal: `meow run "Add CSV export" --name csv-export '
-        "--work-dir <project>`.\n"
-        "- Start from Claude Code in a project: `claude /meow:run Add CSV export`."
+        "--work-dir <project>`.",
+        "- Start from Claude Code in a project: `claude /meow:run Add CSV export`.",
     )
+    output(NEWLINE.join(lines))
+
+
+def _setup_projects() -> int:
+    """Run the project prompts; Ctrl+C cancels the whole installer."""
+    try:
+        _onboard_projects(input, print, path_prompt())
+    except KeyboardInterrupt:
+        print(NEWLINE + "Cancelled.")
+        return EXIT_INTERRUPTED
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -304,6 +337,4 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     if not _register_plugin(repo_dir, print):
         return 1
-
-    _onboard_projects(input, print, path_prompt())
-    return 0
+    return _setup_projects()

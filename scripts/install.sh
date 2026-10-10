@@ -173,7 +173,13 @@ fetch_origin_version() {
 # closing guidance can be shown after "Done!".
 run_setup() {
     setup_python=$1
-    "$1" -m meow.installer --repo-dir "$2" || die 'MEOW post-install setup failed.'
+    setup_status=0
+    "$1" -m meow.installer --repo-dir "$2" || setup_status=$?
+    case $setup_status in
+        0) ;;
+        130) failure_reported=1; exit 130 ;; # cancelled with Ctrl+C
+        *) die 'MEOW post-install setup failed.' ;;
+    esac
 }
 
 update_existing_checkout() {
@@ -223,7 +229,7 @@ use_existing_meow() {
                 >&2
             ;;
         current)
-            printf '%s\n' "MEOW $installed_version is up to date $(printf '\342\234\223')"
+            printf '%s\n' "MEOW $installed_version is already up to date :)"
             ;;
         *)
             printf '%s\n' \

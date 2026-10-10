@@ -15,9 +15,10 @@
     $repositoryUrl = "git@github.com:maya8237/MEOW.git"
     $originPyprojectUrl = "https://raw.githubusercontent.com/maya8237/MEOW/main/pyproject.toml"
     $defaultParent = "C:/Projects"
-    # The interpreter that ran the post-install setup, kept so the closing guidance
-    # can be shown after "Done!".
-    $setupState = @{ Python = $null }
+    # The interpreter and checkout for the post-install setup. The setup itself runs
+    # at the top level below (not inside a function whose output is captured) so it
+    # keeps direct access to the console for its prompts.
+    $setupState = @{ Python = $null; Checkout = $null }
 
     function Show-Banner {
         Write-Host ""
@@ -259,17 +260,12 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         Write-Host "MEOW updated successfully."
     }
 
-    # Runs the post-install setup attached to the console (not captured by the
-    # pipeline) so its prompts, Tab completion and output behave interactively.
-    function Invoke-MeowSetup {
+    # Records which interpreter and checkout the post-install setup should use.
+    function Set-PendingSetup {
         param([Parameter(Mandatory = $true)][hashtable]$Python, [Parameter(Mandatory = $true)][string]$Checkout)
 
         $setupState.Python = $Python
-        $arguments = @($Python.Arguments) + @("-m", "meow.installer", "--repo-dir", ('"' + $Checkout + '"'))
-        $process = Start-Process -FilePath $Python.Executable -ArgumentList $arguments -NoNewWindow -Wait -PassThru
-        if ($process.ExitCode -ne 0) {
-            throw "MEOW post-install setup failed."
-        }
+        $setupState.Checkout = $Checkout
     }
 
     # Handles a MEOW that is already installed: a `meow` command on PATH or an
@@ -301,7 +297,7 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         } elseif ($null -eq $comparison) {
             Write-Warning "MEOW is already installed at $existingPath, but its version could not be compared with origin/main. Using the existing installation without reinstalling it."
         } else {
-            Write-Host ("MEOW $installedVersion is up to date " + [char]0x2713) -ForegroundColor Green
+            Write-Host "MEOW $installedVersion is already up to date :)" -ForegroundColor Green
         }
 
         if ($null -eq $existingSetup) {
@@ -337,7 +333,7 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         }
 
         Write-Host "Configuring Claude and onboarding projects using existing MEOW checkout: $($existingSetup.Checkout)"
-        Invoke-MeowSetup -Python $existingSetup -Checkout $existingSetup.Checkout
+        Set-PendingSetup -Python $existingSetup -Checkout $existingSetup.Checkout
         return $true
     }
 
@@ -384,13 +380,23 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         }
 
         Write-Host "Configuring Claude and onboarding projects..."
-        Invoke-MeowSetup -Python $python -Checkout $clonePath
+        Set-PendingSetup -Python $python -Checkout $clonePath
     }
 
     try {
         Show-Banner
         if (-not (Use-ExistingMeow)) {
             Install-FreshMeow
+        }
+        if ($null -ne $setupState.Python) {
+            & $setupState.Python.Executable @($setupState.Python.Arguments) -m meow.installer --repo-dir $setupState.Checkout
+            $setupStatus = $LASTEXITCODE
+            if ($setupStatus -eq 130) {
+                return  # cancelled with Ctrl+C; the setup already said so
+            }
+            if ($setupStatus -ne 0) {
+                throw "MEOW post-install setup failed."
+            }
         }
         Write-Host "Done!" -ForegroundColor Green
         if ($null -ne $setupState.Python) {

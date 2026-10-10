@@ -140,14 +140,14 @@ def test_main_onboards_each_literal_destination_and_prints_next_steps(
         return OnboardingReport((".gitignore",), None, (), None)
 
     monkeypatch.setattr(_runtime, "onboard_project", fake_onboard)
-    answers = iter((str(project), ""))
+    answers = iter(("y", str(project), ""))
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
 
     assert installer.main(["--repo-dir", str(repo)]) == 0
 
     output = capsys.readouterr().out
     assert calls == [project]
-    assert "one at a time" in output
+    assert "Add projects one at a time" in output
     assert "Optional features not enabled" not in output
     assert "Get started" not in output  # shown after the scripts' "Done!"
 
@@ -161,3 +161,38 @@ def test_next_steps_flag_prints_only_the_closing_guidance(capsys):
     assert 'meow run "Add CSV export" --name csv-export --work-dir <project>' in output
     assert "claude /meow:run Add CSV export" in output
     assert "(no further menu)" not in output
+
+
+def test_main_skips_project_setup_when_the_user_declines(tmp_path, monkeypatch):
+    repo = tmp_path / "meow"
+    repo.mkdir()
+    calls = []
+    prompts = []
+
+    monkeypatch.setattr(_runtime, "append_plugin_dir", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_runtime, "onboard_project", lambda root: calls.append(root))
+
+    def fake_input(prompt):
+        prompts.append(prompt)
+        return "n"
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    assert installer.main(["--repo-dir", str(repo)]) == 0
+    assert calls == []
+    assert len(prompts) == 1
+    assert "[Y/n]" in prompts[0]
+
+
+def test_main_exits_quietly_on_ctrl_c(tmp_path, monkeypatch, capsys):
+    repo = tmp_path / "meow"
+    repo.mkdir()
+    monkeypatch.setattr(_runtime, "append_plugin_dir", lambda *_args, **_kwargs: None)
+
+    def interrupt(_prompt):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("builtins.input", interrupt)
+
+    assert installer.main(["--repo-dir", str(repo)]) == _runtime.EXIT_INTERRUPTED
+    assert "Cancelled." in capsys.readouterr().out
