@@ -19,7 +19,7 @@ from meow.agents.reviewer import (
     _verdict_status,
 )
 from meow.infrastructure.lint import LintGateEvidence
-from meow.project.config import LintCommand
+from meow.project.config_models import LintCommand
 
 
 class LooksLikeACrashTests(unittest.TestCase):

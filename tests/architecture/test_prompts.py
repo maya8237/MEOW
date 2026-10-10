@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 from meow.project import prompts
-from meow.project.config import LintCommand
+from meow.project.config_models import LintCommand
 from meow.project.shaping import ShapeContext
 
 

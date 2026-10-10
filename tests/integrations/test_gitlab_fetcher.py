@@ -11,7 +11,7 @@ from claude_agent_sdk import (
 )
 
 from meow.agents.gitlab_fetcher import GitlabFetcherAgent
-from meow.project.config import LintCommand
+from meow.project.config_models import LintCommand
 
 
 class FakeProjectContext:
