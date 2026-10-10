@@ -602,7 +602,13 @@ class TesterConfigTests(unittest.TestCase):
                         "startup_timeout": 10,
                     }
                 ],
-                "mcp": [{"name": "browser", "command": "npx", "args": ["browser-mcp"]}],
+                "mcp": [
+                    {
+                        "name": "browser",
+                        "command": "npx",
+                        "args": ["browser-mcp"],
+                    }
+                ],
             }
         })
         self.assertEqual(tester["tests"][0].args, ("--junitxml", "test results.xml"))
