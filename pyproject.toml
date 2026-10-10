@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 meow = "meow.cli.cli:cli_main"
+mw = "meow.cli.cli:cli_main"
 
 [build-system]
 requires = ["hatchling"]
