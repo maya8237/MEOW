@@ -24,3 +24,19 @@ def test_lint_fix_failure_keeps_run_record(tmp_path):
     assert record.source == "lint-fix"
     assert record.phase == "failed"
     assert record.last_failure == "fix failed"
+
+
+def test_lint_fix_onboards_an_unconfigured_project(tmp_path):
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    with (
+        patch("meow.infrastructure.lint_fix.describe_lint_plan"),
+        patch(
+            "meow.infrastructure.lint_fix._report_only",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        asyncio.run(run_lint_fix(tmp_path, report_only=True))
+
+    assert (tmp_path / ".meow" / "config.toml").is_file()

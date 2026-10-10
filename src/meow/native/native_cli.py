@@ -15,11 +15,12 @@ from pathlib import Path
 
 from meow.hooks.handlers import HANDLERS
 from meow.native import native
-from meow.project.config import load_config
+from meow.project.config import config_root, load_config
 
 
 def _add_dirs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
+        "--working-dir",
         "--work-dir",
         "-d",
         dest="working_dir",
@@ -229,6 +230,14 @@ def _add_knowledge(sub) -> None:
     parser.add_argument("--overwrite", action="store_true")
 
 
+def _add_onboard(sub) -> None:
+    parser = sub.add_parser(
+        "onboard-status",
+        help="Report onboarding state and unconfigured add-on features.",
+    )
+    _add_dirs(parser)
+
+
 def _add_hook(sub) -> None:
     parser = sub.add_parser("hook", help="Run a Claude Code JSON hook handler.")
     _add_dirs(parser)
@@ -271,6 +280,7 @@ def add_native_parser(
     _add_prompt(sub)
     _add_push(sub)
     _add_knowledge(sub)
+    _add_onboard(sub)
     _add_hook(sub)
 
 
@@ -307,7 +317,7 @@ def _lint(args, working_dir: Path, active: Path) -> dict:
 
 def _round(args, working_dir: Path, active: Path) -> dict:
     mode = "reset" if args.reset else "show" if args.show else "next"
-    max_rounds = load_config(working_dir)["max_rounds"]
+    max_rounds = load_config(config_root(working_dir, active))["max_rounds"]
     return native.round_state(_resolve(args.plan, active), max_rounds, mode)
 
 
@@ -362,6 +372,7 @@ _HANDLERS = {
     "knowledge-create": lambda args, wd, active: native.knowledge_create(
         active, args.finding, overwrite=args.overwrite
     ),
+    "onboard-status": lambda args, wd, active: native.onboard_status(active),
     "shape-assess": lambda args, wd, active: native.shape_assess(args.request),
     "shape-create": lambda args, wd, active: native.shape_create(
         _resolve(args.path, active), json.loads(args.json)

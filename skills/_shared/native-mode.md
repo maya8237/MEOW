@@ -47,6 +47,7 @@ and stop; do not guess at a venv path. Flags shared by every command:
 | `prompt ROLE [--plan F] [--focus T] [--provider {gitlab,github}] [--worktree]` | Exact SDK system prompt (+ task message, model) for a role |
 | `push BRANCH` | Push a named branch to origin |
 | `knowledge-audit` / `knowledge-check` / `knowledge-create` | Audit, validate, or create selected project knowledge documents |
+| `onboard-status` | Report whether the project is onboarded (shared config plus a correct ignore boundary) and which optional add-ons (Jira, GitLab, GitHub, MCP, tester, hooks, worktree setup, and so on) are not configured yet |
 | `shape-assess` / `shape-create` / `shape-reflect` | Assess, create, or reflect on requirements shaping artifacts |
 | `hook` | Run an optional configured lifecycle hook |
 
@@ -149,5 +150,7 @@ then stop." plus the full review text (same wording as the CLI).
   linked worktree; in-place native runs do not deliver automatically.
 - Worktree hygiene: when `use_worktree` is true, every change goes in `active_dir`;
   the main checkout must stay untouched.
-- If no active MEOW config is present at the project root, use MEOW defaults and
-  point at onboarding for project setup; do not invent lint commands.
+- `meow native prepare` onboards the project (a minimal `.meow/config.toml` and
+  the `.gitignore` boundary, in `active_dir`) when it was never onboarded, and
+  reports it in the JSON's `onboarding` field; mention any `onboarding.files` to
+  the user. Do not invent lint commands; `/meow:onboard` handles add-ons.

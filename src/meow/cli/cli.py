@@ -51,6 +51,7 @@ from meow.integrations.docs_update import (
 )
 from meow.native.native_cli import run_native
 from meow.project.config import load_config
+from meow.project.onboarding import onboard_if_needed
 
 logger = get_logger(__name__)
 
@@ -155,6 +156,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
                 args.artifact_dir or ".meow/ci-artifacts", working_dir
             )
             try:
+                onboard_if_needed(working_dir, working_dir)
                 result = run_ci_review(
                     working_dir,
                     load_config(working_dir),

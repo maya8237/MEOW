@@ -45,6 +45,7 @@ from meow.integrations.github_reviewer import _fetch_pull_request, _load_github_
 from meow.integrations.gitlab_reviewer import _fetch_merge_request, _load_gitlab_config
 from meow.integrations.issue_solver import _fetch_issue, _load_jira_config
 from meow.project.config import load_config
+from meow.project.onboarding import onboard_if_needed
 from meow.project.plan_files import _detect_review_flavor, _latest_plan_file
 
 logger = get_logger(__name__)
@@ -396,6 +397,7 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
             plan_file=str(plan_file) if plan_file else None,
         )
     try:
+        onboard_if_needed(working_dir, working_dir)
         config = load_config(working_dir)
         # Keep lightweight in-memory configs accepted by integrations and tests.
         config.setdefault("docs_dir", "docs")

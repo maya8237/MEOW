@@ -32,9 +32,11 @@ claude plugin marketplace add maya8237/MEOW && claude plugin install meow@meow
 Try it first:
 
 ```text
-/meow:onboard
 /meow:run Add CSV export
 ```
+
+No setup step: the first `meow run` (or any other command that needs a project
+config) sets the project up itself.
 
 ## One command. Done.
 
@@ -45,9 +47,8 @@ Tell MEOW what you want. It does all the work and gives you the finished branch.
 ## How it works
 
 ```text
-1. Set up once           /meow:onboard
-2. Say what you want     /meow:run Add CSV export
-3. Get the finished branch
+1. Say what you want     /meow:run Add CSV export
+2. Get the finished branch
 ```
 
 From a terminal, the same workflow is:
@@ -162,18 +163,22 @@ same. Keep proxy keys in environment variables or ignored local configuration.
 
 ## Try it in 60 seconds
 
-From the repository where you want to use MEOW:
-
-```text
-/meow:onboard
-```
-
-Onboarding detects the project, configures the shared `.meow/` workflow, and
-offers optional integrations and verification features. Then start a feature:
+From the repository where you want to use MEOW, start a feature:
 
 ```text
 /meow:run Add CSV export
 ```
+
+The first `meow run` sets the project up itself: it repairs the `.gitignore`
+boundary, writes a minimal `.meow/config.toml` with the lint command it
+detects, and reports what it skipped. That setup is part of the run's work, so
+a worktree run pushes it with the feature and an in-place run leaves it as local
+changes. Every command that depends on `.meow/config.toml` (`run`, `plan`,
+`review`, lint, queued and Jira runs) does the same on a project that was never
+onboarded.
+
+Use `/meow:onboard` afterwards for add-ons: Jira, GitLab, GitHub and other MCP
+integrations, tester mode, hooks, and worktree setup.
 
 Or run the same workflow from a terminal:
 
@@ -276,7 +281,7 @@ Each skill is available with the `meow` namespace:
 | `/meow:plan` | Write a plan and Sprint Contract without changing application code. |
 | `/meow:review` | Review a prompt, plan, branch diff, Jira issue, GitLab or GitHub remote change, or existing review; optionally fix findings. |
 | `/meow:lint` | Run the current project's configured linters and fix their findings in the active session. |
-| `/meow:onboard` | Set up MEOW configuration, ignore rules, project checks, and optional integrations. |
+| `/meow:onboard` | Add integrations and optional features (add-ons) to a project MEOW already set up; it also performs the base setup on a project that was never onboarded. |
 | `/meow:migration` | Convert a legacy MEOW layout to the current structure. |
 | `/meow:customize` | Decide where to add a skill, agent, MCP tool, or workflow behavior. |
 
@@ -301,8 +306,8 @@ options.
 
 ## Configuration
 
-MEOW works with built-in defaults, so you can start with `/meow:onboard` and
-add only the project behavior you need.
+MEOW sets up a minimal config on first use, so you can start with `/meow:run`
+and add only the project behavior you need (`/meow:onboard` offers the add-ons).
 
 - `.meow/config.toml` contains shareable project settings.
 - `.meow/config.local.toml` contains ignored machine- or user-specific values.
