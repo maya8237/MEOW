@@ -10,6 +10,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 INTERRUPTED = 130
+NEWLINE = chr(10)
+INSTALLER_RUNS = 2
 
 
 def _bash_path() -> Path:
@@ -26,7 +28,7 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def _run_posix_installer(  # ruff: ignore[too-many-arguments]
+def _run_posix_installer(  # ruff: ignore[too-many-arguments, too-many-statements]
     tmp_path: Path,
     *,
     meow_version: str | None,
@@ -34,6 +36,7 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments]
     existing_checkout: Path | None = None,
     input_text: str = "",
     setup_exit_code: int = 0,
+    checkout_version: str | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     bash = _bash_path()
     if not bash.is_file():
@@ -48,6 +51,11 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments]
     if existing_checkout is not None:
         (existing_checkout / ".git").mkdir(parents=True)
         (existing_checkout / "skills").mkdir()
+        if checkout_version is not None:
+            (existing_checkout / "pyproject.toml").write_text(
+                "\n".join(["[project]", f'version = "{checkout_version}"', ""]),
+                encoding="utf-8",
+            )
     functions = [
         "#!/usr/bin/env bash",
         "git() {",
@@ -134,9 +142,9 @@ def test_bootstrap_scripts_stop_when_meow_is_already_on_path():
 def test_powershell_existing_install_reports_up_to_date_and_forwards_setup_output():
     powershell = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
 
-    assert 'Write-Host "MEOW $installedVersion is already up to date :)"' in powershell
+    assert 'Write-Host "MEOW $currentVersion is already up to date :)"' in powershell
     assert re.search(
-        r"already up to date.*?if \(\$comparison -ne \$false\).*?Read-Host",
+        r"already up to date.*?Read-Host",
         powershell,
         re.DOTALL,
     )
@@ -307,8 +315,18 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
 
     bin_dir = tmp_path / "bin"
     home = tmp_path / "home"
+    checkout = tmp_path / "checkout"
     bin_dir.mkdir()
     home.mkdir()
+    shutil.copytree(
+        ROOT / "src", checkout / "src", ignore=shutil.ignore_patterns("__pycache__")
+    )
+    (checkout / ".git").mkdir()
+    (checkout / "skills").mkdir()
+    (checkout / "pyproject.toml").write_text(
+        "\n".join(["[project]", 'name = "meow"', 'version = "9.9.9"', ""]),
+        encoding="utf-8",
+    )
     (bin_dir / "meow.cmd").write_text(
         "@echo off\n"
         'if /I "%~1"=="--version" (\n'
@@ -324,7 +342,7 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
         PATH=os.pathsep.join([str(bin_dir), str(Path(sys.executable).parent)]),
         HOME=str(home),
         USERPROFILE=str(home),
-        PYTHONPATH=str(ROOT / "src"),
+        PYTHONPATH=str(checkout / "src"),
     )
     result = subprocess.run(
         [
@@ -353,8 +371,10 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
         "Configuring Claude and onboarding projects using existing MEOW checkout"
         in output
     )
-    assert str(ROOT) in output
-    assert "MEOW 9.9.9 is already up to date :)" in output
+    assert str(checkout) in output
+    # 9.9.9 is newer than any released origin/main, so there is nothing to update.
+    assert "MEOW 9.9.9 is newer than origin/main" in output
+    assert "does not match the checkout" not in output
     assert "Update MEOW now?" not in output
     assert "Get started:" in output
     assert output.index("Done!") < output.index("Get started:")
@@ -362,6 +382,105 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
     assert "Updating MEOW from existing checkout" not in output
     assert "Cloning MEOW" not in output
     assert "Done!" in output
+
+
+def test_ci_installer_jobs_do_not_install_meow_before_running_checkout_scripts():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    for job in ("installer-linux", "installer-windows"):
+        match = re.search(
+            rf"^  {job}:$(.*?)(?=^  \w|\Z)",
+            workflow,
+            re.MULTILINE | re.DOTALL,
+        )
+        assert match is not None
+        assert "python -m pip install -e" not in match.group(1)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux installer integration test")
+def test_linux_ci_installer_uses_checkout_without_meow_on_path(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+
+    python_wrapper = '#!/bin/sh\nexec "$MEOW_TEST_PYTHON" "$@"\n'
+    for name in ("python3.15", "python3.14", "python3.13", "python3.12", "python3"):
+        _write_executable(bin_dir / name, python_wrapper)
+    _write_executable(
+        bin_dir / "curl",
+        "#!/bin/sh\nprintf '[project]\\nversion = \"0.1.1\"\\n'\n",
+    )
+
+    env = dict(os.environ)
+    env.update(
+        PATH=f"{bin_dir}:/usr/bin:/bin",
+        MEOW_TEST_PYTHON=sys.executable,
+    )
+    result = subprocess.run(
+        ["/bin/bash", str(ROOT / "tests" / "installer" / "run_linux_install.sh")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert output.count("Done!") >= INSTALLER_RUNS
+    assert (
+        output.count(
+            "Configuring Claude and onboarding projects using existing MEOW checkout"
+        )
+        >= INSTALLER_RUNS
+    )
+    assert "The editable MEOW install is not on PATH." not in output
+    assert "Cloning MEOW" not in output
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Windows installer integration test"
+)
+def test_windows_ci_installer_uses_checkout_without_meow_on_path(tmp_path):
+    powershell = shutil.which("pwsh") or shutil.which("powershell")
+    if powershell is None:
+        pytest.skip("PowerShell is required for the Windows installer test")
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "python3.15.cmd").write_text(
+        f'@echo off\r\n"{sys.executable}" %*\r\n',
+        encoding="utf-8",
+    )
+
+    path_parts = [str(bin_dir), str(Path(powershell).parent)]
+    system_root = os.environ.get("SYSTEMROOT")
+    if system_root:
+        path_parts.append(str(Path(system_root) / "System32"))
+    env = dict(os.environ)
+    env["PATH"] = os.pathsep.join(path_parts)
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(ROOT / "tests" / "installer" / "run_windows_install.ps1"),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        check=False,
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert output.count("Done!") >= INSTALLER_RUNS
+    assert output.count("existing MEOW checkout") >= INSTALLER_RUNS
+    assert "The editable MEOW install is not on PATH." not in output
+    assert "Cloning MEOW" not in output
 
 
 def test_posix_bootstrap_installs_when_meow_is_not_on_path(tmp_path):
@@ -477,3 +596,53 @@ def test_posix_bootstrap_exits_quietly_when_setup_is_cancelled(tmp_path):
     assert "Failed:" not in result.stdout + result.stderr
     assert "Done!" not in result.stdout
     assert "--next-steps" not in log
+
+
+def test_posix_bootstrap_says_when_meow_is_newer_than_origin(tmp_path):
+    result, _log = _run_posix_installer(
+        tmp_path,
+        meow_version="0.3.0",
+        origin_version="0.2.0",
+        existing_checkout=tmp_path / "existing-meow",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "MEOW 0.3.0 is newer than origin/main 0.2.0" in result.stdout
+    assert "Update MEOW now?" not in result.stdout
+    assert "already up to date" not in result.stdout
+
+
+def test_posix_bootstrap_compares_the_checkout_version_not_just_the_package(
+    tmp_path,
+):
+    result, _log = _run_posix_installer(
+        tmp_path,
+        meow_version="0.2.0",
+        origin_version="0.2.0",
+        existing_checkout=tmp_path / "existing-meow",
+        checkout_version="0.1.0",
+        input_text="n" + NEWLINE,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "does not match the checkout (0.1.0)" in result.stderr
+    assert "installed MEOW 0.1.0 is older than origin/main 0.2.0" in result.stderr
+    assert "already up to date" not in result.stdout
+    assert "MEOW was not updated" in result.stdout
+
+
+def test_posix_bootstrap_offers_a_reinstall_when_only_the_package_is_stale(tmp_path):
+    result, log = _run_posix_installer(
+        tmp_path,
+        meow_version="0.1.0",
+        origin_version="0.2.0",
+        existing_checkout=tmp_path / "existing-meow",
+        checkout_version="0.2.0",
+        input_text="y" + NEWLINE,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "does not match the checkout (0.2.0)" in result.stderr
+    assert "-m pip install -e" in log
+    assert "git pull" not in log
+    assert "MEOW reinstalled." in result.stdout

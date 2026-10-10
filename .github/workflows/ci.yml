@@ -43,8 +43,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      - name: Install meow editable
-        run: python -m pip install -e .
       - name: Run the Linux installer from the CI checkout
         run: bash tests/installer/run_linux_install.sh
 
@@ -55,8 +53,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      - name: Install meow editable
-        run: python -m pip install -e .
       - name: Run the Windows installer from the CI checkout
         shell: pwsh
         run: ./tests/installer/run_windows_install.ps1

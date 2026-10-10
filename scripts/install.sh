@@ -143,8 +143,8 @@ find_existing_checkout() {
     return 1
 }
 
-# Exit status: 0 installed < latest, 1 installed >= latest, 2 not comparable.
-version_is_older() {
+# Prints how version $1 compares with $2: older, equal, newer, or unknown.
+compare_versions() {
     awk -v installed="$1" -v latest="$2" '
         BEGIN {
             split(installed, left, /\./)
@@ -152,13 +152,25 @@ version_is_older() {
             for (i = 1; i <= 3; i++) {
                 if (left[i] == "") left[i] = 0
                 if (right[i] == "") right[i] = 0
-                if (left[i] !~ /^[0-9]+$/ || right[i] !~ /^[0-9]+$/) exit 2
-                if ((left[i] + 0) < (right[i] + 0)) exit 0
-                if ((left[i] + 0) > (right[i] + 0)) exit 1
+                if (left[i] !~ /^[0-9]+$/ || right[i] !~ /^[0-9]+$/) { print "unknown"; exit }
+                if ((left[i] + 0) < (right[i] + 0)) { print "older"; exit }
+                if ((left[i] + 0) > (right[i] + 0)) { print "newer"; exit }
             }
-            exit 1
+            print "equal"
         }
     '
+}
+
+# Prints the version declared in the pyproject.toml of checkout $1.
+checkout_version() {
+    sed -nE "s/^[[:space:]]*version[[:space:]]*=[[:space:]]*[\"']([^\"']+)[\"'].*/\1/p" \
+        "$1/pyproject.toml" 2>/dev/null | head -n 1
+}
+
+# Prints the version of the installed MEOW package (its pip metadata).
+package_version() {
+    "$existing_python" -c "import importlib.metadata as m; print(m.version('meow'))" 2>/dev/null \
+        | head -n 1
 }
 
 # Prints the version declared in origin/main's pyproject.toml, if reachable.
@@ -182,15 +194,36 @@ run_setup() {
     esac
 }
 
+# Reinstalls the checkout in editable mode so the package matches its source.
+reinstall_existing_checkout() {
+    run_with_spinner 'Installing editable MEOW update' "$existing_python" -m pip install -e "$existing_checkout" \
+        || die 'Editable MEOW update failed.'
+}
+
+# Pulls the checkout, reinstalls it, then checks the result instead of trusting
+# the commands' exit codes alone.
 update_existing_checkout() {
     printf '%s\n' "Updating MEOW from existing checkout: $existing_checkout"
     command -v git >/dev/null 2>&1 \
         || die 'Git is required to update the existing MEOW checkout.'
     run_with_spinner 'Pulling MEOW source' git -C "$existing_checkout" pull --ff-only origin main \
         || die 'MEOW source update failed.'
-    run_with_spinner 'Installing editable MEOW update' "$existing_python" -m pip install -e "$existing_checkout" \
-        || die 'Editable MEOW update failed.'
-    printf '%s\n' 'MEOW updated successfully.'
+    reinstall_existing_checkout
+
+    updated_source=$(checkout_version "$existing_checkout")
+    updated_package=$(package_version)
+    printf '%s\n' "MEOW updated successfully${updated_source:+ (now $updated_source)}."
+    if [ -n "$origin_version" ] && [ -n "$updated_source" ] \
+        && [ "$(compare_versions "$updated_source" "$origin_version")" = older ]; then
+        printf '%s\n' \
+            "Warning: the checkout is still at $updated_source but origin/main has $origin_version; check that 'git -C \"$existing_checkout\" status' is on main." \
+            >&2
+    fi
+    if [ -n "$updated_source" ] && [ -n "$updated_package" ] && [ "$updated_source" != "$updated_package" ]; then
+        printf '%s\n' \
+            "Warning: the installed package ($updated_package) still differs from the checkout ($updated_source)." \
+            >&2
+    fi
 }
 
 # Handles a MEOW that is already installed: either a `meow` command on PATH or
@@ -207,29 +240,41 @@ use_existing_meow() {
             | head -n 1)
     else
         existing_location=$existing_checkout
-        installed_version=$("$existing_python" -c "import importlib.metadata as m; print(m.version('meow'))" 2>/dev/null \
-            | head -n 1)
+        installed_version=$(package_version)
     fi
     origin_version=$(fetch_origin_version)
 
+    # The checkout's own pyproject.toml is the source of truth for an editable
+    # install; the package metadata can lag behind it after a pull or checkout.
+    source_version=''
+    [ -z "$existing_checkout" ] || source_version=$(checkout_version "$existing_checkout")
+    current_version=${source_version:-$installed_version}
+
+    package_out_of_sync=0
+    if [ -n "$source_version" ] && [ -n "$installed_version" ] \
+        && [ "$source_version" != "$installed_version" ]; then
+        package_out_of_sync=1
+        printf '%s\n' \
+            "Warning: the installed MEOW package ($installed_version) does not match the checkout ($source_version)." \
+            >&2
+    fi
+
     comparison=unknown
-    if [ -n "$installed_version" ] && [ -n "$origin_version" ]; then
-        comparison_status=0
-        version_is_older "$installed_version" "$origin_version" || comparison_status=$?
-        case $comparison_status in
-            0) comparison=older ;;
-            1) comparison=current ;;
-        esac
+    if [ -n "$current_version" ] && [ -n "$origin_version" ]; then
+        comparison=$(compare_versions "$current_version" "$origin_version")
     fi
 
     case $comparison in
         older)
             printf '%s\n' \
-                "Warning: installed MEOW $installed_version is older than origin/main $origin_version; using the existing installation without reinstalling it." \
+                "Warning: installed MEOW $current_version is older than origin/main $origin_version; using the existing installation without reinstalling it." \
                 >&2
             ;;
-        current)
-            printf '%s\n' "MEOW $installed_version is already up to date :)"
+        equal)
+            printf '%s\n' "MEOW $current_version is already up to date :)"
+            ;;
+        newer)
+            printf '%s\n' "MEOW $current_version is newer than origin/main $origin_version; keeping your version."
             ;;
         *)
             printf '%s\n' \
@@ -248,7 +293,7 @@ use_existing_meow() {
         return 0
     fi
 
-    if [ "$comparison" != current ]; then
+    if [ "$comparison" = older ] || [ "$comparison" = unknown ]; then
         ask 'Update MEOW now? [y/N]: '
         case $reply in
             y|Y|yes|YES)
@@ -258,6 +303,18 @@ use_existing_meow() {
                 printf '%s\n' 'MEOW was not updated. To update it manually, run:'
                 printf '  git -C "%s" pull --ff-only origin main && %s -m pip install -e "%s"\n' \
                     "$existing_checkout" "$existing_python" "$existing_checkout"
+                ;;
+        esac
+    elif [ "$package_out_of_sync" -eq 1 ]; then
+        ask 'Reinstall MEOW from the checkout now? [y/N]: '
+        case $reply in
+            y|Y|yes|YES)
+                reinstall_existing_checkout
+                printf '%s\n' 'MEOW reinstalled.'
+                ;;
+            *)
+                printf '%s\n' 'MEOW was not reinstalled. To fix it manually, run:'
+                printf '  %s -m pip install -e "%s"\n' "$existing_python" "$existing_checkout"
                 ;;
         esac
     fi
