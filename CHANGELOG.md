@@ -4,6 +4,11 @@ All notable changes to MEOW will be documented here.
 
 ## Unreleased
 
+- Custom skills and agents: `[custom]` lists directories of Claude Code-format
+  skills and agent files in local project, project (versioned, never
+  git-ignored), or user scope. CLI roles load them through a generated
+  `meow-custom` plugin and as capped subagents; native skills read them with
+  `meow native custom`. `/meow:customize` now scaffolds and registers them.
 - Projects are onboarded automatically on the first command that needs a config
   (`run`, `plan`, `review`, lint, queue, Jira, native `prepare`): the ignore
   boundary plus a minimal `.meow/config.toml` are created in the active

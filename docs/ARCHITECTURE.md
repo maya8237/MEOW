@@ -19,8 +19,8 @@ rather than creating top-level compatibility modules.
   documentation updates, and knowledge-document adapters.
 - `native/`: deterministic helpers used by in-session skills, including
   preparation, prompts, lint, checkpoints, state, and the native CLI.
-- `project/`: configuration models/schema, onboarding, permissions, planning
-  files/state, pre-plan shaping, prompts, and command policy.
+- `project/`: configuration models/schema, custom skill and agent discovery
+  (`project/custom/`), onboarding, permissions, planning files/state, pre-plan shaping, prompts, and command policy.
 - `hooks/`: optional Claude Code host-hook handlers and installation support.
 - `installer/`: installation and plugin/package setup helpers.
 - `tasks/`: task models, execution, scheduling, and integration runners.

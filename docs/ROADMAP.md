@@ -12,6 +12,9 @@ users learn a large workflow system.
 - CLI and skill paths for feature requests, queues, Jira, GitLab, and GitHub review.
 - Optional Claude Code host hooks, browser-aware tester checks, and durable
   status/cancel/resume recovery.
+- Custom skills and agents discovered from `[custom]` directories in local
+  project, project, and user scope, with precedence, validation, and a
+  tool cap so custom agents never exceed their parent role.
 
 ## Next
 
@@ -21,15 +24,6 @@ users learn a large workflow system.
 - Additional integrations when they preserve the same simple handoff.
 
 ## Future features
-
-### Shared custom skills and agents
-
-MEOW should support shared, dynamically discovered custom skills and agent
-definitions at both project-wide and user-wide scope. Project configuration
-should be able to opt a repository into versioned skills and agents, while
-users should be able to maintain personal defaults that apply across their
-projects. The design should define precedence, validation, compatibility, and
-permission boundaries so custom behavior remains predictable and safe.
 
 ### Versioned run events and notifications
 

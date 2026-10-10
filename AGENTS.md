@@ -58,7 +58,8 @@ package (see ARCHITECTURE.md) and keep the package root to entry points.
   (`sprint_runner.py`), run journal (`run_state.py`), delivery, queue.
 - `cli/`: argument parsing, dispatch, `review_cli.py`, status, resume.
 - `native/`: agent-free helpers behind `meow native ...` for the skills.
-- `project/`: config loading/schema, onboarding, permissions, plan files,
+- `project/`: config loading/schema, `[custom]` skill/agent discovery
+  (`project/custom/`), onboarding, permissions, plan files,
   and all role prompts (`project/prompts.py`; change prompts there, never
   in a skill, so SDK and native modes stay identical).
 - `infrastructure/`: lint, checks, test runner, worktrees, logging, usage,

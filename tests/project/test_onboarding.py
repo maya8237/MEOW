@@ -225,6 +225,7 @@ def test_feature_gaps_reports_configured_and_missing(repo):
         "worktree_setup",
         "permissions",
         "agent_skills",
+        "custom",
         "hooks",
         "architecture_doc",
     }

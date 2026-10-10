@@ -310,6 +310,11 @@ layers. The CLI is the option for
 unattended terminal or scheduled runs. See the shared
 [native mode protocol](../skills/_shared/native-mode.md).
 
+Custom skills and agents from `[custom]` apply in both modes: the CLI loads
+them into each role's SDK session, and native skills read them with
+`meow native custom --role ROLE`. See
+[INTEGRATIONS.md](INTEGRATIONS.md#custom-skills-and-agents).
+
 ## Maintainer and internal commands
 
 These commands are hidden from `meow --help` because they are not the normal

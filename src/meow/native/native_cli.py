@@ -13,6 +13,7 @@ from pathlib import Path
 from meow.hooks.handlers import HANDLERS
 from meow.native import native
 from meow.project.config import config_root, load_config
+from meow.project.custom import SKILL_ROLES
 
 
 def _add_dirs(parser: argparse.ArgumentParser) -> None:
@@ -235,6 +236,18 @@ def _add_onboard(sub) -> None:
     _add_dirs(parser)
 
 
+def _add_custom(sub) -> None:
+    parser = sub.add_parser(
+        "custom", help="List the custom skills and agents in effect."
+    )
+    _add_dirs(parser)
+    parser.add_argument(
+        "--role",
+        choices=sorted(SKILL_ROLES),
+        help="Only what this role receives.",
+    )
+
+
 def _add_hook(sub) -> None:
     parser = sub.add_parser("hook", help="Run a Claude Code JSON hook handler.")
     _add_dirs(parser)
@@ -282,6 +295,7 @@ def add_native_parser(
     _add_push(sub)
     _add_knowledge(sub)
     _add_onboard(sub)
+    _add_custom(sub)
     _add_hook(sub)
     _add_shape(sub)
 
@@ -374,6 +388,7 @@ _HANDLERS = {
     "knowledge-create": lambda args, wd, active: native.knowledge_create(
         active, args.finding, overwrite=args.overwrite
     ),
+    "custom": lambda args, wd, active: native.custom(wd, active, args.role),
     "onboard-status": lambda args, wd, active: native.onboard_status(active),
     "shape-assess": lambda args, wd, active: native.shape_assess(args.request),
     "shape-create": lambda args, wd, active: native.shape_create(
