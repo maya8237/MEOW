@@ -57,7 +57,8 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments]
             "  case \"$*\" in",
             "    *'import meow'*) printf '%s\\n' \"$MEOW_EXISTING_CHECKOUT\" ;;",
             "    *'-m pip install -e'*) printf 'FAKE_PIP\\n' >&2 ;;",
-            "    *'-m meow.installer'*) printf 'FAKE_SETUP\\n' >&2; return \"$MEOW_SETUP_EXIT\" ;;",
+            "    *'-m meow.installer'*) printf 'FAKE_SETUP\\n' >&2; "
+            'return "$MEOW_SETUP_EXIT" ;;',
         "  esac",
         "}",
     ]
