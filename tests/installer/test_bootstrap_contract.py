@@ -358,7 +358,8 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
     assert str(ROOT) in output
     assert "MEOW 9.9.9 is up to date ✓" in output
     assert "Update MEOW now?" not in output
-    assert "Next options:" in output
+    assert "Get started:" in output
+    assert output.index("Done!") < output.index("Get started:")
     assert "No project directory exists" not in output
     assert "Updating MEOW from existing checkout" not in output
     assert "Cloning MEOW" not in output

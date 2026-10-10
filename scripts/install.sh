@@ -16,6 +16,7 @@ failure_reported=0
 reply=''
 existing_python=''
 existing_checkout=''
+setup_python=''
 
 show_banner() {
     printf '\033[36m\n'
@@ -168,6 +169,13 @@ fetch_origin_version() {
         | head -n 1
 }
 
+# Runs the interactive post-install setup and remembers the interpreter so the
+# closing guidance can be shown after "Done!".
+run_setup() {
+    setup_python=$1
+    "$1" -m meow.installer --repo-dir "$2" || die 'MEOW post-install setup failed.'
+}
+
 update_existing_checkout() {
     printf '%s\n' "Updating MEOW from existing checkout: $existing_checkout"
     command -v git >/dev/null 2>&1 \
@@ -249,8 +257,7 @@ use_existing_meow() {
     fi
 
     printf '%s\n' "Configuring Claude and onboarding projects using existing MEOW checkout: $existing_checkout"
-    "$existing_python" -m meow.installer --repo-dir "$existing_checkout" \
-        || die 'MEOW post-install setup failed.'
+    run_setup "$existing_python" "$existing_checkout"
     return 0
 }
 
@@ -285,10 +292,10 @@ install_fresh_meow() {
         || die 'Editable MEOW installation failed.'
 
     printf '%s\n' 'Configuring Claude and onboarding projects...'
-    "$python_command" -m meow.installer --repo-dir "$clone_path" \
-        || die 'MEOW post-install setup failed.'
+    run_setup "$python_command" "$clone_path"
 }
 
 show_banner
 use_existing_meow || install_fresh_meow
 printf '\033[32mDone!\033[0m\n'
+[ -z "$setup_python" ] || "$setup_python" -m meow.installer --next-steps || true
