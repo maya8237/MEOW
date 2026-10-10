@@ -20,6 +20,39 @@ users learn a large workflow system.
   shipped Claude Code host hooks).
 - Additional integrations when they preserve the same simple handoff.
 
-See [Future features](FUTURE_FEATURES.md) for deferred ideas and their safety
-constraints. Open an issue if your workflow would benefit from a different
-integration or delivery boundary.
+## Future features
+
+### Shared custom skills and agents
+
+MEOW should support shared, dynamically discovered custom skills and agent
+definitions at both project-wide and user-wide scope. Project configuration
+should be able to opt a repository into versioned skills and agents, while
+users should be able to maintain personal defaults that apply across their
+projects. The design should define precedence, validation, compatibility, and
+permission boundaries so custom behavior remains predictable and safe.
+
+### Versioned run events and notifications
+
+**Status:** Deferred. Do not implement as part of the current feature work.
+
+MEOW could publish a small, versioned set of events at meaningful run
+boundaries: run started, plan accepted, phase started or completed,
+verification failed, run paused, and delivery completed. Each event would
+identify the run, phase, time, and path to supporting evidence. Checkpoints and
+`meow status` should reflect the same transitions.
+
+This is separate from the shipped Claude Code host hooks, which are optional
+editor integrations installed and removed with `meow hooks`.
+
+Projects could configure optional handlers for uses such as CI status or
+notifications. Reporting handlers should not change a verified run's result
+when they fail. A handler explicitly configured as a required gate may block
+completion, and its failure should be recorded. Handlers need timeouts and
+declared permissions. In `--unattended` mode, they must never prompt for
+input; failures must leave a clear checkpoint and recovery path.
+
+Add event types only when a concrete consumer needs them. Avoid exposing every
+internal agent message or tool action as a public event.
+
+Open an issue if your workflow would benefit from a different integration or
+delivery boundary.
