@@ -6,10 +6,10 @@ import pytest
 from meow.execution.orchestrator import _capture_quality
 from meow.infrastructure.quality import (
     QualityStoreError,
+    concerns_for_run,
     extract_concern_candidates,
     load_concerns,
     record_concerns,
-    relevant_concerns,
 )
 from meow.project.prompts import _verdict_format
 
@@ -45,13 +45,12 @@ def test_record_rejects_missing_evidence_and_escape(tmp_path):
     assert record_concerns(tmp_path, "run", [_candidate("../other.py")]) == []
 
 
-def test_changed_location_becomes_stale_and_is_not_relevant(tmp_path):
+def test_changed_location_becomes_stale_and_is_not_shown(tmp_path):
     path = tmp_path / "module.py"
     path.write_text("duplicate check\n")
     record_concerns(tmp_path, "run-1", [_candidate()])
     path.write_text("fixed\n")
-    assert relevant_concerns(tmp_path, ["module.py"]) == []
-    assert load_concerns(tmp_path)[0].state == "stale"
+    assert concerns_for_run(tmp_path, "run-1") == []
 
 
 def test_corrupt_store_is_preserved(tmp_path):
@@ -61,13 +60,6 @@ def test_corrupt_store_is_preserved(tmp_path):
     with pytest.raises(QualityStoreError):
         record_concerns(tmp_path, "run", [])
     assert store.read_text() == "{broken"
-
-
-def test_relevant_concerns_excludes_unrelated_paths(tmp_path):
-    (tmp_path / "module.py").write_text("duplicate check\n")
-    record_concerns(tmp_path, "run", [_candidate()])
-    assert len(relevant_concerns(tmp_path, ["module.py"])) == 1
-    assert relevant_concerns(tmp_path, ["other.py"]) == []
 
 
 def test_extract_requires_explicit_structured_concern():

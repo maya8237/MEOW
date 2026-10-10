@@ -66,12 +66,7 @@ run in `meow status`. `meow status --verbose` also shows their evidence and
 follow-up. Concerns are advisory and do not independently fail a verification
 gate. MEOW does not calculate a numerical project quality score.
 
-## Verification preflight and browser checks
-
-Onboarding validates each proposed lint, test, and build command's executable
-and configured `cwd` before saving it. Running a proposed command is a separate
-preflight step after the user reviews its exact command and possible effects;
-preflight reports timeout, failure, and files changed by the command.
+## Browser checks
 
 When `[tester.browser]` uses `kind = "command"`, MEOW starts the configured
 `[[tester.dev_server]]`, waits for its readiness URL, runs the project's browser
