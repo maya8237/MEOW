@@ -139,13 +139,14 @@ def verify(
     run_lint: bool = True,
 ) -> dict:
     """Validate all supported config sections and their local prerequisites."""
-    config = load_config(config_root(working_dir, active_dir))
+    root = config_root(working_dir, active_dir)
+    config = load_config(root)
     integrations = {
         "jira": _verify_jira(config),
         "gitlab": _verify_gitlab(config),
         "github": _verify_github(config),
     }
-    paths = config_paths(working_dir)
+    paths = config_paths(root)
     result = {
         "valid": True,
         "project_dir": str(working_dir.resolve()),

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from meow.agents.base import Agent
 from meow.agents.explorer import ExplorerAgent
-from meow.execution.sprint import Sprint
+from meow.project.plan_files import planned_plan_file
 from meow.project.prompts import planner_prompt
 from meow.project.shaping import ShapeContext
 
@@ -25,12 +25,9 @@ class PlannerAgent(Agent):
         request: str,
         shape_context: ShapeContext | None = None,
     ) -> Path:
-        active_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
-        active_dir.mkdir(parents=True, exist_ok=True)
-        # Keep in step with plan_files.planned_plan_file (importing it here
-        # would be circular: plan_files imports the reviewer agent).
-        plan_filename = f"{feature_name}.md" if feature_name else "plan.md"
-        plan_file = active_dir / plan_filename
+        docs_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        plan_file = planned_plan_file(docs_dir, feature_name)
 
         options = self.options(
             system_prompt=planner_prompt(
@@ -46,12 +43,3 @@ class PlannerAgent(Agent):
         )
         await self.run_query(request, options, "Planner")
         return require_plan_file(plan_file)
-
-
-async def run_planner(
-    sprint: Sprint,
-    feature_name: str | None,
-    request: str,
-    shape_context: ShapeContext | None = None,
-) -> Path:
-    return await PlannerAgent(sprint).run(feature_name, request, shape_context)

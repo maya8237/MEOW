@@ -342,8 +342,11 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
-            "-File",
-            str(ROOT / "scripts" / "install.ps1"),
+            "-Command",
+            # Windows PowerShell writes redirected output in the console code
+            # page; force UTF-8 so the captured text decodes on any locale.
+            "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+            f"& '{ROOT / 'scripts' / 'install.ps1'}'",
         ],
         cwd=ROOT,
         input="\n\n",

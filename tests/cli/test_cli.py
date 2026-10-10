@@ -798,7 +798,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         )
 
         async def _run():
-            await planner_agent.run_planner(sprint, "ship-it", "Add CSV export")
+            await planner_agent.PlannerAgent(sprint).run("ship-it", "Add CSV export")
 
         with patch.object(Path, "is_file", return_value=True):
             asyncio.run(_run())

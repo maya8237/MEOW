@@ -93,6 +93,20 @@ def test_merge_request_description_is_review_context(checkout):
     assert not context.mr_description_truncated
 
 
+def test_merge_request_must_target_the_configured_branch(checkout):
+    repo, _, _, env = checkout
+    env |= {
+        "CI_PIPELINE_SOURCE": "merge_request_event",
+        "CI_MERGE_REQUEST_EVENT_TYPE": "detached",
+        "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME": "feature/x",
+        "CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "main",
+    }
+    with pytest.raises(CiReviewError, match="must target dev"):
+        prepare_ci_review(repo, env)
+    context = prepare_ci_review(repo, env, "dev", target_branch="main")
+    assert context.source_ref == "feature/x"
+
+
 def test_truncated_merge_request_description_is_flagged(checkout):
     repo, _, _, env = checkout
     env |= {

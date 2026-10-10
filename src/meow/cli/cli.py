@@ -142,7 +142,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         print("Edited files: " + (", ".join(result.changed_paths) or "none"))
         print(result.diff or "No documentation changes.")
         return
-    if args.command in {"knowledge", "shape", "hooks"}:
+    if args.command == "hooks":
         _dispatch(args, working_dir, use_worktree=False)
         return
     if args.command == "review":

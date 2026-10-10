@@ -2,21 +2,19 @@
 
 from pathlib import Path
 
-from meow.agents.base import Agent, ProjectContext, guard_tools
+from meow.agents.base import Agent, ProjectContext, guard_tools, tool_input_path
 from meow.integrations.docs_update import DocsUpdateInput
 from meow.project.config import load_config
 from meow.project.prompts import docs_update_prompt
 
 
-def _allowed_edit_path(repo: Path, raw_path: object) -> bool:
-    if not isinstance(raw_path, str):
-        return False
-    candidate = Path(raw_path)
-    if not candidate.is_absolute():
-        candidate = repo / candidate
+def _allowed_edit_path(repo: Path, tool_input: dict) -> bool:
+    target = tool_input_path(tool_input, repo)
     try:
-        relative = candidate.resolve().relative_to(repo.resolve())
+        relative = target.relative_to(repo.resolve()) if target else None
     except ValueError:
+        return False
+    if relative is None:
         return False
     return relative.as_posix() == "README.md" or (
         bool(relative.parts)
@@ -36,9 +34,7 @@ async def update_documentation(prepared: DocsUpdateInput) -> None:
         options,
         {"Edit", "Write"},
         lambda tool_input: None
-        if _allowed_edit_path(
-            prepared.repo, tool_input.get("file_path") or tool_input.get("path")
-        )
+        if _allowed_edit_path(prepared.repo, tool_input)
         else "Docs updater may edit prose only",
     )
     await Agent.run_query(

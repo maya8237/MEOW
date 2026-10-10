@@ -66,11 +66,15 @@ class PlanStore:
         """Start a draft for ``run_id``, taking over only from a finished owner.
 
         ``owner_finished`` is asked about the previous owner run. It must return
-        False when that run is active or its state cannot be verified.
+        False when that run is active or its state cannot be verified. A run
+        re-claiming its own plan (e.g. on resume) keeps the current lifecycle.
         """
         with self._locked(Path(plan)):
-            owner = self.read(plan).run_id
-            takeover = owner is not None and owner != run_id
+            current = self.read(plan)
+            owner = current.run_id
+            if owner == run_id:
+                return current
+            takeover = owner is not None
             if takeover and not owner_finished(owner):
                 raise self._owned_error(plan, owner)
             return self.transition(plan, "draft", run_id, takeover=takeover)
@@ -164,28 +168,3 @@ class PlanStore:
             if temp:
                 temp.unlink(missing_ok=True)
         return current
-
-
-def discover_plan(  # ruff: ignore[complex-structure]
-    docs_dir: Path, explicit: Path | None = None, run_id: str | None = None
-) -> Path:
-    if explicit:
-        path = Path(explicit)
-        if not path.is_absolute():
-            path = Path(docs_dir) / path
-        if not path.is_file():
-            raise FileNotFoundError(f"Plan file not found: {path}")
-        return path.resolve()
-    docs_dir = Path(docs_dir)
-    candidates = [
-        p
-        for p in docs_dir.glob("*.md")
-        if not p.name.endswith(("review.md", "-test.md"))
-    ]
-    if not candidates:
-        raise FileNotFoundError(f"No plan file found in {docs_dir}")
-    if run_id:
-        linked = [p for p in candidates if PlanStore(docs_dir).read(p).run_id == run_id]
-        if linked:
-            return sorted(linked, key=lambda p: (p.stat().st_mtime_ns, p.name))[-1]
-    return sorted(candidates, key=lambda p: (p.stat().st_mtime_ns, p.name))[-1]

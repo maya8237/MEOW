@@ -29,13 +29,18 @@ from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import usage_scope
 from meow.infrastructure.worktree import current_branch
-from meow.infrastructure.worktree_setup import WorktreeSetupError, run_setup
+from meow.infrastructure.worktree_setup import run_setup
 from meow.project.config import config_paths, load_config
 from meow.project.onboarding import onboard_if_needed
-from meow.project.plan_files import _latest_plan_file, planned_plan_file
-from meow.project.plan_state import PlanOwnedError, PlanStore
+from meow.project.plan_files import (
+    _latest_plan_file,
+    plan_review_file,
+    plan_test_file,
+    planned_plan_file,
+)
+from meow.project.plan_state import PlanStore
 from meow.project.preplan import gather_context, prepare_preplan
-from meow.project.shaping import ShapeContext, is_bug_request, load_shape_artifact
+from meow.project.shaping import ShapeContext, is_bug_request
 from meow.tasks.model import load_task_graph
 from meow.tasks.runner import run_parallel_plan
 
@@ -107,25 +112,72 @@ def _run_onboarding(
     return sprint, checks_dir
 
 
-async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, too-many-locals, complex-structure, too-many-branches]
+async def run_sprint(  # ruff: ignore[too-many-arguments]
     working_dir: Path,
     feature_name: str | None,
     request: str,
     *,
+    run_id: str | None = None,
+    record_root: Path | None = None,
+    source: str = "prompt",
+    **options,
+) -> None:
+    """Journal one sprint (see `_drive_sprint` for `options`).
+
+    Creates the run record unless `run_id` continues one, and marks the run
+    failed when anything raises before it reached a settled phase, so no
+    failure path leaves a run looking active.
+    """
+    resume_at = options.get("resume_at", "generate")
+    if resume_at not in {"generate", "review"}:
+        raise ValueError(f"resume_at must be 'generate' or 'review', got {resume_at!r}")
+    store = RunStore(Path(record_root or working_dir).resolve())
+    if run_id is None:
+        run_id = store.create(
+            source=source,
+            request=request,
+            repo=record_root or working_dir,
+            worktree=working_dir,
+            branch="preparing",
+        ).id
+    try:
+        await _drive_sprint(
+            working_dir,
+            feature_name,
+            request,
+            run_id=run_id,
+            record_root=record_root,
+            **options,
+        )
+    except RunCancelled:
+        raise
+    except BaseException as exc:
+        if store.load(run_id).phase not in _SETTLED_PHASES:
+            store.transition(run_id, "failed", last_failure=str(exc))
+        raise
+
+
+# A run in one of these phases already says why it stopped.
+_SETTLED_PHASES = TERMINAL_PHASES | {"interrupted_mutation"}
+
+
+async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, too-many-locals, complex-structure, too-many-branches]
+    working_dir: Path,
+    feature_name: str | None,
+    request: str,
+    *,
+    run_id: str,
     use_worktree: bool = True,
     plan_file: Path | None = None,
     source_branch: str | None = None,
     approve_plan: Callable[[Path], bool] | None = None,
     resume_at: str = "generate",
     test: bool = False,
-    run_id: str | None = None,
     record_root: Path | None = None,
-    source: str = "prompt",
-    shape_path: Path | None = None,
     unattended: bool = False,
     worktree_preexisting: bool = False,
     required_session_roles: set[str] | None = None,
-):
+) -> None:
     """Plan (unless `plan_file` is given) then implement it in a round loop.
 
     `approve_plan`, when given, is called with the plan file right before
@@ -148,22 +200,9 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
       interrupted after the generator already produced code, without
       re-running it on code that's already there.
     """
-    if resume_at not in {"generate", "review"}:
-        raise ValueError(f"resume_at must be 'generate' or 'review', got {resume_at!r}")
-
     config_dir = Path(record_root or working_dir).resolve()
     store = RunStore(config_dir)
-    record = (
-        store.load(run_id)
-        if run_id
-        else store.create(
-            source=source,
-            request=request,
-            repo=record_root or working_dir,
-            worktree=working_dir,
-            branch="preparing",
-        )
-    )
+    record = store.load(run_id)
     store.transition(record.id, "preparing")
     check_cancel(store, record.id)
     # A run that plans from scratch gets its own worktree rather than reusing
@@ -179,30 +218,20 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
         and not fresh
         and (working_dir / ".worktrees" / feature_name).exists()
     )
-    try:
-        sprint, effective_name, active_dir = _prepare_sprint(
-            working_dir,
-            feature_name,
-            use_worktree=use_worktree,
-            source_branch=source_branch,
-            config_dir=config_dir,
-            fresh=fresh,
-        )
-    except BaseException as exc:
-        store.transition(record.id, "failed", last_failure=str(exc))
-        raise
+    sprint, effective_name, active_dir = _prepare_sprint(
+        working_dir,
+        feature_name,
+        use_worktree=use_worktree,
+        source_branch=source_branch,
+        config_dir=config_dir,
+        fresh=fresh,
+    )
     branch = current_branch(active_dir)
     sprint.config["_run_journal"] = (store, record.id)
     sprint.config["_unattended"] = unattended
     sprint.config["_bug_mode"] = is_bug_request(request)
     if required_session_roles:
         sprint.config["_resume_required_roles"] = set(required_session_roles)
-    if shape_path is not None:
-        artifact = load_shape_artifact(shape_path)
-        if hasattr(artifact, "chosen_approach"):
-            sprint.config["_shape_context"] = ShapeContext(
-                str(shape_path), artifact.chosen_approach, artifact.assumptions
-            )
     store.transition(
         record.id,
         "prepared",
@@ -227,25 +256,20 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
             actions.append(action)
             store.transition(record.id, "setting_up", results={"setup": actions})
 
-        try:
-            check_cancel(store, record.id)
-            run_setup(
-                setup_source,
-                active_dir,
-                manifest,
-                record_action=record_setup_action,
-                command_decision=lambda argv: (
-                    sprint
-                    .config["permissions"]
-                    .for_role("setup")
-                    .decision("WorktreeSetup", {"argv": argv})
-                ),
-            )
-            check_cancel(store, record.id)
-        except (WorktreeSetupError, RunCancelled) as exc:
-            if not isinstance(exc, RunCancelled):
-                store.transition(record.id, "failed", last_failure=str(exc))
-            raise
+        check_cancel(store, record.id)
+        run_setup(
+            setup_source,
+            active_dir,
+            manifest,
+            record_action=record_setup_action,
+            command_decision=lambda argv: (
+                sprint
+                .config["permissions"]
+                .for_role("setup")
+                .decision("WorktreeSetup", {"argv": argv})
+            ),
+        )
+        check_cancel(store, record.id)
         store.transition(record.id, "prepared", results={"setup_complete": True})
     sprint, checks_dir = _run_onboarding(
         store, record.id, sprint, (active_dir, config_dir)
@@ -287,7 +311,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
             json.dumps(preplan.to_dict(), indent=2) + "\n", encoding="utf-8"
         )
         sprint.config["_preplan_context"] = preplan.to_dict()
-        if preplan.shape is not None and shape_path is None:
+        if preplan.shape is not None:
             sprint.config["_shape_context"] = ShapeContext(
                 str(artifact),
                 preplan.shape.chosen_approach,
@@ -301,38 +325,28 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
             # Claim the plan path before the planner writes it, so a second
             # run (same --name in place, --jira, queue) cannot clobber a plan
             # an active run is using.
-            try:
-                PlanStore(active_dir).claim(
-                    planned_plan_file(
-                        active_dir / sprint.config["docs_dir"], effective_name
-                    ),
-                    record.id,
-                    owner_finished=lambda owner: _owner_finished(store, owner),
-                )
-            except PlanOwnedError as exc:
-                store.transition(record.id, "failed", last_failure=str(exc))
-                raise
+            PlanStore(active_dir).claim(
+                planned_plan_file(
+                    active_dir / sprint.config["docs_dir"], effective_name
+                ),
+                record.id,
+                owner_finished=lambda owner: _owner_finished(store, owner),
+            )
             store.transition(record.id, "planning")
             logger.info(
                 "planner_started",
                 feature_name=effective_name,
                 working_dir=str(active_dir),
             )
-            try:
-                with usage_scope(store, record.id):
-                    plan_file = await cancellable(
-                        store,
-                        record.id,
-                        PlannerAgent(sprint).run(
-                            effective_name, request, sprint.config.get("_shape_context")
-                        ),
-                    )
-                    plan_file = require_plan_file(plan_file)
-            except RunCancelled:
-                raise
-            except BaseException as exc:
-                store.transition(record.id, "failed", last_failure=str(exc))
-                raise
+            with usage_scope(store, record.id):
+                plan_file = await cancellable(
+                    store,
+                    record.id,
+                    PlannerAgent(sprint).run(
+                        effective_name, request, sprint.config.get("_shape_context")
+                    ),
+                )
+            plan_file = require_plan_file(plan_file)
             logger.info("planner_finished", plan_file=str(plan_file))
     store.transition(
         record.id,
@@ -374,33 +388,16 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
     run_rounds = (
         _run_review_rounds if resume_at == "review" or parallel else _run_rounds
     )
-    try:
-        with usage_scope(store, record.id):
-            passed = await cancellable(
-                store,
-                record.id,
-                run_rounds(sprint, plan_file, test=True)
-                if test
-                else run_rounds(sprint, plan_file),
-            )
-    except RunCancelled:
-        raise
-    except BaseException as exc:
-        if store.load(record.id).phase != "interrupted_mutation":
-            store.transition(record.id, "failed", last_failure=str(exc))
-        raise
+    with usage_scope(store, record.id):
+        passed = await cancellable(
+            store, record.id, run_rounds(sprint, plan_file, test=test)
+        )
     if passed:
         if config_paths(checks_dir):
             store.transition(record.id, "checking")
-            try:
-                results = await cancellable(
-                    store, record.id, run_final_checks(active_dir, sprint.config)
-                )
-            except RunCancelled:
-                raise
-            except BaseException as exc:
-                store.transition(record.id, "failed", last_failure=str(exc))
-                raise
+            results = await cancellable(
+                store, record.id, run_final_checks(active_dir, sprint.config)
+            )
             store.transition(
                 record.id,
                 "checks_finished",
@@ -446,12 +443,8 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
         f"Sprint{f' {feature_name!r}' if feature_name else ''} did not pass "
         f"after {sprint.config['max_rounds']} "
         "rounds -- stopping instead of looping forever. Inspect the review "
-        f"file {plan_file.with_name(plan_file.stem + '-review.md')}"
-        + (
-            f" and tester file {plan_file.with_name(plan_file.stem + '-test.md')}"
-            if test
-            else "."
-        )
+        f"file {plan_review_file(plan_file)}"
+        + (f" and tester file {plan_test_file(plan_file)}" if test else ".")
     )
 
 
@@ -462,7 +455,6 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
     *,
     use_worktree: bool = True,
     source_branch: str | None = None,
-    shape_path: Path | None = None,
 ) -> Path:
     sprint, effective_name, active_dir = _prepare_sprint(
         working_dir,
@@ -480,12 +472,6 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
     logger.info(
         "planner_started", feature_name=effective_name, working_dir=str(active_dir)
     )
-    if shape_path is not None:
-        artifact = load_shape_artifact(shape_path)
-        if hasattr(artifact, "chosen_approach"):
-            sprint.config["_shape_context"] = ShapeContext(
-                str(shape_path), artifact.chosen_approach, artifact.assumptions
-            )
     evidence = gather_context(active_dir, request)
     preplan = prepare_preplan(active_dir, request, evidence=evidence)
     if preplan.decision.mode == "needs_user_decision":
@@ -494,7 +480,7 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
         )
     sprint.config["_preplan_context"] = preplan.to_dict()
     sprint.config["_bug_mode"] = is_bug_request(request)
-    if preplan.shape is not None and shape_path is None:
+    if preplan.shape is not None:
         sprint.config["_shape_context"] = ShapeContext(
             "automatic preplan",
             preplan.shape.chosen_approach,

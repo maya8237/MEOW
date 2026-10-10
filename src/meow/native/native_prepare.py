@@ -20,6 +20,7 @@ from meow.project.plan_files import (
     _detect_review_flavor,
     _latest_plan_file,
     _latest_review_file,
+    plan_review_file,
     planned_plan_file,
     reject_report_name,
 )
@@ -52,7 +53,7 @@ def _lint_plan(commands: list[LintCommand]) -> list[dict]:
 
 def _plan_paths(docs_dir: Path, name: str | None) -> tuple[Path, Path]:
     plan_file = planned_plan_file(docs_dir, name)
-    return plan_file, plan_file.with_name(plan_file.stem + "-review.md")
+    return plan_file, plan_review_file(plan_file)
 
 
 def _resolve_active_dir(
@@ -158,7 +159,7 @@ def latest_plan(working_dir: Path, active_dir: Path) -> dict:
     plan_file = _latest_plan_file(active_dir / config["docs_dir"])
     return {
         "plan_file": str(plan_file),
-        "review_file": str(plan_file.with_name(plan_file.stem + "-review.md")),
+        "review_file": str(plan_review_file(plan_file)),
     }
 
 

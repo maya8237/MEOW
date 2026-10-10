@@ -105,6 +105,41 @@ def test_conflicting_product_choices_stop_without_question(tmp_path):
     assert not list(tmp_path.glob("**/*.md"))
 
 
+def test_unexpected_failure_before_planning_marks_the_run_failed(tmp_path):
+    from meow.execution.sprint import Sprint
+
+    sprint = Sprint(
+        tmp_path, {"docs_dir": ".", "lint": [], "max_rounds": 1}, None, None
+    )
+    with (
+        patch(
+            "meow.execution.sprint_runner._prepare_sprint",
+            return_value=(sprint, "x", tmp_path),
+        ),
+        patch(
+            "meow.execution.sprint_runner.gather_context",
+            side_effect=OSError("disk gone"),
+        ),
+        pytest.raises(OSError, match="disk gone"),
+    ):
+        asyncio.run(run_sprint(tmp_path, "x", "Add export", use_worktree=False))
+    record = RunStore(tmp_path).latest()
+    assert record.phase == "failed"
+    assert record.last_failure == "disk gone"
+
+
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        "Fix the crash whether the input is empty or null",
+        "Accept either a path or a URL for --plan",
+    ],
+)
+def test_case_lists_are_not_product_decisions(tmp_path, request_text):
+    result = prepare_preplan(tmp_path, request_text, unattended=True)
+    assert result.decision.mode != "needs_user_decision"
+
+
 def test_breadboard_only_for_cross_component_ui(tmp_path):
     evidence = gather_context(tmp_path, "request")
     assert not needs_breadboard("Fix CLI help output", evidence)

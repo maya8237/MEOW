@@ -29,6 +29,33 @@ def docs_update_prompt(baseline: str, head: str) -> str:
     )
 
 
+def mcp_probe_prompt(label: str, token: str, probe: str) -> str:
+    """Connectivity check for an MCP fetcher; the caller verifies a tool ran."""
+    return (
+        f"Call a tool from the configured {label} MCP server to confirm it is "
+        f"reachable -- for example, {probe}. Reply with exactly '{token}_OK' if "
+        f"a tool call succeeds, or '{token}_FAIL: <reason>' if it does not."
+    )
+
+
+def mcp_fetch_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- pure builder
+    label: str,
+    request: str,
+    lookup: str,
+    fields: str,
+    output_file: Path,
+    forbidden: str,
+) -> str:
+    """Fetch one record through an MCP server into a JSON file, read-only."""
+    return (
+        f"You fetch one {label} {request}'s details through the configured "
+        f"{label} MCP server and write them to a file -- nothing else. {lookup} "
+        f"Then write a JSON object with exactly the keys {fields} to "
+        f"{output_file}. Do not write any other file, and do not modify the "
+        f"{request}{forbidden}."
+    )
+
+
 def shape_context_instructions(context: ShapeContext | None) -> str:
     if context is None:
         return ""
@@ -401,8 +428,8 @@ def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
         "Contract; the diff given in the task message (between "
         f"{target!r} and {branch!r}) sets the scope, but unlike a GitLab "
         "merge request review, this branch is actually checked out here "
-        "-- use Read/Grep/Glob/Bash to inspect the real code and run the "
-        "project's own checks, not just the diff text. Mark each distinct "
+        "-- use Read/Grep/Glob/Bash to inspect the real code and verify "
+        "behavior, not just the diff text. Mark each distinct "
         "concern PASS or FAIL with concrete evidence (a quoted diff hunk "
         "or file:line). "
         + lint_instructions(lint_commands)

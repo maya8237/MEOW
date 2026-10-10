@@ -1,8 +1,6 @@
 """JSON in/out Claude Code hook handlers."""
 
 import asyncio
-import json
-import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -171,12 +169,3 @@ HANDLERS: dict[str, Callable[[dict], dict]] = {
     "capture_completed_plan": capture_completed_plan,
     "validate_plan_stop": validate_plan_stop,
 }
-
-
-def main(name: str) -> int:
-    try:
-        result = HANDLERS[name](json.load(os.fdopen(0, encoding="utf-8")))
-    except (json.JSONDecodeError, OSError, KeyError) as exc:
-        result = {"ok": False, "kind": "invalid-event", "message": str(exc)}
-    print(json.dumps(result, sort_keys=True))
-    return 0 if result.get("ok", False) else 1

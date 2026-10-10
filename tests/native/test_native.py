@@ -456,6 +456,9 @@ class RolePromptDispatchTests(unittest.TestCase):
 
             self.assertIn("merge request", result["system_prompt"])
             self.assertIsNone(result["query"])
+            self.assertIn(
+                "GitLab merge request title: <title>", result["query_template"]
+            )
             self.assertTrue(Path(result["review_file"]).name.startswith("gitlab."))
 
 

@@ -1,7 +1,6 @@
 """Reviewer agent setup, review context, and verdict parsing."""
 
 import re
-import secrets
 import shutil
 import subprocess
 import time
@@ -18,6 +17,7 @@ from meow.agents.base import (
 )
 from meow.infrastructure.lint import LintGateEvidence, check_lint_evidence
 from meow.infrastructure.logging import get_logger
+from meow.project.plan_files import new_review_filename, plan_review_file
 from meow.project.prompts import (
     branch_review_prompt,
     ci_review_prompt,
@@ -30,19 +30,6 @@ from meow.project.prompts import (
 if TYPE_CHECKING:
     from meow.integrations.ci_review import CiReviewContext
 from meow.project.shaping import ShapeContext
-
-PROMPT_REVIEW_FILENAME = "review.md"
-GITLAB_REVIEW_FILENAME = "gitlab-review.md"
-GITHUB_REVIEW_FILENAME = "github-review.md"
-BRANCH_REVIEW_FILENAME = "branch-review.md"
-
-REVIEW_FLAVORS = ("prompt", "gitlab", "github", "branch")
-# `<flavor>.<token>.review.md`: ends in "review.md" so plan lookups skip it, and
-# the flavor prefix keeps it identifiable. The legacy fixed names above are
-# still recognised, so older review files keep resuming.
-REVIEW_FILE_PATTERN = re.compile(
-    rf"({'|'.join(REVIEW_FLAVORS)})\.[0-9a-f]{{8}}\.review\.md\Z"
-)
 
 REMOTE_REVIEW_SPECS = {
     "gitlab": ("gitlab", "GitLab merge request"),
@@ -63,13 +50,6 @@ def _read_review_file(review_file: Path) -> str:
         raise RuntimeError(
             f"Reviewer did not produce a readable verdict at {review_file}"
         ) from exc
-
-
-def new_review_filename(flavor: str) -> str:
-    """A review file name no concurrent review of the same kind can share."""
-    if flavor not in REVIEW_FLAVORS:
-        raise ValueError(f"unknown review flavor: {flavor}")
-    return f"{flavor}.{secrets.token_hex(4)}.review.md"
 
 
 _GIT_RETRY_ATTEMPTS = 3
@@ -160,10 +140,10 @@ def _branch_diff(active_dir: Path, target: str, branch: str) -> str:
     """`git diff` from `target`/`branch`'s merge-base to the current working
     tree -- includes both `branch`'s own commits since it diverged AND any
     uncommitted edits sitting in `active_dir` (a `ReviewFixAgent` round's
-    fixes), so re-reviewing after a fix round sees it without requiring a
-    commit. Mirrors `_git_review_context`'s single-sided `git diff` (base
-    vs. working tree), just with a computed merge-base as the base instead
-    of the implicit HEAD."""
+    fixes, including new untracked files), so re-reviewing after a fix round
+    sees it without requiring a commit. Mirrors `_git_review_context`'s
+    single-sided `git diff` (base vs. working tree), just with a computed
+    merge-base as the base instead of the implicit HEAD."""
     git = shutil.which("git")
     if not git:
         return ""
@@ -188,7 +168,30 @@ def _branch_diff(active_dir: Path, target: str, branch: str) -> str:
         "diff",
         merge_base.stdout.strip(),
     ])
-    return diff.stdout.strip()
+    untracked = _run_git_retrying([
+        git,
+        "-C",
+        str(active_dir),
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "-z",
+    ])
+    new_files = [
+        _run_git_retrying([
+            git,
+            "-C",
+            str(active_dir),
+            "diff",
+            "--no-index",
+            "--",
+            "/dev/null",
+            name,
+        ]).stdout
+        for name in untracked.stdout.split("\0")
+        if name
+    ]
+    return "\n".join([diff.stdout, *new_files]).strip()
 
 
 def _verdict_status(verdict_text: str) -> str:
@@ -214,6 +217,17 @@ def prompt_review_query(  # ruff: ignore[too-many-arguments] -- pure builder
 
 def plan_review_query(plan_file: Path, lint_report: str) -> str:
     return f"Review {plan_file}\n\nHarness lint evidence:\n{lint_report}"
+
+
+def remote_review_query(
+    request_label: str, title: str, description: str, diff: str
+) -> str:
+    """Task message for a remote request review, shared by SDK and native modes."""
+    return (
+        f"{request_label} title: {title}\n\n"
+        f"{request_label} description:\n{description}\n\n"
+        f"{request_label} diff:\n{diff}"
+    )
 
 
 def branch_review_query(target: str, branch: str, diff: str, lint_report: str) -> str:
@@ -292,15 +306,17 @@ class ReviewerAgent(Agent):
         review_file: Path | None = None,
     ):
         if evidence.blocking_failed:
-            failed_verdict = re.sub(
-                r"^STATUS:\s*PASS\s*$",
-                "STATUS: FAIL",
+            # Rewrite the first STATUS line, whatever follows it: that is the
+            # line `_verdict_status` reads back from the persisted file.
+            failed_verdict, replaced = re.subn(
+                r"^(\s*)STATUS:.*$",
+                r"\1STATUS: FAIL",
                 verdict,
                 count=1,
                 flags=re.MULTILINE,
             )
-            if _verdict_status(failed_verdict) != "FAIL":
-                failed_verdict = f"{failed_verdict.rstrip()}\nSTATUS: FAIL"
+            if not replaced:
+                failed_verdict = f"{verdict.rstrip()}\nSTATUS: FAIL"
             failed_verdict = f"{failed_verdict.rstrip()}\n\n{evidence.report()}"
             if review_file is not None:
                 review_file.write_text(failed_verdict, encoding="utf-8")
@@ -376,11 +392,7 @@ class ReviewerAgent(Agent):
             role="reviewer",
             skills=["superpowers:verification-before-completion"],
         )
-        query_prompt = (
-            f"{request_label} title: {title}\n\n"
-            f"{request_label} description:\n{description}\n\n"
-            f"{request_label} diff:\n{diff}"
-        )
+        query_prompt = remote_review_query(request_label, title, description, diff)
         await self.run_query(query_prompt, options, "Reviewer")
         verdict_text = _read_review_file(review_file)
         return _verdict_status(verdict_text), verdict_text
@@ -434,7 +446,7 @@ class ReviewerAgent(Agent):
         Contract -- used by `meow review --fix` to carry its required
         prompt argument into every round's grading, not just the first.
         """
-        review_file = plan_file.with_name(plan_file.stem + "-review.md")
+        review_file = plan_review_file(plan_file)
         _prepare_review_file(review_file)
         lint_evidence = await self._lint_evidence()
         options = self.options(

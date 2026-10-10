@@ -10,12 +10,13 @@ from meow.agents.reviewer import (
     _branch_diff,
     _git_review_context,
     branch_review_query,
-    new_review_filename,
     plan_review_query,
     prompt_review_query,
+    remote_review_query,
 )
 from meow.infrastructure.lint import check_lint_evidence
 from meow.project.config import config_root, load_config
+from meow.project.plan_files import new_review_filename, plan_review_file
 from meow.project.prompts import (
     branch_review_prompt,
     explorer_prompt,
@@ -70,7 +71,7 @@ def _plan_review(
     focus: str | None,
     shape_context: ShapeContext | None = None,
 ) -> dict:
-    review_file = plan_file.with_name(plan_file.stem + "-review.md")
+    review_file = plan_review_file(plan_file)
     text = plan_review_prompt(
         plan_file,
         review_file,
@@ -119,7 +120,17 @@ def _mr_review(context: ProjectContext, provider: str) -> dict:
     text = remote_review_prompt(
         review_file, request_label, check_worktree_hygiene=context.use_worktree
     )
-    return {"system_prompt": text, "query": None, "review_file": str(review_file)}
+    # The skill fetches the request itself, so it gets the exact SDK task
+    # message with placeholders to fill in.
+    template = remote_review_query(
+        request_label, "<title>", "<description>", "<diff>"
+    )
+    return {
+        "system_prompt": text,
+        "query": None,
+        "query_template": template,
+        "review_file": str(review_file),
+    }
 
 
 def _branch_review(context: ProjectContext, target: str, branch: str) -> dict:

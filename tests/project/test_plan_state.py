@@ -1,9 +1,8 @@
-import os
 from pathlib import Path
 
 import pytest
 
-from meow.project.plan_state import PlanOwnedError, PlanStore, discover_plan
+from meow.project.plan_state import PlanOwnedError, PlanStore
 
 
 def _write(path: Path, text: str = "# Plan\n") -> Path:
@@ -84,6 +83,19 @@ def test_claim_blocks_when_owner_cannot_be_verified(tmp_path):
     assert store.read(plan).run_id == "run-1"
 
 
+def test_claim_by_the_owning_run_keeps_its_lifecycle(tmp_path):
+    plan = _write(tmp_path / "feature.md")
+    store = PlanStore(tmp_path)
+    store.claim(plan, "run-1", owner_finished=lambda owner: False)
+    store.transition(plan, "in-progress", "run-1")
+
+    meta = store.claim(plan, "run-1", owner_finished=lambda owner: False)
+
+    assert meta.run_id == "run-1"
+    assert meta.lifecycle == "in-progress"
+    assert store.read(plan).lifecycle == "in-progress"
+
+
 def test_same_run_still_cannot_move_lifecycle_backwards(tmp_path):
     plan = _write(tmp_path / "feature.md")
     store = PlanStore(tmp_path)
@@ -123,42 +135,3 @@ def test_discoveries_keep_only_the_latest_twenty_notes(tmp_path):
     assert len(notes) == note_limit
     assert notes[0] == "n5"
     assert notes[-1] == "n24"
-
-
-def test_discover_explicit_relative_plan_resolves_under_docs(tmp_path):
-    docs = tmp_path / "docs"
-    plan = _write(docs / "a.md")
-    assert discover_plan(docs, Path("a.md")) == plan.resolve()
-
-
-def test_discover_explicit_missing_plan_raises(tmp_path):
-    with pytest.raises(FileNotFoundError, match="Plan file not found"):
-        discover_plan(tmp_path, Path("missing.md"))
-
-
-def test_discover_skips_reviews_and_tester_verdicts(tmp_path):
-    docs = tmp_path / "docs"
-    plan = _write(docs / "plan.md")
-    review = _write(docs / "plan-review.md")
-    tester = _write(docs / "plan-test.md")
-    report = _write(docs / "review.md")
-    for newer in (review, tester, report):
-        os.utime(newer, (plan.stat().st_mtime + 10, plan.stat().st_mtime + 10))
-    assert discover_plan(docs) == plan.resolve()
-
-
-def test_discover_without_candidates_raises(tmp_path):
-    with pytest.raises(FileNotFoundError, match="No plan file found"):
-        discover_plan(tmp_path)
-
-
-def test_discover_prefers_the_plan_linked_to_a_run(tmp_path):
-    docs = tmp_path / "docs"
-    older = _write(docs / "older.md")
-    newer = _write(docs / "newer.md")
-    os.utime(older, (1_000_000_000, 1_000_000_000))
-    os.utime(newer, (2_000_000_000, 2_000_000_000))
-    PlanStore(docs).transition(older, "in-progress", "run-7")
-
-    assert discover_plan(docs, run_id="run-7") == older.resolve()
-    assert discover_plan(docs) == newer.resolve()

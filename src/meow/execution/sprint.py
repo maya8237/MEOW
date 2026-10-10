@@ -10,14 +10,13 @@ from pathlib import Path
 
 from claude_agent_sdk import AgentDefinition
 
-from meow.agents.base import ProjectContext
+from meow.agents.base import ConfigLookups, ProjectContext
 from meow.agents.explorer import make_explorer_agent
 from meow.infrastructure.lint import make_lint_hook
-from meow.project.config_models import LintCommand
 
 
 @dataclass(frozen=True)
-class Sprint:
+class Sprint(ConfigLookups):
     """What every role needs and none of them change."""
 
     repo_dir: Path
@@ -26,13 +25,6 @@ class Sprint:
     lint_hook: object
     working_dir: Path | None = None
     use_worktree: bool = False
-
-    def model(self, role: str) -> str | None:
-        models = self.config["models"]
-        return models.get(role, models.get("reviewer"))
-
-    def lint_commands(self) -> list[LintCommand]:
-        return self.config["lint"]
 
     def active_working_dir(self) -> Path:
         return self.working_dir or self.repo_dir

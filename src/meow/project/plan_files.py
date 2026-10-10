@@ -1,19 +1,42 @@
-"""Plan/review file naming and lookup within a project's docs_dir: which file
-is the latest sprint plan, which review file goes with a plan, and what
-flavor (plan/prompt/gitlab/github) an existing review file is. This is
-file-naming/lookup logic -- distinct from the generator<->reviewer
-round-loop control flow orchestrator.py's own docstring says it holds.
+"""Plan/review file naming and lookup within a project's docs_dir: where a
+plan, its review and its tester report live, which file is the latest sprint
+plan, and what flavor (plan/prompt/gitlab/github/branch) a review file is.
+The single owner of these names for SDK and native flows alike.
 """
 
+import re
+import secrets
 from pathlib import Path
 
-from meow.agents.reviewer import (
-    BRANCH_REVIEW_FILENAME,
-    GITHUB_REVIEW_FILENAME,
-    GITLAB_REVIEW_FILENAME,
-    PROMPT_REVIEW_FILENAME,
-    REVIEW_FILE_PATTERN,
+# Legacy fixed review names; still recognised so older review files resume.
+PROMPT_REVIEW_FILENAME = "review.md"
+GITLAB_REVIEW_FILENAME = "gitlab-review.md"
+GITHUB_REVIEW_FILENAME = "github-review.md"
+BRANCH_REVIEW_FILENAME = "branch-review.md"
+
+REVIEW_FLAVORS = ("prompt", "gitlab", "github", "branch")
+# `<flavor>.<token>.review.md`: ends in "review.md" so plan lookups skip it, and
+# the flavor prefix keeps it identifiable.
+REVIEW_FILE_PATTERN = re.compile(
+    rf"({'|'.join(REVIEW_FLAVORS)})\.[0-9a-f]{{8}}\.review\.md\Z"
 )
+
+
+def new_review_filename(flavor: str) -> str:
+    """A review file name no concurrent review of the same kind can share."""
+    if flavor not in REVIEW_FLAVORS:
+        raise ValueError(f"unknown review flavor: {flavor}")
+    return f"{flavor}.{secrets.token_hex(4)}.review.md"
+
+
+def plan_review_file(plan_file: Path) -> Path:
+    """The reviewer verdict that belongs to ``plan_file``."""
+    return plan_file.with_name(plan_file.stem + "-review.md")
+
+
+def plan_test_file(plan_file: Path) -> Path:
+    """The tester verdict that belongs to ``plan_file``."""
+    return plan_file.with_name(plan_file.stem + "-test.md")
 
 
 def planned_plan_file(docs_dir: Path, feature_name: str | None) -> Path:

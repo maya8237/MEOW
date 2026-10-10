@@ -20,7 +20,12 @@ MAX_SNIPPET = 180
 MAX_SNIPPETS_PER_FILE = 2
 _WORD = re.compile(r"[a-z][a-z0-9_]{2,}", re.I)
 _LINK = re.compile(r"\[[^]]+\]\(([^)]+)\)")
-_CHOICE = re.compile(r"\b(?:choose between|either .+ or |whether .+ or )\b", re.I)
+# Only an explicit request to pick an outcome counts: "either X or Y" and
+# "whether X or Y" usually describe the cases a fix must handle.
+_CHOICE = re.compile(
+    r"\b(?:choose between|decide (?:between|whether)|undecided (?:between|whether))\b",
+    re.I,
+)
 _UI = re.compile(r"\b(?:ui|dashboard|screen|page|form|browser|frontend)\b", re.I)
 _CROSS = re.compile(
     r"\b(?:across|api|backend|database|multiple components|end to end)\b", re.I

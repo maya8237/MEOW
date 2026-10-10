@@ -1,14 +1,9 @@
 """GitHub pull-request fetching for `meow review --github`."""
 
-import json
-import tempfile
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
-from meow.agents.github_fetcher import GithubFetcherAgent
-from meow.infrastructure.logging import get_logger
-
-logger = get_logger(__name__)
+from meow.agents.mcp_fetcher import GithubFetcherAgent, fetch_record
 
 
 def _load_github_config(config: dict) -> dict:
@@ -48,25 +43,11 @@ def _load_github_config(config: dict) -> dict:
 async def _fetch_pull_request(
     working_dir: Path, config: dict, github_config: dict, pr_link: str
 ) -> dict:
-    context = ProjectContext(working_dir, config)
-    fetcher = GithubFetcherAgent(context, github_config["mcp"])
-
-    logger.info("github_preflight_started")
-    await fetcher.check_active()
-    logger.info("github_preflight_finished")
-
-    with tempfile.TemporaryDirectory() as tmp:
-        output_file = Path(tmp) / "pull_request.json"
-        logger.info("github_fetch_started", pr_link=pr_link)
-        await fetcher.fetch(pr_link, output_file)
-        data = json.loads(output_file.read_text(encoding="utf-8"))
-
-    missing = [
-        field
-        for field in ("title", "description", "diff")
-        if field not in data or data[field] is None
-    ]
-    if missing:
-        raise RuntimeError(f"GitHub fetcher output is missing {missing}: {data}")
-    logger.info("github_fetch_finished", title=data["title"])
-    return data
+    fetcher = GithubFetcherAgent(
+        ProjectContext(working_dir, config), github_config["mcp"]
+    )
+    return await fetch_record(
+        fetcher,
+        lambda output_file: fetcher.fetch(pr_link, output_file),
+        ("title", "description", "diff"),
+    )

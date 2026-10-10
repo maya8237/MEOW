@@ -291,8 +291,13 @@ def run_check(
     )
 
 
-def checks_current(results: list[CheckResult], checks: list[Check], repo: Path) -> bool:
-    revision = code_revision(repo)
+def checks_current(
+    results: list[CheckResult],
+    checks: list[Check],
+    repo: Path,
+    revision: str | None = None,
+) -> bool:
+    revision = revision or code_revision(repo)
     fingerprint = config_fingerprint(repo)
     for check in checks:
         identity = check_identity(check)
@@ -318,12 +323,12 @@ def completion_ready(  # ruff: ignore[too-many-arguments, too-many-positional-ar
     *,
     reviewer_revision: str | None = None,
 ) -> bool:
+    if reviewer != "PASS" or tester not in {None, "PASS"}:
+        return False
+    revision = code_revision(repo)
     return (
-        reviewer == "PASS"
-        and tester in {None, "PASS"}
-        and (reviewer_revision is None or reviewer_revision == code_revision(repo))
-        and checks_current(results, checks, repo)
-    )
+        reviewer_revision is None or reviewer_revision == revision
+    ) and checks_current(results, checks, repo, revision)
 
 
 async def run_final_checks(repo: Path, config: dict) -> list[CheckResult]:

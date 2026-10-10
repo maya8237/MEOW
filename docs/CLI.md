@@ -342,7 +342,7 @@ project work.
 should not invoke it directly; use `meow status`, `meow cancel`, and
 `meow resume` to interact with background runs.
 
-# GitLab CI review
+## GitLab CI review
 
 `meow review --ci` reviews the exact GitLab pipeline checkout against the
 fetched `refs/remotes/origin/<target_branch>` commit (`[delivery].target_branch`,
@@ -352,12 +352,13 @@ plan, fix, commit, push, or open a merge request. It uses the local Git history,
 so GitLab MCP is unnecessary.
 
 Include [the GitLab review job](../templates/gitlab-ci-review.yml) in a project's
-pipeline for detached merge request pipelines targeting `dev` and non-`dev`
-branch push pipelines. This repository ships the template; it does not require
+pipeline for detached merge request pipelines targeting the target branch
+and push pipelines on other branches; a merge request aimed at any other branch
+is rejected. This repository ships the template; it does not require
 a root `.gitlab-ci.yml`. In merge request pipelines, the reviewer reads the MR
 description as the review brief; GitLab descriptions longer than 2,700
 characters are truncated and flagged. Push pipelines have no MR brief and
-review the diff alone. The job fetches `dev` without moving HEAD,
+review the diff alone. The job fetches the target branch without moving HEAD,
 uses full Git history for a reliable merge base, and uploads
 `.meow/ci-artifacts/review.md` and `.meow/ci-artifacts/verdict.json` even when
 the job fails. Provide the Claude Agent SDK credentials through masked CI

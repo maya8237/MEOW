@@ -8,10 +8,9 @@ from claude_agent_sdk import AssistantMessage, ProcessError, ResultMessage, Text
 
 from meow.agents.base import Agent, AgentContext, ProjectContext, _looks_like_a_crash
 from meow.agents.explorer import ExplorerAgent
+from meow.agents.fixers import LintFixAgent, ReviewFixAgent
 from meow.agents.generator import Generator, GeneratorAgent
-from meow.agents.lint_fixer import LintFixAgent
 from meow.agents.planner import PlannerAgent
-from meow.agents.review_fixer import ReviewFixAgent
 from meow.agents.reviewer import (
     ReviewerAgent,
     _branch_diff,
@@ -728,11 +727,13 @@ class BranchDiffTests(unittest.TestCase):
             (root / "f.txt").write_text(
                 "committed change\nuncommitted too\n", encoding="utf-8"
             )
+            (root / "new.txt").write_text("brand new file\n", encoding="utf-8")
 
             diff = _branch_diff(root, "main", "feature/x")
 
             self.assertIn("committed change", diff)
             self.assertIn("uncommitted too", diff)
+            self.assertIn("brand new file", diff)
 
     def test_raises_a_clear_error_when_target_does_not_exist(self):
         import subprocess
