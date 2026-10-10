@@ -62,7 +62,7 @@ See the [integration guide](docs/INTEGRATIONS.md).
 
 ## Docs
 
-- [Architecture](ARCHITECTURE.md)
+- [Architecture](docs/ARCHITECTURE.md)
 - [Project instructions](AGENTS.md)
 - [Contributing](CONTRIBUTING.md)
 - [Roadmap](docs/ROADMAP.md)
