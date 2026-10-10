@@ -59,11 +59,11 @@ class ValidateReviewFlagsTests(unittest.TestCase):
             _validate_review_flags("text", None, "link", None, None, None, None)
 
     def test_test_requires_an_explicit_plan_file(self):
-        with self.assertRaisesRegex(ValueError, "explicit --plan-file"):
+        with self.assertRaisesRegex(ValueError, "explicit --plan"):
             _validate_review_flags(None, None, None, None, None, None, None, test=True)
 
     def test_test_rejects_other_review_sources_before_loading_config(self):
-        with self.assertRaisesRegex(ValueError, "explicit --plan-file"):
+        with self.assertRaisesRegex(ValueError, "explicit --plan"):
             _validate_review_flags(None, "KEY", None, None, None, None, None, test=True)
 
 

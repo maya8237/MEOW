@@ -68,7 +68,7 @@ def _review_sources(  # ruff: ignore[too-many-arguments]
     if branch is not None:
         sources.append("--branch")
     if plan_file is not None:
-        sources.append("--plan-file")
+        sources.append("--plan")
     return sources
 
 
@@ -105,12 +105,17 @@ def _validate_review_flags(  # ruff: ignore[too-many-arguments, too-many-positio
         raise ValueError(f"--review-file can't be combined with {other_sources[0]}")
     if prompt and other_sources:
         raise ValueError(f"Give either a prompt or {other_sources[0]}, not both")
-    test_has_other_source = any(
-        (prompt, jira_key, gitlab_link, github_link, branch, review_file)
-    )
+    test_has_other_source = any((
+        prompt,
+        jira_key,
+        gitlab_link,
+        github_link,
+        branch,
+        review_file,
+    ))
     if test and (plan_file is None or test_has_other_source):
         raise ValueError(
-            "--test requires an explicit --plan-file and cannot be used "
+            "--test requires an explicit --plan and cannot be used "
             "with other review sources"
         )
 

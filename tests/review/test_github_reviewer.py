@@ -25,16 +25,16 @@ class LoadGithubConfigTests(unittest.TestCase):
         )
 
     def test_defaults_args_to_empty_list(self):
-        result = github_reviewer._load_github_config(
-            {"github": {"mcp": {"command": "uvx"}}}
-        )
+        result = github_reviewer._load_github_config({
+            "github": {"mcp": {"command": "uvx"}}
+        })
 
         self.assertEqual(result["mcp"]["args"], [])
 
     def test_defaults_env_to_empty_dict(self):
-        result = github_reviewer._load_github_config(
-            {"github": {"mcp": {"command": "uvx"}}}
-        )
+        result = github_reviewer._load_github_config({
+            "github": {"mcp": {"command": "uvx"}}
+        })
 
         self.assertEqual(result["mcp"]["env"], {})
 

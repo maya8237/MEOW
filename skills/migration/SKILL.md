@@ -66,7 +66,7 @@ the role-to-session references needed to resume a run.
 
 ## 4. Verify and report
 
-Run `meow --help` and `meow native verify --working-dir <project-root>`. Check
+Run `meow --help` and `meow native verify --work-dir <project-root>`. Check
 that the new shared config loads, local values remain untracked, plans resolve
 from `.meow/plans`, and no credential or legacy runtime data was copied. Report
 files moved, files intentionally preserved, checks, unresolved variables, and

@@ -29,8 +29,9 @@ shared project config, then this user fallback.
 
 If the current layout is absent, create the `.meow/` directory and the shared
 config. Preserve an existing current config and unrelated project settings.
-Create `docs/ARCHITECTURE.md` only when the project needs it and the user
-accepts that documentation change. Project documentation remains in `docs/`;
+Write `docs/ARCHITECTURE.md` (module boundaries, dependencies) during setup
+for any project beyond a handful of files; skip it only for toy projects or
+when the user declines. Project documentation remains in `docs/`;
 MEOW-generated project plans and runtime artifacts use `.meow/`.
 
 ## 2. Repair the ignore boundary independently
@@ -84,7 +85,7 @@ enabled after its commands are verified.
 
 ## 4. Verify
 
-Run `meow --help` and `meow native verify --working-dir <project-root>` after
+Run `meow --help` and `meow native verify --work-dir <project-root>` after
 setup. Report each failed or unchecked component and continue independent
 work. A configured MCP is not proof of connectivity until a real tool call
 succeeds. Do not launch a feature sprint as a smoke test unless the user asks.

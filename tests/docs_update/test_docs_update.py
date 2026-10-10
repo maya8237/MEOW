@@ -203,8 +203,6 @@ def test_docs_updater_blocks_source_edits_before_sdk_tool_call(repo):
         asyncio.run(update_documentation(prepared))
     callback = received[0].can_use_tool
     source = asyncio.run(callback("Write", {"file_path": "src/app.py"}, None))
-    documentation = asyncio.run(
-        callback("Write", {"file_path": "docs/CLI.md"}, None)
-    )
+    documentation = asyncio.run(callback("Write", {"file_path": "docs/CLI.md"}, None))
     assert type(source).__name__ == "PermissionResultDeny"
     assert type(documentation).__name__ == "PermissionResultAllow"

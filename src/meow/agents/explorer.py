@@ -18,9 +18,9 @@ class ExplorerAgent(Agent):
             ),
             prompt=prompt,
             tools=["Read", "Grep", "Glob", "Bash"],
-        model=self.context.model("explorer"),
-        skills=self.skills("explorer", ["superpowers:systematic-debugging"]),
-    )
+            model=self.context.model("explorer"),
+            skills=self.skills("explorer", ["superpowers:systematic-debugging"]),
+        )
 
 
 def make_explorer_agent(context: AgentContext) -> AgentDefinition:

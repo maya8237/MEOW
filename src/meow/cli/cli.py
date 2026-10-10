@@ -150,7 +150,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         if args.ci:
             plan_file = _resolve_input_path(args.plan, working_dir)
             if plan_file is not None and not plan_file.is_file():
-                parser.error("--plan-file must name an existing file")
+                parser.error("--plan must name an existing file")
             artifact_dir = _resolve_input_path(
                 args.artifact_dir or ".meow/ci-artifacts", working_dir
             )

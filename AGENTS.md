@@ -14,34 +14,29 @@ meow run "<feature description>" --name "<feature-name>"
 `meow plan "<feature description>" --name "<feature-name>"` writes the sprint
 plan only. See [docs/CLI.md](docs/CLI.md) for full command behavior.
 
-`mw` is a short alias for `meow`, and commands have single-letter shortcuts
-(`r` run, `p` plan, `rv` review, `l` run --lint-fix, `s` status, `x` cancel,
-`c` resume, `q` queue, `w` worktree, `h` hooks, `i` ipython). Use the full
-`meow <command>` form in docs, scripts, and skills.
-
 - **Jira:** `meow run --jira [ISSUE-KEY]` fetches an issue and runs in its own
   worktree, committing and pushing after verification. It requires `[jira]`/`[jira.mcp]` and
-  rejects `--name`, `--no-worktree`, `--source-branch`, `--resume-at`, and
-  `--plan-file`.
+  rejects `--name`, `--no-worktree`, `--from`, `--resume-at`, and
+  `--plan`.
 - **Lint:** `meow run --lint-fix` runs configured linters and fixes findings.
   `--report-only` reports without editing; the `lint-fix` skill uses this mode.
   Lint-fix takes no request text, Jira, or worktree options.
 - **Delivery:** A verified feature run in a separate linked worktree commits
   and pushes to `origin`. `run --unattended` enables this for an in-place run.
   Delivery failures retain the worktree and run checkpoint.
-- **Source branch:** `run` and `plan --source-branch BRANCH` (also `--from` or
+- **Source branch:** `run` and `plan --from BRANCH` (also
   `-b`) create a worktree from that branch. The uncommitted-changes check is
   skipped only when creating a worktree from an explicit source branch.
 - **Plan approval:** `run --manually-approve-plan` (also `-m`) prints the plan
   and prompts before generation. `plan` does not accept it. Do not use it on
   scheduled Jira runs because no one can answer the prompt.
 - **Resume:** `run --resume-at {generate,review}` defaults to `generate`.
-  `review` skips planning, uses `--plan-file` or the latest plan in `docs_dir`
+  `review` skips planning, uses `--plan` or the latest plan in `docs_dir`
   (default `.meow/plans`),
   and reviews existing code before invoking the generator. `plan`, Jira runs,
   and lint-fix mode do not accept this option.
 
-`meow review` supports prompt, Jira, GitLab, branch-diff, plan-file, and
+`meow review` supports prompt, Jira, GitLab, branch-diff, plan, and
 review-file sources. It is report-only by default; `--fix` loops review and
 fixes up to `max_rounds`. Exactly one source may be given. With no source, it
 uses the latest plan in `docs_dir` (default `.meow/plans`) or falls back to a
@@ -54,11 +49,11 @@ prompt/diff review.
 - `--branch BRANCH --target TARGET` reviews a local branch diff without GitLab
   MCP. It uses a worktree by default; `--no-worktree` requires the selected
   directory to already be on that branch.
-- `--plan-file PATH` checks implementation against the plan's Sprint Contract.
+- `--plan PATH` checks implementation against the plan's Sprint Contract.
 - `--review-file PATH` resumes a prompt- or plan-based review. GitLab and
   branch reviews must be rerun from their source.
 
-Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`). Shared
+Every command accepts `--work-dir PATH` (also `-d`). Shared
 config lives in `.meow/config.toml`; `.meow/config.local.toml` has highest
 priority, followed by the project config and user fallback
 `~/.meow/config.toml`; plans, contracts, reviews, runs, and evidence live

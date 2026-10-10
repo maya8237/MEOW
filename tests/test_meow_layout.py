@@ -6,11 +6,14 @@ LEGACY_CONFIG_NAME = "." + "harness.toml"
 
 
 def _git_ignores(path: str) -> bool:
-    return subprocess.run(
-        ["git", "check-ignore", "-q", "--no-index", path],
-        cwd=ROOT,
-        check=False,
-    ).returncode == 0
+    return (
+        subprocess.run(
+            ["git", "check-ignore", "-q", "--no-index", path],
+            cwd=ROOT,
+            check=False,
+        ).returncode
+        == 0
+    )
 
 
 def test_onboarding_is_current_setup_and_repairs_gitignore_itself():
@@ -29,9 +32,7 @@ def test_onboarding_is_current_setup_and_repairs_gitignore_itself():
 
 
 def test_migration_is_separate_and_repairs_gitignore_itself():
-    text = (ROOT / "skills" / "migration" / "SKILL.md").read_text(
-        encoding="utf-8"
-    )
+    text = (ROOT / "skills" / "migration" / "SKILL.md").read_text(encoding="utf-8")
 
     assert "legacy" in text.lower()
     assert LEGACY_CONFIG_NAME in text

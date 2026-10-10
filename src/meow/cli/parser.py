@@ -82,7 +82,6 @@ class _MeowParser(argparse.ArgumentParser):
 
 def _add_common_args(parser: argparse.ArgumentParser):
     parser.add_argument(
-        "--working-dir",
         "--work-dir",
         "-d",
         dest="working_dir",
@@ -94,7 +93,6 @@ def _add_common_args(parser: argparse.ArgumentParser):
 def _add_feature_args(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--name",
-        "--feature-name",
         "-f",
         dest="feature_name",
         default=None,
@@ -108,14 +106,12 @@ def _add_feature_args(parser: argparse.ArgumentParser):
     )
     parser.add_argument(
         "--no-worktree",
-        "--noworktree",
         "-n",
         dest="no_worktree",
         action="store_true",
         help="Run in the main repo instead of creating/using a .worktrees entry.",
     )
     parser.add_argument(
-        "--source-branch",
         "--from",
         "-b",
         dest="source_branch",
@@ -274,7 +270,6 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     run_parser.add_argument(
         "--plan",
-        "--plan-file",
         "-p",
         dest="plan",
         default=None,
@@ -287,7 +282,7 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         default="generate",
         help=(
             "Plain build mode only. Where to resume the round loop when a "
-            "plan already exists (via --plan-file, or auto-detected in "
+            "plan already exists (via --plan, or auto-detected in "
             "docs_dir when not given): 'generate' (default) starts with "
             "the generator, same as a fresh sprint. 'review' skips "
             "straight to reviewing the existing code first, and only runs "
@@ -381,7 +376,6 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     review_parser.add_argument(
         "--plan",
-        "--plan-file",
         "-p",
         dest="plan",
         default=None,
@@ -414,7 +408,7 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
     review_parser.add_argument(
         "--test",
         action="store_true",
-        help="Run tests after an explicit plan-file review.",
+        help="Run tests after an explicit plan review.",
     )
     review_parser.add_argument(
         "--gitlab",
@@ -462,7 +456,6 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     review_parser.add_argument(
         "--no-worktree",
-        "--noworktree",
         "-n",
         dest="no_worktree",
         action="store_true",

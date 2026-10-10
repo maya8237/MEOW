@@ -68,9 +68,7 @@ def preflight_check(  # ruff: ignore[complex-structure, too-many-statements]
     except (OSError, ValueError) as exc:
         return PreflightResult("invalid_cwd", check.command, None, str(exc))
     argv = [*split_command(check.command), *check.args]
-    if not argv or not (
-        shutil.which(argv[0]) or (cwd / argv[0]).is_file()
-    ):
+    if not argv or not (shutil.which(argv[0]) or (cwd / argv[0]).is_file()):
         return PreflightResult("missing_executable", check.command, cwd)
     if not execute:
         return PreflightResult("ready_unchecked", check.command, cwd)

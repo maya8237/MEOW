@@ -135,7 +135,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         parser = cli._build_arg_parser()
         plain = parser.parse_args(["run", "build", "--no-worktree", "--test"])
         jira = parser.parse_args(["run", "--jira", "ABC-1", "--test"])
-        review = parser.parse_args(["review", "--plan-file", "plan.md", "--test"])
+        review = parser.parse_args(["review", "--plan", "plan.md", "--test"])
         cli._validate_run_flags(parser, plain)
         cli._validate_run_flags(parser, jira)
         self.assertTrue(review.test)
@@ -1029,7 +1029,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "ship-it",
                 "--name",
                 "case-123",
-                "--source-branch",
+                "--from",
                 "release/1.0",
                 "--work-dir",
                 ".",
@@ -1058,7 +1058,15 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     ):
         with patch(
             "sys.argv",
-            ["meow", "run", "ship-it", "--name", "case-123", "--from", "release/1.0"],
+            [
+                "meow",
+                "run",
+                "ship-it",
+                "--name",
+                "case-123",
+                "--from",
+                "release/1.0",
+            ],
         ):
             cli.cli_main()
 
@@ -1111,7 +1119,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "meow",
                 "run",
                 "ship-it",
-                "--source-branch",
+                "--from",
                 "release/1.0",
                 "--no-worktree",
                 "--work-dir",
@@ -1490,9 +1498,7 @@ class ArchitectureReviewInstructionsTests(unittest.TestCase):
         self.assertIn("FAIL", instructions)
 
     def test_prompt_review_skips_worktree_hygiene_check(self):
-        instructions = architecture_review_instructions(
-            check_worktree_hygiene=False
-        )
+        instructions = architecture_review_instructions(check_worktree_hygiene=False)
 
         self.assertNotIn("worktree", instructions)
         self.assertNotIn("main working directory", instructions)
@@ -1737,7 +1743,7 @@ class ResumeAtFlagTests(unittest.TestCase):
 
 
 class ReviewDispatchTests(unittest.TestCase):
-    """CLI-dispatch wiring for `meow review`'s --branch/--plan-file/
+    """CLI-dispatch wiring for `meow review`'s --branch/--plan/
     --review-file sources -- --gitlab and the bare prompt/auto-discovery
     path are covered above; all five funnel through the same
     `run_review_command` call, checked here via its kwargs rather than
@@ -1832,7 +1838,7 @@ class ReviewDispatchTests(unittest.TestCase):
                     "meow",
                     "review",
                     "--fix",
-                    "--plan-file",
+                    "--plan",
                     "docs/feature.md",
                     "--work-dir",
                     ".",
@@ -2025,7 +2031,7 @@ class RuntimeErrorExitsCleanlyTests(unittest.TestCase):
                 new=AsyncMock(
                     side_effect=FileNotFoundError(
                         "No plan file found in docs/exec-plans/active. Run "
-                        '`meow plan "<feature>"` first, or pass --plan-file '
+                        '`meow plan "<feature>"` first, or pass --plan '
                         "explicitly."
                     )
                 ),
@@ -2062,7 +2068,7 @@ class InteractiveCliTests(unittest.TestCase):
 class FeatureNameRequirementTests(unittest.TestCase):
     """No test anywhere exercised _validate_feature_name_requirement before
     -- found while adversarially checking worktree-mode edge cases. Confirmed
-    for real first: `meow run "..." --working-dir <path already a linked
+    for real first: `meow run "..." --work-dir <path already a linked
     worktree>` (no --name, no --no-worktree) demanded --name anyway, even
     though _resolve_working_dir would have silently ignored it and used that
     directory in place regardless -- a --name with no effect, required for
@@ -2097,7 +2103,7 @@ class FeatureNameRequirementTests(unittest.TestCase):
 
     @staticmethod
     def test_working_dir_already_a_linked_worktree_does_not_require_a_name():
-        # The fix: --working-dir pointing at an existing worktree means
+        # The fix: --work-dir pointing at an existing worktree means
         # "work here", same as --no-worktree would, so --name must not be
         # demanded just because that flag itself wasn't also passed.
         with (

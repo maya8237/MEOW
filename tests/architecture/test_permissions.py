@@ -113,9 +113,11 @@ def test_unattended_ask_interrupts_without_prompt():
 
 
 def test_path_rules_close_bash_and_agent_escape_routes():
-    policy = parse_policy({"rule": [
-        {"role": "generator", "tool": "Write", "action": "deny", "path": ".env"},
-    ]}).for_role("generator")
+    policy = parse_policy({
+        "rule": [
+            {"role": "generator", "tool": "Write", "action": "deny", "path": ".env"},
+        ]
+    }).for_role("generator")
     assert policy.decision("Bash", {"command": "type .env"}) == "deny"
     assert policy.decision("Agent", {"prompt": "read .env"}) == "deny"
 
@@ -124,10 +126,17 @@ def test_path_rules_close_bash_and_agent_escape_routes():
 @pytest.mark.parametrize("action", ["allow", "ask"])
 def test_path_rules_reject_open_escape_routes(tool, action):
     with pytest.raises(ValueError, match="path-scoped"):
-        parse_policy({"rule": [
-            {"role": "generator", "tool": "Write", "action": "deny", "path": ".env"},
-            {"role": "generator", "tool": tool, "action": action},
-        ]})
+        parse_policy({
+            "rule": [
+                {
+                    "role": "generator",
+                    "tool": "Write",
+                    "action": "deny",
+                    "path": ".env",
+                },
+                {"role": "generator", "tool": tool, "action": action},
+            ]
+        })
 
 
 def test_agent_options_attach_policy_only_when_configured(tmp_path):

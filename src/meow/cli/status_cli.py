@@ -14,7 +14,7 @@ from meow.infrastructure.usage import usage_totals
 def recovery_command(record: RunRecord) -> str:
     if record.phase == "complete":
         return "Run complete"
-    return f'meow resume {record.id} --working-dir "{record.repo}"'
+    return f'meow resume {record.id} --work-dir "{record.repo}"'
 
 
 def _gate_lines(  # ruff: ignore[complex-structure, too-many-branches]

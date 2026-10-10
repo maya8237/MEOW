@@ -85,9 +85,7 @@ class GithubFetcherCheckActiveTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0)
             yield AssistantMessage(
                 content=[
-                    ToolUseBlock(
-                        id="1", name="mcp__github__get_pull_request", input={}
-                    )
+                    ToolUseBlock(id="1", name="mcp__github__get_pull_request", input={})
                 ],
                 model="model",
             )

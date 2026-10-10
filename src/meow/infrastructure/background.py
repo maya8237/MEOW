@@ -13,18 +13,10 @@ from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
 
-from meow.execution.run_state import RunRecord, RunStore
+from meow.execution.run_state import TERMINAL_PHASES, RunRecord, RunStore
 from meow.project.config import _merge_config, config_paths
 from meow.project.config_env import _expand_config_environment
 
-_TERMINAL = {
-    "complete",
-    "failed",
-    "cancelled",
-    "exhausted",
-    "delivery_failed",
-    "needs_user_decision",
-}
 _STARTUP_GRACE_SECONDS = 10
 
 
@@ -94,7 +86,7 @@ def inspect_worker(  # ruff: ignore[too-many-return-statements]
     log = data.get("log")
     if not data:
         return WorkerState("not_background", None, None)
-    if record.phase in _TERMINAL:
+    if record.phase in TERMINAL_PHASES:
         return WorkerState(record.phase, pid if isinstance(pid, int) else None, log)
     expected = data.get("start_identity")
     if not isinstance(pid, int) or not isinstance(expected, str) or not expected:
@@ -113,7 +105,7 @@ def reconcile_worker(store: RunStore, run_id: str) -> WorkerState:
     record = store.load(run_id)
     state = inspect_worker(record)
     if state.state == "interrupted" and record.phase not in {
-        *_TERMINAL,
+        *TERMINAL_PHASES,
         "interrupted_mutation",
     }:
         store.transition(
@@ -166,7 +158,7 @@ def launch_background(  # ruff: ignore[too-many-statements]
         "from meow.cli.cli import cli_main; cli_main()",
         "_worker",
         record.id,
-        "--working-dir",
+        "--work-dir",
         str(repo),
         "--nonce",
         nonce,
@@ -217,7 +209,9 @@ def _notify_once(  # ruff: ignore[complex-structure, too-many-return-statements]
 ) -> None:
     """Run an optional local notifier with only sanitized summary fields."""
     record = store.load(run_id)
-    if record.phase not in _TERMINAL or record.background.get("notification_claimed"):
+    if record.phase not in TERMINAL_PHASES or record.background.get(
+        "notification_claimed"
+    ):
         return
     config_files = config_paths(Path(record.repo))
     if not config_files:
@@ -295,7 +289,7 @@ def worker_main(  # ruff: ignore[too-many-statements]
             )
         return 0
     except BaseException as exc:
-        if store.load(run_id).phase not in _TERMINAL:
+        if store.load(run_id).phase not in TERMINAL_PHASES:
             store.transition(run_id, "failed", last_failure=f"Worker failed: {exc}")
         raise
     finally:

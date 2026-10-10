@@ -17,10 +17,10 @@ your work and racing your edits.
 
 1. The project needs `.meow/config.toml` with at least one `[[lint]]` entry;
    otherwise tell the user and stop (point at GUIDE.md).
-2. Run `meow native prepare --no-worktree --allow-dirty --working-dir "<project-path>"`
+2. Run `meow native prepare --no-worktree --allow-dirty --work-dir "<project-path>"`
    for `max_rounds` and `docs_dir`, then
    `meow native round <docs_dir>/lint-fix.md --reset`.
-3. Auto-fix pass, then check: `meow native lint --fix --all-blocking --working-dir "<project-path>"`.
+3. Auto-fix pass, then check: `meow native lint --fix --all-blocking --work-dir "<project-path>"`.
    `--all-blocking` fixes every configured command unconditionally, matching
    `meow run --lint-fix`'s own CLI behavior -- `gate` only controls what fails a
    *review*, not what this skill leaves alone.
@@ -43,7 +43,7 @@ your work and racing your edits.
 Report-only, then fix by hand:
 
 ```bash
-meow run --lint-fix --report-only --working-dir "<project-path>"
+meow run --lint-fix --report-only --work-dir "<project-path>"
 ```
 
 Exit 0 with `Lint is clean -- no issues found.` means done; otherwise fix each
