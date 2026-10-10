@@ -25,7 +25,7 @@ from meow.infrastructure.checks import (
     configured_checks,
     run_final_checks,
 )
-from meow.project.config import config_paths, load_config
+from meow.project.config import config_paths, config_root, load_config
 
 STATE_SUFFIX = ".native-state.json"
 ROUND_MODES = ("next", "reset", "show")
@@ -148,7 +148,7 @@ async def finalize(  # ruff: ignore[too-many-statements]
         raise ValueError(problem)
     if Path(record.worktree).resolve() != active_dir.resolve():
         raise ValueError("Saved worktree differs from active directory")
-    config = load_config(repo)
+    config = load_config(config_root(repo, active_dir))
     store.transition(run_id, "checking")
     try:
         results = await run_final_checks(active_dir, config)

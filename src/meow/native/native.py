@@ -43,11 +43,13 @@ from meow.native.native_prompt import PROMPT_ROLES, role_prompt
 from meow.native.native_state import checkpoint, finalize, round_state
 from meow.project.config import (
     config_paths,
+    config_root,
     load_config,
     resolve_command_cwd,
     split_command,
     unresolved_environment_references,
 )
+from meow.project.onboarding import boundary_ok, feature_gaps, is_onboarded
 from meow.project.shaping import (
     assess_request,
     load_shape_artifact,
@@ -67,6 +69,7 @@ __all__ = [
     "latest_plan",
     "latest_review",
     "lint",
+    "onboard_status",
     "prepare",
     "push",
     "role_prompt",
@@ -97,6 +100,16 @@ def knowledge_create(
         "result": create_selected_documents(
             root, findings, writer=EvidenceDocumentWriter(), overwrite=overwrite
         ).__dict__,
+    }
+
+
+def onboard_status(root: Path) -> dict:
+    """Deterministic facts for the `/onboard` add-on check."""
+    return {
+        "onboarded": is_onboarded(root),
+        "config_exists": (root / ".meow" / "config.toml").is_file(),
+        "boundary_ok": boundary_ok(root),
+        "gaps": feature_gaps(root),
     }
 
 
@@ -144,7 +157,7 @@ def verify(
     run_lint: bool = True,
 ) -> dict:
     """Validate all supported config sections and their local prerequisites."""
-    config = load_config(working_dir)
+    config = load_config(config_root(working_dir, active_dir))
     integrations = {
         "jira": _verify_jira(config),
         "gitlab": _verify_gitlab(config),

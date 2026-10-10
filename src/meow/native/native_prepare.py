@@ -23,7 +23,8 @@ from meow.infrastructure.worktree import (
     _require_branch_checked_out,
     _resolve_working_dir,
 )
-from meow.project.config import LintCommand, load_config
+from meow.project.config import LintCommand, config_root, load_config
+from meow.project.onboarding import CONFIG_RELPATH, onboard_if_needed
 from meow.project.plan_files import (
     _detect_review_flavor,
     _latest_plan_file,
@@ -100,6 +101,21 @@ def _resolve_active_dir(
     return active_dir, is_worktree, name
 
 
+def _onboard(
+    working_dir: Path, active_dir: Path, options: PrepareOptions, config: dict
+) -> tuple[dict | None, dict]:
+    """Onboard a never-onboarded project; return the report and fresh config.
+
+    Read-only branch reviews onboard the project itself, never the reviewed
+    branch's worktree.
+    """
+    onboard_dir = working_dir if options.existing_branch else active_dir
+    report = onboard_if_needed(onboard_dir, working_dir)
+    if report and CONFIG_RELPATH in report["files"]:
+        config = load_config(onboard_dir)
+    return report, config
+
+
 def prepare(working_dir: Path, options: PrepareOptions) -> dict:
     """Run the CLI's startup guards and return everything a skill needs.
 
@@ -117,6 +133,7 @@ def prepare(working_dir: Path, options: PrepareOptions) -> dict:
     _boot_repo(working_dir, include_gitignore=worktree_wanted)
 
     active_dir, is_worktree, name = _resolve_active_dir(working_dir, options)
+    onboarding, config = _onboard(working_dir, active_dir, options, config)
     docs_dir = active_dir / config["docs_dir"]
     plan_file, review_file = _plan_paths(docs_dir, name)
     if options.fresh:
@@ -141,11 +158,12 @@ def prepare(working_dir: Path, options: PrepareOptions) -> dict:
         "lint_timeout": config["lint_timeout"],
         "models": config["models"],
         "lint": _lint_plan(config["lint"]),
+        "onboarding": onboarding,
     }
 
 
 def latest_plan(working_dir: Path, active_dir: Path) -> dict:
-    config = load_config(working_dir)
+    config = load_config(config_root(working_dir, active_dir))
     plan_file = _latest_plan_file(active_dir / config["docs_dir"])
     return {
         "plan_file": str(plan_file),
@@ -154,7 +172,7 @@ def latest_plan(working_dir: Path, active_dir: Path) -> dict:
 
 
 def latest_review(working_dir: Path, active_dir: Path) -> dict:
-    config = load_config(working_dir)
+    config = load_config(config_root(working_dir, active_dir))
     review_file = _latest_review_file(active_dir / config["docs_dir"])
     return {
         "review_file": str(review_file),
