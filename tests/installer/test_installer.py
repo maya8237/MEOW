@@ -147,7 +147,9 @@ def test_main_onboards_each_literal_destination_and_prints_next_steps(
 
     output = capsys.readouterr().out
     assert calls == [project]
-    assert "/meow:onboard" in output
+    assert "one at a time" in output
+    assert "Optional features not enabled" not in output
+    assert "claude /meow:onboard" in output
     assert 'meow run "Add CSV export" --name csv-export --work-dir <project>' in output
-    assert "/meow:run Add CSV export" in output
+    assert "claude /meow:run Add CSV export" in output
     assert "(no further menu)" not in output
