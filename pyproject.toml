@@ -1,6 +1,6 @@
 [project]
 name = "meow"
-version = "0.1.0"
+version = "0.1.1"
 description = "MEOW workflow engine for the Claude Agent SDK, configurable per project"
 readme = "README.md"
 requires-python = ">=3.12"
