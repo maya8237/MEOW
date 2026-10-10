@@ -21,19 +21,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install meow (editable, with dev extras)
         run: python -m pip install -e ".[dev]"
-      - name: Run installer script tests
-        id: installer-tests
-        shell: bash
-        run: python -m pytest tests/installer/test_bootstrap_contract.py -q 2>&1 | tee installer-test-output.log
-      - name: Surface installer-test failures as an annotation
-        # Without failure(), GitHub adds an implicit success() and skips this.
-        if: failure() && steps.installer-tests.outcome == 'failure'
-        shell: bash
-        run: |
-          tail -n 120 installer-test-output.log | sed 's/%/%25/g; s/\r/%0D/g' | awk '{printf "%s%%0A", $0}' | { printf '::error::'; cat; printf '\n'; }
       # pytest also collects the plain `def test_*` modules that unittest
-      # discovery skips; the installer tests already ran above. bash keeps
-      # pipefail on every OS, so `tee` cannot mask a failing exit code.
+      # discovery skips. The full installer scripts run in their own jobs below.
       - name: Run the test suite
         id: test-suite
         shell: bash
@@ -45,6 +34,31 @@ jobs:
         shell: bash
         run: |
           tail -n 60 test-output.log | sed 's/%/%25/g; s/\r/%0D/g' | awk '{printf "%s%%0A", $0}' | { printf '::error::'; cat; printf '\n'; }
+
+  installer-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install meow editable
+        run: python -m pip install -e .
+      - name: Run the Linux installer from the CI checkout
+        run: bash tests/installer/run_linux_install.sh
+
+  installer-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install meow editable
+        run: python -m pip install -e .
+      - name: Run the Windows installer from the CI checkout
+        shell: pwsh
+        run: ./tests/installer/run_windows_install.ps1
 
   lint:
     runs-on: ubuntu-latest
