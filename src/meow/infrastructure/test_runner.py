@@ -360,7 +360,7 @@ async def _run_browser(active_dir: Path, tester: dict) -> BrowserEvidence | None
 
 
 # Readiness targets a local dev server: never route it through a proxy. A bare
-# urlopen consults HTTP(S)_PROXY and, on macOS, the system proxy settings.
+# urlopen consults proxy environment settings.
 _DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
