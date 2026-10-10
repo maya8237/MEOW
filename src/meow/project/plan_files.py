@@ -1,7 +1,4 @@
-"""
-meow/plan_files.py
-
-Plan/review file naming and lookup within a project's docs_dir: which file
+"""Plan/review file naming and lookup within a project's docs_dir: which file
 is the latest sprint plan, which review file goes with a plan, and what
 flavor (plan/prompt/gitlab/github) an existing review file is. This is
 file-naming/lookup logic -- distinct from the generator<->reviewer

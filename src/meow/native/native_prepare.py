@@ -1,15 +1,5 @@
-"""
-meow/native_prepare.py
-
-Worktree/clean-tree bootstrapping and plan/review directory resolution for
-native (in-Claude-Code-session) execution -- the `prepare`, `latest_plan`,
-`latest_review`, and `verdict` helpers exposed by `native.native` for
-`native_cli.py` to wire to `meow native prepare`/`latest-plan`/
-`latest-review`/`verdict`. Split out on its own because "which directory a
-skill run works in, and what plan/review files live there" is a distinct
-concern from lint execution (`native_lint.py`), round-counter persistence
-(`native_state.py`), or prompt construction (`native_prompt.py`).
-"""
+"""`meow native prepare`/`latest-plan`/`latest-review`/`verdict`: startup
+guards, worktree resolution and plan/review lookup for native runs."""
 
 from dataclasses import dataclass
 from pathlib import Path

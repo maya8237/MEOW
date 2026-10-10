@@ -261,7 +261,29 @@ class Agent:
         values.extend(entry for entry in built_in or [] if entry)
         return list(dict.fromkeys(values))
 
-    def options(  # ruff: ignore[complex-structure, too-many-statements]
+    def _apply_policy(
+        self, role: str, allowed_tools: list[str], extra_options: dict
+    ) -> list[str]:
+        """Attach the role's permission callback; return the narrowed tools."""
+        policy = self.context.config.get("permissions")
+        if not isinstance(policy, PermissionPolicy):
+            return allowed_tools
+        role_policy = policy.for_role(role)
+        if not role_policy.rules:
+            return allowed_tools
+        extra_options["can_use_tool"] = make_permission_callback(
+            role_policy,
+            unattended=bool(self.context.config.get("_unattended", False)),
+            project_root=self.context.active_working_dir(),
+        )
+        # Auto-approved tools would never reach the callback; under dontAsk
+        # nothing does, so stripping them would only deny them.
+        if extra_options.get("permission_mode") == "dontAsk":
+            return allowed_tools
+        gated = role_policy.gated_tools()
+        return [tool for tool in allowed_tools if tool not in gated]
+
+    def options(
         self,
         *,
         system_prompt: str,
@@ -271,18 +293,7 @@ class Agent:
     ) -> ClaudeAgentOptions:
         """Build SDK options from project context and agent-specific values."""
         extra_options["skills"] = self.skills(role, extra_options.get("skills", []))
-        policy = self.context.config.get("permissions")
-        if isinstance(policy, PermissionPolicy):
-            role_policy = policy.for_role(role)
-            if role_policy.rules:
-                extra_options["can_use_tool"] = make_permission_callback(
-                    role_policy,
-                    unattended=bool(self.context.config.get("_unattended", False)),
-                    project_root=self.context.active_working_dir(),
-                )
-                # Auto-approved tools would never reach the callback.
-                gated = role_policy.gated_tools()
-                allowed_tools = [t for t in allowed_tools if t not in gated]
+        allowed_tools = self._apply_policy(role, allowed_tools, extra_options)
         journal = self.context.config.get("_run_journal")
         if journal is not None:
             store, run_id = journal

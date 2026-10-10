@@ -1,12 +1,5 @@
-"""
-meow/gitlab_reviewer.py
-
-GitLab MR config loading and fetching, used by `review_cli.py`'s
-`--gitlab` review source (`meow review --gitlab <mr-link>`): fetch a
-merge request's title, description, and diff through a configured GitLab
-MCP server, then grade them with the reviewer role -- read-only, since
-this never checks the merge request's code out locally.
-"""
+"""`meow review --gitlab`: validate `[gitlab.mcp]` and fetch a merge
+request's title, description and diff through it (read-only)."""
 
 import json
 import tempfile

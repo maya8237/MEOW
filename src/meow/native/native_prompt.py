@@ -1,14 +1,5 @@
-"""
-meow/native_prompt.py
-
-Prompt/agent-wiring construction for native (in-Claude-Code-session)
-execution -- the `role_prompt` helper exposed by `native.native` for
-`native_cli.py` to wire to `meow native prompt`. Split out on its own
-because building the exact system prompt (and task message, where there is
-one) a Task subagent needs to behave like an SDK role is a distinct concern
-from directory bootstrapping (`native_prepare.py`), lint execution
-(`native_lint.py`), or round-counter persistence (`native_state.py`).
-"""
+"""`meow native prompt`: the exact system prompt, task message and model an
+SDK role would use, for a Task subagent to run with."""
 
 import asyncio
 from pathlib import Path

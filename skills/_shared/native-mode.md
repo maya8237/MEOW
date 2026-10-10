@@ -15,7 +15,7 @@ started in one can be continued in the other (`meow review --fix`,
 Configuration priority is local project config, shared project config, then the
 user fallback at `~/.meow/config.toml`.
 
-Release 2 run checkpoints are stored in `.meow/runs/`. Inspect one with
+Run checkpoints are stored in `.meow/runs/`. Inspect one with
 `meow status [RUN_ID] [--verbose]` or `meow resume [RUN_ID]`. The latter only
 inspects until `--continue` or `--auto-resume` is supplied. Native execution
 must write a checkpoint before and after planner, generator, reviewer, tester,
@@ -46,12 +46,12 @@ and stop; do not guess at a venv path. Flags shared by every command:
 | `round PLAN [--reset\|--show]` | On-disk round counter; default advances it |
 | `checkpoint PHASE [--run-id ID] [--request TEXT] [--plan FILE] [--review FILE] [--round N] [--reviewer PASS\|FAIL] [--tester PASS\|FAIL]` | Atomic run journal transition; omit `--run-id` only to create a native run, then reuse the returned ID |
 | `finalize RUN_ID` | Run current required lint, test, and build gates and finish only when reviewer and enabled tester evidence pass |
-| `prompt ROLE [--plan F] [--focus T] [--provider {gitlab,github}] [--worktree]` | Exact SDK system prompt (+ task message, model) for a role |
+| `prompt ROLE [--plan F] [--focus T] [--target T --branch B] [--provider {gitlab,github}] [--worktree] [--shape F]` | Exact SDK system prompt, task message (reviewer roles include the harness lint evidence), and model for a role |
 | `push BRANCH` | Push a named branch to origin |
 | `knowledge-audit` / `knowledge-check` / `knowledge-create` | Audit, validate, or create selected project knowledge documents |
 | `onboard-status` | Report whether the project is onboarded (shared config plus a correct ignore boundary) and which optional add-ons (Jira, GitLab, GitHub, MCP, tester, hooks, worktree setup, and so on) are not configured yet |
 | `shape-assess` / `shape-create` / `shape-reflect` | Assess, create, or reflect on requirements shaping artifacts |
-| `hook` | Run an optional configured lifecycle hook |
+| `hook NAME` | Run a Claude Code hook handler (`lint_after_edit`, `shaping_ripple`, `capture_completed_plan`, `validate_plan_stop`) on the hook event JSON from stdin; installed by `meow hooks install claude` |
 
 `prompt` roles: `planner`, `generator`, `explorer`, `reviewer-plan`,
 `reviewer-prompt`, `reviewer-mr`, `reviewer-branch`, `review-fixer`,
@@ -105,8 +105,9 @@ only with an explicit plan file and rejects other sources and `--review-file`.
   false, fix the reported `problems` before moving on (the command already
   applied each command's auto-fix flag).
 - Before **every** review, run `meow native lint --active-dir <active_dir>`
-  (project-wide, check-only). Fix everything in `blocking`. `informational`
-  findings are passed on to the reviewer's summary but never block.
+  (project-wide, check-only) and fix everything in `blocking`. Then build the
+  reviewer prompt: its `query` already carries the current lint evidence, so
+  the reviewer does not rerun lint; `informational` findings never block.
 
 ## Round limits
 

@@ -6,8 +6,7 @@ description: Run the current project's configured lint commands and fix whatever
 # lint
 
 Runs the project's `[[lint]]` commands and has **you** — this session — fix what
-they report. This skill was already session-native; native mode now gets its
-facts from `meow native lint` (same runner as the other skills). Read
+they report, using `meow native lint` for the facts. Read
 [`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this
 skill's base directory) for the helper's conventions. Never run plain
 `meow run --lint-fix` here: that spins up meow's own fixer agent, duplicating

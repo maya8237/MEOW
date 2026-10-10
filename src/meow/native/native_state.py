@@ -1,14 +1,5 @@
-"""
-meow/native_state.py
-
-On-disk round-counter persistence for native (in-Claude-Code-session)
-execution -- the `round_state` helper exposed by `native.native` for
-`native_cli.py` to wire to `meow native round`. Split out on its own because
-tracking how many generator<->reviewer rounds a skill-driven sprint has run
-is a distinct concern from directory bootstrapping (`native_prepare.py`),
-lint execution (`native_lint.py`), or prompt construction
-(`native_prompt.py`).
-"""
+"""Native run state: the on-disk round counter (`meow native round`) and the
+run-journal checkpoints and gated finalize shared with CLI runs."""
 
 import hashlib
 import json

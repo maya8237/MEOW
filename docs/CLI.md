@@ -118,6 +118,11 @@ on, and plan, review, and test files take that name. Runs that continue
 existing work (`--plan`, `--resume-at review`, `meow resume`) reuse the
 existing worktree and take priority over a new source branch.
 
+`run` (including `--jira` and `--lint-fix` without `--report-only`) refuses to
+start while the checkout has uncommitted changes other than `.gitignore` and
+`.meow/`, unless it creates a worktree from an explicit `--from` branch.
+`plan` and `review` never require a clean tree.
+
 On a project that was never onboarded, the first run onboards it automatically
 before planning: it repairs the `.gitignore` boundary (`.meow/*`, `!.meow/`,
 `!.meow/config.toml`) and writes a minimal `.meow/config.toml` with the lint

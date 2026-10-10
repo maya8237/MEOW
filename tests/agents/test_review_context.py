@@ -36,3 +36,13 @@ def test_review_context_counts_new_untracked_files_as_changes(tmp_path):
     _, has_diff = _git_review_context(ProjectContext(root, {}))
 
     assert has_diff
+
+
+def test_verdict_status_reads_the_first_status_word():
+    from meow.agents.reviewer import _verdict_status
+
+    assert _verdict_status("SUMMARY: ok\nSTATUS: PASS") == "PASS"
+    assert _verdict_status("SUMMARY: ok\nSTATUS: PASS - all criteria met") == "PASS"
+    assert _verdict_status("SUMMARY: ok\nSTATUS: PASSED") == "FAIL"
+    assert _verdict_status("SUMMARY: ok\nSTATUS: FAIL\nSTATUS: PASS") == "FAIL"
+    assert _verdict_status("SUMMARY: no status line") == "FAIL"

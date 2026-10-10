@@ -1,7 +1,4 @@
-"""
-meow/logging.py
-
-Structured logging setup for the harness. Every module gets its logger via
+"""Structured logging setup for the harness. Every module gets its logger via
 `get_logger(__name__)` and calls it with a lowercase_snake_case event name
 plus keyword arguments -- never with an interpolated message string:
 

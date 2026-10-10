@@ -1,14 +1,6 @@
-"""
-meow/sprint_runner.py
-
-`meow run`/`meow plan`'s top-level flows -- plan (unless a plan file is
-already given) then, for `run_sprint`, implement it in a round loop. Split
-out of `orchestrator.py`, which holds only the shared generator<->reviewer
-round-loop engine (`_prepare_sprint`, `_run_rounds`, `_run_review_rounds`)
-this module reuses, the same way `issue_solver.py`/`gitlab_reviewer.py`/
-`lint_fix.py` each own their own CLI-facing flow instead of folding it into
-the engine module.
-"""
+"""`meow run`/`meow plan` flows: plan (unless a plan file is given), then
+for `run_sprint` implement, verify and deliver through the round-loop engine in
+`orchestrator`."""
 
 import hashlib
 import json

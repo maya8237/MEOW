@@ -80,34 +80,31 @@ async def execute_in_worktrees(  # ruff: ignore[complex-structure, too-many-argu
         task_dir = worker_root / f"{run_id}-{spec.id}"
         if task_dir.exists():
             raise ValueError(f"task worktree already exists: {task_dir}")
+        # A failure leaves the registered checkout and its edits for inspection.
         _git(repo, "worktree", "add", "--detach", str(task_dir), head)
-        try:
-            if prepare is not None:
-                await prepare(task_dir)
-            await implement(spec, task_dir)
-            _git(task_dir, "add", "-A")
-            staged = _git(task_dir, "diff", "--cached", "--name-only").splitlines()
-            if not staged:
-                raise ValueError(f"task {spec.id} produced no changes")
-            outside = [path for path in staged if not _owned(path, spec)]
-            if outside:
-                raise ValueError(f"task {spec.id} edited outside ownership: {outside}")
-            _git(
-                task_dir,
-                "-c",
-                "user.name=MEOW",
-                "-c",
-                "user.email=meow@local",
-                "commit",
-                "-m",
-                f"meow task {spec.id}",
-            )
-            return TaskOutcome(
-                spec.id, "complete", str(task_dir), _git(task_dir, "rev-parse", "HEAD")
-            )
-        except BaseException:
-            # Preserve the registered checkout and its edits for inspection.
-            raise
+        if prepare is not None:
+            await prepare(task_dir)
+        await implement(spec, task_dir)
+        _git(task_dir, "add", "-A")
+        staged = _git(task_dir, "diff", "--cached", "--name-only").splitlines()
+        if not staged:
+            raise ValueError(f"task {spec.id} produced no changes")
+        outside = [path for path in staged if not _owned(path, spec)]
+        if outside:
+            raise ValueError(f"task {spec.id} edited outside ownership: {outside}")
+        _git(
+            task_dir,
+            "-c",
+            "user.name=MEOW",
+            "-c",
+            "user.email=meow@local",
+            "commit",
+            "-m",
+            f"meow task {spec.id}",
+        )
+        return TaskOutcome(
+            spec.id, "complete", str(task_dir), _git(task_dir, "rev-parse", "HEAD")
+        )
 
     async def integrate(outcome: TaskOutcome) -> bool:  # ruff: ignore[unused-async]
         nonlocal head, conflict

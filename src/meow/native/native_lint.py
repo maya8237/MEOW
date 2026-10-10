@@ -1,13 +1,5 @@
-"""
-meow/native_lint.py
-
-Lint execution for native (in-Claude-Code-session) execution -- the `lint`
-helper exposed by `native.native` for `native_cli.py` to wire to `meow native
-lint`. Split out on its own because running the configured lint plan (per
-file or project-wide) is a distinct concern from directory bootstrapping
-(`native_prepare.py`), round-counter persistence (`native_state.py`), or
-prompt construction (`native_prompt.py`).
-"""
+"""`meow native lint`: the configured lint plan, per file (like the SDK
+post-edit hook) or project-wide."""
 
 import asyncio
 from dataclasses import dataclass

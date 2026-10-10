@@ -1,28 +1,10 @@
-"""
-meow/orchestrator.py
+"""The generator<->reviewer round-loop engine.
 
-The shared generator<->reviewer round-loop engine: explorer, planner,
-generator, and reviewer as real peer agents, coordinated by plain Python
-control flow. Unlike the single-project version, all project-specific
-values (lint commands, models, round cap) are read from `.meow/config.toml`
-file in the target project's root, not hardcoded here -- this file is meant
-to be installed once and reused across projects.
-
-This module holds only the engine: `_prepare_sprint` (shared sprint/config
-setup) and the three round-loop shapes (`_run_rounds`, `_run_review_rounds`,
-`_run_prompt_fix_rounds`). The CLI-facing flows that drive the engine live
-in their own modules instead -- `run_sprint`/`run_plan` in
-`sprint_runner.py`, `run_review_command` (every `meow review` source)
-in `review_cli.py`, `run_issue_solver` in `issue_solver.py`, and
-`run_lint_fix` in `lint_fix.py` -- rather than folding any of them into
-this engine.
-
-A project may configure any number of lint commands. Each one declares
-whether it runs per edited file, whether it can auto-fix, and whether its
-failure is allowed to fail a sprint -- see `_normalize_lint_commands`.
-
-Install (from the meow repo root):    pip install -e .
-Run (from inside a project repo):        meow run "Add CSV export"
+`_prepare_sprint` builds the shared Sprint; `_run_rounds` (generate first),
+`_run_review_rounds` (review existing code first) and `_run_prompt_fix_rounds`
+(no plan: `ReviewFixAgent` plus a caller-supplied re-review) are the three loop
+shapes. CLI-facing flows live in `sprint_runner`, `cli.review_cli`,
+`integrations.issue_solver` and `infrastructure.lint_fix`.
 """
 
 from collections.abc import Awaitable, Callable

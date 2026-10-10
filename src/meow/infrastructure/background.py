@@ -120,7 +120,7 @@ def launch_background(  # ruff: ignore[too-many-statements]
     repo: Path, argv: list[str]
 ) -> str:
     """Checkpoint an unattended invocation and start one detached worker."""
-    from meow.cli.cli import _build_arg_parser
+    from meow.cli.parser import _build_arg_parser
 
     args = _build_arg_parser().parse_args(argv)
     if args.command != "run" or not args.unattended or not args.background:
@@ -257,7 +257,8 @@ def worker_main(  # ruff: ignore[too-many-statements]
     repo: Path, run_id: str, nonce: str
 ) -> int:
     """Run saved invocation in the detached process, never prompting."""
-    from meow.cli.cli import _build_arg_parser, _resolve_input_path
+    from meow.cli.parser import _build_arg_parser
+    from meow.cli.validation import _resolve_input_path
     from meow.execution.sprint_runner import run_sprint
     from meow.integrations.issue_solver import run_issue_solver
 

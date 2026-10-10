@@ -1,25 +1,10 @@
-"""
-meow/review_cli.py
+"""`meow review`: one review-and-optionally-fix dispatcher for every source.
 
-`meow review`'s single dispatcher: replaces the top-level CLI-facing
-functions that used to live in `review_runner.py` (the old `meow review`/
-`meow cr`), `gitlab_reviewer.py` (the old `meow gitlab-review`),
-`branch_reviewer.py` (the old `meow branch-review`), and
-`review_fix_review.py` (the old `meow review-fix-review`)
--- one review-and-optionally-fix operation, sourced from a free-text prompt,
-a Jira issue, a GitLab merge request, a GitHub pull request, a local branch's
-diff against a target, an existing plan file (or the latest one
-auto-discovered), or an existing review file being resumed.
-
-The underlying mechanisms are unchanged and still exactly four: prompt-based
-(`ReviewerAgent.review_prompt` + `ReviewFixAgent` via `_run_prompt_fix_rounds`),
-plan-based (`ReviewerAgent.review_plan` + `Generator` via `_run_review_rounds`,
-Sprint-Contract-aware), branch-based (`ReviewerAgent.review_branch` +
-`ReviewFixAgent`, same loop as prompt-based but a diff-recomputing re-review),
-and remote-based (`ReviewerAgent.review_remote_change`, always report-only --
-no local checkout exists to fix). `--jira` and bare/auto-discovered sources
-just pick which of the first two mechanisms to feed; `--gitlab`, `--github`,
-and `--branch` select their corresponding source paths.
+Sources map onto four mechanisms: prompt (`review_prompt` +
+`_run_prompt_fix_rounds`; also `--jira` and the no-plan fallback), plan
+(`review_plan` + `_run_review_rounds`), branch (`review_branch` + the prompt
+fix loop with a re-diffing re-review) and remote (`--gitlab`/`--github`,
+`review_remote_change`, always report-only).
 """
 
 from pathlib import Path
@@ -44,7 +29,7 @@ from meow.infrastructure.worktree import (
 from meow.integrations.github_reviewer import _fetch_pull_request, _load_github_config
 from meow.integrations.gitlab_reviewer import _fetch_merge_request, _load_gitlab_config
 from meow.integrations.issue_solver import _fetch_issue, _load_jira_config
-from meow.project.config import load_config
+from meow.project.config import DEFAULT_CONFIG, load_config
 from meow.project.onboarding import onboard_if_needed
 from meow.project.plan_files import _detect_review_flavor, _latest_plan_file
 
@@ -393,8 +378,8 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
         onboard_if_needed(working_dir, working_dir)
         config = load_config(working_dir)
         # Keep lightweight in-memory configs accepted by integrations and tests.
-        config.setdefault("docs_dir", "docs")
-        config.setdefault("max_rounds", 3)
+        config.setdefault("docs_dir", DEFAULT_CONFIG["docs_dir"])
+        config.setdefault("max_rounds", DEFAULT_CONFIG["max_rounds"])
         if store and record:
             config["_run_journal"] = (store, record.id)
         describe_lint_plan(config["lint"])
