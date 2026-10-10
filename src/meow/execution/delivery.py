@@ -6,6 +6,7 @@ from pathlib import Path
 
 from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled, check_cancel, delivery_lock
+from meow.infrastructure.worktree import _is_linked_worktree
 
 
 @dataclass(frozen=True)
@@ -27,15 +28,6 @@ def _git(
         detail = result.stderr.strip() or result.stdout.strip()
         raise RuntimeError(f"git {' '.join(args)} failed: {detail}")
     return result
-
-
-def _linked_worktree(directory: Path) -> bool:
-    git_dir_result = _git(directory, "rev-parse", "--absolute-git-dir", check=False)
-    if git_dir_result.returncode:
-        return False
-    git_dir = git_dir_result.stdout.strip()
-    common = _git(directory, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    return Path(git_dir).resolve() != Path(common.stdout.strip()).resolve()
 
 
 def _branch_and_remote(
@@ -72,7 +64,7 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
     if record.phase != "checks_finished":
         raise ValueError("Delivery requires current passing checks")
     active = Path(record.worktree)
-    if not (unattended or _linked_worktree(active)):
+    if not (unattended or _is_linked_worktree(active)):
         return False
     try:
         check_cancel(store, run_id)

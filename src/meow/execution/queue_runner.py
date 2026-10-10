@@ -28,7 +28,9 @@ async def run_queue(working_dir: Path) -> int:
                     source="queue",
                 )
             except BaseException as exc:
-                store.update(item.id, status="failed", error=str(exc))
+                store.update(item.id, status="failed", error=str(exc) or "interrupted")
+                if not isinstance(exc, Exception):
+                    raise  # Ctrl-C / cancellation stops the worker
                 print(f"Queue paused on {item.id}: {exc}")
                 return 1
             store.update(item.id, status="completed")

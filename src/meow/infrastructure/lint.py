@@ -1,7 +1,4 @@
-"""
-meow/lint.py
-
-The generator's auto-fixing, per-file lint hook: runs every configured
+"""The generator's auto-fixing, per-file lint hook: runs every configured
 per-file command on each file the generator writes, feeding unfixable
 failures back into the generator's context as additional tool-use output.
 """

@@ -1,7 +1,4 @@
-"""
-meow/native_cli.py
-
-The `meow native ...` command group: argparse wiring and JSON output for the
+"""The `meow native ...` command group: argparse wiring and JSON output for the
 deterministic helpers in `native.native`. Every subcommand prints exactly one
 JSON document on stdout and exits 0; any failure prints its message on
 stderr and exits 1 (logs also go to stderr, so stdout stays parseable).

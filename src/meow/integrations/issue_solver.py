@@ -1,7 +1,4 @@
-"""
-meow/issue_solver.py
-
-The `meow run --jira` flow: fetch a Jira issue (a given key, or the most
+"""The `meow run --jira` flow: fetch a Jira issue (a given key, or the most
 recently created one in a configured project), then solve it through the
 same generator<->reviewer loop plain `meow run` uses (`sprint_runner.run_sprint`),
 inside a dedicated, named-branch worktree. A verified run commits and pushes

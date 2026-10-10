@@ -27,12 +27,11 @@ exclude = [
     "/tests",
     "/.github",
     "/.gitlab-ci.yml",
-    "/.pylintrc",
     "/AGENTS.md",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff==0.16.9", "pylint"]
+dev = ["pytest", "ruff==0.16.9"]
 
 [tool.ruff]
 line-length = 88

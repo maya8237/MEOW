@@ -1,24 +1,10 @@
-"""
-meow/native.py
+"""Aggregate API of the agent-free helpers behind `meow native ...`.
 
-The deterministic half of native (in-Claude-Code-session) execution.
-
-When a meow skill runs inside a Claude Code session, that session plays
-planner/generator and dispatches reviewer/explorer subagents itself -- no
-Agent SDK process is involved. What the session cannot do reliably from
-prose alone are the mechanical facts the Python harness already owns:
-parsed MEOW configuration, worktree and branch resolution, plan/review
-lookup, lint execution, verdict parsing, the round counter, and the role
-prompts. `native_cli.py` wires the functions defined by this package to
-`meow native ...` and prints their results as JSON.
-
-Each concern that used to live in this one file now has its own module:
-`native_prepare.py` (worktree/clean-tree bootstrapping, directory
-resolution, and plan/review lookup), `native_lint.py` (lint execution),
-`native_state.py` (the on-disk round counter), and `native_prompt.py`
-(prompt/agent-wiring construction). This module provides the package's
-aggregate native API, plus the one-line git-push wrapper. Nothing here
-imports or starts the Agent SDK.
+In native mode the Claude Code session plays planner/generator itself; these
+helpers supply the facts it cannot derive reliably from prose: parsed config,
+worktree resolution, plan/review lookup, lint, verdicts, round counter,
+checkpoints and role prompts. `native_cli` prints their results as JSON.
+Nothing here starts the Agent SDK.
 """
 
 import os
@@ -364,11 +350,8 @@ def _verify_jira(user_config: dict) -> dict:
     )
     project_key_configured = bool(jira.get("project_key"))
     mcp["project_key_configured"] = project_key_configured
-    if mcp["status"] == "ready_unchecked":
-        if not project_key_configured:
-            mcp["status"] = "missing_project_key"
-        elif mcp["required_environment_missing"]:
-            mcp["status"] = "missing_environment"
+    if mcp["status"] == "ready_unchecked" and not project_key_configured:
+        mcp["status"] = "missing_project_key"
     return {
         "configured": bool(jira.get("mcp")),
         "status": mcp["status"],

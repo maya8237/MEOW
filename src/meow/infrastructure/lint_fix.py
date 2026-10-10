@@ -1,7 +1,4 @@
-"""
-meow/lint_fix.py
-
-The `meow run --lint-fix` flow: run every configured `[[lint]]` command, then
+"""The `meow run --lint-fix` flow: run every configured `[[lint]]` command, then
 either fix what's left or just report it, depending on how it's invoked.
 
 Standalone CLI use (the default) actually fixes things: an auto-fix pass
