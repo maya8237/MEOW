@@ -35,7 +35,9 @@ try {
 
     $startInfo = [Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $powershellCommand.Path
-    $startInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+    $escapedScriptPath = $scriptPath.Replace("'", "''")
+    $streamedScript = "[Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes('$escapedScriptPath')) | Invoke-Expression"
+    $startInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"$streamedScript`""
     $startInfo.WorkingDirectory = $repoDir
     $startInfo.UseShellExecute = $false
     $startInfo.RedirectStandardInput = $true

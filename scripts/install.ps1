@@ -1,4 +1,4 @@
-# Streamable MEOW installer. Run with:
+﻿# Streamable MEOW installer. Run with:
 # irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
