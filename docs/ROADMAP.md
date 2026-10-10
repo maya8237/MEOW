@@ -10,11 +10,14 @@ users learn a large workflow system.
 - Reusable project configuration and templates.
 - Isolated worktrees, checkpoints, bounded quality gates, and review loops.
 - CLI and skill paths for feature requests, queues, Jira, GitLab, and GitHub review.
+- Optional Claude Code host hooks, browser-aware tester checks, and durable
+  status/cancel/resume recovery.
 
 ## Next
 
 - More first-run examples that can be copied into real repositories.
-- Better run-event hooks for CI status and notifications.
+- A versioned run-event API for CI status and notifications (distinct from the
+  shipped Claude Code host hooks).
 - Additional integrations when they preserve the same simple handoff.
 
 See [Future features](FUTURE_FEATURES.md) for deferred ideas and their safety

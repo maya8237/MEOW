@@ -52,6 +52,11 @@ an accepted subset; repeat `--only` for more hooks. Onboarding shows each hook's
 host event, exact command, and effect before installation. Editor hooks are
 optional: `meow run`, including `--unattended`, works without them.
 
+Use `meow hooks uninstall claude` to remove hooks recorded by MEOW's manifest.
+The supported hook names are `lint`, `shaping`, `plan_capture`, and `plan_stop`.
+Uninstall only removes the MEOW-owned entries; it does not rewrite unrelated
+Claude settings.
+
 ## Quality concerns
 
 Reviewers may record concrete maintenance concerns with a repository path,
@@ -89,9 +94,10 @@ internally and can create selected knowledge documents as part of setup.
 
 ## Common options
 
-Every command accepts `--work-dir PATH` (also `-d`) to
-select a project directory. By default, MEOW-generated plans and reviews are
-written under `.meow/plans/`; an explicit `docs_dir` remains supported for
+Every public command accepts `--work-dir PATH` (also `-d`) to select a project
+directory. Native helper commands accept the same path as `--working-dir` (and
+also accept `--work-dir`/`-d`). By default, MEOW-generated plans and reviews
+are written under `.meow/plans/`; an explicit `docs_dir` remains supported for
 existing projects. Project documentation stays under `docs/`.
 
 `run` and `plan` use a worktree by default. `--no-worktree` runs in the
@@ -124,10 +130,13 @@ onboarding failure never fails the command. `/meow:onboard` is for add-ons.
 
 After required checks and review pass, a feature run in a separate linked
 worktree commits and pushes its branch to `origin`. A detached feature worktree
-receives a `meow/RUN_ID` branch at delivery. An in-place run does this only
-with `--unattended`. A missing remote or failed push leaves the worktree and
-checkpoint for recovery. `--unattended` cannot be combined with manual plan
-approval or lint-fix mode.
+receives a `meow/RUN_ID` branch at delivery. `--unattended` opts into the same
+non-interactive delivery path and is required for `--background`; it still
+requires an isolated worktree. An in-place `--no-worktree` run does not
+automatically commit or push. A missing remote or failed push leaves the
+worktree and checkpoint for recovery. `--unattended` cannot be combined with
+`--no-worktree`, manual plan approval, a source branch, resume-at-review, or
+lint-fix mode.
 
 `run --manually-approve-plan` (also `-m`) displays the plan and waits for
 approval before implementation. Declining exits without starting the
@@ -242,6 +251,7 @@ meow review "Check API error handling"
 meow review --jira PROJ-123
 meow review --gitlab "https://gitlab.example.com/group/project/-/merge_requests/123"
 meow review --github "https://github.com/group/project/pull/123"
+meow review --ci
 meow review --branch feature/add-csv-export --target main
 meow review --plan .meow/plans/add-csv-export.md
 ```
@@ -250,6 +260,11 @@ With no source, review uses the latest plan or falls back to a code-diff
 review. Other sources are a free-text prompt, Jira issue, GitLab merge request,
 GitHub pull request, local branch diff, or specific plan file. Only one source
 may be selected.
+
+`--ci` reviews the exact detached GitLab pipeline checkout against the fetched
+target ref. It is report-only and cannot be combined with another source,
+`--fix`, `--test`, or `--no-worktree`; see [GitLab CI review](#gitlab-ci-review)
+for the pipeline contract.
 
 Reviews are report-only by default: one reviewer pass writes a PASS/FAIL
 verdict without editing. Add `--fix` to loop through review, fixes, and
@@ -277,10 +292,14 @@ See [INTEGRATIONS.md](INTEGRATIONS.md).
 
 ## Native and CLI skill modes
 
-MEOW's Claude Code skills use native mode by default: the calling session
-plans and generates, while a fresh subagent reviews each round. Jira and
-GitLab and GitHub access comes from the MCP tools connected to that session. Ask for
-"CLI mode" (or headless mode) to run the `meow` CLI instead.
+The workflow skills `/meow:plan`, `/meow:review`, and `/meow:lint` use native
+mode by default: the calling session plans or fixes, while a fresh subagent
+reviews each round where applicable. `/meow:run` uses CLI mode by default;
+native run is an explicit opt-in. Jira, GitLab, and GitHub access in native
+mode comes from MCP tools connected to that session. Ask for "CLI mode" (or
+headless mode) when a native-default skill should run the `meow` CLI instead.
+`/meow:onboard`, `/meow:migration`, and `/meow:customize` are guidance flows
+that configure or explain the system rather than alternate execution engines.
 
 Both modes read the same active MEOW configuration, use the same worktree rules
 and `max_rounds`, and write the same plans, reviews, and verdict format. The
@@ -327,8 +346,13 @@ when `HEAD` matches `CI_COMMIT_SHA`. The review is report-only: it does not
 plan, fix, commit, push, or open a merge request. It uses the local Git history,
 so GitLab MCP is unnecessary.
 
-The root `.gitlab-ci.yml` includes [the GitLab review job](../templates/gitlab-ci-review.yml)
-for detached merge request pipelines targeting `dev` and non-`dev` branch push pipelines. In merge request pipelines, the reviewer reads the MR description as the review brief; GitLab descriptions longer than 2,700 characters are truncated and flagged. Push pipelines have no MR brief and review the diff alone. The job fetches `dev` without moving HEAD,
+Include [the GitLab review job](../templates/gitlab-ci-review.yml) in a project's
+pipeline for detached merge request pipelines targeting `dev` and non-`dev`
+branch push pipelines. This repository ships the template; it does not require
+a root `.gitlab-ci.yml`. In merge request pipelines, the reviewer reads the MR
+description as the review brief; GitLab descriptions longer than 2,700
+characters are truncated and flagged. Push pipelines have no MR brief and
+review the diff alone. The job fetches `dev` without moving HEAD,
 uses full Git history for a reliable merge base, and uploads
 `.meow/ci-artifacts/review.md` and `.meow/ci-artifacts/verdict.json` even when
 the job fails. Provide the Claude Agent SDK credentials through masked CI

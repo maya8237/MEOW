@@ -48,3 +48,52 @@ default = []
 # [[lint]]
 # command = "python -m ruff check"
 # fix_flag = "--fix"
+
+# Optional required or advisory build gates. Commands use argv semantics; they
+# are not evaluated by a shell.
+# [[build]]
+# command = "python -m compileall src"
+# required = true
+# timeout = 300
+
+# Optional tester commands and a local development server.
+# [tester]
+# test_dirs = ["tests"]
+# [[tester.tests]]
+# command = "python -m pytest -q"
+# gate = true
+# [[tester.dev_server]]
+# command = "npm run dev"
+# cwd = "web"
+# ready_url = "http://127.0.0.1:3000/health"
+# startup_timeout = 30
+
+# Optional browser provider. `kind` is `skill`, `mcp`, or `command`; all
+# providers require a name and entrypoint. Command providers may also set
+# args, cwd, env, timeout, flows, and repository-relative artifacts.
+# [tester.browser]
+# kind = "command"
+# name = "project-browser"
+# entrypoint = "python -m project_browser"
+# required = false
+# flows = ["smoke"]
+# artifacts = [".meow/browser"]
+
+# Optional setup for newly-created feature worktrees. Copy only regular,
+# non-secret-like relative files; commands are literal argument arrays.
+# [worktree_setup]
+# copy = [".env.example"]
+# commands = [["python", "-m", "pip", "install", "-e", "."]]
+
+# Optional role/tool policy. Path-scoped rules are only valid for Read, Write,
+# Edit, or NotebookEdit and require Bash and Agent to be denied for that role.
+# [[permissions.rule]]
+# role = "generator"
+# tool = "Bash"
+# action = "deny"
+
+# Optional delivery defaults; credentials are never stored here.
+# [delivery]
+# target_branch = "dev"
+# [delivery.gitlab]
+# enabled = false

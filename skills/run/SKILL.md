@@ -121,6 +121,10 @@ is none, or it is incomplete, tell the user and run normally.
 
 Add `--no-worktree` to operate in the main repo (name then optional; not
 applicable to `--jira`, which always uses its own pushable-branch worktree).
+Use `--unattended` for non-interactive delivery or `--background`; it requires
+an isolated worktree and cannot be combined with `--no-worktree`, manual plan
+approval, `--from`, `--resume-at review`, or `--lint-fix`. An in-place
+`--no-worktree` run does not automatically commit or push.
 If `meow` isn't on PATH, tell the user to install it (README: `pip install -e .`
 in a venv, or `pipx install -e .`). Stream its progress (`[planner]`, `[generator]`,
 `[reviewer]`) to the user. Report the plan and review file paths on success

@@ -22,8 +22,11 @@ plan only. See [docs/CLI.md](docs/CLI.md) for full command behavior.
   `--report-only` reports without editing; the `lint-fix` skill uses this mode.
   Lint-fix takes no request text, Jira, or worktree options.
 - **Delivery:** A verified feature run in a separate linked worktree commits
-  and pushes to `origin`. `run --unattended` enables this for an in-place run.
-  Delivery failures retain the worktree and run checkpoint.
+  and pushes to `origin`. `run --unattended` allows an isolated feature run
+  to deliver without interactive handoff and enables `--background`; it cannot
+  be combined with `--no-worktree`, manual plan approval, `--from`,
+  `--resume-at review`, or lint-fix mode. Delivery failures retain the
+  worktree and run checkpoint.
 - **Source branch:** `run` and `plan --from BRANCH` (also
   `-b`) create a worktree from that branch. The uncommitted-changes check is
   skipped only when creating a worktree from an explicit source branch.
@@ -36,22 +39,26 @@ plan only. See [docs/CLI.md](docs/CLI.md) for full command behavior.
   and reviews existing code before invoking the generator. `plan`, Jira runs,
   and lint-fix mode do not accept this option.
 
-`meow review` supports prompt, Jira, GitLab, branch-diff, plan, and
-review-file sources. It is report-only by default; `--fix` loops review and
-fixes up to `max_rounds`. Exactly one source may be given. With no source, it
-uses the latest plan in `docs_dir` (default `.meow/plans`) or falls back to a
-prompt/diff review.
+`meow review` supports prompt, Jira, GitLab, GitHub, branch-diff, plan,
+review-file, and GitLab CI sources. It is report-only by default; `--fix`
+loops review and fixes up to `max_rounds`. Exactly one source may be given.
+With no source, it uses the latest plan in `docs_dir` (default `.meow/plans`)
+or falls back to a prompt/diff review.
 
 - `--gitlab` requires `[gitlab.mcp]` and is always read-only; it cannot combine
   with `--fix`.
+- `--github` requires `[github.mcp]` and is always read-only; it cannot combine
+  with `--fix`.
 - `--jira` requires `[jira]`/`[jira.mcp]` and reviews current code against the
   fetched issue.
+- `--ci` reviews the exact GitLab pipeline checkout and is report-only; it does
+  not use an MCP server or a local worktree.
 - `--branch BRANCH --target TARGET` reviews a local branch diff without GitLab
   MCP. It uses a worktree by default; `--no-worktree` requires the selected
   directory to already be on that branch.
 - `--plan PATH` checks implementation against the plan's Sprint Contract.
-- `--review-file PATH` resumes a prompt- or plan-based review. GitLab and
-  branch reviews must be rerun from their source.
+- `--review-file PATH` resumes a prompt- or plan-based review. GitLab, GitHub,
+  and branch reviews must be rerun from their source.
 
 Every command accepts `--work-dir PATH` (also `-d`). Shared
 config lives in `.meow/config.toml`; `.meow/config.local.toml` has highest
@@ -63,21 +70,23 @@ configuration is in
 [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
 A project is set up automatically on its first config-dependent command (a
-minimal `.meow/config.toml` plus the `.gitignore` boundary; see
-[docs/CLI.md](docs/CLI.md)). `/meow:onboard` is for add-ons: integrations and
-optional features on an onboarded project, and the base setup itself for a
-project that has never been onboarded. It repairs its `.gitignore` itself. Use `/meow:migration` separately
-for legacy layouts; migration also repairs `.gitignore` itself.
-Both skills ask about optional integrations and project features using yes/no
-choices.
+minimal `.meow/config.toml`, a documentation-only local template, and the
+`.gitignore` boundary; see [docs/CLI.md](docs/CLI.md)). `/meow:onboard` is
+for add-ons on an onboarded project and can also run the full setup flow for a
+project that has never been onboarded. It repairs its `.gitignore` itself.
+Use `/meow:migration` separately for legacy layouts; migration also repairs
+`.gitignore` itself. Both skills ask about optional integrations and project
+features using yes/no choices.
 
 ## Native (in-session) skill execution
 
-Each skill runs in one of two modes. **Native** (the default in Claude Code):
-the calling session plans and generates, and a fresh Task subagent reviews
-each round. The agent-free `meow native` helpers provide deterministic facts
-as JSON. **CLI** mode shells out to `meow <command>` and uses the Agent SDK;
-this is the headless path.
+The workflow skills `run`, `plan`, `review`, and `lint` document two execution
+paths. `run` defaults to the CLI so automatic project understanding and
+checkpointing stay in one process; `plan`, `review`, and `lint` default to the
+native Claude Code session when invoked there. The agent-free `meow native`
+helpers provide deterministic facts as JSON. The `onboard`, `migration`, and
+`customize` skills are guidance flows that use the documented helpers rather
+than separate CLI workflows.
 
 Both modes share `.meow/config.toml` semantics, file names, and the
 `SUMMARY:`/`STATUS:` verdict format. The shared protocol is
@@ -87,14 +96,15 @@ are defined in `src/meow/prompts.py`; update them there, not in a skill.
 Claude owns transcript retention. MEOW stores only role-to-session references in
 the atomic run JSON needed for resume; it does not copy Claude events into a
 second transcript database.
-Design: [native execution spec](docs/superpowers/specs/2026-09-29-native-skill-execution-design.md).
 
 ## Claude Code plugin
 
-This repository is also a Claude Code plugin. It provides `/meow:run`,
-`/meow:plan`, `/meow:review`, and `/meow:lint` skills. Each wraps the matching
-CLI command except `/meow:lint`, which runs `meow run --lint-fix --report-only`
-and fixes findings in the calling session. See `skills/*/SKILL.md`.
+This repository is also a Claude Code plugin. It provides workflow skills
+`/meow:run`, `/meow:plan`, `/meow:review`, and `/meow:lint`, plus the
+`/meow:onboard`, `/meow:migration`, and `/meow:customize` guidance skills.
+The workflow wrappers are documented in `skills/*/SKILL.md`; `/meow:lint`
+reports through `meow run --lint-fix --report-only` and fixes findings in the
+calling session.
 
 ## Lint
 
@@ -109,20 +119,34 @@ uses one command.
 
 ## Layout
 
-The engine is split by responsibility under `src/meow/`:
+The engine is split by responsibility under `src/meow/`. Keep the package root
+limited to package entry points; implementation belongs in the narrowest
+responsibility package:
 
-- `config.py`, `sprint.py`, `lint.py`, `test_runner.py`, `worktree.py`, `logging.py`,
-  and `plan_files.py` handle project settings and shared workflow support.
-- `agents/` contains the explorer, planner, generator, reviewer, and fixer
-  roles, built on the shared agent base.
-- `orchestrator.py` owns the generator/reviewer round loops; `sprint_runner.py`
-  and `review_cli.py` implement the top-level command flows.
-- `issue_solver.py`, `gitlab_reviewer.py`, and `branch_reviewer.py` support
-  Jira, GitLab, and branch reviews; `lint_fix.py` implements lint-fix mode.
-- `prompts.py` supplies role prompts to both execution modes. `native_*.py`,
-  `native.py`, and `native_cli.py` provide deterministic helpers for native
+- `agents/` contains the explorer, planner, generator, reviewer, tester,
+  fixer, documentation, and integration-fetcher roles.
+- `cli/` owns argument parsing, dispatch, status, resume, queue, IPython, and
+  review command entry points.
+- `execution/` owns sprint orchestration, run state, delivery, cancellation
+  policy, plan approval, and queue execution.
+- `infrastructure/` owns linting, test/build checks, logging, usage, background
+  workers, worktree lifecycle, worktree setup, and quality evidence.
+- `integrations/` owns Jira, GitLab, GitHub, CI review, documentation update,
+  and project-knowledge adapters.
+- `native/` provides deterministic helpers and the JSON CLI used by native
   skill execution.
-- `cli.py` wires up the `meow` console command.
+- `evaluation/` owns read-only evaluation reports over durable run journals.
+- `frontend/` owns frontend and browser-capability discovery helpers.
+- `project/` owns configuration, onboarding, plan files/state, shaping,
+  prompts, permissions, and command policy.
+- `hooks/` owns reversible Claude Code hook installation and handlers;
+  `installer/` owns the post-install bootstrap; `tasks/` owns task-graph and
+  scheduler support.
+Prefer creating or reusing subpackages for related modules instead of adding
+many floating files to a package. Two to four directly owned files can make
+sense when the boundary is clear, but this is a guideline rather than a hard
+limit. Empty placeholder packages are not kept; see
+`docs/ARCHITECTURE.md` for the full package-ownership guidance.
 
 The `src/` layout is deliberate: code run from the repository root reaches the
 installed copy, so a broken editable install is caught rather than masked.
@@ -135,7 +159,9 @@ Every role in `agents/` follows the `*Agent(context)` pattern from
 generator's explorer definition and lint hook.
 
 The shared `Agent` base builds SDK options and runs one-shot queries. The
-explorer returns an `AgentDefinition` for nested use, while the generator
-keeps a persistent `ClaudeSDKClient` across feedback rounds. Internal callers
-use the canonical agent classes and responsibility packages directly.
+explorer returns an `AgentDefinition` for nested use, while the generator and
+the review/lint fixers keep persistent `ClaudeSDKClient` sessions across
+feedback rounds. Integration fetchers are read-only and feed structured
+source material into the corresponding workflow. Internal callers use the
+canonical agent classes and responsibility packages directly.
 

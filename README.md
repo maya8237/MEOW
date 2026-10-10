@@ -36,8 +36,9 @@ Terminal or CI:
 meow run "Add CSV export" --name csv-export
 ```
 
-Projects are set up automatically on first use. Use `/meow:onboard` for
-integrations and optional features.
+Projects are set up automatically on first use when a config-dependent command
+runs. Use `/meow:onboard` for integrations and optional features, or
+`/meow:migration` for a legacy MEOW layout.
 
 ## Common commands
 
@@ -45,6 +46,7 @@ integrations and optional features.
 | --- | --- |
 | Plan only | `/meow:plan ...` or `meow plan ...` |
 | Review | `/meow:review ...` or `meow review ...` |
+| Fix lint | `/meow:lint` |
 | Queue work | `meow queue "..."` |
 | Check or continue | `meow status` or `meow resume RUN_ID` |
 
@@ -57,12 +59,15 @@ advanced options.
 - `.meow/config.local.toml` — ignored machine- or user-specific settings.
 - `~/.meow/config.toml` — user fallback settings.
 
-MEOW supports Jira, GitLab, GitHub, LiteLLM, testing, hooks, and scheduling.
-See the [integration guide](docs/INTEGRATIONS.md).
+MEOW supports Jira, GitLab, GitHub, configured tests and builds, browser
+tester checks, Claude Code hooks, and scheduled Jira runs. See the
+[integration guide](docs/INTEGRATIONS.md).
 
 ## Docs
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [CLI guide](docs/CLI.md)
+- [Integrations](docs/INTEGRATIONS.md)
 - [Project instructions](AGENTS.md)
 - [Contributing](CONTRIBUTING.md)
 - [Roadmap](docs/ROADMAP.md)

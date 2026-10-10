@@ -1,13 +1,12 @@
 ---
 name: review
-description: Review existing code -- report-only, or loop fixing until it passes -- sourced from a free-text prompt, a Jira issue, a GitLab merge request, a GitHub pull request, a local branch's diff against a target, an existing plan file, or an existing review file being resumed. Runs natively in this Claude Code session by default. Use whenever the user wants code checked or fixed against some existing source of truth, rather than a new feature built from scratch.
+description: Review existing code -- report-only, or loop fixing until it passes -- sourced from a free-text prompt, a Jira issue, a GitLab merge request, a GitHub pull request, a GitLab CI checkout, a local branch's diff against a target, an existing plan file, or an existing review file being resumed. Runs natively in this Claude Code session by default except for the CLI-only CI source. Use whenever the user wants code checked or fixed against some existing source of truth, rather than a new feature built from scratch.
 ---
 
 # review
 
-One consolidated review operation, replacing what used to be five separate
-skills (`meow-review`, `meow-cr`, `gitlab-review`, `branch-review`,
-`review-fix-review`). Runs **natively** by default. Read
+One consolidated review operation covering prompt, issue, remote-review,
+branch, plan, review-file, and CI sources. Runs **natively** by default. Read
 [`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this
 skill's base directory) first. Use **CLI mode** (bottom) only if explicitly
 asked.
@@ -22,12 +21,15 @@ asked.
 | A Jira issue key (or "the latest issue") | jira | current checkout, as-is -- the issue's text becomes the review basis, nothing gets built |
 | A GitLab merge request URL | gitlab | **none** -- read-only, diff fetched via MCP |
 | A GitHub pull request URL | github | **none** -- read-only, diff fetched via MCP |
+| A GitLab pipeline checkout, or an explicit `--ci` request | ci | **none** -- detached, report-only CLI review |
 | A branch name + a target branch | branch | isolated worktree (default) or in place |
 | A plan file path, or nothing at all and a plan exists in `docs_dir` | plan | current checkout, as-is |
 | An existing review file to resume | review-file | whatever that file's own flavor needs (plan/prompt only -- see step 5) |
 | Nothing at all, and no plan exists either | prompt (empty) | current checkout -- reviews the git diff, or the whole project if the diff is empty |
 
-Only one source may be given. If the user seems to want two at once (e.g. a
+Only one source may be given. The `ci` source is CLI-only because it validates
+the live GitLab checkout and CI environment; run `meow review --ci` even when
+this native-default skill was invoked. If the user seems to want two at once (e.g. a
 prompt *and* a branch), ask which one they mean.
 
 **Mode** — did the user ask to *check/grade* the code, or to *fix* it?
@@ -72,6 +74,11 @@ branch out locally first). Resuming from a review file always fixes (there's no
      not `[github.mcp]`. If none connected, say so and stop. Do not check
      anything out. `meow native prepare --no-worktree --allow-dirty
      --work-dir "<project-path>"` (changes nothing; confirms config).
+   - **ci**: do not use native mode. Run `meow review --ci` from the detached
+     GitLab checkout; use `--target-ref` and `--artifact-dir` only when the
+     pipeline or maintainer explicitly supplies them. The command is
+     report-only and validates `CI_COMMIT_SHA`, the supported pipeline type,
+     the detached checkout, and the target history before reviewing.
    - **branch**: both branch and target are required -- never guess a
      target. Isolated worktree (default): `meow native prepare
      --existing-branch "<branch>" --name "branch-review-<sanitized-branch>"
@@ -158,6 +165,7 @@ meow review --fix "<prompt>" --work-dir "<project-path>"        # prompt source,
 meow review --jira [KEY] [--fix] --work-dir "<project-path>"
 meow review --gitlab "<mr-url>" --work-dir "<project-path>"     # always report-only
 meow review --github "<pr-url>" --work-dir "<project-path>"     # always report-only
+meow review --ci [--target-ref "<ref>"] [--artifact-dir "<path>"]  # GitLab CI, report-only
 meow review --branch "<branch>" --target "<target>" [--fix] [--no-worktree] --work-dir "<project-path>"
 meow review --plan "<path>" [--fix] --work-dir "<project-path>"   # omit for auto-discovery
 meow review --plan "<path>" --test [--fix] --work-dir "<project-path>"
@@ -165,10 +173,11 @@ meow review --review-file "<path>" ["<focus prompt>"] --work-dir "<project-path>
 ```
 
 Omitting every source flag reviews the latest plan in `docs_dir` (default
-`.meow/plans`), falling
-back to the git diff (or whole project) if none exists. `--gitlab` and
-`--github` combined with `--fix` are rejected -- there is no local checkout to
-fix. If `meow`
+`.meow/plans`), falling back to the git diff (or whole project) if none exists.
+`--gitlab` and `--github` combined with `--fix` are rejected -- there is no
+local checkout to fix. `--ci` is mutually exclusive with prompt text, other
+sources, `--fix`, `--test`, and `--no-worktree`; it reviews the exact detached
+CI checkout and writes report/verdict artifacts. If `meow`
 isn't on PATH, tell the user to install it (README: `pip install -e .` in a
 venv, or `pipx install -e .`). Stream `[reviewer]`/`[generator]`/
 `[review_fixer]` progress; report PASS or, after `max_rounds`, the review
