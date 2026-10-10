@@ -17,8 +17,7 @@ def architecture_context(
     """Read the preferred architecture doc plus explicitly configured docs."""
     root = active_dir.resolve()
     preferred = root / "docs" / "ARCHITECTURE.md"
-    fallback = root / "ARCHITECTURE.md"
-    sources = [preferred if preferred.is_file() else fallback]
+    sources = [preferred]
     sources.extend(root / path for path in explicit_files)
     sections = []
     seen = set()

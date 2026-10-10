@@ -1,71 +1,30 @@
-"""
-meow/config.py
-
-Layered MEOW configuration loading and merging. The command models, schema
-validation, environment expansion, and launch policy live in sibling
-config_* and command_policy modules; this module re-exports them so existing
-imports from meow.project.config keep working.
-"""
-
-try:
-    import tomllib  # Python 3.11+
-except ModuleNotFoundError:
-    import tomli as tomllib  # Python 3.10 fallback -- pip install tomli
+"""Layered MEOW configuration loading and merging."""
 
 import platform
+import tomllib
 from pathlib import Path
 
-from meow.project.command_policy import (
-    _os_mismatch,
-    _validate_os_compatibility,
-    split_command,
-)
-from meow.project.config_env import (
-    _expand_config_environment,
-    unresolved_environment_references,
+from meow.project.command_policy import _os_mismatch, _validate_os_compatibility
+from meow.project.config_env import _expand_config_environment
+from meow.project.config_files import (
+    CONFIG_FILENAME as _CONFIG_FILENAME,
 )
 from meow.project.config_files import (
-    CONFIG_FILENAME,
-    LOCAL_CONFIG_FILENAME,
-    USER_CONFIG_FILENAME,
+    LOCAL_CONFIG_FILENAME as _LOCAL_CONFIG_FILENAME,
 )
-from meow.project.config_models import (
-    DEFAULT_FIX_FLAG,
-    DevServerCommand,
-    LintCommand,
-    VerificationCommand,
-    resolve_command_cwd,
+from meow.project.config_files import (
+    USER_CONFIG_FILENAME as _USER_CONFIG_FILENAME,
 )
 from meow.project.config_schema import (
-    LINT_ENTRY_KEYS,
-    MCP_ENTRY_KEYS,
-    SERVER_ENTRY_KEYS,
-    TEST_ENTRY_KEYS,
-    TESTER_KEYS,
     _normalize_lint_commands,
     _normalize_tester_config,
     _validate_max_rounds,
 )
 
 __all__ = [
-    "CONFIG_FILENAME",
     "DEFAULT_CONFIG",
-    "DEFAULT_FIX_FLAG",
-    "LINT_ENTRY_KEYS",
-    "LOCAL_CONFIG_FILENAME",
-    "MCP_ENTRY_KEYS",
-    "SERVER_ENTRY_KEYS",
-    "TESTER_KEYS",
-    "TEST_ENTRY_KEYS",
-    "USER_CONFIG_FILENAME",
-    "DevServerCommand",
-    "LintCommand",
-    "VerificationCommand",
     "config_paths",
     "load_config",
-    "resolve_command_cwd",
-    "split_command",
-    "unresolved_environment_references",
     "user_config_path",
 ]
 
@@ -120,14 +79,14 @@ def _merge_config(base: dict, override: dict) -> dict:
 
 def user_config_path() -> Path:
     """Return the optional per-user fallback config path."""
-    return Path.home() / USER_CONFIG_FILENAME
+    return Path.home() / _USER_CONFIG_FILENAME
 
 
 def config_paths(working_dir: Path) -> tuple[Path, ...]:
     """Return configs from highest priority to lowest priority."""
     project = Path(working_dir)
-    local = project / LOCAL_CONFIG_FILENAME
-    shared = project / CONFIG_FILENAME
+    local = project / _LOCAL_CONFIG_FILENAME
+    shared = project / _CONFIG_FILENAME
     paths = []
     if local.is_file():
         paths.append(local)
@@ -148,10 +107,10 @@ def config_root(project_dir: Path, active_dir: Path | None = None) -> Path:
     holds the only `.meow/config.toml` until it is merged, so read it there.
     """
     project = Path(project_dir)
-    if active_dir is None or (project / CONFIG_FILENAME).is_file():
+    if active_dir is None or (project / _CONFIG_FILENAME).is_file():
         return project
     active = Path(active_dir)
-    return active if (active / CONFIG_FILENAME).is_file() else project
+    return active if (active / _CONFIG_FILENAME).is_file() else project
 
 
 def load_config(working_dir: Path) -> dict:
@@ -177,15 +136,15 @@ def load_config(working_dir: Path) -> dict:
     config["worktree_setup"] = validate_setup(user_config.get("worktree_setup"))
     delivery = user_config.get("delivery", {})
     if not isinstance(delivery, dict):
-        raise ValueError(f"{CONFIG_FILENAME}: [delivery] must be a table")
+        raise ValueError(f"{_CONFIG_FILENAME}: [delivery] must be a table")
     target = delivery.get("target_branch", "dev")
     if not isinstance(target, str) or not target or target.startswith("-"):
         raise ValueError(
-            f"{CONFIG_FILENAME}: [delivery].target_branch must be a branch name"
+            f"{_CONFIG_FILENAME}: [delivery].target_branch must be a branch name"
         )
     gitlab = delivery.get("gitlab", {})
     if not isinstance(gitlab, dict):
-        raise ValueError(f"{CONFIG_FILENAME}: [delivery.gitlab] must be a table")
+        raise ValueError(f"{_CONFIG_FILENAME}: [delivery.gitlab] must be a table")
     config["delivery"] = {
         "target_branch": target,
         "gitlab": {"enabled": bool(gitlab.get("enabled", False))},
@@ -200,7 +159,7 @@ def load_config(working_dir: Path) -> dict:
             )
             if problem:
                 raise ValueError(
-                    f"{CONFIG_FILENAME}: {table_name} entry {position} "
+                    f"{_CONFIG_FILENAME}: {table_name} entry {position} "
                     f"command {command.command!r} {problem}"
                 )
     _validate_max_rounds(config)

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meow.infrastructure.logging import get_logger
-from meow.project.config import LintCommand, resolve_command_cwd
+from meow.project.config_models import LintCommand, resolve_command_cwd
 
 logger = get_logger(__name__)
 

@@ -11,12 +11,12 @@ from pathlib import Path
 
 from meow.execution.run_state import MAX_OUTPUT, CheckResult
 from meow.infrastructure.test_runner import prepared_test_stage
-from meow.project.config import (
+from meow.project.command_policy import split_command
+from meow.project.config import config_paths
+from meow.project.config_models import (
     LintCommand,
     VerificationCommand,
-    config_paths,
     resolve_command_cwd,
-    split_command,
 )
 from meow.project.config_schema import _command_fields, _positive_timeout, _typed_bool
 

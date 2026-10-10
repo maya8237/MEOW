@@ -10,7 +10,7 @@ filesystem, the SDK, or a Sprint.
 import json
 from pathlib import Path
 
-from meow.project.config import LintCommand
+from meow.project.config_models import LintCommand
 from meow.project.shaping import ShapeContext
 
 

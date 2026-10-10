@@ -13,7 +13,8 @@ from meow.infrastructure.test_runner import (
 from meow.infrastructure.test_runner import (
     VerificationStageEvidence as StageEvidence,
 )
-from meow.project.config import DevServerCommand, load_config
+from meow.project.config import load_config
+from meow.project.config_models import DevServerCommand
 
 
 def _port():

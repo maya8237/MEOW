@@ -142,20 +142,17 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
         _, _, run, _ = await self._run_tester("STATUS: PASS\nSUMMARY: ok")
         self.assertFalse(run.await_args.args[1].mcp_servers)
 
-    def test_architecture_prefers_docs_then_root_and_adds_explicit_files(self):
+    def test_architecture_reads_docs_and_adds_explicit_files(self):
         docs = self.root / "docs" / "ARCHITECTURE.md"
-        root = self.root / "ARCHITECTURE.md"
         extra = self.root / "apps" / "ARCHITECTURE.md"
         extra.parent.mkdir()
         docs.write_text("docs architecture", encoding="utf-8")
-        root.write_text("root architecture", encoding="utf-8")
         extra.write_text("component architecture", encoding="utf-8")
         content = architecture_context(self.root, [Path("apps/ARCHITECTURE.md")])
         self.assertIn("docs architecture", content)
         self.assertIn("component architecture", content)
-        self.assertNotIn("root architecture", content)
         docs.unlink()
-        self.assertIn("root architecture", architecture_context(self.root, []))
+        self.assertIn("No architecture document", architecture_context(self.root, []))
 
     def test_missing_architecture_is_reported_as_optional_context(self):
         self.assertIn("No architecture document", architecture_context(self.root, []))

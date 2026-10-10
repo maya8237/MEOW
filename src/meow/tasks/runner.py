@@ -9,7 +9,7 @@ from meow.execution.sprint import Sprint, build_sprint
 from meow.infrastructure.cancellation import cancel_requested
 from meow.infrastructure.usage import usage_scope
 from meow.infrastructure.worktree_setup import run_setup
-from meow.project.config import split_command
+from meow.project.command_policy import split_command
 from meow.project.permissions import PermissionPolicy
 
 from .executor import execute_in_worktrees

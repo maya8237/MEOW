@@ -18,7 +18,8 @@ from meow.infrastructure.lint import (
     check_lint_commands,
     run_lint_on_file,
 )
-from meow.project.config import LintCommand, config_root, load_config
+from meow.project.config import config_root, load_config
+from meow.project.config_models import LintCommand
 
 
 @dataclass(frozen=True)
