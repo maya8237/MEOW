@@ -26,7 +26,7 @@ fi
 if ! (
     export HOME="$temp_home"
     export PYTHONPATH="$repo_dir/src"
-    printf 'n\n' | sh "$repo_dir/scripts/install.sh" >"$output_file" 2>&1
+    printf 'n\n' | sh -c 'eval "$(cat "$1")"' _ "$repo_dir/scripts/install.sh" >"$output_file" 2>&1
 ); then
     cat "$output_file"
     exit 1

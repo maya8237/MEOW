@@ -80,7 +80,7 @@ function Get-OriginMainVersion {
     } catch {
         return $null
     }
-    if ($content -match '(?m)^\s*version\s*=\s*["''](?<version>[^"'']+)["'']') {
+    if ($content -match '(?m)^\s*version\s*=\s*["\x27](?<version>[^"\x27]+)["\x27]') {
         return $Matches.version
     }
     return $null
@@ -205,7 +205,7 @@ function Stop-ForExistingMeow {
     } elseif ($null -eq $comparison) {
         Write-Warning "MEOW is already installed at $existingPath, but its version could not be compared with origin/main. Using the existing installation without reinstalling it."
     } else {
-        Write-Host "MEOW is up to date ✓" -ForegroundColor Green
+        Write-Host "MEOW is up to date" -ForegroundColor Green
     }
 
     $existingSetup = Find-ExistingMeowCheckout
@@ -280,7 +280,7 @@ $destination = Read-Host "Parent directory for MEOW [$defaultParent]"
 if ([string]::IsNullOrWhiteSpace($destination)) {
     $destination = $defaultParent
 }
-$destination = [Environment]::ExpandEnvironmentVariables($destination.Trim().Trim('"'))
+$destination = [Environment]::ExpandEnvironmentVariables($destination.Trim().Trim([char]34))
 $destination = [IO.Path]::GetFullPath($destination)
 $trimmedDestination = $destination.TrimEnd([char[]]@("\", "/"))
 $leaf = [IO.Path]::GetFileName($trimmedDestination)

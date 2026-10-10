@@ -133,9 +133,9 @@ def test_bootstrap_scripts_stop_when_meow_is_already_on_path():
 def test_powershell_existing_install_reports_up_to_date_and_forwards_setup_output():
     powershell = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
 
-    assert 'Write-Host "MEOW is up to date ✓" -ForegroundColor Green' in powershell
+    assert 'Write-Host "MEOW is up to date" -ForegroundColor Green' in powershell
     assert re.search(
-        r"MEOW is up to date ✓.*?if \(\$comparison -ne \$false\).*?Read-Host",
+        r"MEOW is up to date.*?if \(\$comparison -ne \$false\).*?Read-Host",
         powershell,
         re.DOTALL,
     )
