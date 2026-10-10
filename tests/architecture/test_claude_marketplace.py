@@ -19,6 +19,7 @@ def test_marketplace_catalog_exposes_every_meow_skill():
 
     assert skill_directories == [
         "customize",
+        "integrate-ci-review",
         "lint",
         "migration",
         "onboard",
