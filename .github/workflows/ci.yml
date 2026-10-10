@@ -26,7 +26,8 @@ jobs:
         shell: bash
         run: python -m pytest tests/installer/test_bootstrap_contract.py -q 2>&1 | tee installer-test-output.log
       - name: Surface installer-test failures as an annotation
-        if: steps.installer-tests.outcome == 'failure'
+        # Without failure(), GitHub adds an implicit success() and skips this.
+        if: failure() && steps.installer-tests.outcome == 'failure'
         shell: bash
         run: |
           tail -n 120 installer-test-output.log | sed 's/%/%25/g; s/\r/%0D/g' | awk '{printf "%s%%0A", $0}' | { printf '::error::'; cat; printf '\n'; }
@@ -34,12 +35,13 @@ jobs:
       # discovery skips; the installer tests already ran above. bash keeps
       # pipefail on every OS, so `tee` cannot mask a failing exit code.
       - name: Run the test suite
+        id: test-suite
         shell: bash
         run: python -m pytest -q -p no:cacheprovider --ignore=tests/installer/test_bootstrap_contract.py 2>&1 | tee test-output.log
       # Job logs need sign-in; annotations are public, so surface the tail
       # of the captured output there on failure.
       - name: Surface test-suite failures as an annotation
-        if: failure()
+        if: failure() && steps.test-suite.outcome == 'failure'
         shell: bash
         run: |
           tail -n 60 test-output.log | sed 's/%/%25/g; s/\r/%0D/g' | awk '{printf "%s%%0A", $0}' | { printf '::error::'; cat; printf '\n'; }
