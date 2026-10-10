@@ -57,6 +57,13 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         self.assertNotIn("evaluate", help_text)
         self.assertNotIn("docs-update", help_text)
 
+    def test_resume_exposes_only_the_continue_flag(self):
+        parser = cli._build_arg_parser()
+
+        self.assertFalse(parser.parse_args(["resume", "run-123"]).continue_run)
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["resume", "run-123", "--auto-resume"])
+
     def test_unattended_flag_accepts_short_alias(self):
         parser = cli._build_arg_parser()
 
@@ -217,6 +224,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         with tempfile.TemporaryDirectory() as tmpdir:
             working_dir = Path(tmpdir)
             plan_file = working_dir / "docs" / "plan.md"
+            plan_file.parent.mkdir(parents=True)
+            plan_file.write_text("# Plan\n", encoding="utf-8")
 
             mock_generator = MagicMock()
             mock_generator.__aenter__ = AsyncMock(return_value=mock_generator)
@@ -251,6 +260,96 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             self.assertEqual(mock_planner_run.await_count, 1)
             mock_review_plan.assert_awaited_once_with(plan_file)
 
+    def test_run_sprint_fails_when_planner_does_not_create_plan(self):
+        config = {
+            "models": {
+                "planner": "x",
+                "generator": "x",
+                "reviewer": "x",
+                "explorer": "x",
+            },
+            "lint": [],
+            "docs_dir": "docs",
+            "max_rounds": 1,
+            "lint_timeout": 60,
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            working_dir = Path(tmpdir)
+            plan_file = working_dir / "docs" / "plan.md"
+            mock_generator = MagicMock()
+            mock_generator.__aenter__ = AsyncMock(return_value=mock_generator)
+            mock_generator.__aexit__ = AsyncMock(return_value=False)
+            mock_generator.implement = AsyncMock(return_value="")
+
+            with (
+                patch("meow.execution.orchestrator.load_config", return_value=config),
+                patch(
+                    "meow.execution.orchestrator.Generator",
+                    return_value=mock_generator,
+                ) as mock_generator_cls,
+                patch.object(
+                    PlannerAgent, "run", new_callable=AsyncMock
+                ) as mock_planner_run,
+                patch.object(
+                    ReviewerAgent, "review_plan", new_callable=AsyncMock
+                ) as mock_review_plan,
+            ):
+                mock_planner_run.return_value = plan_file
+                mock_review_plan.return_value = ("PASS", "STATUS: PASS\n")
+
+                with self.assertRaisesRegex(
+                    FileNotFoundError, "Planner did not create plan file"
+                ):
+                    asyncio.run(
+                        sprint_runner.run_sprint(
+                            working_dir,
+                            "ship-it",
+                            "Add CSV export",
+                            use_worktree=False,
+                        )
+                    )
+
+            mock_generator_cls.assert_not_called()
+
+    def test_run_plan_fails_when_planner_does_not_create_plan(self):
+        config = {
+            "models": {
+                "planner": "x",
+                "generator": "x",
+                "reviewer": "x",
+                "explorer": "x",
+            },
+            "lint": [],
+            "docs_dir": "docs",
+            "max_rounds": 1,
+            "lint_timeout": 60,
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            working_dir = Path(tmpdir)
+            plan_file = working_dir / "docs" / "plan.md"
+
+            with (
+                patch("meow.execution.orchestrator.load_config", return_value=config),
+                patch.object(
+                    PlannerAgent, "run", new_callable=AsyncMock
+                ) as mock_planner_run,
+            ):
+                mock_planner_run.return_value = plan_file
+
+                with self.assertRaisesRegex(
+                    FileNotFoundError, "Planner did not create plan file"
+                ):
+                    asyncio.run(
+                        sprint_runner.run_plan(
+                            working_dir,
+                            "ship-it",
+                            "Add CSV export",
+                            use_worktree=False,
+                        )
+                    )
+
     def test_run_sprint_raises_when_the_plan_is_not_approved(self):
         config = {
             "models": {
@@ -268,6 +367,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         with tempfile.TemporaryDirectory() as tmpdir:
             working_dir = Path(tmpdir)
             plan_file = working_dir / "docs" / "plan.md"
+            plan_file.parent.mkdir(parents=True)
+            plan_file.write_text("# Plan\n", encoding="utf-8")
             mock_approve = MagicMock(return_value=False)
 
             with (
@@ -312,6 +413,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         with tempfile.TemporaryDirectory() as tmpdir:
             working_dir = Path(tmpdir)
             plan_file = working_dir / "docs" / "plan.md"
+            plan_file.parent.mkdir(parents=True)
+            plan_file.write_text("# Plan\n", encoding="utf-8")
             mock_approve = MagicMock(return_value=True)
 
             mock_generator = MagicMock()
@@ -697,7 +800,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         async def _run():
             await planner_agent.run_planner(sprint, "ship-it", "Add CSV export")
 
-        asyncio.run(_run())
+        with patch.object(Path, "is_file", return_value=True):
+            asyncio.run(_run())
 
         options = mock_query.call_args.kwargs["options"]
         self.assertEqual(options.cwd, str(worktree_root))

@@ -166,6 +166,8 @@ def test_plan_onboards_the_active_directory(tmp_path):
 
     repo = _git_dir(tmp_path / "repo")
     sprint = Sprint(repo, dict(BASE_CONFIG), None, None, repo, False)
+    plan_file = repo / "plan.md"
+    plan_file.write_text("# Plan\n", encoding="utf-8")
 
     with (
         patch(
@@ -179,7 +181,7 @@ def test_plan_onboards_the_active_directory(tmp_path):
         preplan.return_value.decision.mode = "plan"
         preplan.return_value.to_dict.return_value = {}
         preplan.return_value.shape = None
-        planner.return_value.run = AsyncMock(return_value=repo / "plan.md")
+        planner.return_value.run = AsyncMock(return_value=plan_file)
         asyncio.run(run_plan(repo, "feature", "do it"))
 
     assert (repo / ".meow" / "config.toml").is_file()

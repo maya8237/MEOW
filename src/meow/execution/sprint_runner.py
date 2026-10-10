@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from meow.agents.planner import PlannerAgent
+from meow.agents.planner import PlannerAgent, require_plan_file
 from meow.execution.delivery import deliver_verified_run
 from meow.execution.orchestrator import (
     PlanNotApprovedError,
@@ -327,6 +327,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
                             effective_name, request, sprint.config.get("_shape_context")
                         ),
                     )
+                    plan_file = require_plan_file(plan_file)
             except RunCancelled:
                 raise
             except BaseException as exc:
@@ -502,5 +503,6 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
     plan_file = await PlannerAgent(sprint).run(
         effective_name, request, sprint.config.get("_shape_context")
     )
+    plan_file = require_plan_file(plan_file)
     logger.info("planner_finished", plan_file=str(plan_file))
     return plan_file

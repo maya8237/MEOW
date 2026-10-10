@@ -9,6 +9,13 @@ from meow.project.prompts import planner_prompt
 from meow.project.shaping import ShapeContext
 
 
+def require_plan_file(plan_file: Path) -> Path:
+    """Require the planner to leave a usable plan artifact behind."""
+    if not plan_file.is_file():
+        raise FileNotFoundError(f"Planner did not create plan file: {plan_file}")
+    return plan_file
+
+
 class PlannerAgent(Agent):
     """Generate a sprint plan through the configured planning model."""
 
@@ -38,7 +45,7 @@ class PlannerAgent(Agent):
             skills=["superpowers:writing-plans"],
         )
         await self.run_query(request, options, "Planner")
-        return plan_file
+        return require_plan_file(plan_file)
 
 
 async def run_planner(

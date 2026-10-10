@@ -16,6 +16,7 @@ from meow.agents.base import (
     Agent,
     AgentContext,
     log_stream_message,
+    prepare_output_file,
     restrict_writes,
 )
 from meow.infrastructure.logging import get_logger
@@ -107,10 +108,11 @@ class GitlabFetcherAgent(Agent):
             allowed_tools=[*_GITLAB_TOOLS, "Write"],
         )
         restrict_writes(options, output_file, self.context.active_working_dir())
+        prepare_output_file(output_file)
         await self.run_query(
             "Fetch the GitLab merge request.", options, "gitlab_fetcher"
         )
-        if not output_file.exists():
+        if not output_file.is_file():
             raise RuntimeError(
                 f"gitlab-fetcher did not write {output_file} -- the GitLab "
                 "MCP may not have returned a matching merge request."

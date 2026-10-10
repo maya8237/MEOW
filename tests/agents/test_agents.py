@@ -257,36 +257,45 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(definition.tools, ["Read", "Grep", "Glob", "Bash"])
         self.assertEqual(definition.model, "model-for-explorer")
 
-    async def test_planner_writes_plan_with_context_options_and_explorer(self):
-        observed = {}
+    async def test_planner_writes_plan_with_context_options_and_explorer(  # ruff: ignore[too-many-statements]
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.context.project_dir = Path(tmpdir)
+            self.context.repo_dir = self.context.project_dir
+            expected_dir = self.context.project_dir / self.context.config["docs_dir"]
+            expected_plan = expected_dir / "ship-it.md"
+            observed = {}
 
-        async def fake_query(*, prompt, options):
-            observed["prompt"] = prompt
-            observed["options"] = options
-            await __import__("asyncio").sleep(0)
-            yield ResultMessage(
-                subtype="success",
-                duration_ms=0,
-                duration_api_ms=0,
-                is_error=False,
-                num_turns=1,
-                session_id="session",
-                result="done",
+            async def fake_query(*, prompt, options):
+                observed["prompt"] = prompt
+                observed["options"] = options
+                expected_plan.write_text("# Plan\n", encoding="utf-8")
+                await __import__("asyncio").sleep(0)
+                yield ResultMessage(
+                    subtype="success",
+                    duration_ms=0,
+                    duration_api_ms=0,
+                    is_error=False,
+                    num_turns=1,
+                    session_id="session",
+                    result="done",
+                )
+
+            with patch("meow.agents.base.query", fake_query):
+                plan_file = await PlannerAgent(self.context).run(
+                    "ship-it", "Add CSV export"
+                )
+
+            self.assertEqual(plan_file, expected_plan)
+            self.assertTrue(plan_file.parent.is_dir())
+            self.assertEqual(observed["prompt"], "Add CSV export")
+            options = observed["options"]
+            self.assertEqual(options.model, "model-for-planner")
+            self.assertEqual(options.cwd, str(self.context.project_dir))
+            self.assertEqual(
+                options.agents["explorer"].model, "model-for-explorer"
             )
-
-        with patch("meow.agents.base.query", fake_query):
-            plan_file = await PlannerAgent(self.context).run(
-                "ship-it", "Add CSV export"
-            )
-
-        expected_dir = self.context.project_dir / self.context.config["docs_dir"]
-        self.assertEqual(plan_file, expected_dir / "ship-it.md")
-        self.assertTrue(plan_file.parent.is_dir())
-        self.assertEqual(observed["prompt"], "Add CSV export")
-        options = observed["options"]
-        self.assertEqual(options.model, "model-for-planner")
-        self.assertEqual(options.cwd, str(self.context.project_dir))
-        self.assertEqual(options.agents["explorer"].model, "model-for-explorer")
 
     async def test_planner_raises_on_sdk_failure(self):
         failure = ResultMessage(
@@ -481,6 +490,27 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"Write your verdict to {review_file}", options.system_prompt)
         self.assertIn("ruff check", options.system_prompt)
         self.assertIn("SOLID/SRP", options.system_prompt)
+
+    async def test_review_plan_rejects_stale_verdict_without_fresh_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            plan_file = root / "feature.md"
+            plan_file.write_text("Plan", encoding="utf-8")
+            review_file = root / "feature-review.md"
+            review_file.write_text(
+                "SUMMARY: stale pass\nSTATUS: PASS\n", encoding="utf-8"
+            )
+            context = FakeProjectContext()
+            context.project_dir = root
+            context.repo_dir = root
+
+            with (
+                patch.object(ReviewerAgent, "run_query", new_callable=AsyncMock),
+                self.assertRaisesRegex(RuntimeError, "did not produce"),
+            ):
+                await ReviewerAgent(context).review_plan(plan_file)
+
+            self.assertFalse(review_file.exists())
 
     async def test_blocking_lint_failure_overrides_reviewer_pass(self):
         plan_file = self.context.project_dir / "feature.md"
