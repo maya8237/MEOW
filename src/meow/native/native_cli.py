@@ -20,6 +20,7 @@ from meow.project.config import config_root, load_config
 
 def _add_dirs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
+        "--working-dir",
         "--work-dir",
         "-d",
         dest="working_dir",
