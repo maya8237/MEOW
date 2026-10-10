@@ -141,6 +141,19 @@ def config_paths(working_dir: Path) -> tuple[Path, ...]:
     return tuple(paths)
 
 
+def config_root(project_dir: Path, active_dir: Path | None = None) -> Path:
+    """Directory config is read from for a run in `active_dir`.
+
+    Normally the project root. A feature worktree that was just auto-onboarded
+    holds the only `.meow/config.toml` until it is merged, so read it there.
+    """
+    project = Path(project_dir)
+    if active_dir is None or (project / CONFIG_FILENAME).is_file():
+        return project
+    active = Path(active_dir)
+    return active if (active / CONFIG_FILENAME).is_file() else project
+
+
 def load_config(working_dir: Path) -> dict:
     from meow.infrastructure.checks import normalize_build
     from meow.infrastructure.worktree_setup import validate_setup

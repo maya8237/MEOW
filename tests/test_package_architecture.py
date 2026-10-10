@@ -10,6 +10,7 @@ from meow.native import native, native_cli
 
 ALLOWED_ROOT_FILES = {
     "__init__.py",
+    "__main__.py",
     "evaluation.py",
     "frontend.py",
     "plan_state.py",

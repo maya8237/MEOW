@@ -91,7 +91,7 @@ def test_first_run_onboards_active_dir(tmp_path):
         ".gitignore",
         ".meow/config.toml",
     }
-    assert "onboarding" in _phases(repo)
+    assert "onboarded" in _phases(repo)
 
 
 def test_onboarded_config_reaches_final_checks(tmp_path):
@@ -112,7 +112,7 @@ def test_already_onboarded_project_skips_phase(tmp_path):
 
     _run(repo)
 
-    assert "onboarding" not in _phases(repo)
+    assert "onboarded" not in _phases(repo)
     assert "onboarding" not in RunStore(repo).latest().results
     assert (repo / ".meow" / "config.toml").read_bytes() == before
 
@@ -136,10 +136,49 @@ def test_onboarding_failure_does_not_fail_run(tmp_path):
     repo = _git_dir(tmp_path / "repo")
 
     with patch(
-        "meow.execution.sprint_runner.onboard_project", side_effect=OSError("disk")
+        "meow.project.onboarding.onboard_project", side_effect=OSError("disk")
     ):
         _run(repo)
 
     record = RunStore(repo).latest()
     assert record.phase == "complete"
     assert "disk" in record.results["onboarding"]["error"]
+
+
+def test_onboard_sprint_refreshes_lint_config(tmp_path):
+    from meow.execution.sprint_runner import _onboard_sprint
+
+    repo = _git_dir(tmp_path / "repo")
+    (repo / "pyproject.toml").write_text("[tool.ruff]\n", encoding="utf-8")
+    sprint = Sprint(repo, dict(BASE_CONFIG), None, None, repo, False)
+
+    updated, checks_dir, report = _onboard_sprint(sprint, (repo, repo))
+
+    assert checks_dir == repo
+    assert report["files"]
+    assert updated.config["lint"]
+    assert updated.lint_hook is not sprint.lint_hook
+
+
+def test_plan_onboards_the_active_directory(tmp_path):
+    from meow.execution.sprint_runner import run_plan
+
+    repo = _git_dir(tmp_path / "repo")
+    sprint = Sprint(repo, dict(BASE_CONFIG), None, None, repo, False)
+
+    with (
+        patch(
+            "meow.execution.sprint_runner._prepare_sprint",
+            return_value=(sprint, "feature", repo),
+        ),
+        patch("meow.execution.sprint_runner.gather_context"),
+        patch("meow.execution.sprint_runner.prepare_preplan") as preplan,
+        patch("meow.execution.sprint_runner.PlannerAgent") as planner,
+    ):
+        preplan.return_value.decision.mode = "plan"
+        preplan.return_value.to_dict.return_value = {}
+        preplan.return_value.shape = None
+        planner.return_value.run = AsyncMock(return_value=repo / "plan.md")
+        asyncio.run(run_plan(repo, "feature", "do it"))
+
+    assert (repo / ".meow" / "config.toml").is_file()

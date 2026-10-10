@@ -52,8 +52,10 @@ first; it defines the `meow native` helper and review loop.
    fit), then follow "Resume check" below.
    Add `--no-worktree` if the user wants the main repo instead of an isolated
    worktree (then `--name` may be omitted); add `--from <branch>` if
-   they named one. On a nonzero exit (e.g. uncommitted changes), report the
-   message verbatim and stop. Keep `active_dir`, `plan_file`, `review_file`,
+   they named one. `prepare` also onboards a never-onboarded project; if its
+   `onboarding.files` is non-empty, tell the user which files it set up. On a
+   nonzero exit (e.g. uncommitted changes), report the message verbatim and
+   stop. Keep `active_dir`, `plan_file`, `review_file`,
    `max_rounds`, `use_worktree` from the JSON; do all further work in `active_dir`.
    Immediately call `meow native checkpoint preparing --request "<request>"
    --work-dir "<project-path>" --active-dir "<active_dir>"` and keep its

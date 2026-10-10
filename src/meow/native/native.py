@@ -43,6 +43,7 @@ from meow.native.native_prompt import PROMPT_ROLES, role_prompt
 from meow.native.native_state import checkpoint, finalize, round_state
 from meow.project.config import (
     config_paths,
+    config_root,
     load_config,
     resolve_command_cwd,
     split_command,
@@ -156,7 +157,7 @@ def verify(
     run_lint: bool = True,
 ) -> dict:
     """Validate all supported config sections and their local prerequisites."""
-    config = load_config(working_dir)
+    config = load_config(config_root(working_dir, active_dir))
     integrations = {
         "jira": _verify_jira(config),
         "gitlab": _verify_gitlab(config),

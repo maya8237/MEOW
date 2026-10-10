@@ -18,7 +18,7 @@ from meow.infrastructure.lint import (
     check_lint_commands,
     run_lint_on_file,
 )
-from meow.project.config import LintCommand, load_config
+from meow.project.config import LintCommand, config_root, load_config
 
 
 @dataclass(frozen=True)
@@ -74,7 +74,7 @@ def lint(working_dir: Path, active_dir: Path, options: LintOptions) -> dict:
     the `lint-fix` skill's native mode passes `all_blocking=True` to match
     that CLI behavior instead of silently skipping non-gate commands.
     """
-    config = load_config(working_dir)
+    config = load_config(config_root(working_dir, active_dir))
     commands, timeout = config["lint"], config["lint_timeout"]
     if options.file_path:
         problems = asyncio.run(

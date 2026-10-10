@@ -67,8 +67,11 @@ MEOW-generated plans belong in `.meow/plans/`. Integration
 configuration is in
 [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
-To onboard another repo, use `/meow:onboard`. It sets up a current/clean
-project and repairs its `.gitignore` itself. Use `/meow:migration` separately
+A project is set up automatically on its first config-dependent command (a
+minimal `.meow/config.toml` plus the `.gitignore` boundary; see
+[docs/CLI.md](docs/CLI.md)). `/meow:onboard` is for add-ons: integrations and
+optional features on an onboarded project, and the base setup itself for a
+project that has never been onboarded. It repairs its `.gitignore` itself. Use `/meow:migration` separately
 for legacy layouts; migration also repairs `.gitignore` itself.
 Both skills ask about optional integrations and project features using yes/no
 choices.

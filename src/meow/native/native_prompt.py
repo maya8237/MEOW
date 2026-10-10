@@ -19,7 +19,7 @@ from meow.agents.reviewer import (
     _git_review_context,
     new_review_filename,
 )
-from meow.project.config import load_config
+from meow.project.config import config_root, load_config
 from meow.project.prompts import (
     branch_review_prompt,
     explorer_prompt,
@@ -192,7 +192,7 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
     like the SDK role."""
     if role not in PROMPT_ROLES:
         raise ValueError(f"role must be one of {PROMPT_ROLES}, got {role!r}")
-    config = load_config(working_dir)
+    config = load_config(config_root(working_dir, active_dir))
     context = ProjectContext(active_dir, config, use_worktree=use_worktree)
     shape_context = _load_shape_context(shape_path)
     if role.startswith("reviewer-"):
