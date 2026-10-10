@@ -46,6 +46,7 @@ runs. Use `/meow:onboard` for integrations and optional features, or
 | --- | --- |
 | Plan only | `/meow:plan ...` or `meow plan ...` |
 | Review | `/meow:review ...` or `meow review ...` |
+| Integrate CI review | `/meow:integrate-ci-review` |
 | Fix lint | `/meow:lint` |
 | Queue work | `meow queue "..."` |
 | Check or continue | `meow status` or `meow resume RUN_ID` |
