@@ -148,6 +148,8 @@ def test_powershell_existing_install_reports_up_to_date_and_forwards_setup_outpu
     assert (
         "| ForEach-Object { Write-Host $_ }" in powershell
     ), "post-install output must stay visible when the caller consumes function output"
+    assert 'Write-Host "  py -3 -m pip install --upgrade' not in powershell
+    assert 'Write-Host "  $manualPythonCommand -m pip install --upgrade' in powershell
 
 
 def test_bootstrap_scripts_include_dependency_free_pretty_progress():
