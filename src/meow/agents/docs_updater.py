@@ -33,9 +33,11 @@ async def update_documentation(prepared: DocsUpdateInput) -> None:
     guard_tools(
         options,
         {"Edit", "Write"},
-        lambda tool_input: None
-        if _allowed_edit_path(prepared.repo, tool_input)
-        else "Docs updater may edit prose only",
+        lambda tool_input: (
+            None
+            if _allowed_edit_path(prepared.repo, tool_input)
+            else "Docs updater may edit prose only"
+        ),
     )
     await Agent.run_query(
         "Changed paths: "

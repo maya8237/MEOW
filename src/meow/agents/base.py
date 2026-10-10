@@ -103,9 +103,11 @@ def restrict_writes(
     guard_tools(
         options,
         {"Write"},
-        lambda tool_input: None
-        if tool_input_path(tool_input, project_dir) == target
-        else f"Only the output file {target} may be written",
+        lambda tool_input: (
+            None
+            if tool_input_path(tool_input, project_dir) == target
+            else f"Only the output file {target} may be written"
+        ),
         interrupt=True,
     )
 
