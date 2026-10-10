@@ -45,7 +45,7 @@ try {
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     [void]$process.Start()
-    $process.StandardInput.Write("n`n")
+    $process.StandardInput.Write("`n`n")
     $process.StandardInput.Close()
 
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()

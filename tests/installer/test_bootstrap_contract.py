@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -133,6 +134,20 @@ def test_bootstrap_scripts_stop_when_meow_is_already_on_path():
     assert "ForegroundColor Red" in powershell
     assert "\\033[32mDone!" in posix
     assert "\\033[31mFailed:" in posix
+
+
+def test_powershell_existing_install_reports_up_to_date_and_forwards_setup_output():
+    powershell = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
+
+    assert 'Write-Host "MEOW is up to date ✓" -ForegroundColor Green' in powershell
+    assert re.search(
+        r"MEOW is up to date ✓.*?if \(\$comparison -ne \$false\).*?Read-Host",
+        powershell,
+        re.DOTALL,
+    )
+    assert (
+        "| ForEach-Object { Write-Host $_ }" in powershell
+    ), "post-install output must stay visible when the caller consumes function output"
 
 
 def test_bootstrap_scripts_include_dependency_free_pretty_progress():
@@ -329,7 +344,7 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
             str(ROOT / "scripts" / "install.ps1"),
         ],
         cwd=ROOT,
-        input="n\n",
+        input="\n\n",
         capture_output=True,
         text=True,
         env=env,
@@ -343,12 +358,12 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
         in output
     )
     assert str(ROOT) in output
-    assert "MEOW was not updated" in output
-    assert "git -C" in output
-    assert "pull --ff-only origin main" in output
+    assert "MEOW is up to date ✓" in output
+    assert "Update MEOW now?" not in output
+    assert "Next options:" in output
+    assert "No project directory exists" not in output
     assert "Updating MEOW from existing checkout" not in output
     assert "Cloning MEOW" not in output
-    assert "pip install -e" in output
     assert "Done!" in output
 
 

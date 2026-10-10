@@ -197,7 +197,7 @@ function Stop-ForExistingMeow {
     } elseif ($null -eq $comparison) {
         Write-Warning "MEOW is already installed at $existingPath, but its version could not be compared with origin/main. Using the existing installation without reinstalling it."
     } else {
-        Write-Host "MEOW is already installed at $existingPath; using the existing installation without reinstalling it."
+        Write-Host "MEOW is up to date ✓" -ForegroundColor Green
     }
 
     $existingSetup = Find-ExistingMeowCheckout
@@ -208,40 +208,42 @@ function Stop-ForExistingMeow {
         return $true
     }
 
-    $pythonCommand = (@($existingSetup.Executable) + @($existingSetup.Arguments)) -join " "
-    $updateCommand = "git -C `"$($existingSetup.Checkout)`" pull --ff-only origin main; if (`$?) { $pythonCommand -m pip install -e `"$($existingSetup.Checkout)`" }"
-    try {
-        $updateAnswer = Read-Host "Update MEOW now? [y/N]"
-    } catch {
-        $updateAnswer = ""
-    }
-    if ($updateAnswer -match "^(y|yes)$") {
-        Write-Host "Updating MEOW from existing checkout: $($existingSetup.Checkout)"
-        if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-            throw "Git is required to update the existing MEOW checkout."
+    if ($comparison -ne $false) {
+        $pythonCommand = (@($existingSetup.Executable) + @($existingSetup.Arguments)) -join " "
+        $updateCommand = "git -C `"$($existingSetup.Checkout)`" pull --ff-only origin main; if (`$?) { $pythonCommand -m pip install -e `"$($existingSetup.Checkout)`" }"
+        try {
+            $updateAnswer = Read-Host "Update MEOW now? [y/N]"
+        } catch {
+            $updateAnswer = ""
         }
-        Invoke-WithSpinner -Message "Pulling MEOW source" -ScriptBlock {
-            $setup = $using:existingSetup
-            & git -C $setup.Checkout pull --ff-only origin main
-            if ($LASTEXITCODE -ne 0) {
-                throw "MEOW source update failed."
+        if ($updateAnswer -match "^(y|yes)$") {
+            Write-Host "Updating MEOW from existing checkout: $($existingSetup.Checkout)"
+            if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+                throw "Git is required to update the existing MEOW checkout."
             }
-        }
-        Invoke-WithSpinner -Message "Installing editable MEOW update" -ScriptBlock {
-            $setup = $using:existingSetup
-            & $setup.Executable @($setup.Arguments) -m pip install -e $setup.Checkout
-            if ($LASTEXITCODE -ne 0) {
-                throw "Editable MEOW update failed."
+            Invoke-WithSpinner -Message "Pulling MEOW source" -ScriptBlock {
+                $setup = $using:existingSetup
+                & git -C $setup.Checkout pull --ff-only origin main
+                if ($LASTEXITCODE -ne 0) {
+                    throw "MEOW source update failed."
+                }
             }
+            Invoke-WithSpinner -Message "Installing editable MEOW update" -ScriptBlock {
+                $setup = $using:existingSetup
+                & $setup.Executable @($setup.Arguments) -m pip install -e $setup.Checkout
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Editable MEOW update failed."
+                }
+            }
+            Write-Host "MEOW updated successfully."
+        } else {
+            Write-Host "MEOW was not updated. To update it manually, run:"
+            Write-Host "  $updateCommand"
         }
-        Write-Host "MEOW updated successfully."
-    } else {
-        Write-Host "MEOW was not updated. To update it manually, run:"
-        Write-Host "  $updateCommand"
     }
 
     Write-Host "Configuring Claude and onboarding projects using existing MEOW checkout: $($existingSetup.Checkout)"
-    & $existingSetup.Executable @($existingSetup.Arguments) -m meow.installer --repo-dir $existingSetup.Checkout
+    & $existingSetup.Executable @($existingSetup.Arguments) -m meow.installer --repo-dir $existingSetup.Checkout | ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0) {
         throw "MEOW post-install setup failed."
     }
