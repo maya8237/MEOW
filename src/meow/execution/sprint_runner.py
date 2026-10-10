@@ -25,7 +25,7 @@ from meow.execution.orchestrator import (
     _run_review_rounds,
     _run_rounds,
 )
-from meow.execution.run_state import RunStore
+from meow.execution.run_state import TERMINAL_PHASES, RunStateError, RunStore
 from meow.infrastructure.cancellation import RunCancelled, cancellable, check_cancel
 from meow.infrastructure.checks import (
     completion_ready,
@@ -38,14 +38,38 @@ from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import usage_scope
 from meow.infrastructure.worktree_setup import WorktreeSetupError, run_setup
 from meow.project.config import config_paths
-from meow.project.plan_files import _latest_plan_file
-from meow.project.plan_state import PlanStore
+from meow.project.plan_files import _latest_plan_file, planned_plan_file
+from meow.project.plan_state import PlanOwnedError, PlanStore
 from meow.project.preplan import gather_context, prepare_preplan
 from meow.project.shaping import ShapeContext, is_bug_request, load_shape_artifact
 from meow.tasks.model import load_task_graph
 from meow.tasks.runner import run_parallel_plan
 
 logger = get_logger(__name__)
+
+
+def _owner_finished(store: RunStore, owner: str) -> bool:
+    """Return True only when the owner run is verifiably finished.
+
+    A missing or unreadable owner record counts as not finished, so a plan is
+    never redrafted under a run that may still be working on it.
+    """
+    try:
+        phase = store.load(owner).phase
+    except RunStateError:
+        return False
+    return phase in TERMINAL_PHASES
+
+
+def _worktree_name_of(working_dir: Path, plan_file: Path) -> str | None:
+    """Name of the `.worktrees/<name>` directory holding ``plan_file``, if any."""
+    try:
+        relative = plan_file.resolve().relative_to(
+            (working_dir / ".worktrees").resolve()
+        )
+    except ValueError:
+        return None
+    return relative.parts[0] if len(relative.parts) > 1 else None
 
 
 async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, too-many-locals, complex-structure, too-many-branches]
@@ -107,8 +131,18 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
     )
     store.transition(record.id, "preparing")
     check_cancel(store, record.id)
+    # A run that plans from scratch gets its own worktree rather than reusing
+    # an earlier one by name; continuing (--plan, --resume-at review)
+    # keeps reuse. `meow resume` passes use_worktree=False, so it is unaffected.
+    fresh = plan_file is None and resume_at == "generate"
+    if use_worktree and plan_file is not None:
+        # A plan inside .worktrees/<X>/ belongs to that worktree, whatever
+        # --name says (a fresh plan may have landed in `<name>-2`).
+        feature_name = _worktree_name_of(working_dir, plan_file) or feature_name
     worktree_preexisted = bool(
-        feature_name and (working_dir / ".worktrees" / feature_name).exists()
+        feature_name
+        and not fresh
+        and (working_dir / ".worktrees" / feature_name).exists()
     )
     try:
         sprint, effective_name, active_dir = _prepare_sprint(
@@ -117,6 +151,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
             use_worktree=use_worktree,
             source_branch=source_branch,
             config_dir=config_dir,
+            fresh=fresh,
         )
     except BaseException as exc:
         store.transition(record.id, "failed", last_failure=str(exc))
@@ -146,6 +181,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
         worktree=str(active_dir),
         branch=branch,
         delivery={"unattended": unattended or record.delivery.get("unattended", False)},
+        results={"feature_name": effective_name} if effective_name else {},
     )
     manifest = sprint.config.get("worktree_setup", {"copy": [], "commands": []})
     setup_source = record_root or working_dir
@@ -170,9 +206,12 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
                 active_dir,
                 manifest,
                 record_action=record_setup_action,
-                command_decision=lambda argv: sprint.config["permissions"]
-                .for_role("setup")
-                .decision("WorktreeSetup", {"argv": argv}),
+                command_decision=lambda argv: (
+                    sprint
+                    .config["permissions"]
+                    .for_role("setup")
+                    .decision("WorktreeSetup", {"argv": argv})
+                ),
             )
             check_cancel(store, record.id)
         except (WorktreeSetupError, RunCancelled) as exc:
@@ -228,6 +267,20 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
         if resume_at == "review":
             plan_file = _latest_plan_file(active_dir / sprint.config["docs_dir"])
         else:
+            # Claim the plan path before the planner writes it, so a second
+            # run (same --name in place, --jira, queue) cannot clobber a plan
+            # an active run is using.
+            try:
+                PlanStore(active_dir).claim(
+                    planned_plan_file(
+                        active_dir / sprint.config["docs_dir"], effective_name
+                    ),
+                    record.id,
+                    owner_finished=lambda owner: _owner_finished(store, owner),
+                )
+            except PlanOwnedError as exc:
+                store.transition(record.id, "failed", last_failure=str(exc))
+                raise
             store.transition(record.id, "planning")
             logger.info(
                 "planner_started",
@@ -259,12 +312,14 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, t
             else None
         ),
         config_fingerprint=(
-            config_fingerprint(config_dir)
-            if config_paths(config_dir)
-            else None
+            config_fingerprint(config_dir) if config_paths(config_dir) else None
         ),
     )
-    PlanStore(active_dir).transition(plan_file, "draft", record.id)
+    PlanStore(active_dir).claim(
+        plan_file,
+        record.id,
+        owner_finished=lambda owner: _owner_finished(store, owner),
+    )
 
     if approve_plan is not None and not approve_plan(plan_file):
         logger.warning("plan_not_approved", plan_file=str(plan_file))
@@ -382,8 +437,13 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
         feature_name,
         use_worktree=use_worktree,
         source_branch=source_branch,
+        fresh=True,
     )
 
+    PlanStore(active_dir).assert_available(
+        planned_plan_file(active_dir / sprint.config["docs_dir"], effective_name),
+        lambda owner: _owner_finished(RunStore(working_dir), owner),
+    )
     logger.info(
         "planner_started", feature_name=effective_name, working_dir=str(active_dir)
     )

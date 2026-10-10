@@ -20,7 +20,6 @@ from meow.project.config import load_config
 
 def _add_dirs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--working-dir",
         "--work-dir",
         "-d",
         dest="working_dir",
@@ -33,7 +32,7 @@ def _add_dirs(parser: argparse.ArgumentParser) -> None:
         default=None,
         help=(
             "Directory to operate in -- the worktree `prepare` returned. "
-            "Defaults to --working-dir."
+            "Defaults to --work-dir."
         ),
     )
 
@@ -50,12 +49,20 @@ def _add_prepare(sub) -> None:
         help="Work in the project directory instead of a .worktrees entry.",
     )
     parser.add_argument(
-        "--source-branch",
         "--from",
         "-b",
         dest="source_branch",
         default=None,
         help="Branch a fresh worktree is created from.",
+    )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help=(
+            "Never reuse an existing .worktrees/<name>; take <name>-2, -3, ... "
+            "instead. For runs that plan from scratch. The JSON `name` is the "
+            "name actually used."
+        ),
     )
     parser.add_argument(
         "--branch",
@@ -282,6 +289,7 @@ def _prepare(args, working_dir: Path, _active: Path) -> dict:
         branch=args.branch,
         existing_branch=args.existing_branch,
         require_clean=not args.allow_dirty,
+        fresh=args.fresh,
     )
     return native.prepare(working_dir, options)
 

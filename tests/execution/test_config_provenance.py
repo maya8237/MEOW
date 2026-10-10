@@ -93,6 +93,7 @@ def test_run_sprint_checks_active_worktree_with_repository_config(tmp_path):
         use_worktree=False,
         source_branch=None,
         config_dir=repo,
+        fresh=False,
     )
     final_checks.assert_awaited_once_with(active, config)
     assert RunStore(repo).latest().config_fingerprint == config_fingerprint(repo)

@@ -20,6 +20,8 @@ class PlannerAgent(Agent):
     ) -> Path:
         active_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
         active_dir.mkdir(parents=True, exist_ok=True)
+        # Keep in step with plan_files.planned_plan_file (importing it here
+        # would be circular: plan_files imports the reviewer agent).
         plan_filename = f"{feature_name}.md" if feature_name else "plan.md"
         plan_file = active_dir / plan_filename
 

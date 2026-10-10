@@ -50,6 +50,7 @@ from meow.infrastructure.test_runner import (
 )
 from meow.infrastructure.worktree import _resolve_working_dir
 from meow.project.config import load_config
+from meow.project.plan_files import reject_report_name
 from meow.project.shaping import ShapeContext
 
 logger = get_logger(__name__)
@@ -184,18 +185,21 @@ def _prepare_sprint(  # ruff: ignore[too-many-arguments] -- config root is an in
     use_worktree: bool,
     source_branch: str | None = None,
     config_dir: Path | None = None,
+    fresh: bool = False,
 ) -> tuple[Sprint, str | None, Path]:
     """Load config, resolve the active directory, and build a Sprint.
 
     Shared setup for `sprint_runner.run_sprint` and `run_plan`, which
     otherwise repeat this sequence almost verbatim.
     """
+    reject_report_name(feature_name)
     config = load_config(config_dir or working_dir)
     active_dir, effective_name, is_worktree = _resolve_working_dir(
         working_dir,
         use_worktree=use_worktree,
         feature_name=feature_name,
         source_branch=source_branch,
+        fresh=fresh,
     )
     sprint = build_sprint(
         working_dir,

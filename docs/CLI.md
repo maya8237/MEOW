@@ -29,7 +29,8 @@ single-letter shortcut: `r` run, `p` plan, `rv` review, `l` lint (`run
 
 Running `meow` without a command or `meow ipython` opens an IPython session. Inside it, the
 top-level MEOW commands are available as bare commands, for example
-`status`, `run "Add CSV export" --name csv-export`, and `native verify`.
+`status` and `native verify`. `run` is not bare, to keep IPython's built-in `%run`; use
+`meow run "Add CSV export" --name csv-export`.
 The explicit `%meow ...` magic and regular `!meow ...` shell form are also
 available.
 
@@ -88,7 +89,7 @@ internally and can create selected knowledge documents as part of setup.
 
 ## Common options
 
-Every command accepts `--working-dir PATH` (also `--work-dir` or `-d`) to
+Every command accepts `--work-dir PATH` (also `-d`) to
 select a project directory. By default, MEOW-generated plans and reviews are
 written under `.meow/plans/`; an explicit `docs_dir` remains supported for
 existing projects. Project documentation stays under `docs/`.
@@ -104,9 +105,12 @@ meow plan "Add CSV export" --name "add-csv-export"
 ```
 
 `run` plans, implements, and reviews the feature. `plan` writes only the plan.
-Both accept `--source-branch BRANCH` (also `--from` or `-b`) to create a
-worktree from a specific branch. Existing worktrees are reused by name and
-take priority over a new source branch.
+Both accept `--from BRANCH` (also `-b`) to create a
+worktree from a specific branch. A run that plans from scratch always gets its
+own worktree: if `.worktrees/NAME` exists it uses `NAME-2`, `NAME-3`, and so
+on, and plan, review, and test files take that name. Runs that continue
+existing work (`--plan`, `--resume-at review`, `meow resume`) reuse the
+existing worktree and take priority over a new source branch.
 
 After required checks and review pass, a feature run in a separate linked
 worktree commits and pushes its branch to `origin`. A detached feature worktree
@@ -120,10 +124,10 @@ approval before implementation. Declining exits without starting the
 generator. `plan` does not accept this option because it never implements.
 
 To continue an older plan without a saved run, use `--resume-at review`. MEOW skips planning
-and reviews the current code first, using `--plan-file PATH` if supplied or
+and reviews the current code first, using `--plan PATH` if supplied or
 the latest plan in `docs_dir` otherwise. If that review finds work, the
 generator continues from there. The default, `--resume-at generate`, starts
-with a fresh plan unless `--plan-file` is supplied.
+with a fresh plan unless `--plan` is supplied.
 
 ### Run status and recovery
 
@@ -201,7 +205,7 @@ branch, and prints a JSON result on success. Configure `[jira]` and
 `[jira.mcp]` as described in [INTEGRATIONS.md](INTEGRATIONS.md).
 
 The Jira mode always creates its own worktree and branch, so it rejects
-`--name`, `--no-worktree`, `--source-branch`, `--resume-at`, and `--plan-file`.
+`--name`, `--no-worktree`, `--from`, `--resume-at`, and `--plan`.
 It accepts `--manually-approve-plan` for interactive runs; do not use that
 option for unattended scheduled runs.
 
@@ -229,7 +233,7 @@ meow review --jira PROJ-123
 meow review --gitlab "https://gitlab.example.com/group/project/-/merge_requests/123"
 meow review --github "https://github.com/group/project/pull/123"
 meow review --branch feature/add-csv-export --target main
-meow review --plan-file .meow/plans/add-csv-export.md
+meow review --plan .meow/plans/add-csv-export.md
 ```
 
 With no source, review uses the latest plan or falls back to a code-diff
@@ -251,9 +255,11 @@ working directory directly and do not require a clean tree.
 plan-based review. Pass the original prompt when resuming a prompt-based
 review. GitLab, GitHub, and branch reviews cannot be resumed this way; rerun the
 original source instead. Review files are saved under the configured plan
-directory, which defaults to `.meow/plans/`, with names based on their source
-(`review.md`, `gitlab-review.md`, `github-review.md`, `branch-review.md`, or
-`<plan>-review.md`).
+directory, which defaults to `.meow/plans/`, with names based on their source:
+`<plan>-review.md` for plan reviews, and `prompt.<id>.review.md`,
+`gitlab.<id>.review.md`, `github.<id>.review.md` or `branch.<id>.review.md`
+(a random 8-hex `<id>`, so concurrent reviews never overwrite each other).
+Older fixed names such as `review.md` still resume.
 
 Configure `[jira]`/`[jira.mcp]` for `--jira`, `[gitlab.mcp]` for `--gitlab`, or
 `[github.mcp]` for `--github`.
@@ -320,7 +326,7 @@ variables. The job must install this project and fetch the target ref before
 running the command. Merged-result, tag, and other pipeline types are rejected.
 
 The command also accepts `--target-ref REF` for controlled use,
-`--artifact-dir PATH`, and an existing `--plan-file PATH`. PASS exits 0, FAIL
+`--artifact-dir PATH`, and an existing `--plan PATH`. PASS exits 0, FAIL
 exits 1, and an unverified or infrastructure failure exits 2. The artifacts
 record the source and target SHAs, merge base, verdict, and failure reason.
 No local branch checkout or worktree is required.

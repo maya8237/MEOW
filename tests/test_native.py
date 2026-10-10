@@ -193,7 +193,7 @@ class BranchReviewPromptTests(unittest.TestCase):
 
             self.assertIn("'main'", result["system_prompt"])
             self.assertIn("'feature/x'", result["system_prompt"])
-            self.assertTrue(result["review_file"].endswith("branch-review.md"))
+            self.assertTrue(Path(result["review_file"]).name.startswith("branch."))
 
     def test_reviewer_branch_prompt_requires_target_and_branch(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -454,7 +454,7 @@ class RolePromptDispatchTests(unittest.TestCase):
 
             self.assertIn("merge request", result["system_prompt"])
             self.assertIsNone(result["query"])
-            self.assertTrue(result["review_file"].endswith("gitlab-review.md"))
+            self.assertTrue(Path(result["review_file"]).name.startswith("gitlab."))
 
 
 class PushTests(unittest.TestCase):
