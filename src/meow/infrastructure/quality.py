@@ -139,18 +139,6 @@ def record_concerns(  # ruff: ignore[too-many-statements]
     return list({item.id: item for item in accepted}.values())
 
 
-def relevant_concerns(
-    repo: Path, changed_paths: list[str], *, evidence_root: Path | None = None
-) -> list[Concern]:
-    """Return live concerns touching changed paths; retire invalid evidence."""
-    concerns = load_concerns(repo)
-    refreshed = _refresh(evidence_root or repo, concerns)
-    if refreshed != concerns:
-        _write(repo, refreshed)
-    paths = set(changed_paths)
-    return [item for item in refreshed if item.state == "active" and item.path in paths]
-
-
 def concerns_for_run(
     repo: Path, run_id: str, *, evidence_root: Path | None = None
 ) -> list[Concern]:

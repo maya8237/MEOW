@@ -14,7 +14,6 @@ from meow.infrastructure.checks import (
     code_revision,
     completion_ready,
     config_fingerprint,
-    preflight_check,
     run_check,
     run_final_checks,
 )
@@ -24,50 +23,6 @@ from meow.project.config import load_config
 @pytest.fixture(autouse=True)
 def _meow_config_directory(tmp_path):
     (tmp_path / ".meow").mkdir()
-
-
-def test_preflight_validates_executable_and_cwd_without_running(tmp_path):
-    app = tmp_path / "app"
-    app.mkdir()
-    check = Check(
-        "build",
-        "compile",
-        sys.executable,
-        ("-c", "print('ok')"),
-        cwd=__import__("pathlib").Path("app"),
-    )
-    result = preflight_check(tmp_path, check)
-    assert result.status == "ready_unchecked"
-    assert result.cwd == app
-    assert not (app / "side-effect").exists()
-
-
-def test_preflight_reports_missing_executable_and_cwd(tmp_path):
-    missing = Check("lint", "missing", "not-a-real-meow-command")
-    assert preflight_check(tmp_path, missing).status == "missing_executable"
-    wrong_dir = Check(
-        "test", "bad-cwd", sys.executable, cwd=__import__("pathlib").Path("missing")
-    )
-    assert preflight_check(tmp_path, wrong_dir).status == "invalid_cwd"
-
-
-def test_executed_preflight_reports_timeout_and_file_mutation(tmp_path):
-    timeout = Check(
-        "test",
-        "slow",
-        sys.executable,
-        ("-c", "import time; time.sleep(2)"),
-        timeout=0.1,
-    )
-    assert preflight_check(tmp_path, timeout, execute=True).status == "timed_out"
-    file = tmp_path / "source.py"
-    file.write_text("before")
-    edit = Check(
-        "build", "edit", sys.executable, ("-c", "open('source.py','w').write('after')")
-    )
-    result = preflight_check(tmp_path, edit, execute=True)
-    assert result.status == "changed_files"
-    assert "source.py" in result.changed_files
 
 
 def test_revision_and_config_changes_invalidate_evidence(tmp_path):

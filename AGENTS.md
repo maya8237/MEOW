@@ -63,7 +63,7 @@ package (see ARCHITECTURE.md) and keep the package root to entry points.
 - `infrastructure/`: lint, checks, test runner, worktrees, logging, usage,
   cancellation, background workers.
 - `integrations/`: Jira, GitLab, GitHub, CI review, docs update, knowledge.
-- `hooks/`, `installer/`, `tasks/`, `evaluation/`, `frontend/`: as named.
+- `hooks/`, `installer/`, `tasks/`, `evaluation/`: as named.
 
 ## Invariants worth knowing
 

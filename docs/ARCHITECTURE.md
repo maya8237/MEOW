@@ -12,7 +12,6 @@ rather than creating top-level compatibility modules.
 - `execution/`: sprint orchestration, delivery, plan approval, queue/run
   policy, and durable run-state coordination.
 - `evaluation/`: read-only evaluation reports over durable run journals.
-- `frontend/`: frontend and browser-capability discovery helpers.
 - `infrastructure/`: shared operational services such as lint/test execution,
   checks, logging, cancellation, background workers, usage accounting, and
   worktree lifecycle/setup.
