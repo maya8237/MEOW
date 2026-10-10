@@ -284,6 +284,17 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
             throw "Git is required to update the existing MEOW checkout."
         }
+        # A detached HEAD would be updated instead of the main branch.
+        & git -C $Setup.Checkout symbolic-ref -q HEAD *> $null
+        if ($LASTEXITCODE -ne 0) {
+            Invoke-WithSpinner -Message "Switching the detached checkout to main" -ScriptBlock {
+                $setup = $using:Setup
+                & git -C $setup.Checkout checkout main
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Could not switch the MEOW checkout to main; commit or stash your changes, then run the installer again."
+                }
+            }
+        }
         if ($Reset) {
             # Moving to an older origin/main cannot fast-forward, so reset to it.
             if (& git -C $Setup.Checkout status --porcelain) {
