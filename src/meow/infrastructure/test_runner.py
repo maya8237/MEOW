@@ -359,15 +359,19 @@ async def _run_browser(active_dir: Path, tester: dict) -> BrowserEvidence | None
     )
 
 
+# Readiness targets a local dev server: never route it through a proxy. A bare
+# urlopen consults HTTP(S)_PROXY and, on macOS, the system proxy settings.
+_DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def _probe(url: str) -> str | None:
     """None when `url` answers; otherwise why it did not.
 
-    Any HTTP response (even 404) means a server is listening. The 1s response
-    window matters on macOS, where loopback replies can exceed 0.25s; the
-    caller's startup deadline still bounds the total wait.
+    Any HTTP response (even 404) means a server is listening; the caller's
+    startup deadline bounds the total wait.
     """
     try:
-        with urllib.request.urlopen(url, timeout=1.0):
+        with _DIRECT.open(url, timeout=1.0):
             return None
     except urllib.error.HTTPError:
         return None
