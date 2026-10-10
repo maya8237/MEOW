@@ -1,21 +1,24 @@
 # docs/INTEGRATIONS.md — Jira, GitLab, GitHub, and scheduled runs
 
 Reference material for optional project setup. MEOW sets up a project's base
-configuration itself on first use; run `/meow:onboard` for the add-ons below;
-this guide covers monorepo lint/test configuration, tester mode, integrations,
-scheduled Jira runs, and error messages.
+configuration itself on the first config-dependent command; run `/meow:onboard`
+for the add-ons below. This guide covers monorepo lint/test configuration,
+tester mode, build/worktree/permission policies, integrations, scheduled Jira
+runs, and error messages.
 
 ---
 
 ## Monorepo lint and tester
 
-`.meow/config.toml` is optional. If it is absent, MEOW starts with its built-in
-defaults and no lint commands. Configuration priority is the ignored local
+`.meow/config.toml` may be absent before the first config-dependent command. In
+that case MEOW starts with built-in defaults, auto-creates the base config when
+the command onboards the project, and has no lint commands until one is
+configured. Configuration priority is the ignored local
 `.meow/config.local.toml`, project `.meow/config.toml`, user
-`~/.meow/config.toml`, then built-in defaults. String values may reference environment
-variables with either POSIX syntax (`$HOME` or `${HOME}`) or Windows syntax
-(`%USERPROFILE%`); expansion is applied recursively to configured tables and
-lists. Unknown variables are left unchanged.
+`~/.meow/config.toml`, then built-in defaults. String values may reference
+environment variables with either POSIX syntax (`$HOME` or `${HOME}`) or
+Windows syntax (`%USERPROFILE%`); expansion is applied recursively to
+configured tables and lists. Unknown variables are left unchanged.
 
 Each `[[lint]]` entry may set `cwd`, `include`, `exclude`, `args`, `env`, and
 `timeout`. `include` and `exclude` are repository-relative path prefixes. A
@@ -70,6 +73,75 @@ behavior is unchanged when tester mode is off.
 
 Use the project's normal agent instruction files for persistent guidance;
 `docs/ARCHITECTURE.md` describes architecture.
+
+## Other project configuration
+
+The same layered config can enable the following optional capabilities. Keep
+credentials and machine-specific values in `.meow/config.local.toml` or the
+user config.
+
+### Build gates
+
+Each `[[build]]` entry has the same command fields as a test (`command`,
+optional `args`, `cwd`, `env`, and `timeout`) plus `required` (default `true`).
+Required builds must pass before delivery; an advisory entry with
+`required = false` is recorded without blocking completion. Build commands are
+launched as argument vectors, not through shell evaluation, and the timeout
+defaults to 300 seconds.
+
+### New-worktree setup
+
+`[worktree_setup]` runs only when MEOW creates a new feature worktree:
+
+```toml
+[worktree_setup]
+copy = [".env.example"]
+commands = [["python", "-m", "pip", "install", "-e", "."]]
+```
+
+`copy` entries are regular, non-secret-like relative files copied from the
+project checkout. `commands` are literal argument arrays, run in the new
+worktree with a 300-second timeout. Paths containing `..`, absolute paths,
+links, or secret-like names are rejected. Onboarding previews each command;
+the `setup` permission role can deny or require approval. An approval request
+stops an unattended run rather than prompting indefinitely.
+
+### Role permissions
+
+Use repeated `[[permissions.rule]]` tables to constrain a role's tool use:
+
+```toml
+[[permissions.rule]]
+role = "generator"
+tool = "Bash"
+action = "deny"
+```
+
+`role` names the MEOW role, `tool` names an SDK tool, and `action` is
+`allow`, `deny`, or `ask`. A `path` can scope `Read`, `Write`, `Edit`, or
+`NotebookEdit` rules to a repository-relative path. Path-scoped rules require
+both `Bash` and `Agent` to be denied for that role; path values cannot escape
+the project. In unattended mode, an `ask` decision stops the run.
+
+### Browser tester providers
+
+`[tester.browser]` requires `kind` (`skill`, `mcp`, or `command`), `name`, and
+`entrypoint`; `required` defaults to `false`. Provider-specific `inputs`,
+`outputs`, and `permissions` may be tables or lists. A command provider may
+also set `args`, `cwd`, `env`, `timeout`, named `flows`, and repository-relative
+`artifacts`. For command providers, configure `[[tester.dev_server]]` with a
+`ready_url` when the application needs a local server. The server is started
+for the check and stopped afterward. Browser evidence is shown separately in
+`meow status`; keep generated artifacts under `.meow/` so verification does
+not dirty the feature revision.
+
+### Agent skills and delivery defaults
+
+`[agent_skills]` adds installed skill identifiers to every role or to a named
+role. `default` and role-specific lists append across config layers; built-in
+MEOW skills remain enabled. The config loader also normalizes
+`[delivery].target_branch` (default `dev`) and `[delivery.gitlab].enabled`
+(default `false`); these fields do not store credentials.
 
 ## Reviewer architecture check
 
@@ -235,11 +307,11 @@ Enable and test it with `systemctl enable --now meow-run-jira.timer`, then
 
 | Missing / wrong | Result |
 |---|---|
-| `.meow/config.toml` absent | Built-in defaults are used; no lint commands are configured. |
+| `.meow/config.toml` absent before first config-dependent use | Built-in defaults guide automatic setup; the command creates the base config when onboarding applies. Until a lint entry is configured, no lint commands run. |
 | A lint field is present but no `[[lint]]` entry is defined | `ValueError`: no lint command defined. Config files containing only models, skills, MCP, or other settings are valid. |
 | Unknown key in a `[[lint]]` table (often a top-level key placed after it) | `ValueError` naming the entry and key |
 | No architecture doc anywhere under `docs/` | No error — reviewer's SOLID/SRP pass finds nothing to Glob/Read, so it has no project-specific boundaries to check, just its generic mixed-responsibility rule |
-| `AGENTS.md` | No effect on meow — human-facing only |
+| `AGENTS.md` | Read as human-facing project guidance during the pre-plan audit; it does not replace `.meow/config.toml` or change config parsing. |
 | `meow run --jira` run without `[jira]`/`[jira.mcp]` | `ValueError` naming the missing table/key, before any agent runs |
 | `meow run --jira` run with no Jira MCP actually reachable | `RuntimeError` from the preflight check — it requires an actual `mcp__jira__*` tool call to succeed, not just a text claim of success |
 | `meow run --jira` run with no `origin` remote | `RuntimeError` after the sprint passes, before attempting to push |

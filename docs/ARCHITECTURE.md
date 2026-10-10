@@ -1,21 +1,39 @@
 # MEOW package architecture
 
-`src/meow` is organized by responsibility. Each package owns its canonical
-implementation modules; callers should import from the package that owns the
-workflow.
+`src/meow` is organized by responsibility. New code belongs in the narrowest
+package that owns the workflow, and callers should import from that package
+rather than creating top-level compatibility modules.
 
-- `agents/`: SDK role implementations. Role families should be split into
-  subpackages when they gain unrelated responsibilities.
-- `native/`: deterministic, in-session skill execution and its CLI, lint,
-  preparation, prompt, and checkpoint components.
-- `execution/`: sprint orchestration, runners, and durable run state.
-- `project/`: configuration, plans, shaping, prompts, and permissions.
-- `infrastructure/`: checks, lint, tests, logging, cancellation, and
-  worktree lifecycle.
-- `integrations/`: Jira, GitLab, GitHub, issue-solving, and knowledge
-  adapters.
-- `tasks/`: task models, execution, scheduling, and integration.
-- `cli/`: the installed command entry point.
+- `agents/`: Claude Agent SDK role implementations. This includes exploration,
+  planning, generation, review, testing, fixing, documentation, lint, and
+  issue/MR/PR fetching roles.
+- `cli/`: the public command surface and dispatch for `run`, `plan`, `review`,
+  status/recovery, queues, hooks, IPython, and hidden maintenance commands.
+- `execution/`: sprint orchestration, delivery, plan approval, queue/run
+  policy, and durable run-state coordination.
+- `infrastructure/`: shared operational services such as lint/test execution,
+  checks, logging, cancellation, background workers, usage accounting, and
+  worktree lifecycle/setup.
+- `integrations/`: Jira issue solving, GitLab/GitHub review, branch/CI review,
+  documentation updates, and knowledge-document adapters.
+- `native/`: deterministic helpers used by in-session skills, including
+  preparation, prompts, lint, checkpoints, state, and the native CLI.
+- `project/`: configuration models/schema, onboarding, permissions, planning
+  files/state, pre-plan shaping, prompts, and command policy.
+- `hooks/`: optional Claude Code host-hook handlers and installation support.
+- `installer/`: installation and plugin/package setup helpers.
+- `tasks/`: task models, execution, scheduling, and integration runners.
+- `frontend.py`: read-only frontend and browser-capability discovery helpers.
+- `evaluation.py`: run-quality evaluation for maintainers.
+
+`review/` is currently a namespace marker; the active review command is in
+`cli/review_cli.py`, with review roles in `agents/` and provider-specific
+flows in `integrations/`. `__main__.py` exposes the installed console entry
+point. Tests remain under the repository's `tests/` directory and are not
+copied into the runtime package.
+
+The `src/` layout is deliberate: running from the repository root reaches the
+installed copy, so a broken editable install is caught rather than masked.
 
 New code belongs in the narrowest responsibility package. A package is split
 again when its files serve different workflows or require different
@@ -28,5 +46,3 @@ related modules instead of accumulating many floating files at the package
 root. Two to four directly owned files can be reasonable when the boundary is
 clear, but this is a guideline rather than a hard limit; keep the package
 focused and use subpackages whenever they improve discoverability.
-Tests stay in the repository `tests/` package and are not copied into the
-runtime package.

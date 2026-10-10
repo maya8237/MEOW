@@ -153,7 +153,9 @@ When an optional feature is accepted, use the matching documented path:
   `meow run --jira ISSUE-KEY`. Do not create a schedule until Jira works.
 - GitLab: configure the approved connection, verify checkout and artifact
   behavior, then use `meow review --gitlab <merge-request-url>`. A headless CI
-  job requires a masked `ANTHROPIC_API_KEY`; never echo it.
+  job can include `templates/gitlab-ci-review.yml` and run the CLI-only
+  `meow review --ci`; it requires a masked `ANTHROPIC_API_KEY`, which must
+  never be echoed.
 - GitHub: configure the approved connection, verify checkout and artifact
   behavior, then use `meow review --github <pull-request-url>`.
 - Worktrees: show every proposed copy path and literal command argument list,
