@@ -13,7 +13,7 @@ from claude_agent_sdk import (
     ToolUseBlock,
 )
 
-from meow.agents.github_fetcher import GithubFetcherAgent
+from meow.agents.mcp_fetcher import GithubFetcherAgent
 from meow.project.config_models import LintCommand
 
 
@@ -65,7 +65,7 @@ class GithubFetcherCheckActiveTests(unittest.IsolatedAsyncioTestCase):
             )
             yield _result("success")
 
-        with patch("meow.agents.github_fetcher.query", fake_query):
+        with patch("meow.agents.mcp_fetcher.query", fake_query):
             await self.agent.check_active()
 
     async def test_raises_when_no_github_tool_was_used(self):
@@ -75,7 +75,7 @@ class GithubFetcherCheckActiveTests(unittest.IsolatedAsyncioTestCase):
             yield _result("success")
 
         with (
-            patch("meow.agents.github_fetcher.query", fake_query),
+            patch("meow.agents.mcp_fetcher.query", fake_query),
             self.assertRaisesRegex(RuntimeError, "No active GitHub MCP server"),
         ):
             await self.agent.check_active()
@@ -92,7 +92,7 @@ class GithubFetcherCheckActiveTests(unittest.IsolatedAsyncioTestCase):
             yield _result("error_during_execution")
 
         with (
-            patch("meow.agents.github_fetcher.query", fake_query),
+            patch("meow.agents.mcp_fetcher.query", fake_query),
             self.assertRaisesRegex(RuntimeError, "No active GitHub MCP server"),
         ):
             await self.agent.check_active()

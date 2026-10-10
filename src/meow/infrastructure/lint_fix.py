@@ -15,7 +15,7 @@ what's reported is the calling Claude session's job, not meow's.
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
-from meow.agents.lint_fixer import LintFixAgent
+from meow.agents.fixers import LintFixAgent
 from meow.execution.run_state import RunStore
 from meow.infrastructure.lint import (
     apply_lint_fixes,

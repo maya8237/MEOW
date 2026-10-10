@@ -1,27 +1,21 @@
 """`meow review --gitlab`: validate `[gitlab.mcp]` and fetch a merge
 request's title, description and diff through it (read-only)."""
 
-import json
-import tempfile
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
-from meow.agents.gitlab_fetcher import GitlabFetcherAgent
-from meow.infrastructure.logging import get_logger
-
-logger = get_logger(__name__)
+from meow.agents.mcp_fetcher import GitlabFetcherAgent, fetch_record
 
 
 def _load_gitlab_config(config: dict) -> dict:
     """Validate `[gitlab]`/`[gitlab.mcp]` up front, with a clear error if absent.
 
-        Unlike `[jira.mcp]` (whose server reads its own credentials from the
-    environment), `[gitlab.mcp.env]` is read directly from `.meow/config.toml`
-        and passed straight through as the launched server's environment --
-        see the security note on `[gitlab.mcp.env]` in
+    Unlike `[jira.mcp]` (whose server reads its own credentials from the
+    environment), `[gitlab.mcp.env]` is passed straight through as the launched
+    server's environment -- see the security note on `[gitlab.mcp.env]` in
     `templates/meow-config.toml.example` before putting a real credential
     there: `.meow/config.toml` is an ordinary, typically-committed project
-        file, not a secrets store.
+    file, not a secrets store.
     """
     gitlab = config.get("gitlab")
     if not isinstance(gitlab, dict):
@@ -59,25 +53,11 @@ def _load_gitlab_config(config: dict) -> dict:
 async def _fetch_merge_request(
     working_dir: Path, config: dict, gitlab_config: dict, mr_link: str
 ) -> dict:
-    context = ProjectContext(working_dir, config)
-    fetcher = GitlabFetcherAgent(context, gitlab_config["mcp"])
-
-    logger.info("gitlab_preflight_started")
-    await fetcher.check_active()
-    logger.info("gitlab_preflight_finished")
-
-    with tempfile.TemporaryDirectory() as tmp:
-        output_file = Path(tmp) / "merge_request.json"
-        logger.info("gitlab_fetch_started", mr_link=mr_link)
-        await fetcher.fetch(mr_link, output_file)
-        data = json.loads(output_file.read_text(encoding="utf-8"))
-
-    missing = [
-        field
-        for field in ("title", "description", "diff")
-        if field not in data or data[field] is None
-    ]
-    if missing:
-        raise RuntimeError(f"GitLab fetcher output is missing {missing}: {data}")
-    logger.info("gitlab_fetch_finished", title=data["title"])
-    return data
+    fetcher = GitlabFetcherAgent(
+        ProjectContext(working_dir, config), gitlab_config["mcp"]
+    )
+    return await fetch_record(
+        fetcher,
+        lambda output_file: fetcher.fetch(mr_link, output_file),
+        ("title", "description", "diff"),
+    )

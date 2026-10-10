@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Literal
 
 from meow.agents.base import ProjectContext
+from meow.agents.fixers import ReviewFixAgent
 from meow.agents.generator import Generator
-from meow.agents.review_fixer import ReviewFixAgent
 from meow.agents.reviewer import ReviewerAgent
 from meow.agents.tester import VerificationAgent
 from meow.execution.sprint import Sprint, build_sprint
@@ -32,7 +32,11 @@ from meow.infrastructure.test_runner import (
 )
 from meow.infrastructure.worktree import _resolve_working_dir
 from meow.project.config import load_config
-from meow.project.plan_files import reject_report_name
+from meow.project.plan_files import (
+    plan_review_file,
+    plan_test_file,
+    reject_report_name,
+)
 from meow.project.shaping import ShapeContext
 
 logger = get_logger(__name__)
@@ -93,10 +97,6 @@ def _tester_results(
     return result
 
 
-def _review_file(plan_file: Path) -> Path:
-    return plan_file.with_name(plan_file.stem + "-review.md")
-
-
 async def _review_plan(
     sprint: Sprint, plan_file: Path, focus: str | None = None
 ) -> tuple[str, str]:
@@ -126,7 +126,7 @@ async def review_then_test(  # ruff: ignore[too-many-arguments]
     _journal(
         sprint,
         "reviewer_finished",
-        review_file=str(_review_file(plan_file)),
+        review_file=str(plan_review_file(plan_file)),
         results={"reviewer": review_status},
     )
     if review_status != "PASS":
@@ -141,10 +141,9 @@ async def review_then_test(  # ruff: ignore[too-many-arguments]
                 plan_file, evidence
             )
     except VerificationSetupError as exc:
-        report = plan_file.with_name(plan_file.stem + "-test.md")
         raise RuntimeError(
             f"Tester stage setup failed for {plan_file}: {exc}. "
-            f"Tester report path: {report}"
+            f"Tester report path: {plan_test_file(plan_file)}"
         ) from exc
     _journal(
         sprint,
@@ -233,7 +232,7 @@ async def _review_round(  # ruff: ignore[too-many-arguments]
             sprint,
             "reviewer_finished",
             round=round_num,
-            review_file=str(_review_file(plan_file)),
+            review_file=str(plan_review_file(plan_file)),
             results={"reviewer": status},
         )
     logger.info(

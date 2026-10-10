@@ -58,7 +58,9 @@ class AgentSkillTests(unittest.TestCase):
             patch.object(Path, "is_file", return_value=True),
         ):
             result = asyncio.run(
-                planner.run_planner(make_sprint(self.tmp_path), "feature", "Request")
+                planner.PlannerAgent(make_sprint(self.tmp_path)).run(
+                    "feature", "Request"
+                )
             )
 
         options = query.call_args.kwargs["options"]

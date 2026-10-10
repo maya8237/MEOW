@@ -10,6 +10,13 @@ All notable changes to MEOW will be documented here.
   checkout. Linked-worktree delivery includes those changes; in-place runs
   leave them for the user. `/meow:onboard` is now for add-ons and reports gaps
   via `meow native onboard-status`.
+- `meow resume --continue` no longer fails once a run's plan is in progress,
+  and any `meow run` failure now leaves the run marked `failed`.
+- `meow review --ci` accepts merge requests that target the configured
+  `[delivery].target_branch` instead of only `dev`.
+- A blocking lint failure now always rewrites the saved verdict to
+  `STATUS: FAIL`; branch reviews see newly created files; requests that
+  mention "either/whether ... or" are no longer stopped as product decisions.
 - Clarified the one-command workflow and first-run path in the README.
 - Framed MEOW as simple harness engineering around Claude Agent SDK sessions.
 - Added GitHub pull-request review, GitLab CI review, optional Claude Code

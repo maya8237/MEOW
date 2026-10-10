@@ -100,18 +100,10 @@ branch out locally first). Resuming from a review file always fixes (there's no
    reviewer subagent, no round counter.
    - **gitlab**/**github** (always report-only, never fix mode): `meow native
      prompt reviewer-mr --provider <gitlab|github> --work-dir
-     "<project-path>"`. Dispatch one reviewer
-     subagent with `system_prompt` followed by this task message (the
-     JSON's `query` is null for this role):
-     ```
-     Remote request title: <title>
-
-     Remote request description:
-     <description>
-
-     Remote request diff:
-     <diff>
-     ```
+     "<project-path>"`. The JSON's `query` is null for this role; build the
+     task message from its `query_template` by replacing `<title>`,
+     `<description>`, and `<diff>` with the fetched values, then dispatch one
+     reviewer subagent with `system_prompt` followed by that message.
    - **prompt**/**jira**: `meow native prompt reviewer-prompt --focus
      "<basis>"` (omit `--focus` for an empty prompt).
    - **plan**: `meow native prompt reviewer-plan --plan <plan_file>`.

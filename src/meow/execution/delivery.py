@@ -1,21 +1,11 @@
 """Commit and push a verified run from an eligible checkout."""
 
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 
 from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled, check_cancel, delivery_lock
 from meow.infrastructure.worktree import _is_linked_worktree
-
-
-@dataclass(frozen=True)
-class DeliveryResult:
-    status: str
-    branch: str
-    commit: str | None = None
-    remote: str = "origin"
-    message: str = ""
 
 
 def _git(

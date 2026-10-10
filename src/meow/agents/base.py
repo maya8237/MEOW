@@ -26,7 +26,11 @@ from claude_agent_sdk import (
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
 from meow.project.config_models import LintCommand
-from meow.project.permissions import PermissionPolicy, make_permission_callback
+from meow.project.permissions import (
+    PATH_KEYS,
+    PermissionPolicy,
+    make_permission_callback,
+)
 
 logger = get_logger(__name__)
 
@@ -51,12 +55,9 @@ def _looks_like_a_crash(exit_code: int | None) -> bool:
     return exit_code < 0 or exit_code >= _NTSTATUS_SEVERITY_BIT
 
 
-_PATH_KEYS = ("file_path", "path", "notebook_path")
-
-
 def tool_input_path(tool_input: dict[str, Any], project_dir: Path) -> Path | None:
     """The resolved file a tool call targets, relative paths from `project_dir`."""
-    raw = next((tool_input[key] for key in _PATH_KEYS if key in tool_input), None)
+    raw = next((tool_input[key] for key in PATH_KEYS if key in tool_input), None)
     if not isinstance(raw, str) or not raw:
         return None
     candidate = Path(raw)
@@ -413,7 +414,20 @@ class SessionAgent(Agent):
         return "\n".join(text)
 
 
-class ProjectContext:
+class ConfigLookups:
+    """Model and lint lookups every `AgentContext` derives from `config`."""
+
+    config: dict
+
+    def model(self, role: str) -> str | None:
+        models = self.config["models"]
+        return models.get(role, models.get("reviewer"))
+
+    def lint_commands(self) -> list[LintCommand]:
+        return self.config["lint"]
+
+
+class ProjectContext(ConfigLookups):
     """Config- and directory-only `AgentContext` for non-sprint flows.
 
     Built from project configuration and a directory alone, with no sprint
@@ -425,13 +439,6 @@ class ProjectContext:
         self.repo_dir = repo_dir
         self.config = config
         self.use_worktree = use_worktree
-
-    def model(self, role: str) -> str | None:
-        models = self.config["models"]
-        return models.get(role, models.get("reviewer"))
-
-    def lint_commands(self) -> list[LintCommand]:
-        return self.config["lint"]
 
     def active_working_dir(self) -> Path:
         return self.repo_dir

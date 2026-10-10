@@ -9,13 +9,11 @@ named branch so `worktree.py`
 creates its own worktree on one instead of the usual detached one.
 """
 
-import json
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
-from meow.agents.issue_fetcher import IssueFetcherAgent
+from meow.agents.mcp_fetcher import IssueFetcherAgent, fetch_record
 from meow.execution.run_state import RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.cancellation import cancellable
@@ -75,31 +73,14 @@ def _load_jira_config(config: dict) -> dict:
 async def _fetch_issue(
     working_dir: Path, config: dict, jira_config: dict, issue_key: str | None
 ) -> dict:
-    context = ProjectContext(working_dir, config)
-    fetcher = IssueFetcherAgent(context, jira_config["mcp"])
-
-    logger.info("jira_preflight_started")
-    await fetcher.check_active()
-    logger.info("jira_preflight_finished")
-
-    with tempfile.TemporaryDirectory() as tmp:
-        output_file = Path(tmp) / "issue.json"
-        logger.info(
-            "jira_fetch_started",
-            issue=issue_key or f"latest in {jira_config['project_key']}",
-        )
-        await fetcher.fetch(issue_key, jira_config["project_key"], output_file)
-        data = json.loads(output_file.read_text(encoding="utf-8"))
-
-    missing = [
-        field
-        for field in ("key", "summary", "description")
-        if field not in data or data[field] is None
-    ]
-    if missing:
-        raise RuntimeError(f"Jira issue-fetcher output is missing {missing}: {data}")
-    logger.info("jira_fetch_finished", key=data["key"])
-    return data
+    fetcher = IssueFetcherAgent(ProjectContext(working_dir, config), jira_config["mcp"])
+    return await fetch_record(
+        fetcher,
+        lambda output_file: fetcher.fetch(
+            issue_key, jira_config["project_key"], output_file
+        ),
+        ("key", "summary", "description"),
+    )
 
 
 async def run_issue_solver(  # ruff: ignore[too-many-arguments]

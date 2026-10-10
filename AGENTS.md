@@ -50,8 +50,9 @@ package (see ARCHITECTURE.md) and keep the package root to entry points.
 - `agents/`: SDK roles. Every role is `*Agent(context)` built on `Agent` in
   `agents/base.py`, which builds `ClaudeAgentOptions`, applies the permission
   policy, and runs one-shot queries. `SessionAgent` keeps one
-  `ClaudeSDKClient` across rounds (generator, review fixer, lint fixer).
-  `Sprint` and `ProjectContext` both satisfy `AgentContext`.
+  `ClaudeSDKClient` across rounds (generator, and the review/lint fixers in
+  `fixers.py`). The Jira/GitLab/GitHub fetchers share `McpFetcherAgent` in
+  `mcp_fetcher.py`. `Sprint` and `ProjectContext` both satisfy `AgentContext`.
 - `execution/`: round loops (`orchestrator.py`), `run`/`plan` flows
   (`sprint_runner.py`), run journal (`run_state.py`), delivery, queue.
 - `cli/`: argument parsing, dispatch, `review_cli.py`, status, resume.
@@ -70,5 +71,10 @@ package (see ARCHITECTURE.md) and keep the package root to entry points.
   gate tools with `agents.base.guard_tools`, not by adding a callback alone.
 - Reviewer verdict files start `SUMMARY:` then `STATUS: PASS|FAIL`; parse them
   with `agents.reviewer._verdict_status` only.
+- Plan, review, and tester file names come from `project/plan_files.py`
+  (`plan_review_file`, `plan_test_file`, `new_review_filename`); never rebuild
+  them inline.
+- `run_sprint` marks a run `failed` whenever it raises before a terminal
+  phase; inner steps only record phases, not failures.
 - Claude owns transcripts; the run journal stores only role-to-session IDs,
   resumed solely by `meow resume`.

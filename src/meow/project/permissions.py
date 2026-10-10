@@ -7,7 +7,8 @@ from typing import Any
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
 _ACTIONS = frozenset({"allow", "deny", "ask"})
-_PATH_KEYS = ("file_path", "path", "notebook_path")
+# Tool-input keys that name the file a tool call targets.
+PATH_KEYS = ("file_path", "path", "notebook_path")
 _ROLES = frozenset({
     "planner",
     "generator",
@@ -68,7 +69,7 @@ class RolePolicy:
         path_rules = [rule for rule in matching if rule.path is not None]
         if path_rules:
             raw_path = next(
-                (tool_input[key] for key in _PATH_KEYS if key in tool_input), None
+                (tool_input[key] for key in PATH_KEYS if key in tool_input), None
             )
             if not isinstance(raw_path, str):
                 return "deny"

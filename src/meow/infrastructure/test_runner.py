@@ -35,43 +35,6 @@ class BrowserEvidence:
     exit_code: int | None = None
 
 
-def normalize_browser_result(
-    provider: dict | None, result: object = None
-) -> BrowserEvidence:
-    """Validate a project-owned provider result at the tester boundary."""
-    if not isinstance(provider, dict):
-        return BrowserEvidence(
-            "", "", "unavailable", reason="provider is not configured"
-        )
-    kind = provider.get("kind", "")
-    name = provider.get("name", "")
-    entrypoint = provider.get("entrypoint", "")
-    if kind not in {"skill", "mcp"} or not isinstance(name, str) or not name.strip():
-        return BrowserEvidence(
-            str(name), str(kind), "unavailable", reason="invalid provider declaration"
-        )
-    if not isinstance(entrypoint, str) or not entrypoint.strip():
-        return BrowserEvidence(
-            name, kind, "unavailable", reason="missing provider entrypoint"
-        )
-    required = bool(provider.get("required", False))
-    if not isinstance(result, dict):
-        return BrowserEvidence(
-            name,
-            kind,
-            "unavailable",
-            required=required,
-            reason="provider did not return structured evidence",
-        )
-    status = result.get("status")
-    if status not in {"available", "passed", "failed", "unavailable"}:
-        status = "unavailable"
-    output = str(result.get("output", ""))[:MAX_OUTPUT_CHARS]
-    return BrowserEvidence(
-        name, kind, status, output, required, str(result.get("reason", ""))
-    )
-
-
 class VerificationSetupError(RuntimeError):
     """A test or server could not be launched or made ready."""
 

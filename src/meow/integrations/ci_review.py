@@ -59,7 +59,11 @@ def _git(repo: Path, *args: str) -> str:
 
 
 def prepare_ci_review(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches] -- validates each CI context requirement
-    repo: Path, env: Mapping[str, str], target_ref: str = "dev"
+    repo: Path,
+    env: Mapping[str, str],
+    target_ref: str = "dev",
+    *,
+    target_branch: str = "dev",
 ) -> CiReviewContext:
     source = env.get("CI_PIPELINE_SOURCE", "")
     if source == "push":
@@ -69,8 +73,8 @@ def prepare_ci_review(  # ruff: ignore[complex-structure, too-many-statements, t
         and env.get("CI_MERGE_REQUEST_EVENT_TYPE") == "detached"
     ):
         branch = env.get("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME", "")
-        if env.get("CI_MERGE_REQUEST_TARGET_BRANCH_NAME") != "dev":
-            raise CiReviewError("CI merge request must target dev")
+        if env.get("CI_MERGE_REQUEST_TARGET_BRANCH_NAME") != target_branch:
+            raise CiReviewError(f"CI merge request must target {target_branch}")
     else:
         raise CiReviewError("unsupported CI pipeline source or merged-result checkout")
     sha = env.get("CI_COMMIT_SHA", "")
@@ -153,7 +157,12 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
     response = ""
     reason = None
     try:
-        context = prepare_ci_review(repo, env, target_ref)
+        context = prepare_ci_review(
+            repo,
+            env,
+            target_ref,
+            target_branch=config.get("delivery", {}).get("target_branch", "dev"),
+        )
         before = _snapshot(repo)
         if plan_file is not None:
             if not plan_file.is_file():

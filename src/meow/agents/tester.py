@@ -7,9 +7,8 @@ from claude_agent_sdk import ClaudeAgentOptions
 from meow.agents.base import Agent
 from meow.agents.reviewer import _verdict_status
 from meow.infrastructure.test_runner import VerificationStageEvidence
+from meow.project.plan_files import plan_test_file
 from meow.project.prompts import tester_prompt
-
-TESTER_REPORT_SUFFIX = "-test.md"
 
 
 def architecture_context(
@@ -76,7 +75,7 @@ class VerificationAgent(Agent):
     async def test_plan(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches]
         self, plan_file: Path, evidence: VerificationStageEvidence
     ) -> tuple[str, str]:
-        report_file = plan_file.with_name(plan_file.stem + TESTER_REPORT_SUFFIX)
+        report_file = plan_test_file(plan_file)
         active_dir = self.context.active_working_dir()
         try:
             plan = plan_file.read_text(encoding="utf-8")

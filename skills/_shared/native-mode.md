@@ -46,7 +46,7 @@ and stop; do not guess at a venv path. Flags shared by every command:
 | `round PLAN [--reset\|--show]` | On-disk round counter; default advances it |
 | `checkpoint PHASE [--run-id ID] [--request TEXT] [--plan FILE] [--review FILE] [--round N] [--reviewer PASS\|FAIL] [--tester PASS\|FAIL]` | Atomic run journal transition; omit `--run-id` only to create a native run, then reuse the returned ID |
 | `finalize RUN_ID` | Run current required lint, test, and build gates and finish only when reviewer and enabled tester evidence pass |
-| `prompt ROLE [--plan F] [--focus T] [--target T --branch B] [--provider {gitlab,github}] [--worktree] [--shape F]` | Exact SDK system prompt, task message (reviewer roles include the harness lint evidence), and model for a role |
+| `prompt ROLE [--plan F] [--focus T] [--target T --branch B] [--provider {gitlab,github}] [--worktree] [--shape F]` | Exact SDK system prompt, task message (reviewer roles include the harness lint evidence; `reviewer-mr` returns a `query_template` to fill instead), and model for a role |
 | `push BRANCH` | Push a named branch to origin |
 | `knowledge-audit` / `knowledge-check` / `knowledge-create` | Audit, validate, or create selected project knowledge documents |
 | `onboard-status` | Report whether the project is onboarded (shared config plus a correct ignore boundary) and which optional add-ons (Jira, GitLab, GitHub, MCP, tester, hooks, worktree setup, and so on) are not configured yet |
