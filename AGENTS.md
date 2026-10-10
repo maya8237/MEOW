@@ -135,14 +135,13 @@ responsibility package:
   and project-knowledge adapters.
 - `native/` provides deterministic helpers and the JSON CLI used by native
   skill execution.
+- `evaluation/` owns read-only evaluation reports over durable run journals.
+- `frontend/` owns frontend and browser-capability discovery helpers.
 - `project/` owns configuration, onboarding, plan files/state, shaping,
   prompts, permissions, and command policy.
 - `hooks/` owns reversible Claude Code hook installation and handlers;
   `installer/` owns the post-install bootstrap; `tasks/` owns task-graph and
   scheduler support.
-- `frontend.py` provides browser-capability discovery and `evaluation.py`
-  reports saved run quality.
-
 Prefer creating or reusing subpackages for related modules instead of adding
 many floating files to a package. Two to four directly owned files can make
 sense when the boundary is clear, but this is a guideline rather than a hard
