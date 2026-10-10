@@ -1,5 +1,8 @@
 import os
+import shutil
+import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -16,6 +19,11 @@ def _git_bash_path(path: Path) -> str:
     return "/" + value[0].lower() + value[2:]
 
 
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
 def _run_posix_installer(  # ruff: ignore[too-many-arguments]
     tmp_path: Path,
     *,
@@ -30,6 +38,7 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments]
 
     log = tmp_path / "commands.log"
     wrapper = tmp_path / "run-installer.sh"
+    install_script = _git_bash_path(ROOT / "scripts" / "install.sh")
     existing_checkout_value = (
         _git_bash_path(existing_checkout) if existing_checkout else ""
     )
@@ -74,14 +83,14 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments]
             f"export HOME='{_git_bash_path(tmp_path / 'home')}'",
             f"export MEOW_TEST_LOG='{_git_bash_path(log)}'",
             f"export MEOW_EXISTING_CHECKOUT='{existing_checkout_value}'",
-            f"source '{_git_bash_path(ROOT / 'scripts' / 'install.sh')}'",
+            f"printf '%s' \"$MEOW_TEST_INPUT\" | source '{install_script}'",
         ]
     )
     wrapper.write_text("\n".join(functions) + "\n", encoding="utf-8")
     env = dict(os.environ)
+    env["MEOW_TEST_INPUT"] = input_text
     result = subprocess.run(
         [str(bash), str(wrapper)],
-        input=input_text,
         capture_output=True,
         text=True,
         env=env,
@@ -128,6 +137,7 @@ def test_posix_bootstrap_uses_existing_meow_and_skips_install_when_older(
         meow_version="0.1.0",
         origin_version="0.2.0",
         existing_checkout=existing_checkout,
+        input_text="n\n",
     )
 
     assert result.returncode == 0, result.stderr
@@ -135,6 +145,10 @@ def test_posix_bootstrap_uses_existing_meow_and_skips_install_when_older(
     assert "0.1.0" in result.stderr
     assert "0.2.0" in result.stderr
     assert "FAKE_PIP" not in result.stderr
+    assert "MEOW was not updated" in result.stdout
+    assert "git -C" in result.stdout
+    assert "pull --ff-only origin main" in result.stdout
+    assert "python3.15 -m pip install -e" in result.stdout
     assert "FAKE_SETUP" in result.stderr
     assert "-m meow.installer" in log
     assert "Cloning MEOW" not in result.stdout
@@ -152,6 +166,144 @@ def test_posix_bootstrap_warns_when_existing_checkout_cannot_be_located(tmp_path
     assert "FAKE_PIP" not in result.stderr
     assert "FAKE_SETUP" not in result.stderr
     assert "-m meow.installer" not in log
+
+
+def test_posix_bootstrap_updates_existing_meow_when_approved(tmp_path):
+    existing_checkout = tmp_path / "existing-meow"
+    result, log = _run_posix_installer(
+        tmp_path,
+        meow_version="0.1.0",
+        origin_version="0.2.0",
+        existing_checkout=existing_checkout,
+        input_text="y\n",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "MEOW updated successfully" in result.stdout
+    assert "git -C" in log
+    assert "pull --ff-only origin main" in log
+    assert "FAKE_PIP" in result.stderr
+    assert "-m pip install -e" in log
+    assert "FAKE_SETUP" in result.stderr
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux installer integration test")
+def test_linux_install_script_runs_from_ci_checkout_without_cloning(  # ruff: ignore[too-many-statements]
+    tmp_path,
+):
+    bin_dir = tmp_path / "bin"
+    home = tmp_path / "home"
+    bin_dir.mkdir()
+    home.mkdir()
+
+    python_wrapper = "#!/bin/sh\nexec \"$MEOW_TEST_PYTHON\" \"$@\"\n"
+    _write_executable(bin_dir / "python3", python_wrapper)
+    _write_executable(
+        bin_dir / "meow",
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"--version\" ]; then\n"
+        "  printf 'meow 0.1.0\\n'\n"
+        "fi\n",
+    )
+    _write_executable(
+        bin_dir / "curl",
+        "#!/bin/sh\n"
+        "printf '[project]\\nversion = \"0.2.0\"\\n'\n",
+    )
+
+    env = dict(os.environ)
+    env.update(
+        PATH=f"{bin_dir}:/bin",
+        HOME=str(home),
+        MEOW_TEST_PYTHON=sys.executable,
+        PYTHONPATH=str(ROOT / "src"),
+    )
+    result = subprocess.run(
+        ["/bin/sh", str(ROOT / "scripts" / "install.sh")],
+        cwd=ROOT,
+        input="n\n",
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert (
+        "Configuring Claude and onboarding projects using existing MEOW checkout"
+        in output
+    )
+    assert str(ROOT) in output
+    assert "MEOW was not updated" in output
+    assert "git -C" in output
+    assert "pull --ff-only origin main" in output
+    assert "Updating MEOW from existing checkout" not in output
+    assert "Cloning MEOW" not in output
+    assert "pip install -e" in output
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="Windows installer integration test"
+)
+def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: ignore[too-many-statements]
+    tmp_path,
+):
+    powershell = shutil.which("pwsh") or shutil.which("powershell")
+    if powershell is None:
+        pytest.skip("PowerShell is required for the Windows installer test")
+
+    bin_dir = tmp_path / "bin"
+    home = tmp_path / "home"
+    bin_dir.mkdir()
+    home.mkdir()
+    (bin_dir / "meow.cmd").write_text(
+        "@echo off\n"
+        "if /I \"%~1\"==\"--version\" (\n"
+        "  echo meow 0.1.0\n"
+        "  exit /b 0\n"
+        ")\n"
+        "exit /b 0\n",
+        encoding="utf-8",
+    )
+
+    env = dict(os.environ)
+    env.update(
+        PATH=os.pathsep.join([str(bin_dir), str(Path(sys.executable).parent)]),
+        HOME=str(home),
+        USERPROFILE=str(home),
+        PYTHONPATH=str(ROOT / "src"),
+    )
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(ROOT / "scripts" / "install.ps1"),
+        ],
+        cwd=ROOT,
+        input="n\n",
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert (
+        "Configuring Claude and onboarding projects using existing MEOW checkout"
+        in output
+    )
+    assert str(ROOT) in output
+    assert "MEOW was not updated" in output
+    assert "git -C" in output
+    assert "pull --ff-only origin main" in output
+    assert "Updating MEOW from existing checkout" not in output
+    assert "Cloning MEOW" not in output
+    assert "pip install -e" in output
 
 
 def test_posix_bootstrap_installs_when_meow_is_not_on_path(tmp_path):

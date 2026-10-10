@@ -146,7 +146,35 @@ function Stop-ForExistingMeow {
     $existingSetup = Find-ExistingMeowCheckout
     if ($null -eq $existingSetup) {
         Write-Warning "Could not locate the existing MEOW checkout; plugin registration and project onboarding were skipped."
+        Write-Host "To update MEOW manually, run:"
+        Write-Host "  py -3 -m pip install --upgrade git+https://github.com/maya8237/MEOW.git"
         return $true
+    }
+
+    $pythonCommand = (@($existingSetup.Executable) + @($existingSetup.Arguments)) -join " "
+    $updateCommand = "git -C `"$($existingSetup.Checkout)`" pull --ff-only origin main; if (`$?) { $pythonCommand -m pip install -e `"$($existingSetup.Checkout)`" }"
+    try {
+        $updateAnswer = Read-Host "Update MEOW now? [y/N]"
+    } catch {
+        $updateAnswer = ""
+    }
+    if ($updateAnswer -match "^(y|yes)$") {
+        Write-Host "Updating MEOW from existing checkout: $($existingSetup.Checkout)"
+        if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+            throw "Git is required to update the existing MEOW checkout."
+        }
+        & git -C $existingSetup.Checkout pull --ff-only origin main
+        if ($LASTEXITCODE -ne 0) {
+            throw "MEOW source update failed."
+        }
+        & $existingSetup.Executable @($existingSetup.Arguments) -m pip install -e $existingSetup.Checkout
+        if ($LASTEXITCODE -ne 0) {
+            throw "Editable MEOW update failed."
+        }
+        Write-Host "MEOW updated successfully."
+    } else {
+        Write-Host "MEOW was not updated. To update it manually, run:"
+        Write-Host "  $updateCommand"
     }
 
     Write-Host "Configuring Claude and onboarding projects using existing MEOW checkout: $($existingSetup.Checkout)"
