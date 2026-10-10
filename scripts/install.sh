@@ -206,6 +206,11 @@ update_existing_checkout() {
     printf '%s\n' "Updating MEOW from existing checkout: $existing_checkout"
     command -v git >/dev/null 2>&1 \
         || die 'Git is required to update the existing MEOW checkout.'
+    # A detached HEAD would be updated instead of the main branch.
+    if ! git -C "$existing_checkout" symbolic-ref -q HEAD >/dev/null 2>&1; then
+        run_with_spinner 'Switching the detached checkout to main' git -C "$existing_checkout" checkout main \
+            || die 'Could not switch the MEOW checkout to main; commit or stash your changes, then run the installer again.'
+    fi
     if [ "${1:-pull}" = reset ]; then
         # Moving to an older origin/main cannot fast-forward, so reset to it.
         [ -z "$(git -C "$existing_checkout" status --porcelain 2>/dev/null)" ] \
