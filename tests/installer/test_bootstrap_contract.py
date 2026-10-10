@@ -376,6 +376,7 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
     assert "MEOW 9.9.9 is newer than origin/main" in output
     assert "does not match the checkout" not in output
     assert "Update MEOW now?" not in output
+    assert "Switch to the origin/main version" in output
     assert "Get started:" in output
     assert output.index("Done!") < output.index("Get started:")
     assert "No project directory exists" not in output
@@ -686,6 +687,7 @@ def test_posix_bootstrap_says_when_meow_is_newer_than_origin(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "MEOW 0.3.0 is newer than origin/main 0.2.0" in result.stdout
     assert "Update MEOW now?" not in result.stdout
+    assert "Switch to the origin/main version (0.2.0)" in result.stdout
     assert "already up to date" not in result.stdout
 
 
