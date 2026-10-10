@@ -5,6 +5,7 @@ from pathlib import Path
 from claude_agent_sdk import ClaudeAgentOptions
 
 from meow.agents.base import Agent
+from meow.agents.reviewer import _verdict_status
 from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.project.prompts import tester_prompt
 
@@ -160,10 +161,3 @@ class VerificationAgent(Agent):
                 f"{'; '.join(failures)}.\nSTATUS: FAIL"
             )
         return status, verdict
-
-
-def _verdict_status(verdict: str) -> str:
-    for line in verdict.splitlines():
-        if line.strip().startswith("STATUS:"):
-            return "PASS" if line.split(":", 1)[1].strip() == "PASS" else "FAIL"
-    return "FAIL"

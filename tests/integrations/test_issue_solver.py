@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from meow.infrastructure.worktree import sanitize_name
 from meow.integrations import issue_solver
 
 
@@ -54,10 +55,14 @@ class LoadJiraConfigTests(unittest.TestCase):
 
 class SanitizeTests(unittest.TestCase):
     def test_issue_key_passes_through_unchanged(self):
-        self.assertEqual(issue_solver._sanitize("PROJ-123"), "PROJ-123")
+        self.assertEqual(sanitize_name("PROJ-123"), "PROJ-123")
 
     def test_unsafe_characters_collapse_to_a_single_dash(self):
-        self.assertEqual(issue_solver._sanitize("PROJ 123 / test"), "PROJ-123-test")
+        self.assertEqual(sanitize_name("PROJ 123 / test"), "PROJ-123-test")
+
+    def test_branch_names_lose_slashes_and_edge_dashes(self):
+        self.assertEqual(sanitize_name("feature/add-x"), "feature-add-x")
+        self.assertEqual(sanitize_name("/feature/"), "feature")
 
 
 class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):

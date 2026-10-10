@@ -130,3 +130,24 @@ def test_validate_plan_stop_advises_until_plan_is_complete(tmp_path):
         "quiet": True,
         "lifecycle": "complete",
     }
+
+
+def test_lint_after_edit_reads_claude_code_post_tool_use_events(tmp_path):
+    edited = tmp_path / "x.py"
+    edited.write_text("x = 1\n", encoding="utf-8")
+    result = lint_after_edit({
+        "hook_event_name": "PostToolUse",
+        "cwd": str(tmp_path),
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(edited), "content": "x = 1\n"},
+    })
+    assert result["file"] == str(edited)
+    assert result["failures"] == []
+
+
+def test_shaping_ripple_reads_claude_code_tool_input():
+    advisory = shaping_ripple({
+        "tool_name": "Edit",
+        "tool_input": {"file_path": "docs/shaping/breadboard.md"},
+    })
+    assert advisory["advisory"] is True

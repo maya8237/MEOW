@@ -109,6 +109,28 @@ class RunRoundsLoopTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ReviewThenTestTests(unittest.IsolatedAsyncioTestCase):
+    async def test_focus_reaches_the_reviewer_in_test_mode(self):
+        @asynccontextmanager
+        async def stage(active_dir, config):
+            yield VerificationStageEvidence()
+
+        with (
+            patch(
+                "meow.execution.orchestrator.ReviewerAgent.review_plan",
+                new=AsyncMock(return_value=("PASS", "STATUS: PASS")),
+            ) as review,
+            patch("meow.execution.orchestrator.prepared_test_stage", new=stage),
+            patch(
+                "meow.execution.orchestrator.VerificationAgent.test_plan",
+                new=AsyncMock(return_value=("PASS", "STATUS: PASS")),
+            ),
+        ):
+            passed = await _run_review_rounds(
+                _sprint(1), PLAN_FILE, focus="error paths", test=True
+            )
+        self.assertTrue(passed)
+        review.assert_awaited_once_with(PLAN_FILE, focus="error paths")
+
     async def test_reviewer_failure_skips_test_stage(self):
         with (
             patch(

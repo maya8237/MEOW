@@ -201,6 +201,7 @@ def test_docs_updater_blocks_source_edits_before_sdk_tool_call(repo):
         patch("meow.agents.docs_updater.Agent.run_query", side_effect=capture),
     ):
         asyncio.run(update_documentation(prepared))
+    assert not {"Edit", "Write"} & set(received[0].allowed_tools)
     callback = received[0].can_use_tool
     source = asyncio.run(callback("Write", {"file_path": "src/app.py"}, None))
     documentation = asyncio.run(callback("Write", {"file_path": "docs/CLI.md"}, None))

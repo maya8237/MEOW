@@ -22,7 +22,6 @@ just pick which of the first two mechanisms to feed; `--gitlab`, `--github`,
 and `--branch` select their corresponding source paths.
 """
 
-import subprocess
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
@@ -39,8 +38,9 @@ from meow.infrastructure.logging import get_logger
 from meow.infrastructure.worktree import (
     _ensure_existing_branch_worktree,
     _require_branch_checked_out,
+    current_branch,
+    sanitize_name,
 )
-from meow.integrations.branch_reviewer import _sanitize
 from meow.integrations.github_reviewer import _fetch_pull_request, _load_github_config
 from meow.integrations.gitlab_reviewer import _fetch_merge_request, _load_gitlab_config
 from meow.integrations.issue_solver import _fetch_issue, _load_jira_config
@@ -206,7 +206,7 @@ async def _branch_review(  # ruff: ignore[too-many-arguments] -- mirrors the CLI
     use_worktree: bool,
 ) -> None:
     if use_worktree:
-        feature_name = f"branch-review-{_sanitize(branch)}"
+        feature_name = f"branch-review-{sanitize_name(branch)}"
         active_dir = _ensure_existing_branch_worktree(working_dir, feature_name, branch)
     else:
         active_dir = working_dir
@@ -375,13 +375,6 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
     store = RunStore(working_dir) if working_dir.is_dir() else None
     record = None
     if store:
-        branch_result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=working_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
         request = prompt or jira_key or gitlab_link or github_link or branch
         request = request or str(plan_file or review_file or "latest")
         record = store.create(
@@ -389,7 +382,7 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
             request=request,
             repo=working_dir,
             worktree=working_dir,
-            branch=branch_result.stdout.strip() or "unknown",
+            branch=current_branch(working_dir),
         )
         store.transition(
             record.id,

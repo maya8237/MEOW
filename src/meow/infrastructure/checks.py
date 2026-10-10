@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 from meow.execution.run_state import MAX_OUTPUT, CheckResult
@@ -240,13 +241,23 @@ def configured_checks(config: dict) -> list[Check]:
     return checks
 
 
-def run_check(repo: Path, check: Check) -> CheckResult:
-    """Execute lint or build. Tests use the existing prepared_test_stage API."""
+def run_check(
+    repo: Path,
+    check: Check,
+    *,
+    revision: str | None = None,
+    fingerprint: str | None = None,
+) -> CheckResult:
+    """Execute lint or build. Tests use the existing prepared_test_stage API.
+
+    A batch passes the `revision`/`fingerprint` it already computed, since
+    hashing the whole tree once per check is the expensive part.
+    """
     if check.kind == "test":
         raise ValueError("Test checks run through prepared_test_stage")
     before = time.monotonic()
-    revision = code_revision(repo)
-    fingerprint = config_fingerprint(repo)
+    revision = revision or code_revision(repo)
+    fingerprint = fingerprint or config_fingerprint(repo)
     argv = [*split_command(check.command), *check.args]
     try:
         result = subprocess.run(
@@ -284,7 +295,8 @@ def checks_current(results: list[CheckResult], checks: list[Check], repo: Path) 
     revision = code_revision(repo)
     fingerprint = config_fingerprint(repo)
     for check in checks:
-        matches = [r for r in results if r.identity == check_identity(check)]
+        identity = check_identity(check)
+        matches = [r for r in results if r.identity == identity]
         if not matches:
             return False
         result = matches[-1]
@@ -333,14 +345,24 @@ async def _run_check_batch(  # ruff: ignore[complex-structure, too-many-branches
     repo: Path, config: dict, checks: list[Check]
 ) -> list[CheckResult]:
     results = []
+    revision = await asyncio.to_thread(code_revision, repo)
+    fingerprint = config_fingerprint(repo)
     for check in checks:
         if check.kind not in {"test", "browser"}:
-            results.append(await asyncio.to_thread(run_check, repo, check))
+            results.append(
+                await asyncio.to_thread(
+                    partial(
+                        run_check,
+                        repo,
+                        check,
+                        revision=revision,
+                        fingerprint=fingerprint,
+                    )
+                )
+            )
     tests = [check for check in checks if check.kind == "test"]
     browser_checks = [check for check in checks if check.kind == "browser"]
     if tests or browser_checks:
-        revision = code_revision(repo)
-        fingerprint = config_fingerprint(repo)
         start = time.monotonic()
         async with prepared_test_stage(repo, config) as evidence:
             duration = time.monotonic() - start

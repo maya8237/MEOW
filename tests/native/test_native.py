@@ -371,7 +371,9 @@ class PromptTests(unittest.TestCase):
             self.assertIn(
                 "Pay particular attention to: speed.", result["system_prompt"]
             )
-            self.assertEqual(result["query"], f"Review {plan}")
+            # Same task message as the SDK reviewer, lint evidence included.
+            self.assertTrue(result["query"].startswith(f"Review {plan}\n\n"))
+            self.assertIn("Harness lint evidence:\n", result["query"])
             self.assertTrue(result["review_file"].endswith("feat-review.md"))
 
     def test_generator_needs_a_plan(self):

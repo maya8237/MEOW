@@ -157,11 +157,13 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
             )
             try:
                 onboard_if_needed(working_dir, working_dir)
+                config = load_config(working_dir)
+                target = config["delivery"]["target_branch"]
                 result = run_ci_review(
                     working_dir,
-                    load_config(working_dir),
+                    config,
                     os.environ,
-                    args.target_ref or "refs/remotes/origin/dev",
+                    args.target_ref or f"refs/remotes/origin/{target}",
                     artifact_dir,
                     plan_file,
                 )

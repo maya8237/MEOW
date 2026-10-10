@@ -1,14 +1,17 @@
 """Shared setup and one-shot execution for MEOW agents."""
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from claude_agent_sdk import (
     AgentDefinition,
     AssistantMessage,
     ClaudeAgentOptions,
+    ClaudeSDKClient,
+    PermissionResultAllow,
+    PermissionResultDeny,
     ProcessError,
     ResultMessage,
     SystemMessage,
@@ -46,6 +49,64 @@ def _looks_like_a_crash(exit_code: int | None) -> bool:
     if exit_code is None:
         return False
     return exit_code < 0 or exit_code >= _NTSTATUS_SEVERITY_BIT
+
+
+_PATH_KEYS = ("file_path", "path", "notebook_path")
+
+
+def tool_input_path(tool_input: dict[str, Any], project_dir: Path) -> Path | None:
+    """The resolved file a tool call targets, relative paths from `project_dir`."""
+    raw = next((tool_input[key] for key in _PATH_KEYS if key in tool_input), None)
+    if not isinstance(raw, str) or not raw:
+        return None
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = project_dir / candidate
+    try:
+        return candidate.resolve()
+    except (OSError, RuntimeError):
+        return None
+
+
+def guard_tools(
+    options: ClaudeAgentOptions,
+    tools: set[str],
+    deny_reason: Callable[[dict[str, Any]], str | None],
+    *,
+    interrupt: bool = False,
+) -> None:
+    """Route `tools` through `deny_reason` before any earlier callback.
+
+    The SDK auto-approves whole-tool `allowed_tools` entries without calling
+    `can_use_tool`, so guarded tools are dropped from that list; they stay
+    available and fall through to the callback instead.
+    """
+    options.allowed_tools = [t for t in options.allowed_tools if t not in tools]
+    previous = options.can_use_tool
+
+    async def can_use_tool(tool: str, tool_input: dict[str, Any], context: object):
+        if tool in tools and (reason := deny_reason(tool_input)):
+            return PermissionResultDeny(message=reason, interrupt=interrupt)
+        if previous is not None:
+            return await previous(tool, tool_input, context)
+        return PermissionResultAllow()
+
+    options.can_use_tool = can_use_tool
+
+
+def restrict_writes(
+    options: ClaudeAgentOptions, output_file: Path, project_dir: Path
+) -> None:
+    """Let a fetcher write only its own output file."""
+    target = output_file.resolve()
+    guard_tools(
+        options,
+        {"Write"},
+        lambda tool_input: None
+        if tool_input_path(tool_input, project_dir) == target
+        else f"Only the output file {target} may be written",
+        interrupt=True,
+    )
 
 
 def _preview(text: str) -> str:
@@ -219,19 +280,27 @@ class Agent:
                     unattended=bool(self.context.config.get("_unattended", False)),
                     project_root=self.context.active_working_dir(),
                 )
+                # Auto-approved tools would never reach the callback.
+                gated = role_policy.gated_tools()
+                allowed_tools = [t for t in allowed_tools if t not in gated]
         journal = self.context.config.get("_run_journal")
         if journal is not None:
             store, run_id = journal
             record = store.load(run_id)
             role_key = role.lower()
             session_id = record.sessions.get(role_key)
-            required = self.context.config.get("_resume_required_roles", ())
-            if role_key in required and not session_id:
-                raise RuntimeError(
-                    f"Cannot resume: {role_key} session is missing from run {run_id}."
-                )
-            if session_id and "resume" not in extra_options:
-                extra_options["resume"] = session_id
+            # Only `meow resume` continues a saved session, and only for the
+            # role's first query: later rounds (e.g. each review) start fresh.
+            if role_key in self.context.config.get("_resume_required_roles", ()):
+                if not session_id:
+                    raise RuntimeError(
+                        f"Cannot resume: {role_key} session is missing from run "
+                        f"{run_id}."
+                    )
+                resumed = self.context.config.setdefault("_resumed_roles", set())
+                if role_key not in resumed and "resume" not in extra_options:
+                    extra_options["resume"] = session_id
+                    resumed.add(role_key)
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=allowed_tools,
@@ -294,6 +363,38 @@ class Agent:
                 raise RuntimeError(
                     _process_error_message(role, exc, crashed=crashed, attempt=attempt)
                 ) from exc
+
+
+class SessionAgent(Agent):
+    """A role that keeps one `ClaudeSDKClient` session across rounds, so later
+    turns remember what earlier ones already tried."""
+
+    role = ""
+
+    def _open_session(self, options: ClaudeAgentOptions) -> None:
+        self._session_options = options
+        self._client = ClaudeSDKClient(options=options)
+
+    async def __aenter__(self):
+        await self._client.__aenter__()
+        return self
+
+    async def __aexit__(self, *exc):
+        await self._client.__aexit__(*exc)
+
+    async def _turn(self, message: str) -> str:
+        """Send one message and return the assistant's text for that turn."""
+        logger.info("session_turn_started", role=self.role)
+        await self._client.query(message)
+        text = []
+        async for item in self._client.receive_response():
+            log_stream_message(self.role, item, options=self._session_options)
+            if isinstance(item, AssistantMessage):
+                text.extend(
+                    block.text for block in item.content if isinstance(block, TextBlock)
+                )
+        logger.info("session_turn_finished", role=self.role)
+        return "\n".join(text)
 
 
 class ProjectContext:

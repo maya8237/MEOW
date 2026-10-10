@@ -10,6 +10,7 @@ from directory bootstrapping (`native_prepare.py`), lint execution
 (`native_lint.py`), or round-counter persistence (`native_state.py`).
 """
 
+import asyncio
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
@@ -17,8 +18,12 @@ from meow.agents.reviewer import (
     REMOTE_REVIEW_SPECS,
     _branch_diff,
     _git_review_context,
+    branch_review_query,
     new_review_filename,
+    plan_review_query,
+    prompt_review_query,
 )
+from meow.infrastructure.lint import check_lint_evidence
 from meow.project.config import config_root, load_config
 from meow.project.prompts import (
     branch_review_prompt,
@@ -41,6 +46,18 @@ def _load_shape_context(path: Path | None) -> ShapeContext | None:
     if not hasattr(artifact, "chosen_approach"):
         return None
     return ShapeContext(str(path), artifact.chosen_approach, artifact.assumptions)
+
+
+def _lint_report(context: ProjectContext) -> str:
+    """The same harness lint evidence the SDK reviewer receives."""
+    evidence = asyncio.run(
+        check_lint_evidence(
+            context.active_working_dir(),
+            context.lint_commands(),
+            context.config["lint_timeout"],
+        )
+    )
+    return evidence.report()
 
 
 PROMPT_ROLES = (
@@ -73,7 +90,7 @@ def _plan_review(
     )
     return {
         "system_prompt": text,
-        "query": f"Review {plan_file}",
+        "query": plan_review_query(plan_file, _lint_report(context)),
         "review_file": str(review_file),
     }
 
@@ -91,10 +108,12 @@ def _prompt_review(context: ProjectContext, basis: str | None) -> dict:
         docs_dir=docs_dir,
         check_worktree_hygiene=context.use_worktree,
     )
-    query = (
-        f"Review the prompt: {basis.strip()}\n\n{git_context}"
-        if basis and basis.strip()
-        else f"Review the working tree.\n\n{git_context}"
+    query = prompt_review_query(
+        (basis or "").strip(),
+        git_context,
+        has_diff=has_diff,
+        docs_dir=docs_dir,
+        lint_report=_lint_report(context),
     )
     return {"system_prompt": text, "query": query, "review_file": str(review_file)}
 
@@ -124,11 +143,7 @@ def _branch_review(context: ProjectContext, target: str, branch: str) -> dict:
         context.lint_commands(),
         check_worktree_hygiene=context.use_worktree,
     )
-    query = (
-        f"Diff of branch {branch!r} against target {target!r} (git diff "
-        f"{target}...{branch}, including any uncommitted changes):\n\n"
-        + (diff_text or "(no diff -- branch matches target)")
-    )
+    query = branch_review_query(target, branch, diff_text, _lint_report(context))
     return {"system_prompt": text, "query": query, "review_file": str(review_file)}
 
 
@@ -209,6 +224,6 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
     else:
         result = _simple_prompt(role, context, plan_file, shape_context)
     model_role = role.split("-", 1)[0] if role.startswith("reviewer-") else role
-    rules_key = model_role.replace("-", "_")
-    result["model"] = config["models"].get(rules_key)
+    # Same lookup (and reviewer fallback) as the SDK role.
+    result["model"] = context.model(model_role.replace("-", "_"))
     return result

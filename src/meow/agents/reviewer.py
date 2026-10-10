@@ -108,8 +108,12 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
         "--short",
         "--branch",
     ])
-    diff = _run_git_retrying([git, "-C", str(active_dir), "diff", "--"])
+    # Against HEAD so staged edits count; a repo with no commit yet has no HEAD.
+    diff = _run_git_retrying([git, "-C", str(active_dir), "diff", "HEAD", "--"])
+    if diff.returncode != 0:
+        diff = _run_git_retrying([git, "-C", str(active_dir), "diff", "--"])
     diff_text = diff.stdout.strip()
+    untracked = any(line.startswith("?? ") for line in status.stdout.splitlines())
     review_context = (
         "Git status for the active worktree:\n"
         f"{status.stdout.strip() or '(no git status output)'}\n\n"
@@ -134,7 +138,7 @@ def _git_review_context(context: AgentContext) -> tuple[str, bool]:
             f"{repo_diff.stdout.strip() or '(no diff at original working directory)'}"
         )
 
-    return review_context, bool(diff_text)
+    return review_context, bool(diff_text) or untracked
 
 
 def _branch_diff(active_dir: Path, target: str, branch: str) -> str:
@@ -173,8 +177,35 @@ def _branch_diff(active_dir: Path, target: str, branch: str) -> str:
 
 
 def _verdict_status(verdict_text: str) -> str:
-    status_match = re.search(r"^STATUS:\s*(PASS|FAIL)", verdict_text, re.MULTILINE)
-    return status_match.group(1) if status_match else "FAIL"
+    """PASS only when the first `STATUS:` line says exactly PASS."""
+    status_match = re.search(r"^\s*STATUS:(.*)$", verdict_text, re.MULTILINE)
+    passed = status_match is not None and status_match.group(1).strip() == "PASS"
+    return "PASS" if passed else "FAIL"
+
+
+def prompt_review_query(  # ruff: ignore[too-many-arguments] -- pure builder
+    basis: str, git_context: str, *, has_diff: bool, docs_dir: str, lint_report: str
+) -> str:
+    """Task message for a prompt review, shared by SDK and native modes."""
+    head = (
+        f"Review the prompt: {basis}"
+        if basis
+        else no_prompt_review_instructions(has_diff=has_diff, docs_dir=docs_dir)
+    )
+    return f"{head}\n\n{git_context}\n\nHarness lint evidence:\n{lint_report}"
+
+
+def plan_review_query(plan_file: Path, lint_report: str) -> str:
+    return f"Review {plan_file}\n\nHarness lint evidence:\n{lint_report}"
+
+
+def branch_review_query(target: str, branch: str, diff: str, lint_report: str) -> str:
+    return (
+        f"Diff of branch {branch!r} against target {target!r} "
+        f"(git diff {target}...{branch}, including any uncommitted changes):\n\n"
+        + (diff or "(no diff -- branch matches target)")
+        + f"\n\nHarness lint evidence:\n{lint_report}"
+    )
 
 
 class ReviewerAgent(Agent):
@@ -283,13 +314,13 @@ class ReviewerAgent(Agent):
             role="reviewer",
             skills=["superpowers:verification-before-completion"],
         )
-        query_prompt = (
-            f"{no_prompt_review_instructions(has_diff=has_diff, docs_dir=docs_dir)}"
-            f"\n\n{git_context}"
-            if not review_basis
-            else f"Review the prompt: {review_basis}\n\n{git_context}"
+        query_prompt = prompt_review_query(
+            review_basis,
+            git_context,
+            has_diff=has_diff,
+            docs_dir=docs_dir,
+            lint_report=lint_evidence.report(),
         )
-        query_prompt += f"\n\nHarness lint evidence:\n{lint_evidence.report()}"
         await self.run_query(query_prompt, options, "Reviewer")
         verdict_text = review_file.read_text(encoding="utf-8")
         return self._apply_lint_gate(
@@ -360,12 +391,9 @@ class ReviewerAgent(Agent):
             role="reviewer",
             skills=["superpowers:verification-before-completion"],
         )
-        query_prompt = (
-            f"Diff of branch {branch!r} against target {target!r} "
-            f"(git diff {target}...{branch}, including any uncommitted "
-            "changes):\n\n" + (diff_text or "(no diff -- branch matches target)")
+        query_prompt = branch_review_query(
+            target, branch, diff_text, lint_evidence.report()
         )
-        query_prompt += f"\n\nHarness lint evidence:\n{lint_evidence.report()}"
         await self.run_query(query_prompt, options, "Reviewer")
         verdict_text = review_file.read_text(encoding="utf-8")
         return self._apply_lint_gate(
@@ -402,9 +430,7 @@ class ReviewerAgent(Agent):
             skills=["superpowers:verification-before-completion"],
         )
         await self.run_query(
-            f"Review {plan_file}\n\nHarness lint evidence:\n{lint_evidence.report()}",
-            options,
-            "Reviewer",
+            plan_review_query(plan_file, lint_evidence.report()), options, "Reviewer"
         )
         verdict_text = review_file.read_text(encoding="utf-8")
         return self._apply_lint_gate(

@@ -133,6 +133,7 @@ class GithubFetcherFetchTests(unittest.IsolatedAsyncioTestCase):
                     "https://github.com/example/project/pull/1", output_file
                 )
 
+            self.assertNotIn("Write", captured["options"].allowed_tools)
             callback = captured["options"].can_use_tool
             self.assertIsNotNone(callback)
             self.assertIsInstance(

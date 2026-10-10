@@ -132,9 +132,11 @@ class RunStore:
             )
         return self.directory / f"{run_id}.json"
 
-    def _write(self, record: RunRecord) -> None:
+    def _write(self, record: RunRecord) -> RunRecord:
+        """Persist atomically; return the record exactly as stored."""
         self.directory.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(_safe(asdict(record)), indent=2, sort_keys=True) + "\n"
+        stored = _safe(asdict(record))
+        payload = json.dumps(stored, indent=2, sort_keys=True) + "\n"
         temporary = None
         try:
             with tempfile.NamedTemporaryFile(
@@ -153,6 +155,7 @@ class RunStore:
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
+        return RunRecord(**stored)
 
     def create(  # ruff: ignore[too-many-arguments]
         self,
@@ -257,8 +260,7 @@ class RunStore:
             entries = []
         record.usage = {"entries": [*entries, _safe(entry)]}
         record.updated_at = _now()
-        self._write(record)
-        return self.load(run_id)
+        return self._write(record)
 
     def set_session(self, run_id: str, role: str, session_id: str) -> RunRecord:
         """Retain only the Claude session reference needed for resume."""
@@ -272,8 +274,7 @@ class RunStore:
             return record
         record.sessions[role] = session_id
         record.updated_at = _now()
-        self._write(record)
-        return self.load(run_id)
+        return self._write(record)
 
     def update_background(self, run_id: str, **patch: object) -> RunRecord:
         """Update worker metadata without changing the workflow phase."""
@@ -282,8 +283,7 @@ class RunStore:
             key: _safe(value, key) for key, value in patch.items()
         })
         record.updated_at = _now()
-        self._write(record)
-        return self.load(run_id)
+        return self._write(record)
 
     def transition(self, run_id: str, phase: str, **patch: object) -> RunRecord:
         record = self.load(run_id)
@@ -306,5 +306,4 @@ class RunStore:
             "attempt": record.attempt,
             "round": record.round,
         })
-        self._write(record)
-        return self.load(run_id)
+        return self._write(record)

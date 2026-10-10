@@ -92,8 +92,6 @@ default = []
 # tool = "Bash"
 # action = "deny"
 
-# Optional delivery defaults; credentials are never stored here.
+# Optional: the branch `meow review --ci` reviews against (default "dev").
 # [delivery]
 # target_branch = "dev"
-# [delivery.gitlab]
-# enabled = false

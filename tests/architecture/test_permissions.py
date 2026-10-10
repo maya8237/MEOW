@@ -153,8 +153,11 @@ def test_agent_options_attach_policy_only_when_configured(tmp_path):
             {"role": "generator", "tool": "Write", "action": "deny"},
         ]
     })
-    callback = agent.options(
-        system_prompt="x", allowed_tools=["Write"], role="generator"
-    ).can_use_tool
+    options = agent.options(
+        system_prompt="x", allowed_tools=["Read", "Write"], role="generator"
+    )
+    callback = options.can_use_tool
     assert callback is not None
+    # An allowed_tools entry would auto-approve Write before the callback runs.
+    assert options.allowed_tools == ["Read"]
     assert asyncio.run(callback("Write", {"file_path": "x"}, None)).behavior == "deny"

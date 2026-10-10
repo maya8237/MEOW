@@ -8,7 +8,7 @@ from meow.cli import cli
 from meow.native import native
 from meow.native.native_cli import add_native_parser
 
-SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
 SHARED = SKILLS_DIR / "_shared" / "native-mode.md"
 PROJECT_ROOT = SKILLS_DIR.parent
 
@@ -47,7 +47,18 @@ def configured_cli_skills() -> set[str]:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.keyword) and node.arg == "skills":
-                skills.update(ast.literal_eval(node.value))
+                # `skills=[...]`, or `skills=self.skills(role, [...])`.
+                lists = (
+                    [node.value]
+                    if isinstance(node.value, ast.List)
+                    else [
+                        arg
+                        for arg in getattr(node.value, "args", ())
+                        if isinstance(arg, ast.List)
+                    ]
+                )
+                for value in lists:
+                    skills.update(ast.literal_eval(value))
     return skills
 
 
@@ -72,7 +83,9 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
     def test_no_unexpected_skill_directories(self):
         actual = {path.parent.name for path in SKILLS_DIR.glob("*/SKILL.md")}
 
-        self.assertEqual(actual - {"onboard", "migration"}, set(CLI_FALLBACKS))
+        self.assertEqual(
+            actual - {"onboard", "migration", "customize"}, set(CLI_FALLBACKS)
+        )
 
     def test_each_skill_keeps_native_and_cli_sections(self):
         for name, command in CLI_FALLBACKS.items():

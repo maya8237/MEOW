@@ -11,7 +11,12 @@ from claude_agent_sdk import (
     query,
 )
 
-from meow.agents.base import Agent, AgentContext, log_stream_message
+from meow.agents.base import (
+    Agent,
+    AgentContext,
+    log_stream_message,
+    restrict_writes,
+)
 from meow.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -106,6 +111,7 @@ class IssueFetcherAgent(Agent):
             ),
             allowed_tools=[*_JIRA_TOOLS, "Write"],
         )
+        restrict_writes(options, output_file, self.context.active_working_dir())
         await self.run_query("Fetch the Jira issue.", options, "issue_fetcher")
         if not output_file.exists():
             raise RuntimeError(

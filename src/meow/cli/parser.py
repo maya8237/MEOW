@@ -361,7 +361,10 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
     review_parser.add_argument(
         "--target-ref",
         default=None,
-        help="CI target Git ref (default: refs/remotes/origin/dev).",
+        help=(
+            "CI target Git ref (default: refs/remotes/origin/<[delivery]."
+            "target_branch>, which defaults to dev)."
+        ),
     )
     review_parser.add_argument(
         "--artifact-dir",
