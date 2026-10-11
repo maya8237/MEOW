@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from meow.hooks.handlers import (
     HANDLERS,
     capture_completed_plan,
@@ -163,3 +167,71 @@ def test_advisories_use_fields_claude_code_reads(tmp_path):
     plan = _plan(tmp_path)
     stop = validate_plan_stop({"cwd": str(tmp_path), "plan_file": str(plan)})
     assert stop["systemMessage"] == stop["message"]
+
+
+def _post(root, file_path):
+    return {
+        "hook_event_name": "PostToolUse",
+        "cwd": str(root),
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(file_path)},
+    }
+
+
+def test_capture_reads_plan_from_post_tool_use_file_path(tmp_path):
+    plan = _plan(tmp_path)
+    result = capture_completed_plan(_post(tmp_path, plan))
+    assert result["ok"] is True
+    assert result["lifecycle"] == "draft"
+    assert PlanStore(tmp_path).exists(plan)
+
+
+def test_capture_ignores_non_plan_edits(tmp_path):
+    plan = _plan(tmp_path)
+    other = tmp_path / "src" / "app.py"
+    review = plan.with_name("feature-review.md")
+    tester = plan.with_name("feature-test.md")
+    for path in (other, review, tester):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x\n", encoding="utf-8")
+        result = capture_completed_plan(_post(tmp_path, path))
+        assert result["ok"] is True
+        assert result["quiet"] is True
+        assert not PlanStore(tmp_path).exists(path)
+
+
+def test_repeated_plan_edits_do_not_add_notes_or_regress(tmp_path):
+    plan = _plan(tmp_path)
+    capture_completed_plan(_post(tmp_path, plan))
+    capture_completed_plan(_post(tmp_path, plan))
+    assert len(PlanStore(tmp_path).read(plan).discoveries) == 1
+    PlanStore(tmp_path).transition(plan, "complete")
+    result = capture_completed_plan(_post(tmp_path, plan))
+    assert result["lifecycle"] == "complete"
+    assert PlanStore(tmp_path).read(plan).lifecycle == "complete"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="backslash paths")
+def test_capture_accepts_windows_style_paths(tmp_path):
+    plan = _plan(tmp_path)
+    result = capture_completed_plan(_post(tmp_path, str(plan).replace("/", "\\")))
+    assert result["lifecycle"] == "draft"
+
+
+def test_stop_validates_the_single_open_plan(tmp_path):
+    plan = _plan(tmp_path)
+    capture_completed_plan(_post(tmp_path, plan))
+    advisory = validate_plan_stop({"cwd": str(tmp_path)})
+    assert "Plan lifecycle is draft" in advisory["message"]
+    PlanStore(tmp_path).transition(plan, "complete")
+    assert validate_plan_stop({"cwd": str(tmp_path)}).get("quiet") is True
+
+
+def test_stop_with_zero_or_two_open_plans_is_quiet(tmp_path):
+    plan = _plan(tmp_path)
+    assert validate_plan_stop({"cwd": str(tmp_path)}).get("quiet") is True
+    second = plan.with_name("other.md")
+    second.write_text("# Other\n", encoding="utf-8")
+    capture_completed_plan(_post(tmp_path, plan))
+    capture_completed_plan(_post(tmp_path, second))
+    assert validate_plan_stop({"cwd": str(tmp_path)}).get("quiet") is True
