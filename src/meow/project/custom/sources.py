@@ -36,6 +36,7 @@ class CustomSource:
     scope: str
     config_file: Path
     roles: tuple[str, ...] = ()  # empty: every role the kind allows
+    missing: bool = False  # user scope only: the directory is absent, so skipped
 
 
 def _git_ignored(project_dir: Path, path: Path) -> bool:
@@ -90,6 +91,8 @@ def _directory(value: object, scope: str, base: Path, where: str) -> Path:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{where} must set a non-empty 'path'")
     path = _resolve(value, scope, base, where)
+    if scope == "user":
+        return path  # a stale personal entry must not break every project
     if not path.is_dir():
         raise ValueError(f"{where}: directory {path} does not exist")
     if scope == "project" and _git_ignored(base, path):
@@ -114,7 +117,8 @@ def _entry(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
         raise ValueError(f"{where} has unknown key(s) {unknown}")
     path = _directory(raw.get("path"), scope, base, where)
     roles = _roles(raw["roles"], kind, where) if "roles" in raw else ()
-    return CustomSource(kind, path, scope, config_file, roles)
+    missing = scope == "user" and not path.is_dir()
+    return CustomSource(kind, path, scope, config_file, roles, missing)
 
 
 def parse_sources(

@@ -54,6 +54,9 @@ guess at a venv path. Flags shared by every command:
 | `shape-assess` / `shape-create` / `shape-reflect` | Assess, create, or reflect on requirements shaping artifacts |
 | `hook NAME` | Run a Claude Code hook handler (`lint_after_edit`, `shaping_ripple`, `capture_completed_plan`, `validate_plan_stop`) on the hook event JSON from stdin; installed by `meow hooks install claude` |
 
+`capture_completed_plan` runs on PostToolUse with the `Write|Edit` matcher;
+`validate_plan_stop` runs on Stop.
+
 `prompt` roles: `planner`, `generator`, `explorer`, `reviewer-plan`,
 `reviewer-prompt`, `reviewer-mr`, `reviewer-branch`, `review-fixer`,
 `lint-fixer`.
