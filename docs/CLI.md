@@ -21,6 +21,7 @@ These are the commands meant for normal project work:
 | `meow queue` | Enqueue tasks or run queued tasks serially in the current repository. |
 | `meow workflows` | List, show, validate, or eject workflow definitions. |
 | `meow agents` | List, show, eject, or diff agent definitions. |
+| `meow ui` | Open a local read-only page listing workflows, agents, and skills, including custom ones. |
 | `meow hooks` | Manage optional host hooks after reviewing what they install. |
 | `meow ipython` | Open the interactive MEOW IPython session. |
 
@@ -54,7 +55,13 @@ meow agents list
 meow agents show reviewer
 meow agents eject reviewer --scope project
 meow agents diff reviewer
+meow ui [--port 8765] [--no-browser]
 ```
+
+`meow ui` serves the catalog page on 127.0.0.1 only and reads the project's
+configuration on every page load, so edits show up on refresh. It lists
+workflows, agents, and skills from every scope, with their source text. It is
+read-only; press Ctrl+C to stop.
 
 Catalog commands accept `--work-dir PATH`. Eject defaults to project scope,
 also accepts local/user, and refuses to overwrite. `show` and workflow
