@@ -514,6 +514,14 @@ class SessionAgent(Agent):
         self._session_options = options
         self._client = ClaudeSDKClient(options=options)
 
+    def open(self, options: ClaudeAgentOptions) -> None:
+        """Prepare the session for callers outside the agent hierarchy."""
+        self._open_session(options)
+
+    async def send(self, message: str) -> str:
+        """One turn for callers outside the agent hierarchy."""
+        return await self._turn(message)
+
     async def __aenter__(self):
         await self._client.__aenter__()
         return self
