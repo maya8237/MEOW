@@ -20,7 +20,13 @@ from meow.project.config_schema import (
     _normalize_tester_config,
     _validate_max_rounds,
 )
-from meow.project.custom import CustomSource, discover, parse_sources
+from meow.project.custom import (
+    CustomSource,
+    builtin_sources,
+    conventional_sources,
+    discover,
+    parse_sources,
+)
 
 __all__ = [
     "DEFAULT_CONFIG",
@@ -171,6 +177,10 @@ def load_config(working_dir: Path) -> dict:
                     f"command {command.command!r} {problem}"
                 )
     _validate_max_rounds(config)
-    config["customizations"] = discover(custom_sources)
+    config["customizations"] = discover([
+        *custom_sources,
+        *conventional_sources(working_dir, user_config_path().parent),
+        *builtin_sources(),
+    ])
 
     return config
