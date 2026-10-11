@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from meow.cli import cli
-from meow.cli.ipython_cli import _dispatch_line
+from meow.cli.ipython_cli import _build_magics, _dispatch_line, _magic_names
 from meow.cli.ipython_completion import complete_words
 
 
@@ -21,6 +21,30 @@ class DispatchLineTests(unittest.TestCase):
         args = cli._build_arg_parser().parse_args(["ipython"])
 
         self.assertEqual(args.command, "ipython")
+
+    def test_magic_names_include_shortcuts_and_fun_aliases(self):
+        names = _magic_names()
+
+        for name in ("r", "p", "rv", "l", "pounce"):
+            self.assertIn(name, names)
+
+    def test_magic_names_leave_out_ipython_aliases(self):
+        names = _magic_names()
+
+        self.assertNotIn("i", names)
+        self.assertNotIn("lab", names)
+        self.assertNotIn("ipython", names)
+
+    def test_built_magics_expose_shortcuts_as_bare_line_magics(self):
+        try:
+            magics = _build_magics()
+        except ImportError:
+            self.skipTest("IPython is not installed")
+
+        line = magics.magics["line"]
+        for name in ("r", "rv", "l", "pounce"):
+            self.assertIn(name, line)
+        self.assertNotIn("lab", line)
 
     @staticmethod
     def test_public_endpoint_starts_the_existing_ipython_session():
@@ -43,6 +67,10 @@ class CompleteWordsTests(unittest.TestCase):
 
     def test_completes_nested_subcommand(self):
         self.assertIn("verify", complete_words(self.parser, ["native"], "ve"))
+
+    def test_completes_flags_for_shortcut(self):
+        self.assertIn("--name", complete_words(self.parser, ["r"], "--na"))
+        self.assertIn("--lint-fix", complete_words(self.parser, ["l"], "--"))
 
     def test_no_suggestions_for_free_text_option_value(self):
         self.assertEqual(complete_words(self.parser, ["run", "--name"], ""), [])
