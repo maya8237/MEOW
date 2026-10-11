@@ -79,6 +79,13 @@ def render(  # ruff: ignore[complex-structure, too-many-statements]
         f"Recovery: {recovery_command(record)}",
     ]
     worker = inspect_worker(record)
+    workflow = record.results.get("workflow")
+    if workflow:
+        lines.append(f"Workflow: {workflow['name']} ({workflow['scope']})")
+    lines.extend(
+        f"Stage {step_id}: {detail['status']}"
+        for step_id, detail in record.results.get("stages", {}).items()
+    )
     if worker.state != "not_background":
         lines.append(f"Background worker: {worker.state}")
         lines.append(f"Worker log: {worker.log or 'unavailable'}")

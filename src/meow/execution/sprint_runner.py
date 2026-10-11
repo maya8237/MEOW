@@ -11,7 +11,12 @@ from meow.agents.planner import PlannerAgent, require_plan_file
 from meow.execution.orchestrator import (
     _prepare_sprint,
 )
-from meow.execution.run_state import TERMINAL_PHASES, RunStateError, RunStore
+from meow.execution.run_state import (
+    TERMINAL_PHASES,
+    CheckResult,
+    RunStateError,
+    RunStore,
+)
 from meow.execution.sprint import Sprint
 from meow.execution.workflow.engine import LoopExhausted, RunState, run_workflow
 from meow.infrastructure.cancellation import RunCancelled, check_cancel
@@ -25,7 +30,7 @@ from meow.infrastructure.worktree_setup import run_setup
 from meow.project.config import config_paths, load_config
 from meow.project.custom.definitions import discover
 from meow.project.custom.sources import builtin_sources
-from meow.project.custom.workflows import expand, validate
+from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
 from meow.project.onboarding import onboard_if_needed
 from meow.project.plan_files import (
     _latest_plan_file,
@@ -168,6 +173,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     unattended: bool = False,
     worktree_preexisting: bool = False,
     required_session_roles: set[str] | None = None,
+    workflow: str | None = None,
 ) -> None:
     """Plan (unless `plan_file` is given) then implement it in a round loop.
 
@@ -271,13 +277,9 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
 
     catalog = sprint.config.get("customizations") or discover(builtin_sources())
     sprint.config["customizations"] = catalog
-    workflow = catalog.workflow(
-        sprint.config.get("workflow", {}).get("default", "default")
-    )
-    problems = validate(workflow, catalog)
-    if problems:
-        raise ValueError("\n".join(problems))
-    steps = expand(workflow, catalog)
+    saved_workflow = record.results.get("workflow")
+    definition = select_workflow(sprint.config, workflow, saved_workflow)
+    steps = expand(definition, catalog)
     plan_given = plan_file is not None
     if (
         plan_file is None
@@ -322,7 +324,33 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
         feature_name=effective_name,
         request=request,
         plan_ready=plan_ready,
+        completed=set((saved_workflow or {}).get("completed", [])),
+        workflow={
+            **(saved_workflow or {}),
+            "name": definition.name,
+            "scope": definition.source.scope,
+            "fingerprint": fingerprint(definition, catalog),
+            "completed": (saved_workflow or {}).get("completed", []),
+        },
+        statuses=dict(record.results.get("step_statuses", {})),
     )
+    state.flags["parallel"] = any(
+        item["phase"] == "tasks_integrated" for item in record.transitions
+    )
+    for step_id, detail in record.results.get("stages", {}).items():
+        state.statuses[step_id] = {"status": detail["status"]}
+    for step in walk(steps):
+        if (
+            step.kind == "gate"
+            and step.blocks == "delivery"
+            and step.id in state.statuses
+        ):
+            state.delivery_gates[step.id] = state.statuses[step.id]["status"]
+    if "checks" in record.results:
+        state.checks_results = [
+            CheckResult(**item) for item in record.results["checks"]
+        ]
+    store.update_results(record.id, workflow=state.workflow)
     try:
         await run_workflow(state, steps)
     except LoopExhausted:

@@ -125,15 +125,23 @@ class WorkflowRun:
         for step in steps:
             if step.id in self.state.completed:
                 continue
+            if self.state.workflow:
+                self.state.workflow["active"] = step.id
+                self.save_progress()
             await self.step(step)
             self.state.completed.add(step.id)
             if self.state.workflow:
                 self.state.workflow["completed"] = sorted(self.state.completed)
-                self.state.journal(
-                    self.state.store.load(self.state.run_id).phase,
-                    results={"workflow": self.state.workflow},
-                )
+                self.state.workflow["active"] = None
+                self.save_progress()
         self.state.block_delivery()
+
+    def save_progress(self):
+        self.state.store.update_results(
+            self.state.run_id,
+            workflow=self.state.workflow,
+            step_statuses=self.state.statuses,
+        )
 
     async def body(self, steps):
         for step in steps:
@@ -189,6 +197,9 @@ class WorkflowRun:
         state.pool = SessionPool()
         old_pool = state.sprint.config.get("_workflow_pool")
         state.sprint.config["_workflow_pool"] = state.pool
+        if state.workflow:
+            state.workflow["loop"] = step.id
+            self.save_progress()
         try:
             for number in range(
                 1, (step.max_rounds or state.sprint.config["max_rounds"]) + 1
@@ -202,6 +213,9 @@ class WorkflowRun:
                 ]
                 if not failed:
                     state.statuses[step.id] = {"status": "PASS"}
+                    if state.workflow:
+                        state.workflow["loop"] = None
+                        self.save_progress()
                     return
                 state.feedback = "\n\n".join(failed)
             raise LoopExhausted(self.exhausted_message(step))
