@@ -66,7 +66,7 @@ class FakeProjectContext:
         self._lint_commands = [LintCommand(command="ruff check")]
         self.use_worktree = False
 
-    def model(self, role):
+    def model(self, role, agent=None):
         self.model_calls.append(role)
         return f"model-for-{role}"
 

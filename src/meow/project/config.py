@@ -41,7 +41,7 @@ DEFAULT_CONFIG = {
     "lint_timeout": 60,  # seconds before a per-file lint command is killed
     "docs_dir": ".meow/plans",
     "models": {
-        "explorer": "haiku",
+        "explorer": None,  # explorer.toml supplies "haiku"
         "planner": None,  # None = engine default
         "generator": None,
         "reviewer": None,

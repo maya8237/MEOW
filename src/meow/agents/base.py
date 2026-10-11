@@ -26,7 +26,7 @@ from claude_agent_sdk import (
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
 from meow.project.config_models import LintCommand
-from meow.project.custom import Customizations, skill_plugin_dir
+from meow.project.custom import CustomAgent, Customizations, skill_plugin_dir
 from meow.project.permissions import (
     PATH_KEYS,
     PermissionPolicy,
@@ -190,7 +190,7 @@ class AgentContext(Protocol):
     @property
     def use_worktree(self) -> bool: ...
 
-    def model(self, role: str) -> str | None: ...
+    def model(self, role: str, agent: CustomAgent | None = None) -> str | None: ...
 
     def lint_commands(self) -> list[LintCommand]: ...
 
@@ -469,8 +469,15 @@ class ConfigLookups:
 
     config: dict
 
-    def model(self, role: str) -> str | None:
+    def model(self, role: str, agent: CustomAgent | None = None) -> str | None:
+        """`[models].<role>` if set, else the definition's model, else the
+        role's configured default (None: engine default) or the reviewer's."""
         models = self.config["models"]
+        configured = models.get(role)
+        if configured is not None:
+            return configured
+        if agent is not None and agent.model:
+            return agent.model
         return models.get(role, models.get("reviewer"))
 
     def lint_commands(self) -> list[LintCommand]:
