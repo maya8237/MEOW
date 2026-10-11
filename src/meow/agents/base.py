@@ -215,18 +215,24 @@ def _last_text_block(message: AssistantMessage) -> str:
     return texts[-1] if texts else ""
 
 
-async def _consume_query(prompt: str, options: ClaudeAgentOptions, role: str) -> None:
+async def _consume_query(prompt: str, options: ClaudeAgentOptions, role: str) -> str:
     """Run `query()` once to completion, raising `RuntimeError` on a
     non-success result. A `ProcessError` (the CLI subprocess crashed or
     otherwise failed) propagates unchanged for `Agent.run_query`'s retry
     loop to handle."""
     messages: AsyncIterator = query(prompt=prompt, options=options)
     last_text = ""
+    parts = []
     try:
         async for message in messages:
             log_stream_message(role, message, options=options)
             if isinstance(message, AssistantMessage):
                 last_text = _last_text_block(message) or last_text
+                parts.extend(
+                    block.text
+                    for block in message.content
+                    if isinstance(block, TextBlock)
+                )
             if isinstance(message, ResultMessage) and message.subtype != "success":
                 logger.error("agent_query_failed", role=role, subtype=message.subtype)
                 raise RuntimeError(f"{role} failed: {message.subtype}")
@@ -234,6 +240,7 @@ async def _consume_query(prompt: str, options: ClaudeAgentOptions, role: str) ->
         if not exc.stderr and last_text:
             exc.stderr = last_text
         raise
+    return "\n".join(parts)
 
 
 def _process_error_message(
@@ -437,7 +444,7 @@ class Agent:
         return options
 
     @staticmethod
-    async def run_query(prompt: str, options: ClaudeAgentOptions, role: str) -> None:
+    async def run_query(prompt: str, options: ClaudeAgentOptions, role: str) -> str:
         """Run a one-shot SDK query and raise when the SDK reports failure.
 
         Retries up to `_SDK_CRASH_RETRY_ATTEMPTS` times, with a short
@@ -459,9 +466,9 @@ class Agent:
         for attempt in range(1, _SDK_CRASH_RETRY_ATTEMPTS + 1):
             logger.info("agent_query_started", role=role, attempt=attempt)
             try:
-                await _consume_query(prompt, options, role)
+                response = await _consume_query(prompt, options, role)
                 logger.info("agent_query_finished", role=role)
-                return
+                return response
             except ProcessError as exc:
                 crashed = _looks_like_a_crash(exc.exit_code)
                 if crashed and attempt < _SDK_CRASH_RETRY_ATTEMPTS:
@@ -484,6 +491,12 @@ class Agent:
                 raise RuntimeError(
                     _process_error_message(role, exc, crashed=crashed, attempt=attempt)
                 ) from exc
+
+    async def run_definition_query(self, agent, prompt, options, role):
+        pool = self.context.config.get("_workflow_pool")
+        if agent.session == "persistent" and pool is not None:
+            return await pool.run(self.context, agent.role, options, prompt)
+        return await self.run_query(prompt, options, role)
 
 
 class SessionAgent(Agent):

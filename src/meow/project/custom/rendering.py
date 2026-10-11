@@ -48,6 +48,12 @@ PROMPT_VARIABLES = frozenset({
     "feedback",
     "steps",
     "inputs",
+    "plan_given",
+    "resume_review",
+    "review_first",
+    "parallel",
+    "unattended",
+    "checks_configured",
     # Code-owned contracts
     "verdict_format",
 })
@@ -82,11 +88,7 @@ def effective_models(config: dict) -> dict:
 def _template(agent: CustomAgent, variant: str | None) -> str:
     if variant is None:
         return agent.prompt
-    if variant not in agent.variants:
-        raise ValueError(
-            f"{agent.file}: needs a [variants].{variant} prompt for this review"
-        )
-    return agent.variants[variant]
+    return agent.variants.get(variant, agent.prompt)
 
 
 def render_agent(

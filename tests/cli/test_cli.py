@@ -194,6 +194,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "explorer": "x",
             },
             "lint": [],
+            "tester": {"tests": []},
+            "build": [],
             "docs_dir": "docs",
             "max_rounds": 1,
             "lint_timeout": 60,
@@ -216,6 +218,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "explorer": "x",
             },
             "lint": [],
+            "tester": {"tests": []},
+            "build": [],
             "docs_dir": "docs",
             "max_rounds": 1,
             "lint_timeout": 60,
@@ -235,7 +239,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             with (
                 patch("meow.execution.orchestrator.load_config", return_value=config),
                 patch(
-                    "meow.execution.orchestrator.Generator",
+                    "meow.execution.workflow.builtin_steps.Generator",
                     return_value=mock_generator,
                 ),
                 patch.object(
@@ -269,6 +273,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "explorer": "x",
             },
             "lint": [],
+            "tester": {"tests": []},
+            "build": [],
             "docs_dir": "docs",
             "max_rounds": 1,
             "lint_timeout": 60,
@@ -285,7 +291,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             with (
                 patch("meow.execution.orchestrator.load_config", return_value=config),
                 patch(
-                    "meow.execution.orchestrator.Generator",
+                    "meow.execution.workflow.builtin_steps.Generator",
                     return_value=mock_generator,
                 ) as mock_generator_cls,
                 patch.object(
@@ -321,6 +327,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "explorer": "x",
             },
             "lint": [],
+            "tester": {"tests": []},
+            "build": [],
             "docs_dir": "docs",
             "max_rounds": 1,
             "lint_timeout": 60,
@@ -359,6 +367,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "explorer": "x",
             },
             "lint": [],
+            "tester": {"tests": []},
+            "build": [],
             "docs_dir": "docs",
             "max_rounds": 1,
             "lint_timeout": 60,
@@ -373,7 +383,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
             with (
                 patch("meow.execution.orchestrator.load_config", return_value=config),
-                patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
+                patch(
+                    "meow.execution.workflow.builtin_steps.Generator"
+                ) as mock_generator_cls,
                 patch.object(
                     PlannerAgent, "run", new_callable=AsyncMock
                 ) as mock_planner_run,
@@ -405,6 +417,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "explorer": "x",
             },
             "lint": [],
+            "tester": {"tests": []},
+            "build": [],
             "docs_dir": "docs",
             "max_rounds": 1,
             "lint_timeout": 60,
@@ -425,7 +439,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             with (
                 patch("meow.execution.orchestrator.load_config", return_value=config),
                 patch(
-                    "meow.execution.orchestrator.Generator",
+                    "meow.execution.workflow.builtin_steps.Generator",
                     return_value=mock_generator,
                 ),
                 patch.object(
@@ -461,6 +475,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "explorer": "x",
             },
             "lint": [],
+            "tester": {"tests": []},
+            "build": [],
             "docs_dir": "docs",
             "max_rounds": 1,
             "lint_timeout": 60,
@@ -474,7 +490,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
             with (
                 patch("meow.execution.orchestrator.load_config", return_value=config),
-                patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
+                patch(
+                    "meow.execution.workflow.builtin_steps.Generator"
+                ) as mock_generator_cls,
                 patch.object(
                     ReviewerAgent, "review_plan", new_callable=AsyncMock
                 ) as mock_review_plan,
@@ -509,6 +527,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "explorer": "x",
             },
             "lint": [],
+            "tester": {"tests": []},
+            "build": [],
             "docs_dir": "docs",
             "max_rounds": 1,
             "lint_timeout": 60,
@@ -523,7 +543,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
             with (
                 patch("meow.execution.orchestrator.load_config", return_value=config),
-                patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
+                patch(
+                    "meow.execution.workflow.builtin_steps.Generator"
+                ) as mock_generator_cls,
                 patch.object(
                     ReviewerAgent, "review_plan", new_callable=AsyncMock
                 ) as mock_review_plan,
@@ -553,6 +575,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "explorer": "x",
             },
             "lint": [],
+            "tester": {"tests": []},
+            "build": [],
             "docs_dir": "docs",
             "max_rounds": 1,
             "lint_timeout": 60,
@@ -567,7 +591,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
             with (
                 patch("meow.execution.orchestrator.load_config", return_value=config),
-                patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
+                patch(
+                    "meow.execution.workflow.builtin_steps.Generator"
+                ) as mock_generator_cls,
                 patch.object(
                     ReviewerAgent, "review_plan", new_callable=AsyncMock
                 ) as mock_review_plan,
@@ -610,6 +636,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 "explorer": "x",
             },
             "lint": [],
+            "tester": {"tests": []},
+            "build": [],
             "docs_dir": "docs",
             "max_rounds": 1,
             "lint_timeout": 60,
@@ -620,7 +648,9 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
             with (
                 patch("meow.execution.orchestrator.load_config", return_value=config),
-                patch("meow.execution.orchestrator.Generator") as mock_generator_cls,
+                patch(
+                    "meow.execution.workflow.builtin_steps.Generator"
+                ) as mock_generator_cls,
                 self.assertRaisesRegex(FileNotFoundError, "No plan file found"),
             ):
                 asyncio.run(
@@ -779,6 +809,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                     "explorer": "x",
                 },
                 "lint": [],
+                "tester": {"tests": []},
+                "build": [],
                 "docs_dir": "docs",
                 "max_rounds": 1,
             },
@@ -788,6 +820,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                     {
                         "models": {"explorer": "x"},
                         "lint": [],
+                        "tester": {"tests": []},
+                        "build": [],
                     },
                     use_worktree=True,
                 )

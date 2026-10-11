@@ -132,7 +132,9 @@ class VerificationAgent(Agent):
             return "FAIL", f"Could not prepare tester verdict at {report_file}: {exc}"
         try:
             report_file.unlink(missing_ok=True)
-            await self.run_query(prompt, self._options(report_file), "Tester")
+            await self.run_definition_query(
+                self.definition("tester"), prompt, self._options(report_file), "Tester"
+            )
         except BaseException:
             if previous_report is not None and not report_file.exists():
                 report_file.write_bytes(previous_report)

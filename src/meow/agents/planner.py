@@ -39,5 +39,5 @@ class PlannerAgent(Agent):
                 agent=agent,
             ),
         )
-        await self.run_query(request, options, "Planner")
+        await self.run_definition_query(agent, request, options, "Planner")
         return require_plan_file(plan_file)
