@@ -11,7 +11,7 @@ from meow.infrastructure.quality import (
     load_concerns,
     record_concerns,
 )
-from meow.project.prompts import _verdict_format
+from meow.project.prompts import verdict_format
 
 
 def _candidate(
@@ -101,7 +101,7 @@ def test_concern_store_persists_across_separate_worktrees(tmp_path):
 
 
 def test_review_prompt_requests_only_evidence_backed_advisory_concerns(tmp_path):
-    instruction = _verdict_format(tmp_path / "review.md", "criterion")
+    instruction = verdict_format(tmp_path / "review.md", "criterion")
     assert "QUALITY_CONCERN:" in instruction
     assert "exact code text" in instruction
     assert "advisory" in instruction
