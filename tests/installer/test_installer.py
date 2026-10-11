@@ -5,7 +5,13 @@ import pytest
 
 from meow import installer
 from meow.installer import _runtime
+from meow.project import repos as repos_module
 from meow.project.onboarding import OnboardingReport
+
+
+@pytest.fixture(autouse=True)
+def _private_repo_registry(tmp_path, monkeypatch):
+    monkeypatch.setattr(repos_module, "registry_path", lambda: tmp_path / "repos.toml")
 
 
 def test_append_plugin_dir_preserves_existing_env_entries_and_settings(tmp_path):
@@ -150,6 +156,31 @@ def test_main_onboards_each_literal_destination_and_prints_next_steps(
     assert "Add projects one at a time" in output
     assert "Optional features not enabled" not in output
     assert "Get started" not in output  # shown after the scripts' "Done!"
+
+
+def test_main_registers_new_and_already_onboarded_projects(tmp_path, monkeypatch):
+    repo = tmp_path / "meow"
+    repo.mkdir()
+    onboarded = tmp_path / "already"
+    onboarded.mkdir()
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    registry = tmp_path / "home" / ".meow" / "repos.toml"
+    monkeypatch.setattr(repos_module, "registry_path", lambda: registry)
+    monkeypatch.setattr(_runtime, "append_plugin_dir", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        _runtime,
+        "onboard_project",
+        lambda root: OnboardingReport((), None, (), None),
+    )
+    answers = iter(("y", str(onboarded), str(fresh), ""))
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    assert installer.main(["--repo-dir", str(repo)]) == 0
+
+    saved = repos_module._saved()
+    assert str(onboarded.resolve()) in saved
+    assert str(fresh.resolve()) in saved
 
 
 def test_next_steps_flag_prints_only_the_closing_guidance(capsys):
