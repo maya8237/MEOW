@@ -305,3 +305,29 @@ def fingerprint(workflow: WorkflowFile, catalog: "Customizations") -> str:  # ru
     for key, data in sorted(files.items()):
         digest.update(repr(key).encode() + b"\0" + data + b"\0")
     return digest.hexdigest()
+
+
+def select_workflow(config: dict, name: str | None = None, saved: dict | None = None):
+    """Resolve and validate the chosen definition, including resume identity."""
+    catalog = config["customizations"]
+    selected = (
+        name
+        or (saved or {}).get("name")
+        or config.get("workflow", {}).get("default", "default")
+    )
+    try:
+        workflow = catalog.workflow(selected)
+    except KeyError as exc:
+        raise ValueError(str(exc)) from exc
+    problems = validate(workflow, catalog)
+    if problems:
+        raise ValueError("\n".join(problems))
+    if saved and (
+        selected != saved["name"]
+        or fingerprint(workflow, catalog) != saved["fingerprint"]
+    ):
+        raise ValueError(
+            f"Workflow changed: {selected}. "
+            "Restore its saved definitions before continuing."
+        )
+    return workflow

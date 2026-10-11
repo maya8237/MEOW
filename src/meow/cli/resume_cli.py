@@ -11,6 +11,8 @@ from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.cancellation import clear_cancel
 from meow.infrastructure.checks import config_fingerprint
 from meow.infrastructure.worktree import current_branch
+from meow.project.config import load_config
+from meow.project.custom.workflows import expand, select_workflow, walk
 
 
 def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-branches, too-many-statements]
@@ -67,6 +69,11 @@ def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, to
                 "Configuration changed. Restore the repository MEOW config "
                 "before continuing."
             )
+    if saved := record.results.get("workflow"):
+        try:
+            select_workflow(load_config(repo), saved=saved)
+        except (OSError, ValueError, KeyError) as exc:
+            return str(exc)
     return None
 
 
@@ -85,6 +92,39 @@ def _required_session_roles(record: RunRecord, resume_at: str) -> set[str]:
     if "reviewer_started" in phases:
         required.add("reviewer")
     return required if resume_at == "review" else {"generator"} & required
+
+
+def _resume_at(record: RunRecord) -> str:
+    review_first = record.phase not in {"created", "preparing", "planning", "planned"}
+    review_first = (
+        review_first
+        and bool(record.plan_file)
+        and any(
+            step.get("phase")
+            in {
+                "generator_started",
+                "generator_finished",
+                "reviewer_started",
+                "reviewer_finished",
+                "tester_finished",
+                "interrupted_mutation",
+                "checking",
+                "checks_finished",
+                "tasks_integrated",
+            }
+            for step in record.transitions
+        )
+    )
+    saved_workflow = record.results.get("workflow")
+    if saved_workflow:
+        config = load_config(Path(record.repo))
+        workflow = select_workflow(config, saved=saved_workflow)
+        active = saved_workflow.get("loop") or saved_workflow.get("active")
+        review_first = any(
+            step.id == active and step.kind == "loop"
+            for step in walk(expand(workflow, config["customizations"]))
+        )
+    return "review" if review_first else "generate"
 
 
 async def resume(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-statements]
@@ -128,27 +168,8 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
             file=sys.stderr,
         )
         return 1
-    review_first = record.phase not in {"created", "preparing", "planning", "planned"}
-    review_first = (
-        review_first
-        and bool(record.plan_file)
-        and any(
-            step.get("phase")
-            in {
-                "generator_started",
-                "generator_finished",
-                "reviewer_started",
-                "reviewer_finished",
-                "tester_finished",
-                "interrupted_mutation",
-                "checking",
-                "checks_finished",
-                "tasks_integrated",
-            }
-            for step in record.transitions
-        )
-    )
-    resume_at = "review" if review_first else "generate"
+    saved_workflow = record.results.get("workflow")
+    resume_at = _resume_at(record)
     required_sessions = _required_session_roles(record, resume_at)
     missing_sessions = sorted(required_sessions - set(record.sessions))
     if missing_sessions:
@@ -171,5 +192,6 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
         run_id=record.id,
         record_root=Path(record.repo),
         required_session_roles=required_sessions,
+        workflow=saved_workflow["name"] if saved_workflow else "default",
     )
     return 0
