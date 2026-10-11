@@ -115,6 +115,67 @@ def test_install_migrates_old_stop_based_plan_capture(tmp_path):
     assert before == after
 
 
+def test_install_skips_manifest_item_without_event(tmp_path):
+    _old_stop_install(tmp_path)
+    manifest_path = tmp_path / MANIFEST
+    manifest = json.loads(manifest_path.read_text())
+    del manifest["entries"][0]["event"]
+    manifest_path.write_text(json.dumps(manifest))
+
+    result = install_claude_hooks(tmp_path, list(COMMANDS))
+
+    assert result["installed"] == list(COMMANDS)
+    entries = json.loads((tmp_path / SETTINGS).read_text())["hooks"]["PostToolUse"]
+    assert (
+        sum(
+            entry["hooks"][0]["command"] == COMMANDS["plan_capture"]
+            for entry in entries
+        )
+        == 1
+    )
+
+
+def test_install_skips_manifest_item_with_non_string_event(tmp_path):
+    _old_stop_install(tmp_path)
+    manifest_path = tmp_path / MANIFEST
+    manifest = json.loads(manifest_path.read_text())
+    manifest["entries"][0]["event"] = ["Stop"]
+    manifest_path.write_text(json.dumps(manifest))
+
+    result = install_claude_hooks(tmp_path, list(COMMANDS))
+
+    assert result["installed"] == list(COMMANDS)
+    entries = json.loads((tmp_path / SETTINGS).read_text())["hooks"]["PostToolUse"]
+    assert (
+        sum(
+            entry["hooks"][0]["command"] == COMMANDS["plan_capture"]
+            for entry in entries
+        )
+        == 1
+    )
+
+
+def test_migration_preserves_foreign_and_lookalike_stop_entries(tmp_path):
+    _old_stop_install(tmp_path)
+    settings_path = tmp_path / SETTINGS
+    settings = json.loads(settings_path.read_text())
+    foreign = {"matcher": "", "hooks": [{"type": "command", "command": "mine"}]}
+    lookalike = {
+        "matcher": "",
+        "hooks": [
+            {"type": "command", "command": COMMANDS["plan_capture"]},
+            {"type": "command", "command": "mine-too"},
+        ],
+    }
+    settings["hooks"]["Stop"].extend([foreign, lookalike])
+    settings_path.write_text(json.dumps(settings))
+
+    install_claude_hooks(tmp_path, ["plan_capture"])
+
+    hooks = json.loads(settings_path.read_text())["hooks"]
+    assert hooks["Stop"] == [foreign, lookalike]
+
+
 def test_inspect_reports_wrong_event_as_modified(tmp_path):
     _old_stop_install(tmp_path)
     assert inspect_claude_hooks(tmp_path)["plan_capture"] == "modified"
