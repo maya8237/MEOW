@@ -4,38 +4,69 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MEOW catalog</title>
+<link rel="icon" href="/logo.png">
 <style>
-  :root { color-scheme: light dark; --line: #8884; --muted: #888; --accent: #6b5ce7; }
+  :root {
+    color-scheme: dark;
+    --bg: #120d1d;
+    --panel: #1c1430;
+    --field: #0d0919;
+    --text: #ece6ff;
+    --muted: #a396c9;
+    --line: #3b2d5e;
+    --accent: #a855f7;
+    --accent-soft: #a855f733;
+    --accent-text: #d8b4fe;
+    --danger: #f87171;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.45 system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; }
-  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header img { width: 32px; height: 32px; filter: drop-shadow(0 0 6px #a855f1aa); }
   header h1 { font-size: 16px; margin: 0; }
   nav button { background: none; border: 0; padding: 6px 10px; cursor: pointer; color: inherit; border-bottom: 2px solid transparent; }
-  nav button[aria-selected="true"] { border-bottom-color: var(--accent); font-weight: 600; }
+  nav button[aria-selected="true"] { border-bottom-color: var(--accent); font-weight: 600; color: var(--accent-text); }
   nav .count { color: var(--muted); font-size: 12px; }
-  input[type="search"] { margin-left: auto; padding: 5px 8px; min-width: 220px; }
+  #new { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-weight: 600; }
+  #new:disabled { background: var(--line); color: var(--muted); cursor: not-allowed; }
+  input, select { background: var(--field); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; }
+  input:focus, select:focus { outline: 1px solid var(--accent); }
+  #search { margin-left: auto; min-width: 220px; }
   main { flex: 1; display: grid; grid-template-columns: minmax(220px, 320px) 1fr; min-height: 0; }
   aside { border-right: 1px solid var(--line); overflow: auto; }
   aside ul { list-style: none; margin: 0; padding: 0; }
   aside li button { width: 100%; text-align: left; background: none; border: 0; padding: 8px 12px; cursor: pointer; color: inherit; border-bottom: 1px solid var(--line); }
-  aside li button[aria-current="true"] { background: #6b5ce722; }
+  aside li button:hover { background: var(--accent-soft); }
+  aside li button[aria-current="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
   .name { font-weight: 600; }
   .desc { color: var(--muted); font-size: 12px; }
   section.detail { overflow: auto; padding: 16px 20px; }
-  .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); margin-right: 6px; }
+  h2 { margin-top: 0; color: #f3e8ff; }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--accent); color: var(--accent-text); margin-right: 6px; }
   dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 12px 0; }
   dt { color: var(--muted); }
   dd { margin: 0; word-break: break-all; }
-  pre { background: #8881; padding: 12px; border-radius: 6px; overflow: auto; white-space: pre-wrap; }
-  .error { background: #c0392b22; border: 1px solid #c0392b; padding: 10px 12px; margin: 10px 16px 0; border-radius: 6px; white-space: pre-wrap; }
+  pre { background: var(--field); border: 1px solid var(--line); padding: 12px; border-radius: 6px; overflow: auto; white-space: pre-wrap; }
+  .error { background: #7f1d1d55; border: 1px solid var(--danger); padding: 10px 12px; margin: 10px 16px 0; border-radius: 6px; white-space: pre-wrap; }
   .notes { color: var(--muted); font-size: 12px; padding: 10px 12px; border-top: 1px solid var(--line); }
   .empty { color: var(--muted); padding: 16px; }
+  form { display: grid; gap: 12px; max-width: 520px; }
+  form label { display: grid; gap: 4px; color: var(--muted); }
+  form button { justify-self: start; background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer; font-weight: 600; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .run h3 { font-size: 14px; margin: 16px 0 8px; color: #f3e8ff; }
+  .command { margin-bottom: 10px; }
+  .command pre { margin: 4px 0; }
+  button.copy { background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+  .form-status { color: var(--danger); min-height: 1.4em; }
 </style>
 </head>
 <body>
 <header>
+  <img src="/logo.png" alt="">
   <h1>MEOW catalog</h1>
   <nav id="tabs"></nav>
+  <button id="new" type="button">+ New</button>
   <input id="search" type="search" placeholder="Filter by name or description">
 </header>
 <div id="error" class="error" hidden></div>
@@ -52,7 +83,7 @@ const TABS = [
   ["agents", "Agents"],
   ["skills", "Skills"],
 ];
-const state = { data: null, tab: "workflows", query: "", selected: null };
+const state = { data: null, tab: "workflows", query: "", selected: null, creating: false };
 const $ = (id) => document.getElementById(id);
 
 function el(tag, props = {}, children = []) {
@@ -86,6 +117,7 @@ function renderTabs() {
     button.addEventListener("click", () => {
       state.tab = key;
       state.selected = null;
+      state.creating = false;
       render();
     });
     return button;
@@ -105,6 +137,7 @@ function renderList() {
     ]);
     button.addEventListener("click", () => {
       state.selected = item;
+      state.creating = false;
       render();
     });
     return el("li", {}, [button]);
@@ -124,8 +157,12 @@ function field(label, value) {
 }
 
 function renderDetail() {
-  const item = state.selected;
   const detail = $("detail");
+  if (state.creating) {
+    renderCreateForm();
+    return;
+  }
+  const item = state.selected;
   if (!item) {
     detail.replaceChildren(el("div", { className: "empty", text: "Select an item." }));
     return;
@@ -151,13 +188,95 @@ function renderDetail() {
     ],
   }[state.tab];
   const rows = facts.map(([label, value]) => field(label, value)).filter(Boolean).flat();
+  const run = state.tab === "workflows" ? [runSection(item.name)] : [];
   detail.replaceChildren(
     el("h2", { text: item.name }),
     el("div", {}, badges),
     el("p", { text: item.description || "" }),
     el("dl", {}, rows),
+    ...run,
     el("pre", { text: item.text }),
   );
+}
+
+function runSection(workflow) {
+  const commands = [
+    ["Terminal", `meow run "<request>" --workflow ${workflow} --name "<feature-name>"`],
+    ["Claude Code", `/meow:run --workflow ${workflow} "<request>"`],
+  ];
+  return el("div", { className: "run" }, [
+    el("h3", { text: "Run this workflow" }),
+    ...commands.map(([label, text]) => commandBlock(label, text)),
+  ]);
+}
+
+function commandBlock(label, text) {
+  const button = el("button", { type: "button", className: "copy", text: "Copy" });
+  button.addEventListener("click", async () => {
+    await navigator.clipboard.writeText(text);
+    button.textContent = "Copied";
+    setTimeout(() => { button.textContent = "Copy"; }, 1500);
+  });
+  return el("div", { className: "command" }, [
+    el("div", { className: "hint", text: label }),
+    el("pre", { text }),
+    button,
+  ]);
+}
+
+function renderCreateForm() {
+  const kind = state.tab;
+  const singular = kind.slice(0, -1);
+  const status = el("div", { className: "form-status", role: "alert" });
+  const name = el("input", { name: "name", required: "", pattern: "[a-z][a-z0-9_\\-]{0,62}", placeholder: "e.g. nightly-docs" });
+  const description = el("input", { name: "description", placeholder: "What it is for" });
+  const options = (state.data[kind] || []).map((item) => {
+    const option = el("option", { value: item.name, text: `${item.name} (${item.scope})` });
+    if (kind !== "skills" && state.selected && item.name === state.selected.name) option.selected = true;
+    return option;
+  });
+  if (kind === "skills") {
+    options.unshift(el("option", { value: "", text: "Blank skill" }));
+  }
+  const source = el("select", { name: "source" }, options);
+  const scope = el("select", { name: "scope" }, [
+    el("option", { value: "project", text: "Project (.meow, shared in the repo)" }),
+    el("option", { value: "local", text: "Local (.meow/local, this checkout only)" }),
+    el("option", { value: "user", text: "User (~/.meow, all your projects)" }),
+  ]);
+  const hint = kind === "skills"
+    ? "Creates a folder with a SKILL.md in the chosen scope's [custom].skills folder, and adds one to that scope's config if it has none."
+    : `Copies the chosen ${singular} under the new name. Edit the new file afterwards to change it.`;
+  const form = el("form", {}, [
+    el("h2", { text: `New ${singular}` }),
+    el("p", { className: "hint", text: hint }),
+    el("label", {}, [el("span", { text: "Name" }), name]),
+    el("label", {}, [el("span", { text: "Description" }), description]),
+    el("label", {}, [el("span", { text: kind === "skills" ? "Start from" : `Copy from ${singular}` }), source]),
+    el("label", {}, [el("span", { text: "Save to" }), scope]),
+    el("button", { type: "submit", text: `Create ${singular}` }),
+    status,
+  ]);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    status.textContent = "";
+    const response = await fetch(`/api/${kind}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.value, description: description.value, source: source.value, scope: scope.value }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      status.textContent = result.error;
+      return;
+    }
+    state.creating = false;
+    await load();
+    state.selected = state.data[kind].find((item) => item.name === result.name) || null;
+    render();
+  });
+  $("detail").replaceChildren(form);
+  name.focus();
 }
 
 function renderNotes() {
@@ -181,7 +300,6 @@ function render() {
 async function load() {
   const response = await fetch("/api/catalog", { cache: "no-store" });
   state.data = await response.json();
-  render();
 }
 
 $("search").addEventListener("input", (event) => {
@@ -189,7 +307,12 @@ $("search").addEventListener("input", (event) => {
   render();
 });
 
-load().catch((error) => {
+$("new").addEventListener("click", () => {
+  state.creating = true;
+  render();
+});
+
+load().then(render).catch((error) => {
   $("error").hidden = false;
   $("error").textContent = `Could not load the catalog: ${error}`;
 });

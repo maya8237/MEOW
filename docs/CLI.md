@@ -21,7 +21,7 @@ These are the commands meant for normal project work:
 | `meow queue` | Enqueue tasks or run queued tasks serially in the current repository. |
 | `meow workflows` | List, show, validate, or eject workflow definitions. |
 | `meow agents` | List, show, eject, or diff agent definitions. |
-| `meow ui` | Open a local read-only page listing workflows, agents, and skills, including custom ones. |
+| `meow ui` | Open a local page listing workflows, agents, and skills, including custom ones, and add new ones. |
 | `meow hooks` | Manage optional host hooks after reviewing what they install. |
 | `meow ipython` | Open the interactive MEOW IPython session. |
 
@@ -60,8 +60,15 @@ meow ui [--port 8765] [--no-browser]
 
 `meow ui` serves the catalog page on 127.0.0.1 only and reads the project's
 configuration on every page load, so edits show up on refresh. It lists
-workflows, agents, and skills from every scope, with their source text. It is
-read-only; press Ctrl+C to stop.
+workflows, agents, and skills from every scope, with their source text. The
+"+ New" button adds a workflow, agent, or skill by copying an existing one under
+a new name (or adds a blank skill). Each item can be saved at project scope
+(`.meow/`), local scope (`.meow/local/`, uncommitted), or user scope (`~/.meow/`).
+Skills go in the first `[custom].skills` folder for that scope; if the config
+has no `[custom]` table, `meow ui` adds one pointing at `.meow/skills` (or
+`skills` under `~/.meow` for user scope). Each workflow shows ready-to-copy
+commands: `meow run "<request>" --workflow NAME --name "<feature-name>"` and
+`/meow:run --workflow NAME "<request>"`. Press Ctrl+C to stop.
 
 Catalog commands accept `--work-dir PATH`. Eject defaults to project scope,
 also accepts local/user, and refuses to overwrite. `show` and workflow
