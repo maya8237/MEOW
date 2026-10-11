@@ -90,6 +90,8 @@ async def run_issue_solver(  # ruff: ignore[too-many-arguments]
     approve_plan: Callable[[Path], bool] | None = None,
     test: bool = False,
     run_id: str | None = None,
+    workflow: str | None = None,
+    inputs: dict[str, str] | None = None,
 ) -> dict:
     """Fetch a Jira issue, solve it in a worktree, and return its branch.
 
@@ -112,6 +114,8 @@ async def run_issue_solver(  # ruff: ignore[too-many-arguments]
             approve_plan,
             run_id=run_id,
             **({"test": True} if test else {}),
+            **({"workflow": workflow} if workflow else {}),
+            **({"inputs": inputs} if inputs else {}),
         )
     except Exception as exc:
         logger.warning("issue_unresolved", issue=issue_key or "latest", reason=str(exc))
@@ -126,6 +130,8 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
     approve_plan: Callable[[Path], bool] | None,
     test: bool = False,
     run_id: str | None = None,
+    workflow: str | None = None,
+    inputs: dict[str, str] | None = None,
 ) -> dict:
     issue = (
         await cancellable(
@@ -170,6 +176,8 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
         source="jira",
         **run_options,
         **({"test": True} if test else {}),
+        **({"workflow": workflow} if workflow else {}),
+        **({"inputs": inputs} if inputs else {}),
     )
     logger.info("issue_solver_sprint_finished", issue=issue["key"], branch=branch_name)
 

@@ -38,6 +38,7 @@ guess at a venv path. Flags shared by every command:
 
 | Command | Purpose |
 |---|---|
+| `workflow NAME` | Resolved workflow JSON with scope, fingerprint, and expanded steps; inspect custom workflows here and execute them through `meow run --workflow NAME` |
 | `prepare [--name N] [--fresh] [--no-worktree] [--from B] [--branch BR] [--existing-branch BR] [--allow-dirty]` | Startup guards + worktree; returns `name` (the one used; `--fresh` may add `-2`, ...), `active_dir`, `use_worktree`, `docs_dir`, `plan_file`, `review_file`, `max_rounds`, `models`, `lint`, and onboarding facts |
 | `verify [--no-lint]` | Validate config and report lint, tester, and integration readiness without starting agents, servers, or MCP connections |
 | `latest-plan` / `latest-review` | Newest plan / review file in `docs_dir` (`latest-review` also gives its `flavor`: plan, prompt, gitlab, github, or branch) |

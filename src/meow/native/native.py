@@ -17,7 +17,7 @@ from meow.integrations.knowledge_documents import (
     EvidenceDocumentWriter,
     create_selected_documents,
 )
-from meow.native.native_custom import custom
+from meow.native.native_custom import custom, workflow
 from meow.native.native_lint import LintOptions, lint
 from meow.native.native_prepare import (
     PrepareOptions,
@@ -64,6 +64,7 @@ __all__ = [
     "shape_reflect",
     "verdict",
     "verify",
+    "workflow",
 ]
 
 

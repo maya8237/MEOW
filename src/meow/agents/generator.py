@@ -13,6 +13,7 @@ class GeneratorAgent(SessionAgent):
 
     def __init__(self, context: GeneratorContext, plan_file: Path):
         super().__init__(context)
+        self.plan_file = plan_file
         agent = self.definition("generator")
         extra = {}
         if agent.lint_on_edit:
@@ -30,6 +31,11 @@ class GeneratorAgent(SessionAgent):
         )
 
     async def implement(self, instruction: str) -> str:
+        agent = self.definition("generator")
+        if agent.source.scope != "builtin":
+            instruction = (
+                f"{generator_prompt(self.plan_file, agent=agent)}\n\n{instruction}"
+            )
         return await self._turn(instruction)
 
 

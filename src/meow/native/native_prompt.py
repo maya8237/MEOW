@@ -4,7 +4,7 @@ SDK role would use, for a Task subagent to run with."""
 import asyncio
 from pathlib import Path
 
-from meow.agents.base import ProjectContext
+from meow.agents.base import Agent, ProjectContext
 from meow.agents.reviewer import (
     REMOTE_REVIEW_SPECS,
     _branch_diff,
@@ -16,7 +16,6 @@ from meow.agents.reviewer import (
 )
 from meow.infrastructure.lint import check_lint_evidence
 from meow.project.config import config_root, load_config
-from meow.project.custom.rendering import builtin_role_agent
 from meow.project.plan_files import new_review_filename, plan_review_file
 from meow.project.prompts import (
     branch_review_prompt,
@@ -80,6 +79,7 @@ def _plan_review(
         focus=focus,
         check_worktree_hygiene=context.use_worktree,
         shape_context=shape_context,
+        agent=Agent(context).definition("reviewer"),
     )
     return {
         "system_prompt": text,
@@ -100,6 +100,7 @@ def _prompt_review(context: ProjectContext, basis: str | None) -> dict:
         has_diff=has_diff,
         docs_dir=docs_dir,
         check_worktree_hygiene=context.use_worktree,
+        agent=Agent(context).definition("reviewer"),
     )
     query = prompt_review_query(
         (basis or "").strip(),
@@ -119,7 +120,10 @@ def _mr_review(context: ProjectContext, provider: str) -> dict:
     review_dir = context.active_working_dir() / context.config["docs_dir"]
     review_file = review_dir / new_review_filename(flavor)
     text = remote_review_prompt(
-        review_file, request_label, check_worktree_hygiene=context.use_worktree
+        review_file,
+        request_label,
+        check_worktree_hygiene=context.use_worktree,
+        agent=Agent(context).definition("reviewer"),
     )
     # The skill fetches the request itself, so it gets the exact SDK task
     # message with placeholders to fill in.
@@ -143,6 +147,7 @@ def _branch_review(context: ProjectContext, target: str, branch: str) -> dict:
         review_file,
         context.lint_commands(),
         check_worktree_hygiene=context.use_worktree,
+        agent=Agent(context).definition("reviewer"),
     )
     query = branch_review_query(target, branch, diff_text, _lint_report(context))
     return {"system_prompt": text, "query": query, "review_file": str(review_file)}
@@ -155,14 +160,15 @@ def _simple_prompt(
     shape_context: ShapeContext | None = None,
 ) -> dict:
     active_dir = context.active_working_dir()
+    agent = Agent(context).definition(role)
     if role in {"planner", "generator"} and plan_file is None:
         raise ValueError(f"the {role} prompt needs --plan")
     builders = {
-        "planner": lambda: planner_prompt(plan_file, shape_context),
-        "generator": lambda: generator_prompt(plan_file),
-        "explorer": lambda: explorer_prompt(active_dir),
-        "review-fixer": review_fixer_prompt,
-        "lint-fixer": lint_fixer_prompt,
+        "planner": lambda: planner_prompt(plan_file, shape_context, agent=agent),
+        "generator": lambda: generator_prompt(plan_file, agent=agent),
+        "explorer": lambda: explorer_prompt(active_dir, agent=agent),
+        "review-fixer": lambda: review_fixer_prompt(agent=agent),
+        "lint-fixer": lambda: lint_fixer_prompt(agent=agent),
     }
     return {"system_prompt": builders[role](), "query": None}
 
@@ -227,6 +233,16 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
     model_role = role.split("-", 1)[0] if role.startswith("reviewer-") else role
     # Same lookup (and reviewer fallback) as the SDK role.
     model_role = model_role.replace("-", "_")
-    shipped = builtin_role_agent(model_role)
-    result["model"] = context.model(model_role, shipped)
+    base = Agent(context)
+    agent = base.definition(model_role.replace("_", "-"))
+    result["model"] = context.model(model_role, agent)
+    tools = list(agent.tools or ())
+    if role == "reviewer-mr":
+        tools = [tool for tool in tools if tool in {"Read", "Grep", "Glob", "Write"}]
+    result.update(
+        tools=tools,
+        skills=base.skills(agent.role, list(agent.skills)),
+        agents=list(base.delegates(agent, tools)),
+        session=agent.session,
+    )
     return result

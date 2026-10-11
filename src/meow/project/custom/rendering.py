@@ -6,6 +6,8 @@ fails loudly. `docs/WORKFLOWS.md` documents what each one holds.
 """
 
 from collections.abc import Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import cache
 
 from meow.project.custom.definitions import CustomAgent, load_agent
@@ -57,6 +59,19 @@ PROMPT_VARIABLES = frozenset({
     # Code-owned contracts
     "verdict_format",
 })
+_RUN_VALUES = ContextVar("agent_run_values", default=None)
+
+
+@contextmanager
+def prompt_context(values):
+    """Supply one step's run values without leaking across parallel branches."""
+    token = _RUN_VALUES.set({
+        key: value for key, value in values.items() if key in PROMPT_VARIABLES
+    })
+    try:
+        yield
+    finally:
+        _RUN_VALUES.reset(token)
 
 
 @cache
@@ -80,8 +95,11 @@ def effective_models(config: dict) -> dict:
 
     context = ConfigLookups()
     context.config = config
+    catalog = config.get("customizations")
+    agents = {agent.role: agent for agent in catalog.catalog} if catalog else {}
     return {
-        role: context.model(role, builtin_role_agent(role)) for role in config["models"]
+        role: context.model(role, agents.get(role) or builtin_role_agent(role))
+        for role in dict.fromkeys([*config["models"], *agents])
     }
 
 
@@ -102,6 +120,7 @@ def render_agent(
     if unknown:
         raise ValueError(f"undocumented prompt variable(s): {sorted(unknown)}")
     variables = dict.fromkeys(PROMPT_VARIABLES)
+    variables.update(_RUN_VALUES.get() or {})
     variables.update(values)
     template = _template(agent, variant)
     if values.get("verdict_format") and "verdict_format" not in template_names(

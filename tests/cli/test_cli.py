@@ -50,7 +50,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
         help_text = output.getvalue()
         self.assertIn(
-            "{run,review,plan,status,cancel,worktree,resume,hooks,ipython}", help_text
+            "{run,review,plan,status,cancel,worktree,resume,hooks,ipython,workflows,agents}",
+            help_text,
         )
         self.assertNotIn("_worker", help_text)
         self.assertNotIn("native", help_text)

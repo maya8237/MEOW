@@ -127,6 +127,9 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
     resume_at = options.get("resume_at", "generate")
     if resume_at not in {"generate", "review"}:
         raise ValueError(f"resume_at must be 'generate' or 'review', got {resume_at!r}")
+    select_workflow(
+        load_config(Path(record_root or working_dir)), options.get("workflow")
+    )
     store = RunStore(Path(record_root or working_dir).resolve())
     if run_id is None:
         run_id = store.create(
@@ -174,6 +177,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     worktree_preexisting: bool = False,
     required_session_roles: set[str] | None = None,
     workflow: str | None = None,
+    inputs: dict[str, str] | None = None,
 ) -> None:
     """Plan (unless `plan_file` is given) then implement it in a round loop.
 
@@ -317,6 +321,9 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
             "plan_given": plan_given,
             "resume_review": resume_at == "review",
             "label_feature_name": feature_name,
+            "inputs": inputs
+            if inputs is not None
+            else (saved_workflow or {}).get("inputs", {}),
         },
         approve_plan=approve_plan,
         test=test,
@@ -331,6 +338,9 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
             "scope": definition.source.scope,
             "fingerprint": fingerprint(definition, catalog),
             "completed": (saved_workflow or {}).get("completed", []),
+            "inputs": inputs
+            if inputs is not None
+            else (saved_workflow or {}).get("inputs", {}),
         },
         statuses=dict(record.results.get("step_statuses", {})),
     )

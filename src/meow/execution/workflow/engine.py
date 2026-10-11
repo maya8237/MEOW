@@ -11,6 +11,7 @@ from meow.execution.sprint import Sprint
 from meow.infrastructure.cancellation import cancellable, check_cancel
 from meow.infrastructure.usage import usage_scope
 from meow.project.custom.expressions import evaluate
+from meow.project.custom.rendering import prompt_context
 from meow.project.custom.workflows import Step, walk
 from meow.project.plan_files import plan_review_file, plan_test_file
 
@@ -100,6 +101,18 @@ class RunState:
     def journal(self, phase, **patch):
         self.store.transition(self.run_id, phase, **patch)
 
+    def prompt_variables(self):
+        return {
+            **self.variables(),
+            "active_dir": self.sprint.active_working_dir(),
+            "docs_dir": self.sprint.config["docs_dir"],
+            "plan_file": self.plan_file,
+            "request": self.request,
+            "feature_name": self.feature_name,
+            "check_worktree_hygiene": self.sprint.use_worktree,
+            "preplan": self.sprint.config.get("_preplan_context"),
+        }
+
     def block_delivery(self):
         for step_id, status in self.delivery_gates.items():
             if status != "PASS":
@@ -110,7 +123,9 @@ class RunState:
         self.gates[step.id] = (status, verdict, blocks)
         if blocks == "delivery":
             self.delivery_gates[step.id] = status
-        if status != "PASS" and blocks == "run":
+        if status != "PASS" and (
+            blocks == "run" or (blocks == "loop" and self.pool is None)
+        ):
             raise GateFailed(step.id, blocks)
 
 
@@ -158,7 +173,10 @@ class WorkflowRun:
                 record_stage(state, step, "skipped", "", None)
             return
         try:
-            with usage_scope(state.store, state.run_id):
+            with (
+                usage_scope(state.store, state.run_id),
+                prompt_context(state.prompt_variables()),
+            ):
                 async with asyncio.timeout(step.timeout):
                     await cancellable(state.store, state.run_id, self.execute(step))
         except TimeoutError:

@@ -7,7 +7,7 @@ from claude_agent_sdk import ClaudeAgentOptions
 from meow.agents.base import Agent
 from meow.agents.reviewer import _verdict_status, force_fail
 from meow.infrastructure.test_runner import VerificationStageEvidence
-from meow.project.plan_files import plan_test_file
+from meow.project.plan_files import plan_test_file, stage_file
 from meow.project.prompts import tester_prompt
 
 
@@ -73,17 +73,32 @@ class VerificationAgent(Agent):
             **extra,
         )
 
-    async def test_plan(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches]
+    async def test_plan(
         self, plan_file: Path, evidence: VerificationStageEvidence
     ) -> tuple[str, str]:
         report_file = plan_test_file(plan_file)
-        active_dir = self.context.active_working_dir()
         try:
             plan = plan_file.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
             raise RuntimeError(
                 f"Could not read tester plan {plan_file}: {exc}"
             ) from exc
+        return await self._test_basis(
+            f"Plan file: {plan_file}\nPlan content:\n{plan}\n\n", report_file, evidence
+        )
+
+    async def test_request(self, request: str, evidence: VerificationStageEvidence):
+        active = self.context.active_working_dir()
+        report = stage_file(active / self.context.config["docs_dir"], "tester")
+        report.parent.mkdir(parents=True, exist_ok=True)
+        return await self._test_basis(
+            f"Review request:\n{request}\n\n", report, evidence
+        )
+
+    async def _test_basis(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches]
+        self, basis: str, report_file: Path, evidence: VerificationStageEvidence
+    ):
+        active_dir = self.context.active_working_dir()
         tester_config = self.context.config.get("tester", {})
         architecture = architecture_context(
             active_dir, tester_config.get("architecture_files", [])
@@ -114,8 +129,7 @@ class VerificationAgent(Agent):
             or "(no browser provider evidence)"
         )
         prompt = (
-            f"Plan file: {plan_file}\nPlan content:\n{plan}\n\n"
-            f"Active worktree: {active_dir}\n\nArchitecture context:\n"
+            basis + f"Active worktree: {active_dir}\n\nArchitecture context:\n"
             f"{architecture}\n\n"
             f"Configured test directories: "
             f"{', '.join(map(str, configured_dirs)) or '(none)'}\n"

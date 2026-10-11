@@ -495,7 +495,12 @@ class Agent:
     async def run_definition_query(self, agent, prompt, options, role):
         pool = self.context.config.get("_workflow_pool")
         if agent.session == "persistent" and pool is not None:
-            return await pool.run(self.context, agent.role, options, prompt)
+            return await pool.run(
+                self.context,
+                agent.role,
+                options,
+                f"{options.system_prompt}\n\n{prompt}",
+            )
         return await self.run_query(prompt, options, role)
 
 

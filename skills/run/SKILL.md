@@ -95,6 +95,15 @@ first; it defines the `meow native` helper and review loop.
 
 ## CLI mode
 
+Choose a workflow when the user names one: pass `--workflow <name>` to
+`meow run`. Inspect available choices with `meow workflows list` and
+`meow workflows show <name>`. Shipped choices are `default` (the full run),
+`quick` (omits knowledge and shaping), and `review-only` (reviews and fixes
+existing code, with checks and no automatic delivery). Without a flag, honor
+`[workflow] default` in config. Pass named inputs as repeated
+`--input name=value` flags. Custom workflows execute through CLI mode;
+the native protocol does not interpret their step trees.
+
 Use CLI mode for all ordinary runs so MEOW owns the complete automatic pre-plan
 flow and its checkpoints. When the user requests `--test`, pass it through to
 `meow run` (including Jira and `--resume-at review` flows); configured servers
