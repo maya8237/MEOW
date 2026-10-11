@@ -26,6 +26,9 @@ def _no_user_config(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "meow.project.config.user_config_path", lambda: tmp_path / "no-user-config"
     )
+    monkeypatch.setattr(
+        "meow.project.repos.registry_path", lambda: tmp_path / "repos.toml"
+    )
 
 
 @pytest.fixture
@@ -70,7 +73,7 @@ def test_repair_boundary_appends_block_and_keeps_unrelated_rules(repo):
     assert repair_boundary(repo) is True
     lines = (repo / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert lines[:2] == ["node_modules/", "*.log"]
-    assert tuple(lines[-3:]) == BOUNDARY
+    assert tuple(lines[-len(BOUNDARY) :]) == BOUNDARY
     assert boundary_ok(repo)
 
 
@@ -82,7 +85,7 @@ def test_repair_boundary_removes_obsolete_broad_rules(repo):
     lines = (repo / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert lines.count(".meow/") == 0
     assert "node_modules/" in lines
-    assert tuple(lines[-3:]) == BOUNDARY
+    assert tuple(lines[-len(BOUNDARY) :]) == BOUNDARY
 
 
 def test_repair_boundary_preserves_crlf(repo):
@@ -303,3 +306,24 @@ def test_config_does_not_override_local_settings(repo):
     text = (repo / ".meow" / "config.toml").read_text(encoding="utf-8")
     assert "docs_dir" not in text
     assert "max_rounds = 8" in text
+
+
+def test_onboard_if_needed_registers_new_and_already_onboarded_repos(
+    repo, tmp_path, monkeypatch
+):
+    from meow.project import repos
+    from meow.project.onboarding import onboard_if_needed
+
+    registry = tmp_path / "home" / "repos.toml"
+    monkeypatch.setattr(repos, "registry_path", lambda: registry)
+
+    assert onboard_if_needed(repo, repo) is not None
+    assert str(repo.resolve()) in repos._saved()
+
+    other = tmp_path / "other"
+    other.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=other, check=True)
+    assert onboard_if_needed(other, other) is not None
+    registry.unlink()
+    assert onboard_if_needed(other, other) is None
+    assert str(other.resolve()) in repos._saved()

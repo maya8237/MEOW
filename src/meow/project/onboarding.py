@@ -14,8 +14,17 @@ from pathlib import Path
 
 from meow.hooks.claude import inspect_claude_hooks
 from meow.project.config import config_paths
+from meow.project.repos import remember
 
-BOUNDARY = (".meow/*", "!.meow/", "!.meow/config.toml")
+BOUNDARY = (
+    ".meow/*",
+    "!.meow/",
+    "!.meow/config.toml",
+    "!.meow/skills/",
+    "!.meow/plugin/",
+    "!.meow/agents/",
+    "!.meow/workflows/",
+)
 
 CONFIG_RELPATH = ".meow/config.toml"
 LOCAL_CONFIG_RELPATH = ".meow/config.local.toml"
@@ -34,6 +43,11 @@ _STALE = _BROAD | frozenset(BOUNDARY)
 _EXPECTED_IGNORED = {
     ".meow/config.toml": False,
     ".meow/config.local.toml": True,
+    ".meow/skills/x/SKILL.md": False,
+    ".meow/plugin/skills/x/SKILL.md": False,
+    ".meow/local/plugin/skills/x/SKILL.md": True,
+    ".meow/agents/x.toml": False,
+    ".meow/workflows/x.toml": False,
     ".meow/runs/x.json": True,
 }
 
@@ -260,12 +274,16 @@ def onboard_if_needed(active_dir: Path, config_dir: Path) -> dict | None:
     """
     active_dir, config_dir = Path(active_dir), Path(config_dir)
     if is_onboarded(config_dir) or is_onboarded(active_dir):
+        remember(config_dir)
         return None
     write_config = not (config_dir / CONFIG_RELPATH).is_file()
     try:
-        return onboard_project(active_dir, write_config=write_config).to_dict()
+        report = onboard_project(active_dir, write_config=write_config)
     except (OSError, ValueError, RuntimeError) as exc:
         return {"files": [], "lint": None, "skipped": [], "error": str(exc)}
+    if report.error is None:
+        remember(config_dir)
+    return report.to_dict()
 
 
 _GUIDE = "docs/INTEGRATIONS.md"

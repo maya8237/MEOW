@@ -4,107 +4,17 @@ from __future__ import annotations
 
 import argparse
 import glob
-import json
 import os
-import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from meow.installer._prompt import path_prompt
+from meow.project.claude_settings import append_plugin_dir, path_key
 from meow.project.onboarding import onboard_project
+from meow.project.repos import remember
 
-PLUGIN_DIRS_ENV = "CLAUDE_CODE_PLUGIN_DIRS"
 NEWLINE = chr(10)
 EXIT_INTERRUPTED = 130
-
-
-def _path_key(value: str | Path) -> str:
-    return os.path.normcase(str(Path(value).expanduser().resolve(strict=False)))
-
-
-def _load_settings(settings_path: Path) -> dict[str, object]:
-    if not settings_path.is_file():
-        return {}
-    try:
-        data = json.loads(settings_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"{settings_path} is not valid JSON; it was not changed"
-        ) from exc
-    if not isinstance(data, dict):
-        raise ValueError(
-            f"{settings_path} must contain a JSON object; it was not changed"
-        )
-    return data
-
-
-def _settings_env(data: dict[str, object], settings_path: Path) -> dict[str, object]:
-    env = data.get("env")
-    if env is None:
-        env = {}
-    if not isinstance(env, dict):
-        raise ValueError(
-            f"{settings_path}: the `env` setting must be a JSON object; "
-            "it was not changed"
-        )
-    return env
-
-
-def _plugin_entries(
-    env: dict[str, object], settings_path: Path, separator: str
-) -> list[str]:
-    existing = env.get(PLUGIN_DIRS_ENV, "")
-    if existing is None:
-        existing = ""
-    if not isinstance(existing, str):
-        raise ValueError(
-            f"{settings_path}: `env.{PLUGIN_DIRS_ENV}` must be a string; "
-            "it was not changed"
-        )
-    return [entry for entry in existing.split(separator) if entry]
-
-
-def _write_settings(settings_path: Path, data: dict[str, object]) -> None:
-    payload = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_name = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=settings_path.parent,
-            prefix=f".{settings_path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as temporary:
-            temporary_name = temporary.name
-            temporary.write(payload)
-        os.replace(temporary_name, settings_path)
-    finally:
-        if temporary_name and os.path.exists(temporary_name):
-            os.unlink(temporary_name)
-
-
-def append_plugin_dir(
-    settings_path: Path,
-    plugin_dir: Path,
-    *,
-    separator: str | None = None,
-) -> None:
-    """Append ``plugin_dir`` to a user's Claude plugin-dir environment setting."""
-    settings_path = Path(settings_path)
-    plugin_dir = Path(plugin_dir).expanduser().resolve()
-    separator = separator or os.pathsep
-    data = _load_settings(settings_path)
-    env = _settings_env(data, settings_path)
-    entries = _plugin_entries(env, settings_path, separator)
-    if _path_key(plugin_dir) in {_path_key(entry) for entry in entries}:
-        return
-
-    entries.append(str(plugin_dir))
-    env[PLUGIN_DIRS_ENV] = separator.join(entries)
-    data["env"] = env
-    _write_settings(settings_path, data)
 
 
 def _yes(answer: str) -> bool:
@@ -131,7 +41,7 @@ def _sorted_directories(pattern: str, *, recursive: bool) -> tuple[Path, ...]:
     if recursive:
         prefix = pattern.split("**", 1)[0].rstrip("/\\")
         paths.discard(Path(prefix or ".").resolve())
-    return tuple(sorted((path for path in paths if path.is_dir()), key=_path_key))
+    return tuple(sorted((path for path in paths if path.is_dir()), key=path_key))
 
 
 def _resolve_recursive_pattern(
@@ -280,7 +190,10 @@ def _onboard_one(project: Path, output: Callable[[str], None]) -> bool:
         output(f"{project}: onboarding failed ({exc})")
         return False
     _print_report(project, report, output)
-    return not report.error
+    if report.error:
+        return False
+    remember(project)
+    return True
 
 
 def _onboard_projects(

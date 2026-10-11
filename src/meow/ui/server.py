@@ -7,11 +7,12 @@ from contextlib import suppress
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 from meow.project.config import user_config_path
-from meow.ui.catalog import build_catalog
+from meow.project.repos import remember, repo_choices
+from meow.ui.catalog import build_global_catalog
 from meow.ui.create import CreateError, create_definition
-from meow.ui.repos import remember, repo_choices
 
 DEFAULT_PORT = 8765
 _UI_DIR = Path(__file__).resolve().parent
@@ -48,12 +49,11 @@ def _config_skill_folders(working_dir: Path) -> list[Path]:
     return folders
 
 
-def _fingerprint(working_dir: Path) -> tuple:
-    roots = [
-        working_dir / ".meow",
-        user_config_path().parent,
-        *_config_skill_folders(working_dir),
-    ]
+def _fingerprint(repos: list[str]) -> tuple:
+    roots = [user_config_path().parent]
+    for repo in repos:
+        roots.append(Path(repo) / ".meow")
+        roots.extend(_config_skill_folders(Path(repo)))
     stamps = []
     for root in roots:
         paths = [root, *root.rglob("*")] if root.is_dir() else [root]
@@ -74,16 +74,26 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._known_host():
             return
         path = self.path.split("?", 1)[0]
-        if path == "/":
+        if path == "/api/catalog":
+            self._catalog()
+        elif path == "/":
+            self.server.forget_catalog()
             self._send(HTTPStatus.OK, _PAGE.read_bytes(), "text/html; charset=utf-8")
         elif path == "/logo.png":
             self._send(HTTPStatus.OK, _LOGO.read_bytes(), "image/png")
         elif path in _FONTS:
             self._send(HTTPStatus.OK, _FONTS[path].read_bytes(), "font/woff2")
-        elif path == "/api/catalog":
-            self._send(HTTPStatus.OK, self.server.catalog_bytes(), "application/json")
         else:
             self._send(HTTPStatus.NOT_FOUND, b"Not found.", "text/plain; charset=utf-8")
+
+    def _catalog(self):
+        repo = parse_qs(urlsplit(self.path).query).get("repo", [""])[0]
+        try:
+            body = self.server.catalog_bytes(repo or None)
+        except CreateError as exc:
+            self._json(HTTPStatus(exc.status), {"error": str(exc)})
+        else:
+            self._send(HTTPStatus.OK, body, "application/json")
 
     def do_POST(self):
         if not self._known_host() or not self._same_origin():
@@ -157,17 +167,26 @@ class _Server(ThreadingHTTPServer):
             f"localhost:{self.server_port}",
         }
         self.origins = {f"http://{host}" for host in self.hosts}
-        self._catalog = (None, b"")
+        self._catalogs: dict[str, tuple[tuple, bytes]] = {}
 
-    def catalog_bytes(self) -> bytes:
-        stamp = _fingerprint(self.working_dir)
-        if stamp != self._catalog[0]:
-            catalog = {
-                **build_catalog(self.working_dir),
-                "repos": repo_choices(self.working_dir),
-            }
-            self._catalog = (stamp, json.dumps(catalog).encode("utf-8"))
-        return self._catalog[1]
+    def forget_catalog(self) -> None:
+        self._catalogs.clear()
+
+    def catalog_bytes(self, repo: str | None = None) -> bytes:
+        repos = repo_choices(self.working_dir)
+        if repo is None:
+            scope = repos
+        elif repo in repos:
+            scope = [repo]
+        else:
+            raise CreateError(HTTPStatus.BAD_REQUEST, "Choose a repo from the list.")
+        stamp = _fingerprint(scope)
+        cached = self._catalogs.get(repo or "")
+        if cached is None or cached[0] != stamp:
+            catalog = {**build_global_catalog(scope), "repos": repos}
+            cached = (stamp, json.dumps(catalog).encode("utf-8"))
+            self._catalogs[repo or ""] = cached
+        return cached[1]
 
 
 def serve_ui(

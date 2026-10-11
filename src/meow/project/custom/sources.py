@@ -34,6 +34,7 @@ _ENTRY_KEYS = frozenset({"path", "roles"})
 # Conventional directories, relative to the project root (local, project) or
 # to `~/.meow` (user).
 _CONVENTIONAL = {"local": Path(".meow") / "local", "project": Path(".meow")}
+_PLUGIN_DIR = "plugin"
 
 
 @dataclass(frozen=True)
@@ -67,28 +68,39 @@ def builtin_sources() -> list[CustomSource]:
 
 
 def conventional_sources(project_dir: Path, user_dir: Path) -> list[CustomSource]:
-    """Each scope's conventional agent and workflow directories that exist."""
-    bases = {
-        "local": Path(project_dir) / _CONVENTIONAL["local"],
-        "project": Path(project_dir) / _CONVENTIONAL["project"],
-        "user": Path(user_dir),
-    }
+    """Each scope's conventional agent, workflow, and skill directories that exist."""
     return [
-        CustomSource(kind, (base / kind).resolve(), scope, None)
-        for scope, base in bases.items()
-        for kind in ("agents", "workflows")
-        if (base / kind).is_dir()
+        CustomSource(
+            kind,
+            conventional_dir(scope, kind, project_dir, user_dir).resolve(),
+            scope,
+            None,
+        )
+        for scope in ("local", "project", "user")
+        for kind in KINDS
+        if conventional_dir(scope, kind, project_dir, user_dir).is_dir()
     ]
 
 
+def scope_plugin_dir(scope: str, project_dir: Path, user_dir: Path) -> Path:
+    """The scope's Claude plugin root; its `skills/` folder holds custom skills."""
+    return _scope_base(scope, project_dir, user_dir) / _PLUGIN_DIR
+
+
 def conventional_dir(scope: str, kind: str, project_dir: Path, user_dir: Path) -> Path:
-    """Where `meow ... eject --scope <scope>` puts a definition."""
+    """Where `meow ... eject --scope <scope>` puts a definition, or a skill goes."""
+    if kind == "skills":
+        return scope_plugin_dir(scope, project_dir, user_dir) / "skills"
+    return _scope_base(scope, project_dir, user_dir) / kind
+
+
+def _scope_base(scope: str, project_dir: Path, user_dir: Path) -> Path:
     if scope == "user":
-        return Path(user_dir) / kind
-    return Path(project_dir) / _CONVENTIONAL[scope] / kind
+        return Path(user_dir)
+    return Path(project_dir) / _CONVENTIONAL[scope]
 
 
-def _git_ignored(project_dir: Path, path: Path) -> bool:
+def git_ignored(project_dir: Path, path: Path) -> bool:
     try:
         result = subprocess.run(
             ["git", "check-ignore", "-q", "--", str(path)],
@@ -146,7 +158,7 @@ def _directory(value: object, scope: str, base: Path, where: str) -> Path:
         return path  # a stale personal entry must not break every project
     if not path.is_dir():
         raise ValueError(f"{where}: directory {path} does not exist")
-    if scope == "project" and _git_ignored(base, path):
+    if scope == "project" and git_ignored(base, path):
         raise ValueError(
             f"{where}: {value!r} is ignored by git, so it would not be "
             "shared with the project; un-ignore it or declare it in "

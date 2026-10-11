@@ -3,15 +3,21 @@
 import json
 import re
 import shutil
-import tomllib
 from pathlib import Path
 
+from meow.project.claude_settings import append_plugin_dir
 from meow.project.config import user_config_path
 from meow.project.custom.definitions import discover, load_agent
-from meow.project.custom.sources import CustomSource, conventional_dir
+from meow.project.custom.plugin import ensure_plugin_root
+from meow.project.custom.sources import (
+    CustomSource,
+    conventional_dir,
+    git_ignored,
+    scope_plugin_dir,
+)
 from meow.project.custom.workflows import load_workflow
+from meow.project.repos import repo_choices
 from meow.ui.catalog import build_catalog
-from meow.ui.repos import repo_choices
 
 SCOPES = ("project", "local", "user")
 _NAME = re.compile(r"[a-z][a-z0-9_-]{0,62}")
@@ -41,11 +47,9 @@ def create_definition(working_dir: Path, kind: str, payload: dict) -> dict:
         raise CreateError(409, f"A {kind[:-1]} named {name} already exists.")
     item = _source(kind, items, source)
     if kind == "skills":
-        folder, register = _skill_location(scope, working_dir)
-        created = _create_skill((folder, scope), name, description, item)
-        if register:
-            _register_folder(*register)
-        return created
+        folder = _skill_folder(scope, working_dir)
+        _register_skill_plugin(scope, working_dir)
+        return _create_skill((folder, scope), name, description, item)
     directory = conventional_dir(scope, kind, working_dir, user_config_path().parent)
     text = _with_identity(item["text"], name, description)
     return _create_file(directory / f"{name}.toml", kind, scope, text)
@@ -64,6 +68,8 @@ def _request(payload: dict) -> tuple[str, str, str, str]:
         )
     if not isinstance(description, str) or not isinstance(source, str):
         raise CreateError(400, "Description and source must be text.")
+    if not description.strip():
+        raise CreateError(400, "Add a description.")
     if scope not in SCOPES:
         raise CreateError(400, "Scope must be project, local, or user.")
     return name, description, source, scope
@@ -141,29 +147,40 @@ def _scope_config(scope: str, working_dir: Path) -> tuple[Path, Path]:
     return working_dir / ".meow" / "config.toml", working_dir
 
 
-def _skill_location(
-    scope: str, working_dir: Path
-) -> tuple[Path, tuple[Path, str] | None]:
-    """Skill folder for a scope, and the `[custom]` entry to add if missing."""
-    config, base = _scope_config(scope, working_dir)
-    data = tomllib.loads(config.read_text(encoding="utf-8")) if config.exists() else {}
-    custom = data.get("custom")
-    if custom is None:
-        entry = "skills" if scope == "user" else ".meow/skills"
-        return base / entry, (config, entry)
-    folders = custom.get("skills")
-    if not isinstance(folders, list) or not folders or not isinstance(folders[0], str):
+def _skill_folder(scope: str, working_dir: Path) -> Path:
+    """The scope's plugin `skills/` folder, refused if git would not share it."""
+    base = user_config_path().parent
+    folder = conventional_dir(scope, "skills", working_dir, base)
+    if scope == "project" and git_ignored(working_dir, folder):
         raise CreateError(
             422,
-            f"Add a skills = [...] entry under [custom] in {config} first.",
+            f"{folder} is ignored by git, so project skills there would not be "
+            "shared. Save to Local instead, or un-ignore that folder.",
         )
-    return base / folders[0], None
+    return folder
 
 
-def _register_folder(config: Path, entry: str) -> None:
-    config.parent.mkdir(parents=True, exist_ok=True)
-    with config.open("a", encoding="utf-8", newline="\n") as output:
-        output.write(f'\n[custom]\nskills = ["{entry}"]\n')
+def _register_skill_plugin(scope: str, working_dir: Path) -> None:
+    """Make the scope's skill plugin load when Claude Code launches."""
+    root = scope_plugin_dir(scope, working_dir, user_config_path().parent)
+    try:
+        ensure_plugin_root(root, scope)
+        if scope == "user":
+            append_plugin_dir(Path.home() / ".claude" / "settings.json", root)
+        else:
+            settings = {
+                "project": "settings.json",
+                "local": "settings.local.json",
+            }[scope]
+            append_plugin_dir(
+                working_dir / ".claude" / settings,
+                root,
+                relative_to=working_dir,
+            )
+    except (OSError, ValueError) as exc:
+        raise CreateError(
+            422, f"Could not register the {scope} skill plugin: {exc}"
+        ) from exc
 
 
 def _with_identity(text: str, name: str, description: str) -> str:
