@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from meow.project.plan_files import is_plan_file_name
+
 _STALE_LOCK_SECONDS = 30
 STATES = ("draft", "in-progress", "complete")
 
@@ -56,6 +58,24 @@ class PlanStore:
             # Treat an incomplete sidecar as absent so status and resume can
             # still recover the canonical plan.
             return PlanMetadata(str(plan.resolve()))
+
+    def exists(self, plan: Path) -> bool:
+        """True when ``plan`` has a lifecycle sidecar."""
+        return self._path(Path(plan)).exists()
+
+    def open_plans(self, docs_dir: Path) -> list[Path]:
+        """Plans directly in ``docs_dir`` still ``draft`` or ``in-progress``."""
+        docs_dir = Path(docs_dir)
+        plans = []
+        for sidecar in docs_dir.glob("*.md.state.json"):
+            plan = sidecar.with_name(sidecar.name.removesuffix(".state.json"))
+            if (
+                is_plan_file_name(plan.name)
+                and plan.is_file()
+                and self.read(plan).lifecycle != "complete"
+            ):
+                plans.append(plan)
+        return sorted(plans)
 
     def claim(
         self,
