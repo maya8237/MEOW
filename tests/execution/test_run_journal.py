@@ -66,16 +66,19 @@ def test_run_records_planning_and_completion(tmp_path):
                 "reviewer_revision": code_revision(tmp_path),
             },
         )
-        return True
+        return "PASS", "STATUS: PASS"
 
     with (
         patch(
             "meow.execution.sprint_runner._prepare_sprint",
             return_value=(sprint, "x", tmp_path),
         ),
-        patch("meow.execution.sprint_runner.PlannerAgent") as planner,
-        patch("meow.execution.sprint_runner._run_rounds", side_effect=passed),
-        patch("meow.execution.sprint_runner.deliver_verified_run") as deliver,
+        patch("meow.execution.workflow.builtin_steps.PlannerAgent") as planner,
+        patch("meow.execution.workflow.builtin_steps.generate", new=AsyncMock()),
+        patch(
+            "meow.execution.workflow.builtin_steps._review_round", side_effect=passed
+        ),
+        patch("meow.execution.workflow.builtin_steps.deliver_verified_run") as deliver,
     ):
         planner.return_value.run = AsyncMock(return_value=plan)
         asyncio.run(run_sprint(tmp_path, "x", "request", use_worktree=False))
@@ -118,16 +121,16 @@ def test_multitask_plan_uses_isolated_executor_then_final_review(tmp_path):
             return_value=(sprint, "x", tmp_path),
         ),
         patch(
-            "meow.execution.sprint_runner.run_parallel_plan",
+            "meow.execution.workflow.builtin_steps.run_parallel_plan",
             new=AsyncMock(return_value=True),
         ) as parallel,
         patch(
-            "meow.execution.sprint_runner._run_rounds",
+            "meow.execution.workflow.builtin_steps.generate",
             new=AsyncMock(side_effect=AssertionError("generator first")),
         ),
         patch(
-            "meow.execution.sprint_runner._run_review_rounds",
-            new=AsyncMock(return_value=True),
+            "meow.execution.workflow.builtin_steps._review_round",
+            new=AsyncMock(return_value=("PASS", "STATUS: PASS")),
         ) as review,
     ):
         asyncio.run(
@@ -223,16 +226,19 @@ def test_final_check_exception_records_failure(tmp_path):
                 "reviewer_revision": code_revision(tmp_path),
             },
         )
-        return True
+        return "PASS", "STATUS: PASS"
 
     with (
         patch(
             "meow.execution.sprint_runner._prepare_sprint",
             return_value=(sprint, "x", tmp_path),
         ),
-        patch("meow.execution.sprint_runner._run_rounds", side_effect=passed),
+        patch("meow.execution.workflow.builtin_steps.generate", new=AsyncMock()),
         patch(
-            "meow.execution.sprint_runner.run_final_checks",
+            "meow.execution.workflow.builtin_steps._review_round", side_effect=passed
+        ),
+        patch(
+            "meow.execution.workflow.builtin_steps.run_final_checks",
             new=AsyncMock(side_effect=RuntimeError("check crashed")),
         ),
         pytest.raises(RuntimeError, match="check crashed"),

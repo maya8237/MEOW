@@ -359,7 +359,7 @@ class ReviewerAgent(Agent):
             docs_dir=docs_dir,
             lint_report=lint_evidence.report(),
         )
-        await self.run_query(query_prompt, options, "Reviewer")
+        await self.run_definition_query(agent, query_prompt, options, "Reviewer")
         verdict_text = _read_review_file(review_file)
         return self._apply_lint_gate(
             _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
@@ -400,7 +400,7 @@ class ReviewerAgent(Agent):
             ],
         )
         query_prompt = remote_review_query(request_label, title, description, diff)
-        await self.run_query(query_prompt, options, "Reviewer")
+        await self.run_definition_query(agent, query_prompt, options, "Reviewer")
         verdict_text = _read_review_file(review_file)
         return _verdict_status(verdict_text), verdict_text
 
@@ -433,7 +433,7 @@ class ReviewerAgent(Agent):
         query_prompt = branch_review_query(
             target, branch, diff_text, lint_evidence.report()
         )
-        await self.run_query(query_prompt, options, "Reviewer")
+        await self.run_definition_query(agent, query_prompt, options, "Reviewer")
         verdict_text = _read_review_file(review_file)
         return self._apply_lint_gate(
             _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
@@ -469,8 +469,11 @@ class ReviewerAgent(Agent):
                 agent=agent,
             ),
         )
-        await self.run_query(
-            plan_review_query(plan_file, lint_evidence.report()), options, "Reviewer"
+        await self.run_definition_query(
+            agent,
+            plan_review_query(plan_file, lint_evidence.report()),
+            options,
+            "Reviewer",
         )
         verdict_text = _read_review_file(review_file)
         return self._apply_lint_gate(
