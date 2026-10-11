@@ -174,7 +174,15 @@ def latest_review(working_dir: Path, active_dir: Path) -> dict:
 
 
 def verdict(review_file: Path) -> dict:
-    """PASS/FAIL and summary of a review file, the way the CLI reads one."""
+    """PASS/FAIL and summary of a review file, the way the CLI reads one.
+
+    A review file the reviewer never wrote fails closed instead of erroring.
+    """
+    if not review_file.is_file():
+        return {
+            "status": "FAIL",
+            "summary": f"reviewer wrote no verdict file: {review_file}",
+        }
     text = review_file.read_text(encoding="utf-8")
     summary = next(
         (
