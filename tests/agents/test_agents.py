@@ -500,11 +500,10 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
             context.project_dir = root
             context.repo_dir = root
 
-            with (
-                patch.object(ReviewerAgent, "run_query", new_callable=AsyncMock),
-                self.assertRaisesRegex(RuntimeError, "did not produce"),
-            ):
-                await ReviewerAgent(context).review_plan(plan_file)
+            with patch.object(ReviewerAgent, "run_query", new_callable=AsyncMock):
+                status, verdict = await ReviewerAgent(context).review_plan(plan_file)
+            self.assertEqual(status, "FAIL")
+            self.assertIn("did not produce", verdict)
 
             self.assertFalse(review_file.exists())
 

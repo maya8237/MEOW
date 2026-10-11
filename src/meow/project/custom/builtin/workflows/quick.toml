@@ -1,0 +1,30 @@
+description = "Plan and implement directly, then review, check, and deliver."
+
+[[steps]]
+id = "plan"
+uses = "builtin.plan"
+when = "not plan_given and not resume_review"
+
+[[steps]]
+id = "approve"
+uses = "builtin.approve_plan"
+
+[[steps]]
+id = "tasks"
+uses = "builtin.tasks"
+when = "not resume_review"
+
+[[steps]]
+id = "rounds"
+loop = [
+  { id = "generate", uses = "builtin.generate", when = "round > 1 or not review_first" },
+  { id = "review", uses = "builtin.review" },
+]
+
+[[steps]]
+id = "checks"
+uses = "builtin.checks"
+
+[[steps]]
+id = "deliver"
+uses = "builtin.deliver"
