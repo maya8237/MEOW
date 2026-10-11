@@ -20,6 +20,12 @@ these ordered lines are present:
 .meow/*
 !.meow/
 !.meow/config.toml
+!.meow/skills/
+!.meow/plugin/
+!.meow/.claude-plugin/
+!.meow/agents/
+!.meow/workflows/
+.claude/settings.local.json
 ```
 
 The shared project config stays trackable. `.meow/config.local.toml`, session
