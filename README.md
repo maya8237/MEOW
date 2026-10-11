@@ -54,6 +54,7 @@ runs. Use `/meow:onboard` for integrations and optional features, or
 | Fix lint | `/meow:lint` |
 | Queue work | `meow queue "..."` |
 | Check or continue | `meow status` or `meow resume RUN_ID` |
+| Browse or create workflows, agents, and skills | `meow ui` |
 
 See the [CLI guide](docs/CLI.md) for worktrees, background runs, recovery, and
 advanced options.
