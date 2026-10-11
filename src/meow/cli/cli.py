@@ -126,6 +126,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
                     working_dir,
                     args.run_id,
                     continue_run=args.continue_run,
+                    request=args.request,
                 )
             )
         )

@@ -213,6 +213,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     )
     resume_parser.add_argument("run_id", nargs="?")
     resume_parser.add_argument("--continue", dest="continue_run", action="store_true")
+    resume_parser.add_argument(
+        "--request",
+        metavar="TEXT",
+        help=(
+            "Clarified request for a run paused for a product decision "
+            "before planning; requires --continue."
+        ),
+    )
     _add_common_args(resume_parser)
     queue_parser = subparsers.add_parser(
         "queue", help="Queue a task or run queued tasks serially."

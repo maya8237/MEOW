@@ -52,7 +52,10 @@ async def shape(state):  # ruff: ignore[unused-async] -- mirrors existing shapin
             last_failure="Unresolved product decision before planning",
         )
         raise RuntimeError(
-            "Unresolved product decision before planning; inspect meow status"
+            "Unresolved product decision before planning: "
+            f"{'; '.join(preplan.decision.reasons)}. "
+            f'meow resume {state.run_id} --continue --request "<intended outcome>" '
+            f'--work-dir "{state.store.load(state.run_id).repo}"'
         )
     if preplan.breadboard is not None:
         state.journal("breadboarding")
