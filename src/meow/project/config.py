@@ -20,7 +20,13 @@ from meow.project.config_schema import (
     _normalize_tester_config,
     _validate_max_rounds,
 )
-from meow.project.custom import CustomSource, discover, parse_sources
+from meow.project.custom import (
+    CustomSource,
+    builtin_sources,
+    conventional_sources,
+    discover,
+    parse_sources,
+)
 
 __all__ = [
     "DEFAULT_CONFIG",
@@ -35,7 +41,7 @@ DEFAULT_CONFIG = {
     "lint_timeout": 60,  # seconds before a per-file lint command is killed
     "docs_dir": ".meow/plans",
     "models": {
-        "explorer": "haiku",
+        "explorer": None,  # explorer.toml supplies "haiku"
         "planner": None,  # None = engine default
         "generator": None,
         "reviewer": None,
@@ -47,6 +53,7 @@ DEFAULT_CONFIG = {
         "tester": None,
     },
     "delivery": {"target_branch": "dev"},
+    "workflow": {"default": "default"},
 }
 
 
@@ -126,6 +133,16 @@ def _layer_custom_sources(
     return parse_sources(layer.pop("custom", None), scope, base, config_path)
 
 
+def _workflow_config(user_config):
+    workflow = user_config.get("workflow", {})
+    if not isinstance(workflow, dict) or set(workflow) - {"default"}:
+        raise ValueError(f"{_CONFIG_FILENAME}: [workflow] accepts only 'default'")
+    selection = workflow.get("default", "default")
+    if not isinstance(selection, str) or not selection.strip():
+        raise ValueError(f"{_CONFIG_FILENAME}: [workflow].default must be a name")
+    return {"default": selection}
+
+
 def load_config(working_dir: Path) -> dict:
     from meow.infrastructure.checks import normalize_build
     from meow.infrastructure.worktree_setup import validate_setup
@@ -146,7 +163,6 @@ def load_config(working_dir: Path) -> dict:
     _validate_os_compatibility(config["lint"])
     config["tester"] = _normalize_tester_config(user_config)
     config["build"] = normalize_build(user_config.get("build", []))
-    config["permissions"] = parse_policy(user_config.get("permissions"))
     config["worktree_setup"] = validate_setup(user_config.get("worktree_setup"))
     delivery = user_config.get("delivery", {})
     if not isinstance(delivery, dict):
@@ -157,6 +173,7 @@ def load_config(working_dir: Path) -> dict:
             f"{_CONFIG_FILENAME}: [delivery].target_branch must be a branch name"
         )
     config["delivery"] = {"target_branch": target}
+    config["workflow"] = _workflow_config(user_config)
     for table_name, commands in (
         ("[[tester.tests]]", config["tester"]["tests"]),
         ("[[tester.dev_server]]", config["tester"]["dev_server"]),
@@ -171,6 +188,17 @@ def load_config(working_dir: Path) -> dict:
                     f"command {command.command!r} {problem}"
                 )
     _validate_max_rounds(config)
-    config["customizations"] = discover(custom_sources)
+    config["customizations"] = discover([
+        *custom_sources,
+        *conventional_sources(working_dir, user_config_path().parent),
+        *builtin_sources(),
+    ])
+    config["permissions"] = parse_policy(
+        user_config.get("permissions"),
+        roles={agent.role for agent in config["customizations"].catalog},
+    )
+    from meow.project.custom.rendering import validate_agents
+
+    validate_agents(config["customizations"])
 
     return config

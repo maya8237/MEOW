@@ -15,6 +15,7 @@ from meow.infrastructure.worktree import (
 )
 from meow.project.config import config_root, load_config
 from meow.project.config_models import LintCommand
+from meow.project.custom.rendering import effective_models
 from meow.project.onboarding import CONFIG_RELPATH, onboard_if_needed
 from meow.project.plan_files import (
     _detect_review_flavor,
@@ -148,7 +149,7 @@ def prepare(working_dir: Path, options: PrepareOptions) -> dict:
         "review_file": str(review_file),
         "max_rounds": config["max_rounds"],
         "lint_timeout": config["lint_timeout"],
-        "models": config["models"],
+        "models": effective_models(config),
         "lint": _lint_plan(config["lint"]),
         "onboarding": onboarding,
     }
@@ -173,7 +174,15 @@ def latest_review(working_dir: Path, active_dir: Path) -> dict:
 
 
 def verdict(review_file: Path) -> dict:
-    """PASS/FAIL and summary of a review file, the way the CLI reads one."""
+    """PASS/FAIL and summary of a review file, the way the CLI reads one.
+
+    A review file the reviewer never wrote fails closed instead of erroring.
+    """
+    if not review_file.is_file():
+        return {
+            "status": "FAIL",
+            "summary": f"reviewer wrote no verdict file: {review_file}",
+        }
     text = review_file.read_text(encoding="utf-8")
     summary = next(
         (

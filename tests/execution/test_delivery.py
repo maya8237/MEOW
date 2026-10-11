@@ -65,6 +65,49 @@ def test_separate_feature_worktree_commits_and_pushes(tmp_path):
     )
 
 
+@pytest.mark.parametrize("source_flag", ["--from", "-b"])
+@pytest.mark.parametrize("background", [False, True])
+def test_unattended_source_branch_delivers_to_separate_branch(
+    tmp_path, source_flag, background
+):
+    from meow.cli import cli
+    from meow.infrastructure.worktree import _ensure_feature_worktree
+
+    repo, remote = repository(tmp_path)
+    git(repo, "branch", "release/test")
+    (repo / "file.txt").write_text("committed main changes", encoding="utf-8")
+    git(repo, "add", "file.txt")
+    git(repo, "commit", "-qm", "advance main beyond source")
+    (repo / "file.txt").write_text("uncommitted main changes", encoding="utf-8")
+    parser = cli._build_arg_parser()
+    args = parser.parse_args(
+        [
+            "run",
+            "feature",
+            "--name",
+            "feature",
+            "--unattended",
+            source_flag,
+            "release/test",
+        ]
+        + (["--background"] if background else [])
+    )
+    cli._validate_run_flags(parser, args)
+    active = _ensure_feature_worktree(
+        repo, args.feature_name, source_branch=args.source_branch, fresh=True
+    )
+    assert (active / "file.txt").read_text(encoding="utf-8") == "before"
+    (active / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, active)
+
+    assert deliver_verified_run(store, run_id, unattended=args.unattended) is True
+
+    assert git(remote, "show", f"meow/{run_id}:file.txt") == "after"
+    assert git(active, "rev-parse", "HEAD^") == git(repo, "rev-parse", "release/test")
+    assert git(repo, "show", "release/test:file.txt") == "before"
+    assert (repo / "file.txt").read_text(encoding="utf-8") == "uncommitted main changes"
+
+
 def test_in_place_requires_unattended(tmp_path):
     repo, remote = repository(tmp_path)
     (repo / "file.txt").write_text("after", encoding="utf-8")

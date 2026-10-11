@@ -109,7 +109,17 @@ def test_unexpected_failure_before_planning_marks_the_run_failed(tmp_path):
     from meow.execution.sprint import Sprint
 
     sprint = Sprint(
-        tmp_path, {"docs_dir": ".", "lint": [], "max_rounds": 1}, None, None
+        tmp_path,
+        {
+            "docs_dir": ".",
+            "lint": [],
+            "max_rounds": 1,
+            "lint_timeout": 60,
+            "tester": {"tests": []},
+            "build": [],
+        },
+        None,
+        None,
     )
     with (
         patch(
@@ -117,7 +127,7 @@ def test_unexpected_failure_before_planning_marks_the_run_failed(tmp_path):
             return_value=(sprint, "x", tmp_path),
         ),
         patch(
-            "meow.execution.sprint_runner.gather_context",
+            "meow.execution.workflow.builtin_steps.gather_context",
             side_effect=OSError("disk gone"),
         ),
         pytest.raises(OSError, match="disk gone"),
@@ -198,14 +208,24 @@ def test_unattended_product_choice_stops_before_planning(tmp_path):
     from meow.execution.sprint import Sprint
 
     sprint = Sprint(
-        tmp_path, {"docs_dir": ".", "lint": [], "max_rounds": 1}, None, None
+        tmp_path,
+        {
+            "docs_dir": ".",
+            "lint": [],
+            "max_rounds": 1,
+            "lint_timeout": 60,
+            "tester": {"tests": []},
+            "build": [],
+        },
+        None,
+        None,
     )
     with (
         patch(
             "meow.execution.sprint_runner._prepare_sprint",
             return_value=(sprint, "x", tmp_path),
         ),
-        patch("meow.execution.sprint_runner.PlannerAgent") as planner,
+        patch("meow.execution.workflow.builtin_steps.PlannerAgent") as planner,
         pytest.raises(RuntimeError, match="product decision"),
     ):
         asyncio.run(

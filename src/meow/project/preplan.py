@@ -176,9 +176,10 @@ def gather_context(  # ruff: ignore[complex-structure, too-many-branches, too-ma
 
 
 def assess_preplan(request: str, evidence: ProjectContextEvidence) -> PreplanDecision:
-    if _CHOICE.search(request):
+    if choice := _CHOICE.search(request):
         return PreplanDecision(
-            "needs_user_decision", ("Request presents incompatible product outcomes",)
+            "needs_user_decision",
+            (f'Request contains "{choice[0]}"; specify the intended product outcome',),
         )
     assessment = assess_request(request)
     if assessment.recommended:

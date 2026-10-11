@@ -5,12 +5,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-from meow.cli.status_cli import RESUMABLE_SOURCES, render
+from meow.cli.status_cli import RESUMABLE_SOURCES, recovery_command, render
 from meow.execution.run_state import RunRecord, RunStateError, RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.cancellation import clear_cancel
 from meow.infrastructure.checks import config_fingerprint
 from meow.infrastructure.worktree import current_branch
+from meow.project.config import load_config
+from meow.project.custom.workflows import expand, select_workflow, walk
+from meow.project.preplan import assess_preplan, gather_context
 
 
 def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-branches, too-many-statements]
@@ -67,6 +70,11 @@ def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, to
                 "Configuration changed. Restore the repository MEOW config "
                 "before continuing."
             )
+    if saved := record.results.get("workflow"):
+        try:
+            select_workflow(load_config(repo), saved=saved)
+        except (OSError, ValueError, KeyError) as exc:
+            return str(exc)
     return None
 
 
@@ -87,11 +95,80 @@ def _required_session_roles(record: RunRecord, resume_at: str) -> set[str]:
     return required if resume_at == "review" else {"generator"} & required
 
 
-async def resume(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-statements]
+def _resume_at(record: RunRecord) -> str:
+    review_first = record.phase not in {"created", "preparing", "planning", "planned"}
+    review_first = (
+        review_first
+        and bool(record.plan_file)
+        and any(
+            step.get("phase")
+            in {
+                "generator_started",
+                "generator_finished",
+                "reviewer_started",
+                "reviewer_finished",
+                "tester_finished",
+                "interrupted_mutation",
+                "checking",
+                "checks_finished",
+                "tasks_integrated",
+            }
+            for step in record.transitions
+        )
+    )
+    saved_workflow = record.results.get("workflow")
+    if saved_workflow:
+        config = load_config(Path(record.repo))
+        workflow = select_workflow(config, saved=saved_workflow)
+        active = saved_workflow.get("loop") or saved_workflow.get("active")
+        review_first = any(
+            step.id == active and step.kind == "loop"
+            for step in walk(expand(workflow, config["customizations"]))
+        )
+    return "review" if review_first else "generate"
+
+
+def _request_problem(  # ruff: ignore[complex-structure, too-many-return-statements] -- explicit validation diagnostics
+    record: RunRecord, request: str | None, continue_run: bool
+) -> str | None:
+    if request is None:
+        if continue_run and record.phase == "needs_user_decision":
+            return (
+                "Supply the intended outcome with --request: "
+                f"{recovery_command(record)}"
+            )
+        return None
+    if not continue_run:
+        return "--request requires --continue; inspection does not change the request."
+    if (
+        record.phase != "needs_user_decision"
+        or record.plan_file
+        or any(
+            step["phase"] in {"planning", "generator_started", "reviewer_started"}
+            for step in record.transitions
+        )
+    ):
+        return (
+            "--request is only supported for a run paused "
+            "for a product decision before planning."
+        )
+    if not request.strip():
+        return "--request must contain the intended product outcome."
+    worktree = Path(record.worktree)
+    decision = assess_preplan(request, gather_context(worktree, request))
+    if decision.mode == "needs_user_decision":
+        return (
+            f"--request still needs a product decision: {'; '.join(decision.reasons)}."
+        )
+    return None
+
+
+async def resume(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-statements, too-many-branches] -- inspect-first recovery with validation
     working_dir: Path,
     run_id: str | None = None,
     *,
     continue_run: bool = False,
+    request: str | None = None,
 ) -> int:
     store = RunStore(working_dir)
     try:
@@ -100,6 +177,9 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
         print(str(exc), file=sys.stderr)
         return 1
     print(render(record))
+    if problem := _request_problem(record, request, continue_run):
+        print(problem, file=sys.stderr)
+        return 1
     if not continue_run:
         return 0
     if record.phase == "complete":
@@ -128,27 +208,8 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
             file=sys.stderr,
         )
         return 1
-    review_first = record.phase not in {"created", "preparing", "planning", "planned"}
-    review_first = (
-        review_first
-        and bool(record.plan_file)
-        and any(
-            step.get("phase")
-            in {
-                "generator_started",
-                "generator_finished",
-                "reviewer_started",
-                "reviewer_finished",
-                "tester_finished",
-                "interrupted_mutation",
-                "checking",
-                "checks_finished",
-                "tasks_integrated",
-            }
-            for step in record.transitions
-        )
-    )
-    resume_at = "review" if review_first else "generate"
+    saved_workflow = record.results.get("workflow")
+    resume_at = _resume_at(record)
     required_sessions = _required_session_roles(record, resume_at)
     missing_sessions = sorted(required_sessions - set(record.sessions))
     if missing_sessions:
@@ -160,7 +221,16 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
         )
         return 1
     clear_cancel(store, record.id)
-    store.transition(record.id, "resuming", attempt=record.attempt + 1)
+    patch = {}
+    if request is not None:
+        patch = {
+            "request": request.strip(),
+            "last_failure": None,
+            "results": {"original_request": record.request},
+        }
+    record = store.transition(
+        record.id, "resuming", attempt=record.attempt + 1, **patch
+    )
     await run_sprint(
         Path(record.worktree),
         record.results.get("feature_name"),
@@ -171,5 +241,6 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
         run_id=record.id,
         record_root=Path(record.repo),
         required_session_roles=required_sessions,
+        workflow=saved_workflow["name"] if saved_workflow else "default",
     )
     return 0

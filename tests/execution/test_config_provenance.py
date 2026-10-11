@@ -62,18 +62,22 @@ def test_run_sprint_checks_active_worktree_with_repository_config(tmp_path):
             return_value=(sprint, "feature", active),
         ) as prepare,
         patch(
-            "meow.execution.sprint_runner._run_review_rounds",
+            "meow.execution.workflow.builtin_steps._review_round",
             new_callable=AsyncMock,
-            return_value=True,
+            return_value=("PASS", "STATUS: PASS"),
         ),
         patch(
-            "meow.execution.sprint_runner.run_final_checks",
+            "meow.execution.workflow.builtin_steps.run_final_checks",
             new_callable=AsyncMock,
             return_value=[],
         ) as final_checks,
-        patch("meow.execution.sprint_runner.configured_checks", return_value=[]),
-        patch("meow.execution.sprint_runner.completion_ready", return_value=True),
-        patch("meow.execution.sprint_runner.deliver_verified_run"),
+        patch(
+            "meow.execution.workflow.builtin_steps.configured_checks", return_value=[]
+        ),
+        patch(
+            "meow.execution.workflow.builtin_steps.completion_ready", return_value=True
+        ),
+        patch("meow.execution.workflow.builtin_steps.deliver_verified_run"),
     ):
         asyncio.run(
             run_sprint(

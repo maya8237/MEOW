@@ -19,7 +19,10 @@ def recovery_command(record: RunRecord) -> str:
         return "Run complete"
     if record.source not in RESUMABLE_SOURCES:
         return f"Rerun the original meow {record.source} command"
-    return f'meow resume {record.id} --work-dir "{record.repo}"'
+    command = f"meow resume {record.id}"
+    if record.phase == "needs_user_decision":
+        command += ' --continue --request "<intended outcome>"'
+    return f'{command} --work-dir "{record.repo}"'
 
 
 def _gate_lines(  # ruff: ignore[complex-structure, too-many-branches]
@@ -55,6 +58,16 @@ def _gate_lines(  # ruff: ignore[complex-structure, too-many-branches]
     return lines
 
 
+def _decision_lines(record: RunRecord) -> list[str]:
+    if record.phase != "needs_user_decision":
+        return []
+    decision = record.results.get("preplan", {}).get("decision", {})
+    return [
+        f"Request: {record.request}",
+        *(f"Decision needed: {reason}" for reason in decision.get("reasons", [])),
+    ]
+
+
 def render(  # ruff: ignore[complex-structure, too-many-statements]
     record: RunRecord, *, verbose: bool = False, concerns: tuple[Concern, ...] = ()
 ) -> str:
@@ -78,7 +91,15 @@ def render(  # ruff: ignore[complex-structure, too-many-statements]
         f"Branch: {record.branch}",
         f"Recovery: {recovery_command(record)}",
     ]
+    lines.extend(_decision_lines(record))
     worker = inspect_worker(record)
+    workflow = record.results.get("workflow")
+    if workflow:
+        lines.append(f"Workflow: {workflow['name']} ({workflow['scope']})")
+    lines.extend(
+        f"Stage {step_id}: {detail['status']}"
+        for step_id, detail in record.results.get("stages", {}).items()
+    )
     if worker.state != "not_background":
         lines.append(f"Background worker: {worker.state}")
         lines.append(f"Worker log: {worker.log or 'unavailable'}")

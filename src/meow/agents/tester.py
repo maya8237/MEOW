@@ -7,7 +7,7 @@ from claude_agent_sdk import ClaudeAgentOptions
 from meow.agents.base import Agent
 from meow.agents.reviewer import _verdict_status, force_fail
 from meow.infrastructure.test_runner import VerificationStageEvidence
-from meow.project.plan_files import plan_test_file
+from meow.project.plan_files import plan_test_file, stage_file
 from meow.project.prompts import tester_prompt
 
 
@@ -63,26 +63,42 @@ class VerificationAgent(Agent):
         servers = self._mcp_servers()
         if servers:
             extra["mcp_servers"] = servers
-        allowed_tools = ["Read", "Grep", "Glob", "Bash", "Write"]
+        agent = self.definition("tester")
+        allowed_tools = list(agent.tools or ())
         allowed_tools.extend(f"mcp__{name}__*" for name in servers)
-        return self.options(
-            system_prompt=tester_prompt(report_file),
+        return self.definition_options(
+            agent,
+            system_prompt=tester_prompt(report_file, agent=agent),
             allowed_tools=allowed_tools,
-            role="tester",
             **extra,
         )
 
-    async def test_plan(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches]
+    async def test_plan(
         self, plan_file: Path, evidence: VerificationStageEvidence
     ) -> tuple[str, str]:
         report_file = plan_test_file(plan_file)
-        active_dir = self.context.active_working_dir()
         try:
             plan = plan_file.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
             raise RuntimeError(
                 f"Could not read tester plan {plan_file}: {exc}"
             ) from exc
+        return await self._test_basis(
+            f"Plan file: {plan_file}\nPlan content:\n{plan}\n\n", report_file, evidence
+        )
+
+    async def test_request(self, request: str, evidence: VerificationStageEvidence):
+        active = self.context.active_working_dir()
+        report = stage_file(active / self.context.config["docs_dir"], "tester")
+        report.parent.mkdir(parents=True, exist_ok=True)
+        return await self._test_basis(
+            f"Review request:\n{request}\n\n", report, evidence
+        )
+
+    async def _test_basis(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches]
+        self, basis: str, report_file: Path, evidence: VerificationStageEvidence
+    ):
+        active_dir = self.context.active_working_dir()
         tester_config = self.context.config.get("tester", {})
         architecture = architecture_context(
             active_dir, tester_config.get("architecture_files", [])
@@ -113,8 +129,7 @@ class VerificationAgent(Agent):
             or "(no browser provider evidence)"
         )
         prompt = (
-            f"Plan file: {plan_file}\nPlan content:\n{plan}\n\n"
-            f"Active worktree: {active_dir}\n\nArchitecture context:\n"
+            basis + f"Active worktree: {active_dir}\n\nArchitecture context:\n"
             f"{architecture}\n\n"
             f"Configured test directories: "
             f"{', '.join(map(str, configured_dirs)) or '(none)'}\n"
@@ -131,7 +146,9 @@ class VerificationAgent(Agent):
             return "FAIL", f"Could not prepare tester verdict at {report_file}: {exc}"
         try:
             report_file.unlink(missing_ok=True)
-            await self.run_query(prompt, self._options(report_file), "Tester")
+            await self.run_definition_query(
+                self.definition("tester"), prompt, self._options(report_file), "Tester"
+            )
         except BaseException:
             if previous_report is not None and not report_file.exists():
                 report_file.write_bytes(previous_report)
