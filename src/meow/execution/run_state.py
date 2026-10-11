@@ -21,6 +21,7 @@ TERMINAL_PHASES = frozenset({
     "failed",
     "cancelled",
     "needs_user_decision",
+    "review_finished",
 })
 _SECRET_KEY = re.compile(
     r"(?:token|secret|password|credential|api.?key|authorization)", re.I

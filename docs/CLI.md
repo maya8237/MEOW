@@ -50,7 +50,9 @@ MEOW Claude Code hook by comparing the local installation manifest with Claude
 settings. It only reads files. `meow hooks install claude --only lint` installs
 an accepted subset; repeat `--only` for more hooks. Onboarding shows each hook's
 host event, exact command, and effect before installation. Editor hooks are
-optional: `meow run`, including `--unattended`, works without them.
+optional: `meow run`, including `--unattended`, works without them. Lint
+failures and shaping advisories reach Claude as PostToolUse
+`additionalContext`; plan advisories appear as a Stop `systemMessage`.
 
 Use `meow hooks uninstall claude` to remove hooks recorded by MEOW's manifest.
 The supported hook names are `lint`, `shaping`, `plan_capture`, and `plan_stop`.
@@ -321,7 +323,8 @@ These commands are hidden from `meow --help` because they are not the normal
 user surface.
 
 `meow docs-update` is for maintainers updating MEOW's own prose docs on a
-clean `dev` checkout. Run `meow docs-update --since REF` the first time, using
+clean checkout of `[delivery].target_branch` (default `dev`). Run
+`meow docs-update --since REF` the first time, using
 the commit from which documentation should be reviewed. Later, run
 `meow docs-update` after the previous documentation changes and
 `docs/.meow-docs-update.json` have been committed. It compares the saved

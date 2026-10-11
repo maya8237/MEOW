@@ -38,7 +38,4 @@ Use **CLI mode** (bottom) only if the user explicitly asks for it.
 meow plan "<feature request>" --name "<generated-feature-name>" --work-dir "<project-path>"
 ```
 
-Add `--no-worktree` to use the main repo instead of an isolated worktree. If
-`meow` isn't on PATH, tell the user to install it (README: `pip install -e .`
-in a venv, or `pipx install -e .`). Report the plan file's path.
-
+Add `--no-worktree` to use the main repo instead of an isolated worktree. Report the plan file's path.

@@ -52,3 +52,21 @@ def test_worker_lock_reclaims_definitely_dead_pid(tmp_path):
     lock = QueueWorkerLock(path)
     assert lock.acquire() is True
     lock.release()
+
+
+def test_worker_lock_reclaims_old_lock_with_no_owner(tmp_path):
+    import os
+    import time
+
+    lock = QueueWorkerLock(tmp_path)
+    lock.path.write_text("", encoding="utf-8")
+    old = time.time() - 120
+    os.utime(lock.path, (old, old))
+    assert lock.acquire()
+    lock.release()
+
+
+def test_worker_lock_keeps_fresh_lock_with_no_owner_yet(tmp_path):
+    lock = QueueWorkerLock(tmp_path)
+    lock.path.write_text("", encoding="utf-8")
+    assert not lock.acquire()

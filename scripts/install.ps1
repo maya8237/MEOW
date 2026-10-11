@@ -72,13 +72,32 @@
         }
     }
 
+    # Asks a question. Read-Host's prompt is dropped by Windows PowerShell when
+    # input is redirected, so the prompt is always written with Write-Host.
+    function Read-Answer {
+        param([Parameter(Mandatory = $true)][string]$Prompt)
+
+        Write-Host -NoNewline ($Prompt + ": ")
+        try {
+            if ([Console]::IsInputRedirected) {
+                $answer = [Console]::In.ReadLine()
+                Write-Host ""
+                return "$answer"
+            }
+            return (Read-Host)
+        } catch {
+            Write-Host ""
+            return ""
+        }
+    }
+
     # Reads a directory path. On an interactive console Tab completes (and cycles
-    # through) matching directories; with redirected input it is just Read-Host.
+    # through) matching directories; with redirected input it is just Read-Answer.
     function Read-PathInput {
         param([Parameter(Mandatory = $true)][string]$Prompt)
 
         if ([Console]::IsInputRedirected) {
-            return (Read-Host $Prompt)
+            return (Read-Answer $Prompt)
         }
 
         Write-Host -NoNewline ($Prompt + " (Tab autocompletes paths): ")
@@ -409,11 +428,7 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
                 (Format-PythonCommand -Python $existingSetup) + ' -m pip install -e "' +
                 $existingSetup.Checkout + '" }'
             )
-            try {
-                $updateAnswer = Read-Host "Update MEOW now? [y/N]"
-            } catch {
-                $updateAnswer = ""
-            }
+            $updateAnswer = Read-Answer "Update MEOW now? [y/N]"
             if ($updateAnswer -match "^(y|yes)$") {
                 Update-ExistingCheckout -Setup $existingSetup -OriginVersion $originVersion
             } else {
@@ -421,22 +436,14 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
                 Write-Host "  $updateCommand"
             }
         } elseif ($comparison -eq "newer") {
-            try {
-                $switchAnswer = Read-Host "Switch to the origin/main version ($originVersion), discarding local commits? [y/N]"
-            } catch {
-                $switchAnswer = ""
-            }
+            $switchAnswer = Read-Answer "Switch to the origin/main version ($originVersion), discarding local commits? [y/N]"
             if ($switchAnswer -match "^(y|yes)$") {
                 Update-ExistingCheckout -Setup $existingSetup -OriginVersion $originVersion -Reset
             } else {
                 Write-Host "Keeping MEOW $currentVersion."
             }
         } elseif ($packageOutOfSync) {
-            try {
-                $reinstallAnswer = Read-Host "Reinstall MEOW from the checkout now? [y/N]"
-            } catch {
-                $reinstallAnswer = ""
-            }
+            $reinstallAnswer = Read-Answer "Reinstall MEOW from the checkout now? [y/N]"
             if ($reinstallAnswer -match "^(y|yes)$") {
                 Install-ExistingCheckout -Setup $existingSetup
                 Write-Host "MEOW reinstalled."

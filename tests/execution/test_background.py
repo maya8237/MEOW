@@ -201,3 +201,25 @@ def test_notification_is_opt_in_and_sent_once_with_summary_only(
     assert len(calls) == 1
     assert calls[0] == ["notify", record.id, terminal_phase, f"meow status {record.id}"]
     assert store.load(record.id).background["notification"] == "sent"
+
+
+def test_background_cli_launches_from_the_argv_it_was_given(tmp_path, monkeypatch):
+    argv = [
+        "run",
+        "feature",
+        "--name",
+        "x",
+        "--unattended",
+        "--background",
+        "--work-dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", ["ipython"])
+    launched = []
+    monkeypatch.setattr(
+        cli_core,
+        "launch_background",
+        lambda _repo, saved: launched.append(saved) or "run-123",
+    )
+    cli_core.cli_main(argv)
+    assert launched == [argv]

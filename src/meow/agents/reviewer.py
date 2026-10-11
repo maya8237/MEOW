@@ -201,6 +201,20 @@ def _verdict_status(verdict_text: str) -> str:
     return "PASS" if passed else "FAIL"
 
 
+def force_fail(verdict: str, appendix: str) -> str:
+    """`verdict` with its first STATUS line rewritten to FAIL, plus `appendix`.
+
+    Rewrites whatever follows the first STATUS line: that is the line
+    `_verdict_status` reads back from a persisted verdict file.
+    """
+    failed, replaced = re.subn(
+        r"^(\s*)STATUS:.*$", r"\1STATUS: FAIL", verdict, count=1, flags=re.MULTILINE
+    )
+    if not replaced:
+        failed = f"{verdict.rstrip()}\nSTATUS: FAIL"
+    return f"{failed.rstrip()}\n\n{appendix}"
+
+
 def prompt_review_query(  # ruff: ignore[too-many-arguments] -- pure builder
     basis: str, git_context: str, *, has_diff: bool, docs_dir: str, lint_report: str
 ) -> str:
@@ -304,18 +318,7 @@ class ReviewerAgent(Agent):
         review_file: Path | None = None,
     ):
         if evidence.blocking_failed:
-            # Rewrite the first STATUS line, whatever follows it: that is the
-            # line `_verdict_status` reads back from the persisted file.
-            failed_verdict, replaced = re.subn(
-                r"^(\s*)STATUS:.*$",
-                r"\1STATUS: FAIL",
-                verdict,
-                count=1,
-                flags=re.MULTILINE,
-            )
-            if not replaced:
-                failed_verdict = f"{verdict.rstrip()}\nSTATUS: FAIL"
-            failed_verdict = f"{failed_verdict.rstrip()}\n\n{evidence.report()}"
+            failed_verdict = force_fail(verdict, evidence.report())
             if review_file is not None:
                 review_file.write_text(failed_verdict, encoding="utf-8")
             return "FAIL", failed_verdict

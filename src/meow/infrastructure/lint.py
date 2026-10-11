@@ -13,6 +13,8 @@ from meow.project.config_models import LintCommand, resolve_command_cwd
 
 logger = get_logger(__name__)
 
+_CANNOT_START = 127  # the shell's "command not found" status
+
 
 @dataclass(frozen=True)
 class LintGateEvidence:
@@ -45,14 +47,18 @@ async def _run_subprocess(
     env: dict[str, str] | None = None,
 ) -> tuple[int, str] | None:
     """Run one subprocess, returning (returncode, combined output), or None
-    on timeout."""
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=str(working_dir),
-        env={**os.environ, **(env or {})},
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    on timeout. A program that cannot start (not installed, bad shim) is a
+    failing command, not a crash, so every caller reports it the same way."""
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=str(working_dir),
+            env={**os.environ, **(env or {})},
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        return _CANNOT_START, f"Could not run lint command {argv[0]}: {exc}"
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except TimeoutError:
@@ -131,7 +137,9 @@ async def apply_lint_fixes(
         )
         if result is None:
             logger.warning(
-                "lint_fix_command_timed_out", command=entry.command, timeout=timeout
+                "lint_fix_command_timed_out",
+                command=entry.command,
+                timeout=entry.timeout or timeout,
             )
 
 
@@ -162,7 +170,9 @@ async def check_lint_evidence(
         )
         if result is None:
             logger.warning(
-                "lint_command_timed_out", command=entry.command, timeout=timeout
+                "lint_command_timed_out",
+                command=entry.command,
+                timeout=effective_timeout,
             )
             report = (
                 f"$ {entry.command}\nTimed out after {effective_timeout}s -- killed."

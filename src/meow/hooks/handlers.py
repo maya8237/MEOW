@@ -10,6 +10,17 @@ from meow.project.config import load_config
 from meow.project.plan_state import PlanStore
 
 
+def _post_tool_context(text: str) -> dict:
+    """The part of a PostToolUse result Claude Code actually shows the model;
+    it ignores MEOW's own keys such as `ok` and `failures`."""
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": text,
+        }
+    }
+
+
 def _event(event: Any):
     if not isinstance(event, dict):
         return None, {
@@ -77,12 +88,22 @@ def lint_after_edit(event: dict) -> dict:  # ruff: ignore[too-many-return-statem
         )
     except (OSError, ValueError) as exc:
         return {"ok": False, "kind": "diagnostic", "message": str(exc)}
-    return {
+    return _lint_result(path, failures)
+
+
+def _lint_result(path: str, failures: list[str]) -> dict:
+    result = {
         "ok": not failures,
         "quiet": not failures,
         "file": path,
         "failures": failures,
     }
+    if failures:
+        result |= _post_tool_context(
+            f"Lint issues in {path} that could not be auto-fixed:\n"
+            + "\n\n".join(failures)
+        )
+    return result
 
 
 def shaping_ripple(event: dict) -> dict:
@@ -94,13 +115,12 @@ def shaping_ripple(event: dict) -> dict:
         token in path.lower() for token in ("shape", "breadboard", "requirements")
     ):
         return {"ok": True, "quiet": True}
-    return {
-        "ok": True,
-        "advisory": True,
-        "message": (
-            "Shaping artifact changed; review affected places, affordances, and wiring."
-        ),
-    }
+    message = (
+        "Shaping artifact changed; review affected places, affordances, and wiring."
+    )
+    return {"ok": True, "advisory": True, "message": message} | _post_tool_context(
+        message
+    )
 
 
 def capture_completed_plan(event: dict) -> dict:  # ruff: ignore[too-many-return-statements]
@@ -152,13 +172,16 @@ def validate_plan_stop(event: dict) -> dict:  # ruff: ignore[too-many-return-sta
     except (OSError, ValueError) as exc:
         return {"ok": False, "kind": "diagnostic", "message": str(exc)}
     if metadata.lifecycle != "complete":
+        message = (
+            f"Plan lifecycle is {metadata.lifecycle}; complete or "
+            "intentionally leave it in progress."
+        )
+        # `systemMessage` is the Stop-event field Claude Code shows the user.
         return {
             "ok": True,
             "advisory": True,
-            "message": (
-                f"Plan lifecycle is {metadata.lifecycle}; complete or "
-                "intentionally leave it in progress."
-            ),
+            "message": message,
+            "systemMessage": message,
         }
     return {"ok": True, "quiet": True, "lifecycle": metadata.lifecycle}
 

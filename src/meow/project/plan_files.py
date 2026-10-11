@@ -34,6 +34,11 @@ def plan_review_file(plan_file: Path) -> Path:
     return plan_file.with_name(plan_file.stem + "-review.md")
 
 
+def reviewed_plan_file(review_file: Path) -> Path:
+    """The plan a ``plan_review_file`` verdict belongs to (its inverse)."""
+    return review_file.with_name(review_file.name.removesuffix("-review.md") + ".md")
+
+
 def plan_test_file(plan_file: Path) -> Path:
     """The tester verdict that belongs to ``plan_file``."""
     return plan_file.with_name(plan_file.stem + "-test.md")
@@ -83,9 +88,9 @@ def _latest_plan_file(docs_dir: Path) -> Path:
 
 
 def _detect_review_flavor(review_file: Path) -> str:
-    """Classify a review file by its filename -- meow's own three review
-    verdict formats each have a distinct, deterministic naming convention,
-    so no ambiguity and no guessing is needed here."""
+    """Classify a review file by its filename -- each of meow's review
+    flavors has a distinct, deterministic naming convention, so no
+    ambiguity and no guessing is needed here."""
     name = review_file.name
     match = REVIEW_FILE_PATTERN.fullmatch(name)
     if match:

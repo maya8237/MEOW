@@ -31,7 +31,11 @@ from meow.integrations.gitlab_reviewer import _fetch_merge_request, _load_gitlab
 from meow.integrations.issue_solver import _fetch_issue, _load_jira_config
 from meow.project.config import DEFAULT_CONFIG, load_config
 from meow.project.onboarding import onboard_if_needed
-from meow.project.plan_files import _detect_review_flavor, _latest_plan_file
+from meow.project.plan_files import (
+    _detect_review_flavor,
+    _latest_plan_file,
+    reviewed_plan_file,
+)
 
 logger = get_logger(__name__)
 
@@ -282,9 +286,7 @@ async def _resume_review_file(
     initial_verdict = (_verdict_status(review_text), review_text)
 
     if flavor == "plan":
-        plan_file = review_file.with_name(
-            review_file.name.removesuffix("-review.md") + ".md"
-        )
+        plan_file = reviewed_plan_file(review_file)
         if not plan_file.exists():
             raise FileNotFoundError(
                 f"{review_file} looks like a plan review, but its plan "

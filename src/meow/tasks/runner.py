@@ -7,9 +7,9 @@ from meow.agents.generator import Generator
 from meow.execution.run_state import RunStore
 from meow.execution.sprint import Sprint, build_sprint
 from meow.infrastructure.cancellation import cancel_requested
+from meow.infrastructure.test_runner import _argv
 from meow.infrastructure.usage import usage_scope
 from meow.infrastructure.worktree_setup import run_setup
-from meow.project.command_policy import split_command
 from meow.project.permissions import PermissionPolicy
 
 from .executor import execute_in_worktrees
@@ -22,7 +22,7 @@ async def verify_task(  # ruff: ignore[complex-structure, too-many-statements]
     """Run declared checks before a worker can commit or integrate its slice."""
     evidence: list[dict[str, object]] = []
     for command in spec.verification:
-        argv = split_command(command)
+        argv = _argv(command, ())
         if not argv:
             raise ValueError(f"task {spec.id} has an empty verification command")
         try:
