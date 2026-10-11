@@ -96,6 +96,12 @@ boundary:
 .meow/*
 !.meow/
 !.meow/config.toml
+!.meow/skills/
+!.meow/plugin/
+!.meow/.claude-plugin/
+!.meow/agents/
+!.meow/workflows/
+.claude/settings.local.json
 ```
 
 This keeps the shared project config trackable while ignoring local config,

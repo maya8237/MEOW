@@ -22,8 +22,10 @@ BOUNDARY = (
     "!.meow/config.toml",
     "!.meow/skills/",
     "!.meow/plugin/",
+    "!.meow/.claude-plugin/",
     "!.meow/agents/",
     "!.meow/workflows/",
+    ".claude/settings.local.json",
 )
 
 CONFIG_RELPATH = ".meow/config.toml"
@@ -45,10 +47,12 @@ _EXPECTED_IGNORED = {
     ".meow/config.local.toml": True,
     ".meow/skills/x/SKILL.md": False,
     ".meow/plugin/skills/x/SKILL.md": False,
+    ".meow/.claude-plugin/marketplace.json": False,
     ".meow/local/plugin/skills/x/SKILL.md": True,
     ".meow/agents/x.toml": False,
     ".meow/workflows/x.toml": False,
     ".meow/runs/x.json": True,
+    ".claude/settings.local.json": True,
 }
 
 

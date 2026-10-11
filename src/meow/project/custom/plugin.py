@@ -93,7 +93,7 @@ def ensure_plugin_root(root: Path, scope: str) -> Path:
             json.dumps(
                 {
                     "name": _SCOPE_PLUGIN_NAMES[scope],
-                    "description": f"Custom skills created in MEOW at {scope} scope.",
+                    "description": f"MEOW {scope} skills.",
                     "version": "0.1.0",
                 },
                 indent=2,
@@ -102,3 +102,30 @@ def ensure_plugin_root(root: Path, scope: str) -> Path:
             encoding="utf-8",
         )
     return root
+
+
+def ensure_marketplace(base: Path, scope: str) -> None:
+    """Write the marketplace file that lists the scope's plugin under `base`."""
+    path = Path(base) / ".claude-plugin" / "marketplace.json"
+    if path.is_file():
+        return
+    name = _SCOPE_PLUGIN_NAMES[scope]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "name": name,
+                "owner": {"name": "MEOW"},
+                "plugins": [
+                    {
+                        "name": name,
+                        "source": "./plugin",
+                        "description": f"MEOW {scope} skills.",
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )

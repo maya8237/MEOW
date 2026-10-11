@@ -175,8 +175,18 @@ def test_create_skill_lands_in_project_plugin_and_registers_it(running, project)
     assert Path(body["file"]) == plugin / "skills" / "journal" / "SKILL.md"
     manifest = json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())
     assert manifest["name"] == "meow-project"
+    assert (
+        json.loads((plugin.parent / ".claude-plugin" / "marketplace.json").read_text())[
+            "name"
+        ]
+        == "meow-project"
+    )
     settings = json.loads((project / ".claude" / "settings.json").read_text())
-    assert settings["env"]["CLAUDE_CODE_PLUGIN_DIRS"] == "./.meow/plugin"
+    assert settings["extraKnownMarketplaces"]["meow-project"]["source"] == {
+        "source": "directory",
+        "path": "./.meow",
+    }
+    assert settings["enabledPlugins"]["meow-project@meow-project"] is True
     skills = {item["name"]: item for item in build_catalog(project)["skills"]}
     assert skills["journal"]["description"] == "Keeps a journal."
 

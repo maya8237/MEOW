@@ -130,3 +130,38 @@ def append_plugin_dir(
     env[PLUGIN_DIRS_ENV] = separator.join(entries)
     data["env"] = env
     _write_settings(settings_path, data)
+
+
+def register_marketplace(
+    settings_path: Path,
+    marketplace_name: str,
+    marketplace_dir: Path,
+    *,
+    relative_to: Path,
+) -> None:
+    """Declare a directory marketplace in a settings file and enable its plugin.
+
+    Claude Code loads project and local plugins this way; the plugin-dir
+    environment variable is not read from project settings.
+    """
+    settings_path = Path(settings_path)
+    data = _load_settings(settings_path)
+    known = data.get("extraKnownMarketplaces") or {}
+    enabled = data.get("enabledPlugins") or {}
+    if not isinstance(known, dict) or not isinstance(enabled, dict):
+        raise ValueError(
+            f"{settings_path}: extraKnownMarketplaces and enabledPlugins must be "
+            "JSON objects; it was not changed"
+        )
+    entry = _entry_for(
+        Path(marketplace_dir).expanduser().resolve(), Path(relative_to).resolve()
+    )
+    wanted = {"source": {"source": "directory", "path": entry}}
+    plugin_key = f"{marketplace_name}@{marketplace_name}"
+    if known.get(marketplace_name) == wanted and enabled.get(plugin_key) is True:
+        return
+    known[marketplace_name] = wanted
+    enabled[plugin_key] = True
+    data["extraKnownMarketplaces"] = known
+    data["enabledPlugins"] = enabled
+    _write_settings(settings_path, data)
