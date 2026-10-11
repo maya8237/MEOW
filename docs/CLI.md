@@ -59,6 +59,13 @@ The supported hook names are `lint`, `shaping`, `plan_capture`, and `plan_stop`.
 Uninstall only removes the MEOW-owned entries; it does not rewrite unrelated
 Claude settings.
 
+`plan_capture` runs on PostToolUse after a `Write|Edit` of a plan file and
+records a draft only when no sidecar exists. `plan_stop` runs on Stop and checks
+the single open plan; it stays quiet when there are zero or several open plans.
+Re-running `meow hooks install claude` migrates old Stop-based installs.
+`meow hooks status claude` reports a hook installed on the wrong event as
+`modified`.
+
 ## Quality concerns
 
 Reviewers may record concrete maintenance concerns with a repository path,
