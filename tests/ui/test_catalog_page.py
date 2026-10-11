@@ -104,6 +104,20 @@ def test_server_serves_logo(running):
         assert response.read(8) == b"\x89PNG\r\n\x1a\n"
 
 
+def test_catalog_bytes_follow_file_changes(project):
+    server = _Server(0, project)
+    try:
+        first = server.catalog_bytes()
+        assert server.catalog_bytes() is first
+        (project / ".meow" / "workflows" / "fresh.toml").write_text(
+            (builtin_dir() / "workflows" / "quick.toml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        assert b'"fresh"' in server.catalog_bytes()
+    finally:
+        server.server_close()
+
+
 def test_server_serves_code_font(running):
     url = f"http://127.0.0.1:{running.server_port}/fonts/JetBrainsMono-Regular.woff2"
     with urlopen(url) as response:

@@ -1,12 +1,14 @@
 """Loopback-only HTTP server for the catalog page."""
 
 import json
+import tomllib
 import webbrowser
 from contextlib import suppress
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from meow.project.config import user_config_path
 from meow.ui.catalog import build_catalog
 from meow.ui.create import CreateError, create_definition
 from meow.ui.repos import remember, repo_choices
@@ -28,6 +30,43 @@ _CREATE_PATHS = {
 _MAX_BODY = 64 * 1024
 
 
+def _config_skill_folders(working_dir: Path) -> list[Path]:
+    folders = []
+    for config in (
+        working_dir / ".meow" / "config.toml",
+        working_dir / ".meow" / "config.local.toml",
+    ):
+        try:
+            data = tomllib.loads(config.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        custom = data.get("custom")
+        skills = custom.get("skills", []) if isinstance(custom, dict) else []
+        folders.extend(
+            working_dir / folder for folder in skills if isinstance(folder, str)
+        )
+    return folders
+
+
+def _fingerprint(working_dir: Path) -> tuple:
+    roots = [
+        working_dir / ".meow",
+        user_config_path().parent,
+        *_config_skill_folders(working_dir),
+    ]
+    stamps = []
+    for root in roots:
+        paths = [root, *root.rglob("*")] if root.is_dir() else [root]
+        for path in paths:
+            try:
+                info = path.stat()
+            except OSError:
+                stamps.append((str(path), None))
+                continue
+            stamps.append((str(path), info.st_mtime_ns, info.st_size))
+    return tuple(stamps)
+
+
 class _Handler(BaseHTTPRequestHandler):
     server: "_Server"
 
@@ -42,9 +81,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif path in _FONTS:
             self._send(HTTPStatus.OK, _FONTS[path].read_bytes(), "font/woff2")
         elif path == "/api/catalog":
-            working_dir = self.server.working_dir
-            catalog = {**build_catalog(working_dir), "repos": repo_choices(working_dir)}
-            self._json(HTTPStatus.OK, catalog)
+            self._send(HTTPStatus.OK, self.server.catalog_bytes(), "application/json")
         else:
             self._send(HTTPStatus.NOT_FOUND, b"Not found.", "text/plain; charset=utf-8")
 
@@ -120,6 +157,17 @@ class _Server(ThreadingHTTPServer):
             f"localhost:{self.server_port}",
         }
         self.origins = {f"http://{host}" for host in self.hosts}
+        self._catalog = (None, b"")
+
+    def catalog_bytes(self) -> bytes:
+        stamp = _fingerprint(self.working_dir)
+        if stamp != self._catalog[0]:
+            catalog = {
+                **build_catalog(self.working_dir),
+                "repos": repo_choices(self.working_dir),
+            }
+            self._catalog = (stamp, json.dumps(catalog).encode("utf-8"))
+        return self._catalog[1]
 
 
 def serve_ui(
