@@ -10,6 +10,7 @@ import pytest
 
 from meow.project.custom.sources import builtin_dir
 from meow.ui import create as create_module
+from meow.ui import repos as repos_module
 from meow.ui.catalog import build_catalog
 from meow.ui.server import _Server
 
@@ -101,6 +102,13 @@ def test_server_serves_logo(running):
     with urlopen(f"http://127.0.0.1:{running.server_port}/logo.png") as response:
         assert response.headers["Content-Type"] == "image/png"
         assert response.read(8) == b"\x89PNG\r\n\x1a\n"
+
+
+def test_server_serves_code_font(running):
+    url = f"http://127.0.0.1:{running.server_port}/fonts/JetBrainsMono-Regular.woff2"
+    with urlopen(url) as response:
+        assert response.headers["Content-Type"] == "font/woff2"
+        assert response.read(4) == b"wOF2"
 
 
 def _post(port, path, payload, headers=None):
@@ -235,6 +243,40 @@ def test_create_user_skill_registers_user_folder(tmp_path, monkeypatch):
     assert status == HTTPStatus.CREATED
     assert (home / "skills" / "shared" / "SKILL.md").is_file()
     assert 'skills = ["skills"]' in (home / "config.toml").read_text(encoding="utf-8")
+
+
+def test_create_in_chosen_repo(running, project, tmp_path, monkeypatch):
+    monkeypatch.setattr(repos_module, "registry_path", lambda: tmp_path / "repos.toml")
+    other = tmp_path / "other"
+    other.mkdir()
+    repos_module.remember(other)
+
+    status, _ = _post(
+        running.server_port,
+        "/api/agents",
+        {
+            "name": "helper",
+            "description": "Helps.",
+            "source": "explorer",
+            "repo": str(other.resolve()),
+        },
+    )
+
+    assert status == HTTPStatus.CREATED
+    assert (other / ".meow" / "agents" / "helper.toml").is_file()
+    assert not (project / ".meow" / "agents" / "helper.toml").exists()
+
+
+def test_create_rejects_repo_not_in_list(running, tmp_path, monkeypatch):
+    monkeypatch.setattr(repos_module, "registry_path", lambda: tmp_path / "repos.toml")
+
+    status, _ = _post(
+        running.server_port,
+        "/api/agents",
+        {"name": "helper", "source": "explorer", "repo": str(tmp_path / "elsewhere")},
+    )
+
+    assert status == HTTPStatus.BAD_REQUEST
 
 
 def test_create_rejects_unknown_scope(running):

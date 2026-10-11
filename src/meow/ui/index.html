@@ -20,6 +20,8 @@
     --danger: #f87171;
   }
   * { box-sizing: border-box; }
+  @font-face { font-family: "JetBrains Mono"; src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2"); font-weight: 400; }
+  @font-face { font-family: "JetBrains Mono"; src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2"); font-weight: 700; }
   body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
   header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
   header img { width: 32px; height: 32px; filter: drop-shadow(0 0 6px #a855f1aa); }
@@ -46,7 +48,7 @@
   dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 12px 0; }
   dt { color: var(--muted); }
   dd { margin: 0; word-break: break-all; }
-  pre { background: var(--field); border: 1px solid var(--line); padding: 12px; border-radius: 6px; overflow: auto; white-space: pre-wrap; }
+  pre { background: var(--field); border: 1px solid var(--line); padding: 12px; border-radius: 6px; overflow: auto; white-space: pre-wrap; font: 13px/1.5 "JetBrains Mono", Consolas, ui-monospace, monospace; }
   .error { background: #7f1d1d55; border: 1px solid var(--danger); padding: 10px 12px; margin: 10px 16px 0; border-radius: 6px; white-space: pre-wrap; }
   .notes { color: var(--muted); font-size: 12px; padding: 10px 12px; border-top: 1px solid var(--line); }
   .empty { color: var(--muted); padding: 16px; }
@@ -244,6 +246,8 @@ function renderCreateForm() {
     el("option", { value: "local", text: "Local (.meow/local, this checkout only)" }),
     el("option", { value: "user", text: "User (~/.meow, all your projects)" }),
   ]);
+  const repo = el("select", { name: "repo" }, (state.data.repos || []).map((path) => el("option", { value: path, text: path })));
+  scope.addEventListener("change", () => { repo.disabled = scope.value === "user"; });
   const hint = kind === "skills"
     ? "Creates a folder with a SKILL.md in the chosen scope's [custom].skills folder, and adds one to that scope's config if it has none."
     : `Copies the chosen ${singular} under the new name. Edit the new file afterwards to change it.`;
@@ -254,6 +258,7 @@ function renderCreateForm() {
     el("label", {}, [el("span", { text: "Description" }), description]),
     el("label", {}, [el("span", { text: kind === "skills" ? "Start from" : `Copy from ${singular}` }), source]),
     el("label", {}, [el("span", { text: "Save to" }), scope]),
+    el("label", {}, [el("span", { text: "Repo" }), repo]),
     el("button", { type: "submit", text: `Create ${singular}` }),
     status,
   ]);
@@ -263,7 +268,7 @@ function renderCreateForm() {
     const response = await fetch(`/api/${kind}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.value, description: description.value, source: source.value, scope: scope.value }),
+      body: JSON.stringify({ name: name.value, description: description.value, source: source.value, scope: scope.value, repo: repo.value }),
     });
     const result = await response.json();
     if (!response.ok) {
@@ -297,10 +302,26 @@ function render() {
   renderNotes();
 }
 
+let lastCatalog = "";
+
 async function load() {
   const response = await fetch("/api/catalog", { cache: "no-store" });
-  state.data = await response.json();
+  lastCatalog = await response.text();
+  state.data = JSON.parse(lastCatalog);
 }
+
+async function refresh() {
+  if (state.creating) return;
+  try {
+    const before = lastCatalog;
+    await load();
+    if (lastCatalog !== before) render();
+  } catch (error) {
+    console.debug("catalog refresh failed", error);
+  }
+}
+
+setInterval(refresh, 2000);
 
 $("search").addEventListener("input", (event) => {
   state.query = event.target.value;
