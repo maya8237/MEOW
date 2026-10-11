@@ -60,6 +60,25 @@ def builtin_agent(name: str) -> CustomAgent:
     return load_agent(builtin_dir() / "agents" / f"{name}.toml", source)
 
 
+def builtin_role_agent(role: str) -> CustomAgent | None:
+    """Resolve the shipped definition for a config role, when one exists."""
+    name = role.replace("_", "-")
+    if not (builtin_dir() / "agents" / f"{name}.toml").is_file():
+        return None
+    return builtin_agent(name)
+
+
+def effective_models(config: dict) -> dict:
+    """The models native mode would receive from SDK role lookups."""
+    from meow.agents.base import ConfigLookups
+
+    context = ConfigLookups()
+    context.config = config
+    return {
+        role: context.model(role, builtin_role_agent(role)) for role in config["models"]
+    }
+
+
 def _template(agent: CustomAgent, variant: str | None) -> str:
     if variant is None:
         return agent.prompt

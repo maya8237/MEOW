@@ -54,6 +54,21 @@ def write_config(root: Path, command: str) -> None:
     )
 
 
+class PrepareModelTests(unittest.TestCase):
+    def test_prepare_emits_effective_explorer_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            options = native.PrepareOptions(use_worktree=False, require_clean=False)
+            self.assertEqual(
+                native.prepare(root, options)["models"]["explorer"], "haiku"
+            )
+            config_file = root / ".meow" / "config.toml"
+            config_file.write_text(
+                TOML + '\n[models]\nexplorer = "x"\n', encoding="utf-8"
+            )
+            self.assertEqual(native.prepare(root, options)["models"]["explorer"], "x")
+
+
 class PrepareTests(unittest.TestCase):
     def test_creates_feature_worktree_and_reports_paths(self):
         with tempfile.TemporaryDirectory() as tmp:

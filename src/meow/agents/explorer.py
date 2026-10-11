@@ -3,7 +3,7 @@
 from claude_agent_sdk import AgentDefinition
 
 from meow.agents.base import Agent, AgentContext
-from meow.project.custom.rendering import builtin_agent
+from meow.project.custom.rendering import builtin_role_agent
 from meow.project.prompts import explorer_prompt
 
 
@@ -19,7 +19,7 @@ class ExplorerAgent(Agent):
             ),
             prompt=prompt,
             tools=["Read", "Grep", "Glob", "Bash"],
-            model=self.context.model("explorer", builtin_agent("explorer")),
+            model=self.context.model("explorer", builtin_role_agent("explorer")),
             skills=self.skills("explorer", ["superpowers:systematic-debugging"]),
         )
 

@@ -16,7 +16,7 @@ from meow.agents.reviewer import (
 )
 from meow.infrastructure.lint import check_lint_evidence
 from meow.project.config import config_root, load_config
-from meow.project.custom.rendering import builtin_agent
+from meow.project.custom.rendering import builtin_role_agent
 from meow.project.plan_files import new_review_filename, plan_review_file
 from meow.project.prompts import (
     branch_review_prompt,
@@ -227,6 +227,6 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
     model_role = role.split("-", 1)[0] if role.startswith("reviewer-") else role
     # Same lookup (and reviewer fallback) as the SDK role.
     model_role = model_role.replace("-", "_")
-    shipped = builtin_agent("explorer") if model_role == "explorer" else None
+    shipped = builtin_role_agent(model_role)
     result["model"] = context.model(model_role, shipped)
     return result
