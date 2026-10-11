@@ -19,6 +19,23 @@ _COMMANDS = (
 )
 
 
+def _magic_names() -> tuple[str, ...]:
+    """Bare magic names: full commands plus the shortcut and fun aliases.
+
+    Aliases for `ipython` are left out: they would start a second IPython
+    session from inside this one.
+    """
+    from meow.cli.parser import _FUN_SHORTCUTS, _SHORTCUTS
+
+    aliases = {
+        name
+        for shortcuts in (_SHORTCUTS, _FUN_SHORTCUTS)
+        for name, target in shortcuts.items()
+        if target != ("ipython",)
+    }
+    return (*_COMMANDS, *sorted(aliases))
+
+
 def _dispatch_line(line: str, dispatch: Callable[[list[str]], None]) -> None:
     dispatch(shlex.split(line))
 
@@ -37,7 +54,7 @@ def _build_magics() -> type:
         magic.__name__ = command
         return line_magic(command)(magic)
 
-    namespace = {command: make_magic(command, command) for command in _COMMANDS}
+    namespace = {name: make_magic(name, name) for name in _magic_names()}
     namespace["meow"] = make_magic("meow", "")
     return magics_class(type("MeowMagics", (Magics,), namespace))
 
@@ -62,5 +79,5 @@ def start_ipython() -> None:
 
     shell = TerminalInteractiveShell.instance()
     shell.register_magics(_build_magics())
-    register_completers(shell, _build_arg_parser(), (*_COMMANDS, "meow"))
+    register_completers(shell, _build_arg_parser(), (*_magic_names(), "meow"))
     launch(argv=[])

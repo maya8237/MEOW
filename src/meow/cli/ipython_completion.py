@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 
+from meow.cli.parser import expand_shortcuts
+
 
 def _subparsers(parser: argparse.ArgumentParser) -> argparse._SubParsersAction | None:
     for action in parser._actions:
@@ -49,7 +51,7 @@ def complete_words(
     ``words`` start at the subcommand (any ``meow`` prefix already stripped) and
     the parser is walked down through the subcommands they name.
     """
-    parser = _descend(parser, words)
+    parser = _descend(parser, expand_shortcuts(words))
     value_choices = _option_value_choices(parser, words[-1]) if words else None
     candidates = _names(parser, current) if value_choices is None else value_choices
     return sorted({c for c in candidates if c.startswith(current)})
