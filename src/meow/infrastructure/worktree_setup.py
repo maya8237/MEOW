@@ -11,6 +11,10 @@ _SENSITIVE = re.compile(
 )
 
 
+def is_secret_like(name: str) -> bool:
+    return _SENSITIVE.search(name) is not None
+
+
 class WorktreeSetupError(RuntimeError):
     """Configured setup failed while retaining the new worktree."""
 
@@ -21,7 +25,7 @@ def _relative(value: object) -> Path:
     path = Path(value)
     if path.is_absolute() or ".." in path.parts or path == Path("."):
         raise ValueError("worktree setup paths must stay inside the repository")
-    if _SENSITIVE.search(path.name):
+    if is_secret_like(path.name):
         raise ValueError(f"worktree setup refuses a secret-like file: {value}")
     return path
 

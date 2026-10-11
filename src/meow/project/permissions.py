@@ -38,6 +38,30 @@ def _relative_path(value: str) -> str:
     return "/".join(path.parts).casefold()
 
 
+_FILE_TOOL_FAMILY = {
+    "Read": "Read",
+    "Grep": "Read",
+    "Glob": "Read",
+    "Write": "Write",
+    "Edit": "Write",
+    "NotebookEdit": "Write",
+}
+_SEVERITY = {"allow": 0, "ask": 1, "deny": 2}
+
+
+def _family(tool: str) -> str:
+    return _FILE_TOOL_FAMILY.get(tool, tool)
+
+
+def _contains(outer: str, inner: str) -> bool:
+    """True when ``inner`` is ``outer`` or below it; "" is the project root."""
+    return not outer or inner == outer or inner.startswith(f"{outer}/")
+
+
+def _strictest(actions: list[str]) -> str:
+    return max(actions, key=_SEVERITY.__getitem__)
+
+
 @dataclass(frozen=True)
 class Rule:
     role: str
@@ -51,8 +75,14 @@ class RolePolicy:
     rules: tuple[Rule, ...]
 
     def gated_tools(self) -> set[str]:
-        """Tools whose calls this policy must see (path rules also gate Bash/Agent)."""
-        gated = {rule.tool for rule in self.rules}
+        """Every tool whose calls this policy must see.
+
+        A rule on one file tool covers its whole family (Edit is a Write, Grep
+        and Glob read), and path rules also gate Bash and Agent.
+        """
+        families = {_family(rule.tool) for rule in self.rules}
+        gated = {tool for tool in _FILE_TOOL_FAMILY if _family(tool) in families}
+        gated |= {rule.tool for rule in self.rules}
         if any(rule.path is not None for rule in self.rules):
             gated |= {"Bash", "Agent"}
         return gated
@@ -64,7 +94,7 @@ class RolePolicy:
             rule.path is not None for rule in self.rules
         ):
             return "deny"
-        matching = [rule for rule in self.rules if rule.tool == tool]
+        matching = [rule for rule in self.rules if _family(rule.tool) == _family(tool)]
         if not matching:
             return None
         path_rules = [rule for rule in matching if rule.path is not None]
@@ -85,11 +115,17 @@ class RolePolicy:
                 path = _relative_path(raw_path)
             except ValueError:
                 return "deny"
-            for rule in path_rules:
-                if path == rule.path or path.startswith(f"{rule.path}/"):
-                    return rule.action
-        global_rule = next((rule for rule in matching if rule.path is None), None)
-        return global_rule.action if global_rule else None
+            # A directory search also reaches protected paths beneath it.
+            hits = [rule.action for rule in path_rules if _contains(rule.path, path)]
+            hits += [
+                rule.action
+                for rule in path_rules
+                if rule.action != "allow" and _contains(path, rule.path)
+            ]
+            if hits:
+                return _strictest(hits)
+        global_actions = [rule.action for rule in matching if rule.path is None]
+        return _strictest(global_actions) if global_actions else None
 
 
 @dataclass(frozen=True)
