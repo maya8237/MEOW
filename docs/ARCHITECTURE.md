@@ -8,9 +8,10 @@ top-level alias or compatibility modules.
   review, testing, fixing, documentation, and Jira/GitLab/GitHub fetching.
 - `cli/`: the public command surface and dispatch for `run`, `plan`, `review`
   (`review_cli.py`), status/recovery, queues, hooks, IPython, and hidden
-  maintenance commands.
+  maintenance commands. `catalog_cli.py` owns workflow/agent inspection and ejection.
 - `execution/`: sprint orchestration, delivery, plan approval, queue/run
-  policy, and the durable run journal.
+  policy, and the durable run journal. `execution/workflow/` owns the expanded
+  step engine, built-in operation adapters, and loop session pools.
 - `evaluation/`: read-only evaluation reports over run journals.
 - `infrastructure/`: lint/test execution, checks, logging, cancellation,
   background workers, usage accounting, and worktree lifecycle/setup.
@@ -20,7 +21,10 @@ top-level alias or compatibility modules.
   skills.
 - `project/`: config models/schema, custom skill and agent discovery
   (`project/custom/`), onboarding, permissions, plan files/state, pre-plan
-  shaping, prompts, and command policy.
+  shaping, prompts, and command policy. `project/custom/` owns scoped agent
+  and workflow loading, expression/template validation, and shipped TOML
+  definitions under `builtin/`. `project/prompts.py` supplies computed context
+  and verdict contracts; editable role prose belongs in the agent definitions.
 - `hooks/`: optional Claude Code hook handlers and installation.
 - `installer/`: post-install plugin registration and project onboarding.
 - `tasks/`: task-graph models, scheduling, execution, and integration.
