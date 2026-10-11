@@ -68,6 +68,7 @@
   <img src="/logo.png" alt="">
   <h1>MEOW catalog</h1>
   <nav id="tabs"></nav>
+  <select id="repo-filter" aria-label="Repo"></select>
   <button id="new" type="button">+ New</button>
   <input id="search" type="search" placeholder="Filter by name or description">
 </header>
@@ -85,7 +86,7 @@ const TABS = [
   ["agents", "Agents"],
   ["skills", "Skills"],
 ];
-const state = { data: null, tab: "workflows", query: "", selected: null, creating: false };
+const state = { data: null, tab: "workflows", query: "", selected: null, creating: false, createKind: "workflows", created: null, repo: "" };
 const $ = (id) => document.getElementById(id);
 
 function el(tag, props = {}, children = []) {
@@ -97,6 +98,19 @@ function el(tag, props = {}, children = []) {
   }
   for (const child of children) node.append(child);
   return node;
+}
+
+function keyOf(item) {
+  return item.file || item.directory;
+}
+
+function sameItem(a, b) {
+  return Boolean(a && b) && keyOf(a) === keyOf(b);
+}
+
+function where(item) {
+  if (item.repo) return item.repo;
+  return item.scope === "builtin" ? "built in" : "all repositories";
 }
 
 function items() {
@@ -120,6 +134,7 @@ function renderTabs() {
       state.tab = key;
       state.selected = null;
       state.creating = false;
+      state.created = null;
       render();
     });
     return button;
@@ -128,18 +143,19 @@ function renderTabs() {
 
 function renderList() {
   const list = items();
-  const selectedName = state.selected && state.selected.name;
-  if (!list.some((item) => item.name === selectedName)) {
+  if (!list.some((item) => sameItem(item, state.selected))) {
     state.selected = list[0] || null;
   }
   const rows = list.map((item) => {
-    const button = el("button", { "aria-current": String(item === state.selected) }, [
+    const button = el("button", { "aria-current": String(sameItem(item, state.selected)) }, [
       el("div", { className: "name", text: item.name }),
       el("div", { className: "desc", text: item.description || "" }),
+      el("div", { className: "desc", text: where(item) }),
     ]);
     button.addEventListener("click", () => {
       state.selected = item;
       state.creating = false;
+      state.created = null;
       render();
     });
     return el("li", {}, [button]);
@@ -158,6 +174,22 @@ function field(label, value) {
   return [el("dt", { text: label }), el("dd", { text })];
 }
 
+function savedNotice() {
+  if (!state.created) return [];
+  const path = state.created;
+  const button = el("button", { type: "button", className: "copy", text: "Copy path" });
+  button.addEventListener("click", async () => {
+    await navigator.clipboard.writeText(path);
+    button.textContent = "Copied";
+    setTimeout(() => { button.textContent = "Copy path"; }, 1500);
+  });
+  return [el("div", { className: "command" }, [
+    el("div", { className: "hint", text: "Saved to" }),
+    el("pre", { text: path }),
+    button,
+  ])];
+}
+
 function renderDetail() {
   const detail = $("detail");
   if (state.creating) {
@@ -166,7 +198,10 @@ function renderDetail() {
   }
   const item = state.selected;
   if (!item) {
-    detail.replaceChildren(el("div", { className: "empty", text: "Select an item." }));
+    const text = state.data && state.data.error
+      ? "The catalog could not load. Fix the error above."
+      : items().length ? "Select an item." : "Nothing here yet. Use + New to create one.";
+    detail.replaceChildren(...savedNotice(), el("div", { className: "empty", text }));
     return;
   }
   const badges = [el("span", { className: "badge", text: item.scope })];
@@ -189,9 +224,10 @@ function renderDetail() {
       ["Directory", item.directory],
     ],
   }[state.tab];
-  const rows = facts.map(([label, value]) => field(label, value)).filter(Boolean).flat();
-  const run = state.tab === "workflows" ? [runSection(item.name)] : [];
+  const rows = [["Repo", where(item)], ...facts].map(([label, value]) => field(label, value)).filter(Boolean).flat();
+  const run = state.tab === "workflows" ? [runSection(item)] : [];
   detail.replaceChildren(
+    ...savedNotice(),
     el("h2", { text: item.name }),
     el("div", {}, badges),
     el("p", { text: item.description || "" }),
@@ -201,10 +237,11 @@ function renderDetail() {
   );
 }
 
-function runSection(workflow) {
+function runSection(item) {
+  const workDir = item.repo ? ` --work-dir "${item.repo}"` : "";
   const commands = [
-    ["Terminal", `meow run "<request>" --workflow ${workflow} --name "<feature-name>"`],
-    ["Claude Code", `/meow:run --workflow ${workflow} "<request>"`],
+    ["Terminal", `meow run "<request>" --workflow ${item.name}${workDir} --name "<feature-name>"`],
+    ["Claude Code", `/meow:run --workflow ${item.name} "<request>"`],
   ];
   return el("div", { className: "run" }, [
     el("h3", { text: "Run this workflow" }),
@@ -227,32 +264,46 @@ function commandBlock(label, text) {
 }
 
 function renderCreateForm() {
-  const kind = state.tab;
+  const kind = state.createKind;
   const singular = kind.slice(0, -1);
   const status = el("div", { className: "form-status", role: "alert" });
-  const name = el("input", { name: "name", required: "", pattern: "[a-z][a-z0-9_\\-]{0,62}", placeholder: "e.g. nightly-docs" });
-  const description = el("input", { name: "description", placeholder: "What it is for" });
-  const options = (state.data[kind] || []).map((item) => {
-    const option = el("option", { value: item.name, text: `${item.name} (${item.scope})` });
-    if (kind !== "skills" && state.selected && item.name === state.selected.name) option.selected = true;
-    return option;
+  const kindPicker = el("select", { name: "kind" }, TABS.map(([key, label]) => el("option", { value: key, text: label })));
+  kindPicker.value = kind;
+  kindPicker.addEventListener("change", () => {
+    state.createKind = kindPicker.value;
+    renderCreateForm();
   });
-  if (kind === "skills") {
-    options.unshift(el("option", { value: "", text: "Blank skill" }));
-  }
-  const source = el("select", { name: "source" }, options);
+  const name = el("input", { name: "name", required: "", pattern: "[a-z][a-z0-9_\\-]{0,62}", placeholder: "e.g. nightly-docs" });
+  const description = el("input", { name: "description", required: "", placeholder: "What it is for" });
+  const repo = el("select", { name: "repo" }, (state.data.repos || []).map((path) => el("option", { value: path, text: path })));
+  if (state.repo) repo.value = state.repo;
+  const sourceOptions = () => {
+    const options = (state.data[kind] || [])
+      .filter((item) => !item.repo || item.repo === repo.value)
+      .map((item) => {
+        const option = el("option", { value: item.name, text: `${item.name} (${item.scope})` });
+        if (kind !== "skills" && state.selected && item.name === state.selected.name) option.selected = true;
+        return option;
+      });
+    if (kind === "skills") {
+      options.unshift(el("option", { value: "", text: "Blank skill" }));
+    }
+    return options;
+  };
+  const source = el("select", { name: "source" }, sourceOptions());
+  repo.addEventListener("change", () => source.replaceChildren(...sourceOptions()));
   const scope = el("select", { name: "scope" }, [
     el("option", { value: "project", text: "Project (.meow, shared in the repo)" }),
-    el("option", { value: "local", text: "Local (.meow/local, this checkout only)" }),
+    el("option", { value: "local", text: "Local (.meow/local, local and git-ignored)" }),
     el("option", { value: "user", text: "User (~/.meow, all your projects)" }),
   ]);
-  const repo = el("select", { name: "repo" }, (state.data.repos || []).map((path) => el("option", { value: path, text: path })));
   scope.addEventListener("change", () => { repo.disabled = scope.value === "user"; });
   const hint = kind === "skills"
     ? "Creates a folder with a SKILL.md in the chosen scope's [custom].skills folder, and adds one to that scope's config if it has none."
     : `Copies the chosen ${singular} under the new name. Edit the new file afterwards to change it.`;
   const form = el("form", {}, [
-    el("h2", { text: `New ${singular}` }),
+    el("h2", { text: "New item" }),
+    el("label", {}, [el("span", { text: "Kind" }), kindPicker]),
     el("p", { className: "hint", text: hint }),
     el("label", {}, [el("span", { text: "Name" }), name]),
     el("label", {}, [el("span", { text: "Description" }), description]),
@@ -277,7 +328,9 @@ function renderCreateForm() {
     }
     state.creating = false;
     await load();
-    state.selected = state.data[kind].find((item) => item.name === result.name) || null;
+    const folder = result.file.replace(/[\\/]SKILL\.md$/, "");
+    state.selected = state.data[kind].find((item) => keyOf(item) === folder) || null;
+    state.created = result.file;
     render();
   });
   $("detail").replaceChildren(form);
@@ -297,6 +350,7 @@ function render() {
   error.hidden = !state.data.error;
   error.textContent = state.data.error || "";
   renderTabs();
+  renderRepoFilter();
   renderList();
   renderDetail();
   renderNotes();
@@ -304,8 +358,19 @@ function render() {
 
 let lastCatalog = "";
 
+function renderRepoFilter() {
+  const select = $("repo-filter");
+  const repos = state.data.repos || [];
+  select.replaceChildren(
+    el("option", { value: "", text: "All repositories" }),
+    ...repos.map((path) => el("option", { value: path, text: path })),
+  );
+  select.value = state.repo;
+}
+
 async function load() {
-  const response = await fetch("/api/catalog", { cache: "no-store" });
+  const query = state.repo ? `?repo=${encodeURIComponent(state.repo)}` : "";
+  const response = await fetch(`/api/catalog${query}`, { cache: "no-store" });
   lastCatalog = await response.text();
   state.data = JSON.parse(lastCatalog);
 }
@@ -323,13 +388,23 @@ async function refresh() {
 
 setInterval(refresh, 2000);
 
+$("repo-filter").addEventListener("change", async (event) => {
+  state.repo = event.target.value;
+  state.selected = null;
+  state.created = null;
+  await load();
+  render();
+});
+
 $("search").addEventListener("input", (event) => {
   state.query = event.target.value;
   render();
 });
 
 $("new").addEventListener("click", () => {
+  state.createKind = state.tab;
   state.creating = true;
+  state.created = null;
   render();
 });
 

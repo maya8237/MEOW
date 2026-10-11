@@ -124,7 +124,9 @@ def _layer_custom_sources(
     """Pop and resolve one layer's `[custom]` table against its own scope."""
     project = Path(working_dir)
     resolved = config_path.resolve()
-    if resolved == (project / _LOCAL_CONFIG_FILENAME).resolve():
+    if resolved == user_config_path().resolve():
+        scope, base = "user", config_path.parent
+    elif resolved == (project / _LOCAL_CONFIG_FILENAME).resolve():
         scope, base = "local", project
     elif resolved == (project / _CONFIG_FILENAME).resolve():
         scope, base = "project", project

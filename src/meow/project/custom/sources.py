@@ -88,7 +88,7 @@ def conventional_dir(scope: str, kind: str, project_dir: Path, user_dir: Path) -
     return Path(project_dir) / _CONVENTIONAL[scope] / kind
 
 
-def _git_ignored(project_dir: Path, path: Path) -> bool:
+def git_ignored(project_dir: Path, path: Path) -> bool:
     try:
         result = subprocess.run(
             ["git", "check-ignore", "-q", "--", str(path)],
@@ -146,7 +146,7 @@ def _directory(value: object, scope: str, base: Path, where: str) -> Path:
         return path  # a stale personal entry must not break every project
     if not path.is_dir():
         raise ValueError(f"{where}: directory {path} does not exist")
-    if scope == "project" and _git_ignored(base, path):
+    if scope == "project" and git_ignored(base, path):
         raise ValueError(
             f"{where}: {value!r} is ignored by git, so it would not be "
             "shared with the project; un-ignore it or declare it in "

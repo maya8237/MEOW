@@ -8,10 +8,10 @@ from pathlib import Path
 
 from meow.project.config import user_config_path
 from meow.project.custom.definitions import discover, load_agent
-from meow.project.custom.sources import CustomSource, conventional_dir
+from meow.project.custom.sources import CustomSource, conventional_dir, git_ignored
 from meow.project.custom.workflows import load_workflow
+from meow.project.repos import repo_choices
 from meow.ui.catalog import build_catalog
-from meow.ui.repos import repo_choices
 
 SCOPES = ("project", "local", "user")
 _NAME = re.compile(r"[a-z][a-z0-9_-]{0,62}")
@@ -64,6 +64,8 @@ def _request(payload: dict) -> tuple[str, str, str, str]:
         )
     if not isinstance(description, str) or not isinstance(source, str):
         raise CreateError(400, "Description and source must be text.")
+    if not description.strip():
+        raise CreateError(400, "Add a description.")
     if scope not in SCOPES:
         raise CreateError(400, "Scope must be project, local, or user.")
     return name, description, source, scope
@@ -149,15 +151,31 @@ def _skill_location(
     data = tomllib.loads(config.read_text(encoding="utf-8")) if config.exists() else {}
     custom = data.get("custom")
     if custom is None:
-        entry = "skills" if scope == "user" else ".meow/skills"
-        return base / entry, (config, entry)
-    folders = custom.get("skills")
-    if not isinstance(folders, list) or not folders or not isinstance(folders[0], str):
+        entry = {
+            "user": "skills",
+            "project": ".meow/skills",
+            "local": ".meow/local/skills",
+        }[scope]
+        folder, register = base / entry, (config, entry)
+    else:
+        folders = custom.get("skills")
+        if (
+            not isinstance(folders, list)
+            or not folders
+            or not isinstance(folders[0], str)
+        ):
+            raise CreateError(
+                422,
+                f"Add a skills = [...] entry under [custom] in {config} first.",
+            )
+        folder, register = base / folders[0], None
+    if scope == "project" and git_ignored(base, folder):
         raise CreateError(
             422,
-            f"Add a skills = [...] entry under [custom] in {config} first.",
+            f"{folder} is ignored by git, so project skills there would not be "
+            "shared. Save to Local instead, or un-ignore that folder.",
         )
-    return base / folders[0], None
+    return folder, register
 
 
 def _register_folder(config: Path, entry: str) -> None:

@@ -48,6 +48,35 @@ def _by_name(item) -> str:
     return item.name
 
 
+_KINDS = ("workflows", "agents", "skills")
+
+
+def _merge(merged: dict, seen: dict, repo: str) -> None:
+    catalog = build_catalog(Path(repo))
+    if catalog["error"]:
+        merged["notes"].append(f"{repo}: {catalog['error']}")
+        return
+    for kind in _KINDS:
+        for item in catalog[kind]:
+            key = item.get("file") or item["directory"]
+            if key in seen[kind]:
+                continue
+            seen[kind].add(key)
+            item["repo"] = repo if item["scope"] in {"project", "local"} else None
+            merged[kind].append(item)
+    merged["notes"].extend(n for n in catalog["notes"] if n not in merged["notes"])
+
+
+def build_global_catalog(repos: list[str]) -> dict:
+    merged = {"error": None, "workflows": [], "agents": [], "skills": [], "notes": []}
+    seen = {kind: set() for kind in _KINDS}
+    for repo in repos:
+        _merge(merged, seen, repo)
+    for kind in _KINDS:
+        merged[kind].sort(key=lambda item: item["name"])
+    return merged
+
+
 def build_catalog(working_dir: Path) -> dict:
     try:
         custom = load_config(Path(working_dir))["customizations"]

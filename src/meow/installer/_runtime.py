@@ -12,6 +12,7 @@ from pathlib import Path
 
 from meow.installer._prompt import path_prompt
 from meow.project.onboarding import onboard_project
+from meow.project.repos import remember
 
 PLUGIN_DIRS_ENV = "CLAUDE_CODE_PLUGIN_DIRS"
 NEWLINE = chr(10)
@@ -280,7 +281,10 @@ def _onboard_one(project: Path, output: Callable[[str], None]) -> bool:
         output(f"{project}: onboarding failed ({exc})")
         return False
     _print_report(project, report, output)
-    return not report.error
+    if report.error:
+        return False
+    remember(project)
+    return True
 
 
 def _onboard_projects(

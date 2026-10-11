@@ -2,6 +2,7 @@
 
 import json
 import tomllib
+from contextlib import suppress
 from pathlib import Path
 
 from meow.project.config import user_config_path
@@ -24,8 +25,9 @@ def remember(repo: Path) -> None:
     saved.append(current)
     body = "".join(f"  {json.dumps(path)},\n" for path in saved)
     path = registry_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"repos = [\n{body}]\n", encoding="utf-8", newline="\n")
+    with suppress(OSError):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"repos = [\n{body}]\n", encoding="utf-8", newline="\n")
 
 
 def _saved() -> list[str]:
