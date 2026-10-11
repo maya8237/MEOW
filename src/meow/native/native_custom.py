@@ -54,4 +54,5 @@ def custom(working_dir: Path, active_dir: Path, role: str | None = None) -> dict
             for agent in agents
         ],
         "overrides": list(found.overrides),
+        "skipped": list(found.skipped),
     }

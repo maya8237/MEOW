@@ -12,6 +12,13 @@ COMMANDS = {
     "plan_capture": "meow native hook capture_completed_plan",
     "plan_stop": "meow native hook validate_plan_stop",
 }
+EVENTS = {
+    "lint": "PostToolUse",
+    "shaping": "PostToolUse",
+    "plan_capture": "PostToolUse",
+    "plan_stop": "Stop",
+}
+_MATCHED = {"lint", "shaping", "plan_capture"}
 
 
 def _load(path: Path) -> dict:
@@ -25,7 +32,7 @@ def _load(path: Path) -> dict:
 
 def _entry(name: str) -> dict:
     return {
-        "matcher": "Write|Edit" if name in {"lint", "shaping"} else "",
+        "matcher": "Write|Edit" if name in _MATCHED else "",
         "hooks": [{"type": "command", "command": COMMANDS[name]}],
     }
 
@@ -73,7 +80,10 @@ def inspect_claude_hooks(  # ruff: ignore[complex-structure, too-many-branches, 
             if name is None:
                 continue
             current = hooks.get(event, [])
-            if entry in current:
+            if event != EVENTS[name]:
+                if result[name] != "active":
+                    result[name] = "modified"
+            elif entry in current:
                 result[name] = "active"
             elif any(
                 isinstance(value, dict) and _entry_command(value) == command
@@ -100,13 +110,25 @@ def install_claude_hooks(  # ruff: ignore[complex-structure, too-many-statements
     if not isinstance(manifest_entries, list):
         raise ValueError("Claude hook manifest entries must be an array")
     for name in names:
-        event = "PostToolUse" if name in {"lint", "shaping"} else "Stop"
+        event = EVENTS[name]
         if event not in SUPPORTED_EVENTS:
             raise ValueError(f"unsupported Claude Code event: {event}")
         entries = hooks.setdefault(event, [])
         if not isinstance(entries, list):
             raise ValueError(f"Claude settings hook event {event} must be an array")
         entry = _entry(name)
+        for item in list(manifest_entries):
+            old_entry = item.get("entry") if isinstance(item, dict) else None
+            if (
+                isinstance(old_entry, dict)
+                and isinstance(item.get("event"), str)
+                and _entry_command(old_entry) == COMMANDS[name]
+                and (item.get("event") != event or old_entry != entry)
+            ):
+                manifest_entries.remove(item)
+                stale = hooks.get(item.get("event"))
+                while isinstance(stale, list) and old_entry in stale:
+                    stale.remove(old_entry)
         if entry not in entries:
             entries.append(entry)
         manifest_item = {"event": event, "entry": entry}

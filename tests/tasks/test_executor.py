@@ -2,9 +2,13 @@
 
 import asyncio
 import subprocess
+import time
 
+from meow.tasks import executor
 from meow.tasks.executor import execute_in_worktrees
 from meow.tasks.model import TaskGraph, TaskSpec
+
+MIN_TICKS = 10
 
 
 def _git(repo, *args):
@@ -91,3 +95,72 @@ def test_prestart_cancellation_is_not_success(tmp_path):
     )
     assert not result.passed
     assert result.outcomes == ()
+
+
+def _one_commit_repo(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Test")
+    _git(repo, "config", "user.email", "test@example.com")
+    (repo / ".gitignore").write_text(".worktrees/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    return repo
+
+
+def _ticks_while_executing(repo):
+    graph = TaskGraph((
+        TaskSpec("api", (), ("api.txt",), ()),
+        TaskSpec("ui", (), ("ui.txt",), ()),
+    ))
+
+    async def implement(spec, worktree):  # ruff: ignore[unused-async]
+        (worktree / f"{spec.id}.txt").write_text(spec.id, encoding="utf-8")
+
+    async def main():
+        ticks = []
+        work = asyncio.ensure_future(
+            execute_in_worktrees(repo, graph, "c" * 32, implement, max_parallel=2)
+        )
+
+        async def heartbeat():
+            while not work.done():
+                ticks.append(time.monotonic())
+                await asyncio.sleep(0.01)
+
+        beat = asyncio.ensure_future(heartbeat())
+        result = await work
+        await beat
+        return result, ticks
+
+    return asyncio.run(main())
+
+
+def test_integration_does_not_block_the_event_loop(tmp_path, monkeypatch):
+    repo = _one_commit_repo(tmp_path)
+    real = executor.integrate_results
+
+    def slow(*args, **kwargs):
+        time.sleep(0.3)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(executor, "integrate_results", slow)
+    result, ticks = _ticks_while_executing(repo)
+    assert result.passed
+    assert len(ticks) >= MIN_TICKS
+
+
+def test_worktree_creation_does_not_block_the_event_loop(tmp_path, monkeypatch):
+    repo = _one_commit_repo(tmp_path)
+    real = subprocess.run
+
+    def slow(cmd, *args, **kwargs):
+        if "worktree" in cmd and "add" in cmd:
+            time.sleep(0.3)
+        return real(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(executor.subprocess, "run", slow)
+    result, ticks = _ticks_while_executing(repo)
+    assert result.passed
+    assert len(ticks) >= MIN_TICKS
