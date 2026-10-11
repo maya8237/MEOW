@@ -160,6 +160,15 @@ def test_open_plans_ignores_verdicts_and_missing_directory(tmp_path):
     assert store.open_plans(tmp_path / "missing") == []
 
 
+def test_open_plans_skips_sidecar_whose_plan_is_gone(tmp_path):
+    store = PlanStore(tmp_path)
+    plan = _write(tmp_path / "gone.md")
+    store.transition(plan, "draft", "run-1")
+    plan.unlink()
+
+    assert store.open_plans(tmp_path) == []
+
+
 def test_exists_reflects_sidecar(tmp_path):
     store = PlanStore(tmp_path)
     plan = _write(tmp_path / "feature.md")
