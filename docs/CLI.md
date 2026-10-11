@@ -143,9 +143,11 @@ receives a `meow/RUN_ID` branch at delivery. `--unattended` opts into the same
 non-interactive delivery path and is required for `--background`; it still
 requires an isolated worktree. An in-place `--no-worktree` run does not
 automatically commit or push. A missing remote or failed push leaves the
-worktree and checkpoint for recovery. `--unattended` cannot be combined with
-`--no-worktree`, manual plan approval, a source branch, resume-at-review, or
-lint-fix mode.
+worktree and checkpoint for recovery. `--unattended` supports `--from BRANCH`
+(also `-b`), including with `--background`; the source branch supplies the
+starting commit, and delivery pushes a separate `meow/RUN_ID` branch.
+`--unattended` cannot be combined with `--no-worktree`, manual plan approval,
+resume-at-review, or lint-fix mode.
 
 `run --manually-approve-plan` (also `-m`) displays the plan and waits for
 approval before implementation. Declining exits without starting the
