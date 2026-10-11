@@ -7,6 +7,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+from meow.cli.catalog_cli import catalog_command
 from meow.cli.dispatch import _dispatch
 from meow.cli.ipython_cli import start_ipython
 from meow.cli.parser import _build_arg_parser
@@ -17,6 +18,7 @@ from meow.cli.validation import (
     _validate_ci_flags,
     _validate_feature_name_requirement,
     _validate_run_flags,
+    validate_workflow_args,
 )
 from meow.evaluation import evaluate_run
 from meow.execution.orchestrator import log_working_directory
@@ -78,6 +80,13 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         return
     working_dir = Path(args.working_dir).resolve()
     log_working_directory(working_dir)
+    if args.command in {"workflows", "agents"}:
+        try:
+            catalog_command(args, working_dir)
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(1) from exc
+        return
     if args.command == "_worker":
         raise SystemExit(worker_main(working_dir, args.run_id, args.nonce))
     if args.command == "status":
@@ -176,6 +185,10 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
 
     _validate_feature_name_requirement(parser, args, working_dir)
     _validate_run_flags(parser, args)
+    try:
+        validate_workflow_args(args, working_dir)
+    except (ValueError, OSError) as exc:
+        parser.error(str(exc))
     _check_clean_tree(args, working_dir)
     _boot_repo(
         working_dir,

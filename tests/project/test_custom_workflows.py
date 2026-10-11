@@ -112,3 +112,25 @@ def test_calls_are_expanded_with_outer_condition_preserved(tmp_path):
     steps = expand(workflow, definitions)
     assert all(step.kind != "call" for step in steps)
     assert all("test" in step.when for step in steps)
+
+
+def test_fingerprint_includes_configured_compatibility_delegates(tmp_path):
+    from meow.project.config import load_config
+
+    directory = tmp_path / "custom-agents"
+    directory.mkdir()
+    helper = directory / "helper.toml"
+    helper.write_text(
+        'description="Helper"\nprompt="First"\ntools=["Read"]', encoding="utf-8"
+    )
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text(
+        '[custom]\nagents=["custom-agents"]', encoding="utf-8"
+    )
+    catalog = load_config(tmp_path)["customizations"]
+    before = fingerprint(catalog.workflow("default"), catalog)
+    helper.write_text(
+        helper.read_text(encoding="utf-8").replace("First", "Second"), encoding="utf-8"
+    )
+    catalog = load_config(tmp_path)["customizations"]
+    assert fingerprint(catalog.workflow("default"), catalog) != before

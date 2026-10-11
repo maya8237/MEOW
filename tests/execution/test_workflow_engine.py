@@ -308,7 +308,7 @@ def test_persistent_builtin_reviewer_uses_enclosing_loop_session(tmp_path):  # r
     directory.mkdir(parents=True)
     (directory / "reviewer.toml").write_text(
         'description="Review"\ntools=["Read","Write"]\nsession="persistent"\n'
-        'prompt="Review {{plan_file}}. {{verdict_format}}"',
+        'prompt="Round {{round}}. Review {{plan_file}}. {{verdict_format}}"',
         encoding="utf-8",
     )
     state = state_for(tmp_path, plan=True)
@@ -344,6 +344,48 @@ def test_persistent_builtin_reviewer_uses_enclosing_loop_session(tmp_path):  # r
     sdk.assert_called_once()
     client.__aexit__.assert_awaited_once()
     assert client.query.await_count == EXPECTED_ROUNDS
+    assert "Round 2." in client.query.await_args_list[1].args[0]
+
+
+@pytest.mark.parametrize("role,plan", [("generator", True), ("review-fixer", False)])
+def test_persistent_mutator_renders_current_round(tmp_path, role, plan):
+    directory = tmp_path / ".meow" / "agents"
+    directory.mkdir(parents=True)
+    (directory / f"{role}.toml").write_text(
+        'description="Implement"\ntools=["Read"]\nsession="persistent"\n'
+        'prompt="Round {{round}}."',
+        encoding="utf-8",
+    )
+    state = state_for(tmp_path, plan=plan)
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock()
+    client.query = AsyncMock()
+
+    async def response():  # ruff: ignore[unused-async] -- async iterator double
+        if False:
+            yield
+
+    client.receive_response.side_effect = lambda: response()
+    method = "review_plan" if plan else "review_prompt"
+    step = Step(
+        "loop",
+        "rounds",
+        max_rounds=2,
+        body=(
+            Step("uses", "generate", target="builtin.generate"),
+            Step("uses", "review", target="builtin.review"),
+        ),
+    )
+    with (
+        patch("meow.agents.base.ClaudeSDKClient", return_value=client),
+        patch(
+            f"meow.agents.reviewer.ReviewerAgent.{method}",
+            new=AsyncMock(side_effect=[("FAIL", "Fix"), ("PASS", "OK")]),
+        ),
+    ):
+        asyncio.run(run_workflow(state, (step,)))
+    assert "Round 2." in client.query.await_args_list[1].args[0]
 
 
 @pytest.mark.parametrize("mode", ["fresh", "plan", "resume", "parallel", "test"])

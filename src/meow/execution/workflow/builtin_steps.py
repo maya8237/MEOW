@@ -7,6 +7,7 @@ from meow.agents.fixers import ReviewFixAgent
 from meow.agents.generator import Generator
 from meow.agents.planner import PlannerAgent, require_plan_file
 from meow.agents.reviewer import ReviewerAgent
+from meow.agents.tester import VerificationAgent
 from meow.execution.delivery import deliver_verified_run
 from meow.execution.orchestrator import (
     PlanNotApprovedError,
@@ -14,6 +15,7 @@ from meow.execution.orchestrator import (
     _generate,
     _journal,
     _review_round,
+    _tester_results,
 )
 from meow.infrastructure.checks import (
     completion_ready,
@@ -21,6 +23,7 @@ from meow.infrastructure.checks import (
     run_final_checks,
 )
 from meow.infrastructure.logging import get_logger
+from meow.infrastructure.test_runner import prepared_test_stage
 from meow.project.config import config_paths
 from meow.project.plan_files import planned_plan_file
 from meow.project.plan_state import PlanStore
@@ -169,10 +172,6 @@ async def review(state, step):
             state.sprint, state.plan_file, state.round or 1, test=state.test
         )
     else:
-        if state.test:
-            raise ValueError(
-                "The exploratory tester requires a plan; use --plan with review-only"
-            )
         _journal(state.sprint, "reviewer_started", round=state.round or 1)
         status, verdict = await ReviewerAgent(state.sprint).review_prompt(state.request)
         _journal(
@@ -181,6 +180,20 @@ async def review(state, step):
             round=state.round or 1,
             results={"reviewer": status},
         )
+        if status == "PASS" and state.test:
+            async with prepared_test_stage(
+                state.sprint.active_working_dir(), state.sprint.config
+            ) as evidence:
+                tester_status, tester_verdict = await VerificationAgent(
+                    state.sprint
+                ).test_request(state.request, evidence)
+            _journal(
+                state.sprint,
+                "tester_finished",
+                results=_tester_results(status, tester_status, evidence),
+            )
+            if tester_status != "PASS" or evidence.blocking_failed:
+                status, verdict = "FAIL", f"Tester feedback:\n{tester_verdict}"
     state.gate_result(
         replace(step, blocks="loop" if state.pool else "delivery"), status, verdict
     )

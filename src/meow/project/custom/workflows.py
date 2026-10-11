@@ -285,6 +285,8 @@ def fingerprint(workflow: WorkflowFile, catalog: "Customizations") -> str:  # ru
         files["agent", name] = agent.file.read_bytes()
         for delegate in agent.agents:
             agent_file(delegate)
+        for delegate in catalog.agents_for(agent.role):
+            agent_file(delegate.name)
 
     def workflow_file(item):
         if ("workflow", item.name) in files:

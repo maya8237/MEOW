@@ -2,6 +2,7 @@
 flag combination through the parser so the error reads as a usage error."""
 
 import argparse
+import re
 from pathlib import Path
 
 from meow.execution.run_policy import _MISUSE_CHECKS, _is_plain_build, _misused_flags
@@ -54,9 +55,19 @@ def _validate_build_flags(parser: argparse.ArgumentParser, args) -> None:
             )
 
 
+def _validate_workflow_flags(parser, args):
+    try:
+        parse_inputs(args.input)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if args.lint_fix and (args.workflow or args.input):
+        parser.error("--workflow and --input require a feature run")
+
+
 def _validate_run_flags(parser: argparse.ArgumentParser, args) -> None:
     if args.command != "run":
         return
+    _validate_workflow_flags(parser, args)
     if args.background and not args.unattended:
         parser.error("--background requires --unattended")
     if args.unattended and args.manually_approve_plan:
@@ -80,6 +91,25 @@ def _resolve_input_path(path: str | None, working_dir: Path) -> Path | None:
         return None
     candidate = Path(path)
     return (candidate if candidate.is_absolute() else working_dir / candidate).resolve()
+
+
+def parse_inputs(entries: list[str]) -> dict[str, str]:
+    values = {}
+    for entry in entries:
+        name, separator, value = entry.partition("=")
+        if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            raise ValueError("--input must be name=value with an identifier name")
+        values[name] = value
+    return values
+
+
+def validate_workflow_args(args, working_dir):
+    if args.command != "run" or args.lint_fix:
+        return
+    from meow.project.config import load_config
+    from meow.project.custom.workflows import select_workflow
+
+    select_workflow(load_config(working_dir), args.workflow)
 
 
 def _validate_ci_flags(parser: argparse.ArgumentParser, args) -> None:

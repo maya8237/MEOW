@@ -4,6 +4,7 @@ import argparse
 import sys
 from importlib.metadata import version
 
+from meow.cli.catalog_cli import add_catalog_parsers
 from meow.native.native_cli import add_native_parser
 
 _VISIBLE_COMMANDS = (
@@ -16,6 +17,8 @@ _VISIBLE_COMMANDS = (
     "resume",
     "hooks",
     "ipython",
+    "workflows",
+    "agents",
 )
 
 
@@ -174,6 +177,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     )
 
     _add_run_parser(subparsers)
+    add_catalog_parsers(subparsers)
     worker_parser = _add_hidden_parser(subparsers, "_worker")
     worker_parser.add_argument("run_id")
     worker_parser.add_argument("--nonce", required=True)
@@ -268,6 +272,16 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
             "or, with --jira/--lint-fix, build from a Jira issue or fix "
             "lint instead."
         ),
+    )
+    run_parser.add_argument(
+        "--workflow", help="Workflow name (overrides [workflow].default)."
+    )
+    run_parser.add_argument(
+        "--input",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Workflow input; repeat for multiple values.",
     )
     run_parser.add_argument(
         "request",

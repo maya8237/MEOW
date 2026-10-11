@@ -48,7 +48,11 @@ class _FixerAgent(SessionAgent):
         )
 
     async def fix(self, problems: str) -> str:
-        return await self._turn(f"{self.task}\n\n{problems}")
+        message = f"{self.task}\n\n{problems}"
+        agent = self.definition(self.role.replace("_", "-"))
+        if agent.source.scope != "builtin":
+            message = f"{self.prompt(agent=agent)}\n\n{message}"
+        return await self._turn(message)
 
 
 class ReviewFixAgent(_FixerAgent):
