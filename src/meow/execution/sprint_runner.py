@@ -398,7 +398,9 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
     preplan = prepare_preplan(active_dir, request, evidence=evidence)
     if preplan.decision.mode == "needs_user_decision":
         raise RuntimeError(
-            "Unresolved product decision before planning; specify the intended outcome"
+            "Unresolved product decision before planning: "
+            f"{'; '.join(preplan.decision.reasons)}. "
+            "Rerun meow plan with the intended outcome specified."
         )
     sprint.config["_preplan_context"] = preplan.to_dict()
     sprint.config["_bug_mode"] = is_bug_request(request)

@@ -111,7 +111,15 @@ meow run "<feature request>" --name "<generated-feature-name>" --test --work-dir
 **Resuming in CLI mode:** if the user asks to continue, resume, pick up, or
 build on existing code, a worktree, or an earlier plan (any wording), do not
 start a fresh run -- a plain `meow run --name X` plans from scratch in its own
-new worktree. Look in `<project-path>/.worktrees/<name>/<docs_dir>` for a plan
+new worktree. When a saved run ID is available, inspect it with
+`meow status <run_id> --work-dir "<project-path>"`. For a
+`needs_user_decision` pause before planning, obtain the intended outcome and
+continue the same run with `meow resume <run_id> --continue --request
+"<complete clarified request>" --work-dir "<project-path>"`; include all
+remaining requirements because this replaces the whole request. Other saved
+runs continue with `meow resume <run_id> --continue --work-dir
+"<project-path>"`. If there is no saved run, look in
+`<project-path>/.worktrees/<name>/<docs_dir>` for a plan
 (`meow native latest-plan --work-dir "<project-path>" --active-dir
 "<project-path>/.worktrees/<name>"`). If one exists with a numbered task list
 and a `## Sprint Contract`, run `meow run "<request>" --name "<name>"

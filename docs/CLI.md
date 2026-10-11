@@ -174,6 +174,22 @@ meow resume RUN_ID --continue
 
 `resume` inspects and exits by default. `--continue` validates the saved
 repository, worktree, branch, plan, and configuration before starting agents.
+If the phase is `needs_user_decision`, status shows the original request,
+the wording that triggered the stop, and a command to supply the intended
+outcome in the same run:
+
+```bash
+meow resume RUN_ID --continue --request "Retain accounts and their history forever"
+```
+
+`--request TEXT` replaces the full request only for a product-decision pause
+before planning. Include the original requirements that still apply. MEOW keeps
+the original request in the journal and reuses the saved worktree. Empty or
+still-unresolved requests are rejected without changing the checkpoint;
+resuming such a pause without `--request` prints the clarification command.
+Inspection alone cannot change a request, and planned or already-started work
+cannot replace its request through this flag.
+
 A run interrupted during a possible edit reviews the saved worktree against
 its plan before any generator retry. A mismatch stops with a recovery
 diagnostic. Failed and interrupted runs retain their worktree and evidence.
