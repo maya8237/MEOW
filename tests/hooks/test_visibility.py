@@ -7,6 +7,7 @@ from meow.hooks.claude import (
     SETTINGS,
     inspect_claude_hooks,
     install_claude_hooks,
+    uninstall_claude_hooks,
 )
 
 
@@ -76,3 +77,53 @@ def test_separate_install_calls_keep_manifest_ownership(tmp_path):
     statuses = inspect_claude_hooks(tmp_path)
     assert statuses["lint"] == "active"
     assert statuses["shaping"] == "active"
+
+
+def _old_stop_install(root):
+    old = {
+        "matcher": "",
+        "hooks": [{"type": "command", "command": COMMANDS["plan_capture"]}],
+    }
+    (root / ".claude").mkdir(parents=True, exist_ok=True)
+    (root / ".meow").mkdir(parents=True, exist_ok=True)
+    (root / SETTINGS).write_text(json.dumps({"hooks": {"Stop": [old]}}))
+    (root / MANIFEST).write_text(
+        json.dumps({"version": 1, "entries": [{"event": "Stop", "entry": old}]})
+    )
+
+
+def test_plan_capture_installs_on_post_tool_use_and_plan_stop_on_stop(tmp_path):
+    install_claude_hooks(tmp_path, ["plan_capture", "plan_stop"])
+    hooks = json.loads((tmp_path / SETTINGS).read_text())["hooks"]
+    assert [e["matcher"] for e in hooks["PostToolUse"]] == ["Write|Edit"]
+    assert hooks["PostToolUse"][0]["hooks"][0]["command"] == COMMANDS["plan_capture"]
+    assert len(hooks["Stop"]) == 1
+    assert hooks["Stop"][0]["hooks"][0]["command"] == COMMANDS["plan_stop"]
+
+
+def test_install_migrates_old_stop_based_plan_capture(tmp_path):
+    _old_stop_install(tmp_path)
+    install_claude_hooks(tmp_path, ["plan_capture"])
+    hooks = json.loads((tmp_path / SETTINGS).read_text())["hooks"]
+    assert hooks["Stop"] == []
+    assert len(hooks["PostToolUse"]) == 1
+    manifest = json.loads((tmp_path / MANIFEST).read_text())
+    assert [i["event"] for i in manifest["entries"]] == ["PostToolUse"]
+    before = ((tmp_path / SETTINGS).read_text(), (tmp_path / MANIFEST).read_text())
+    install_claude_hooks(tmp_path, ["plan_capture"])
+    after = ((tmp_path / SETTINGS).read_text(), (tmp_path / MANIFEST).read_text())
+    assert before == after
+
+
+def test_inspect_reports_wrong_event_as_modified(tmp_path):
+    _old_stop_install(tmp_path)
+    assert inspect_claude_hooks(tmp_path)["plan_capture"] == "modified"
+
+
+def test_uninstall_removes_old_and_new_entries(tmp_path):
+    _old_stop_install(tmp_path)
+    install_claude_hooks(tmp_path, ["plan_capture", "plan_stop"])
+    uninstall_claude_hooks(tmp_path)
+    hooks = json.loads((tmp_path / SETTINGS).read_text())["hooks"]
+    assert all(not v for v in hooks.values())
+    assert not (tmp_path / MANIFEST).exists()
