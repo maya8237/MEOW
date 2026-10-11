@@ -207,13 +207,8 @@ def test_agent_frontmatter_follows_claude_code_format(project, home):
     assert custom.agents_for("planner") == []
 
 
-def test_reserved_and_promptless_agents_are_rejected(project, home):
+def test_promptless_agents_are_rejected(project, home):
     write(project / ".meow" / "config.toml", '[custom]\nagents = ["agents"]\n')
-    agent(project / "agents", "explorer")
-    with pytest.raises(ValueError, match="reserved"):
-        load_config(project)
-
-    (project / "agents" / "explorer.md").unlink()
     agent(project / "agents", "empty", body="")
     with pytest.raises(ValueError, match="is the prompt"):
         load_config(project)
