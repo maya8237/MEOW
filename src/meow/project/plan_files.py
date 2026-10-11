@@ -67,6 +67,11 @@ def reject_report_name(feature_name: str | None) -> None:
         )
 
 
+def is_plan_file_name(name: str) -> bool:
+    """False for review and tester verdict files, which are not Sprint Contracts."""
+    return not name.endswith(("review.md", "-test.md"))
+
+
 def _latest_plan_file(docs_dir: Path) -> Path:
     """The most recently modified sprint plan in docs_dir, excluding reviews.
 
@@ -75,9 +80,7 @@ def _latest_plan_file(docs_dir: Path) -> Path:
     Contract, so picking one up here would hand it back as if it were a plan.
     """
     candidates = [
-        path
-        for path in docs_dir.glob("*.md")
-        if not path.name.endswith(("review.md", "-test.md"))
+        path for path in docs_dir.glob("*.md") if is_plan_file_name(path.name)
     ]
     if not candidates:
         raise FileNotFoundError(
