@@ -164,3 +164,27 @@ def test_worktree_creation_does_not_block_the_event_loop(tmp_path, monkeypatch):
     result, ticks = _ticks_while_executing(repo)
     assert result.passed
     assert len(ticks) >= MIN_TICKS
+
+
+def test_worktree_add_calls_are_serialized(tmp_path, monkeypatch):
+    repo = _one_commit_repo(tmp_path)
+    real = subprocess.run
+    active = 0
+    peak = 0
+
+    def counting(cmd, *args, **kwargs):
+        nonlocal active, peak
+        if "worktree" in cmd and "add" in cmd:
+            active += 1
+            peak = max(peak, active)
+            time.sleep(0.2)
+            try:
+                return real(cmd, *args, **kwargs)
+            finally:
+                active -= 1
+        return real(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(executor.subprocess, "run", counting)
+    result, _ = _ticks_while_executing(repo)
+    assert result.passed
+    assert peak == 1
