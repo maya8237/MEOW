@@ -139,7 +139,8 @@ not dirty the feature revision.
 
 `[agent_skills]` adds installed skill identifiers to every role or to a named
 role. `default` and role-specific lists append across config layers; built-in
-MEOW skills remain enabled. `[delivery].target_branch` (default `dev`) is the
+MEOW skills come from each resolved agent definition and can be replaced
+by an override. Explicit `[models].role` values win over agent models. `[delivery].target_branch` (default `dev`) is the
 branch `meow review --ci` reviews against when `--target-ref` is omitted.
 
 ### Custom skills and agents
@@ -152,11 +153,19 @@ deleting a file takes effect on the next run without reinstalling anything.
 [custom]
 # Each skills directory holds <name>/SKILL.md (Claude Code skill format).
 skills = ["tools/meow/skills"]
-# Each agents directory holds <name>.md (Claude Code subagent format).
+# Each agents directory holds <name>.toml (.md remains an import format).
 agents = [{ path = "tools/meow/agents", roles = ["generator"] }]
+workflows = ["tools/meow/workflows"]
 ```
 
-An entry is a path string or a table with `path` and optional `roles`.
+An entry is a path string or a table with `path` and optional `roles` for
+skills and agents. Workflow sources accept `path` only. Set `[workflow].default`
+to choose a named workflow when `meow run --workflow` is omitted; the default
+is `"default"`. See [WORKFLOWS.md](WORKFLOWS.md) for formats and execution rules.
+
+Conventional `.meow/agents/` and `.meow/workflows/`, `.meow/local/agents/` and
+`.meow/local/workflows/`, and `~/.meow/agents/` and `~/.meow/workflows/` need no
+registration. Skills retain their configured-source discovery.
 
 | Scope | Declared in | Paths | Shared with |
 |---|---|---|---|
@@ -176,7 +185,8 @@ skipped. `meow native custom` reports it under the `skipped` key. Missing projec
 or local folders still raise an error.
 
 **Precedence.** When the same skill or agent name appears in more than one
-scope, local project beats project, which beats user; `meow native custom`
+scope, local project beats project, which beats user, which beats builtin;
+whole definitions replace lower-priority files. `meow native custom`
 lists each override. The same name twice within one scope is an error.
 
 **Skills.** `SKILL.md` needs `name` (matching its directory; lowercase letters,
@@ -188,26 +198,30 @@ listed roles (`explorer`, `planner`, `generator`, `reviewer`, `tester`,
 SDK as a generated local plugin, so roles see them as `meow-custom:<name>`;
 built-in and `[agent_skills]` skills stay enabled alongside them.
 
-**Agents.** The Markdown body is the agent's prompt. Frontmatter reads `name`
-(defaults to the file name), `description` (required; it tells the parent
-role when to delegate), `tools` (comma-separated or a list; omitted means the
-parent role's tools), `model` (omitted or `inherit` uses the session model),
-and `skills` (custom skill names or installed skill identifiers). Other Claude
-Code keys, such as `color` or `permissionMode`, are ignored, so the same file
-also works as a Claude Code subagent. `explorer` is reserved. Custom agents are
-subagents of the roles that can delegate, `planner` and `generator` (both by
-default; restrict with `roles`). The reviewer role would need the `Agent` tool
-to use custom agents.
+**Agents.** TOML definitions set `description`, `prompt`, `model`, `tools`,
+`skills`, `agents`, `session`, and `lint_on_edit`, with optional `variants` and
+`fragments`. A name maps to its config/permission role by replacing hyphens
+with underscores. `explorer` can be overridden. Claude Code `.md` frontmatter
+and prompt bodies remain an import format; unrecognized Claude Code keys are
+ignored. Specify tools for a standalone workflow role.
 
-**Permission boundary.** A custom agent never gets more than its parent role:
-its tools are capped to the parent's tools, it cannot spawn further agents,
-and every call still passes the parent's `[permissions]` policy. Tools outside
-the cap are dropped with a `custom_agent_tools_dropped` log line. A skill or
-prompt never grants tools, shell, network, or MCP access by itself.
+Configured `[custom].agents` retain delegate compatibility with planner and
+generator (or their configured roles). Conventional agent definitions are used
+when explicitly named by a workflow or another agent's `agents` list.
 
-Run `meow native custom [--role ROLE]` to see what is in effect, and
-`meow native verify` to validate the whole configuration. `/meow:customize`
-walks through creating and registering skills and agents.
+**Permission boundary.** A workflow role uses its resolved tools, then the
+role's `[permissions]` policy. Delegates are additionally capped to their
+parent's tools and cannot use `Agent`; dropped tools log
+`custom_agent_tools_dropped`. A prompt or skill does not grant shell, network,
+or MCP access. Discovered agent names are accepted as permission roles;
+unknown roles remain configuration errors.
+
+Run `meow agents list`, `meow agents show NAME`, or `meow workflows validate`
+to inspect resolved definitions. `meow agents eject NAME --scope project`
+copies a shipped definition for editing; `meow agents diff NAME` compares it
+with the shipped version. `meow native custom [--role ROLE]` shows compatibility
+delegates and custom skills; `meow native verify` validates configuration.
+`/meow:customize` guides definition editing and registration.
 
 ## Reviewer architecture check
 

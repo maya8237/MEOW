@@ -68,6 +68,18 @@ means the local launcher exists; it does not prove that tests pass or a remote
 connection works. Secret environment values are never included. Missing
 architecture files are optional context.
 
+## Resolved workflow and agent definitions
+
+`meow native workflow NAME` inspects a named workflow; execute its steps with
+`meow run --workflow NAME`. Native helpers do not drive custom workflow trees.
+Run `meow native prompt ROLE` for current resolved instructions and effective
+model, including overrides from local, project, and user agent directories.
+Its `tools`, `skills`, `agents`, and `session` fields describe the resolved
+definition. Honor its tools and applicable skills when playing or briefing that
+role. Agent overrides replace whole definitions; code-owned gate contracts and
+permission policy still apply. See `docs/WORKFLOWS.md` for all template values,
+scopes, and catalog commands.
+
 ## Tester mode
 
 `/meow:run --test` and `/meow:review --plan PATH --test` use the matching
@@ -84,8 +96,8 @@ only with an explicit plan file and rejects other sources and `--review-file`.
 | Generator | You. Invoke `superpowers:executing-plans`, `superpowers:test-driven-development`, `superpowers:systematic-debugging` (on unexpected failures), `superpowers:receiving-code-review` (before acting on findings) and `superpowers:verification-before-completion`. Follow `meow native prompt generator --plan <plan_file>`: stay inside the Sprint Contract, do not commit, do not grade your own work. |
 | Reviewer | **A fresh subagent every round** (Agent tool, `general-purpose`), never you: it must not share your context. See below. |
 | Explorer | Optional read-only subagent (Agent tool, `Explore` or `general-purpose`) for research whose raw output you do not need in full. Use `meow native prompt explorer` as its instructions and `models.explorer` as its model. |
-| Review fixer | The CLI role receives no additional skill metadata; it uses a scoped fixer prompt and a post-edit lint hook. In native review fix flows, run `meow native prompt review-fixer`, verify findings before editing, make the smallest in-scope correction, and run per-file lint after edits. |
-| Lint fixer | The CLI role receives no additional skill metadata; it uses a lint-specific prompt and a post-edit lint hook. In the native lint skill, run `meow native prompt lint-fixer` and run per-file lint after edits. Do not start a second agent. |
+| Review fixer | The shipped CLI definition has an empty skills list; overrides may add skills. It uses a scoped fixer prompt and a post-edit lint hook. In native review fix flows, run `meow native prompt review-fixer`, verify findings before editing, make the smallest in-scope correction, and run per-file lint after edits. |
+| Lint fixer | The shipped CLI definition has an empty skills list; overrides may add skills. It uses a lint-specific prompt and a post-edit lint hook. In the native lint skill, run `meow native prompt lint-fixer` and run per-file lint after edits. Do not start a second agent. |
 | Jira issue fetcher | CLI mode reads through the configured Jira MCP server. Native run/review skills use the already-connected Jira MCP tools directly and pass the issue text to the planner or reviewer. |
 | GitLab merge-request fetcher | CLI mode reads through the configured GitLab MCP server. Native review uses the already-connected GitLab MCP tools directly to fetch the title, description, and diff, then dispatches `reviewer-mr`. |
 | GitHub pull-request fetcher | CLI mode reads through the configured GitHub MCP server. Native review uses the already-connected GitHub MCP tools directly to fetch the title, description, and diff, then dispatches `reviewer-mr --provider github`. |

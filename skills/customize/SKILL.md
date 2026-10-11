@@ -1,124 +1,134 @@
 ---
 name: customize
-description: Create, attach, or remove custom MEOW skills and agents, choosing whether they live in the repository (project scope), in an ignored local config (local project scope), or anywhere on the user's computer (user scope). Use when a user wants MEOW roles to follow their own skill, delegate to their own agent, or change which roles receive one.
+description: Create, override, attach, or remove MEOW skills, agents, and workflows in project, local, or user scope. Use for changing role prompts, tools, models, delegates, sessions, or workflow steps without editing MEOW source.
 ---
 
 # Customize MEOW
 
-MEOW discovers custom skills and agents from the directories listed in a
-`[custom]` table on every run, so nothing needs reinstalling. The full schema
-is in `docs/INTEGRATIONS.md` ("Custom skills and agents"); this skill walks a
-user through making and registering one.
+Definitions load on every run; no reinstall is needed. Use `docs/WORKFLOWS.md`
+for agent/workflow formats and `docs/INTEGRATIONS.md` for configured sources,
+skills, models, and permissions.
 
-## 1. Pin down the request
+## 1. Resolve the request and scope
 
-Ask only what the request leaves open:
+Use a skill for reusable instructions, an agent definition for a role with its
+own prompt/tools/model, and a workflow for a different sequence of operations.
+Ask only for choices the request leaves open; use clear defaults when possible.
 
-1. **What:** a skill (instructions a role follows when relevant), an agent
-   (a delegate the planner or generator can hand work to), or both.
-   Prefer a skill unless the work needs its own context window or a narrower
-   tool set; then it is an agent.
-2. **Which roles:** skills may target `explorer`, `planner`, `generator`,
-   `reviewer`, `tester`, `review_fixer`, `lint_fixer`, `docs_updater`, or the
-   fetchers; omit `roles` for every role. Agents attach to `planner` and/or
-   `generator` (the roles that can delegate).
-3. **Scope and location:**
+| Scope | Agent/workflow directories | Config |
+|---|---|---|
+| Project | `.meow/agents/`, `.meow/workflows/` | `.meow/config.toml` |
+| Local project | `.meow/local/agents/`, `.meow/local/workflows/` | `.meow/config.local.toml` |
+| User | `~/.meow/agents/`, `~/.meow/workflows/` | `~/.meow/config.toml` |
 
-   | Scope | Config file | Directory rules | Use when |
-   |---|---|---|---|
-   | Project | `.meow/config.toml` | relative path inside the repo, not git-ignored | the team should share it in version control |
-   | Local project | `.meow/config.local.toml` | relative, absolute, or `~/...` | only this user, only this project |
-   | User | `~/.meow/config.toml` | absolute, `~/...`, or relative to `~/.meow` | this user, every project |
+These conventional directories require no registration. Higher scopes replace
+whole definitions: local > project > user > builtin. Duplicate names within
+one scope fail. Share project definitions in version control; never put a
+personal absolute path in shared config. Extra directories can be registered
+through `[custom]` using its documented scope/path rules.
 
-   Let the user choose the directory. Suggest `tools/meow/skills` and
-   `tools/meow/agents` for project scope and `~/.meow/skills` /
-   `~/.meow/agents` for user scope, but use whatever they prefer. For project
-   scope, confirm the directory is not ignored
-   (`git check-ignore -v <dir>` prints nothing).
+## 2. Inspect before editing
 
-If a reasonable default is obvious, state it and continue.
+Run `meow agents list` and/or `meow workflows list` with `--work-dir PATH` when
+needed. Use `show NAME` to inspect the effective definition and its scope.
+To customize a shipped definition, eject it:
 
-## 2. Check what already exists
+```bash
+meow agents eject reviewer --scope project
+meow workflows eject quick --scope local
+```
 
-Run `meow native custom` (add `--working-dir` if needed). It lists every
-custom skill and agent in effect with its scope and directory, plus
-`overrides`. A new definition with an existing name in a **higher** scope
-replaces it; in the **same** scope it is a configuration error. Mention any
-override the user would create.
+Eject copies the shipped file even when an override exists elsewhere and
+refuses to overwrite. It records its shipped origin hash. Explain any override
+the new file will create. Upgrade drift is reported by `show` and workflow
+`validate`; use `meow agents diff NAME` to inspect agent differences.
 
 ## 3. Write the definition
 
-**Skill:** `<dir>/<name>/SKILL.md`, where `<name>` is lowercase letters,
-digits, and single hyphens and matches the directory.
+**Agent:** `<name>.toml`, with lowercase letters/digits separated by single
+hyphens (at most 64 characters). `description` and `prompt` are required.
 
-```markdown
----
-name: house-style
-description: Apply this team's API naming and error-handling conventions when writing or reviewing endpoint code.
----
-
-# House style
-...
+```toml
+description = "Check migrations for locking and rollback safety"
+model = "inherit"
+tools = ["Read", "Grep", "Glob", "Write"]
+skills = []
+agents = []
+session = "one-shot"
+lint_on_edit = false
+prompt = '''
+Review migrations in {{active_dir}}. {{feedback}}
+Write the verdict to {{output_file}}.
+{{verdict_format}}
+'''
 ```
 
-The description decides when a role reaches for the skill, so say when it
-applies. Supporting files may sit beside `SKILL.md`. When the user wants help
-writing a substantial skill, offer `skill-creator`.
+Use `session = "persistent"` to retain a role session within a workflow loop.
+Optional `[variants]` and `[fragments]` keep alternate prompts and reusable
+text. Templates support variables, fragments, and conditional blocks; unknown
+values fail before an agent starts. A missing dotted key is empty. Explicit
+`[models].role` wins over the agent model; hyphens map to underscores in role
+config. `explorer` is customizable. Markdown agents remain a Claude Code import
+format, but TOML is preferred for full role definitions.
 
-**Agent:** `<dir>/<name>.md`; the body is the prompt.
+An agent's `agents` list names explicit delegates. Each delegate's tools are
+capped to its parent and exclude `Agent`. Agents registered through
+`[custom].agents` also retain planner/generator delegate compatibility, with
+optional `roles`. Conventional definitions are used when explicitly named.
+Resolved tools remain subject to `[permissions]`; prompts never bypass policy.
 
-```markdown
----
-name: migration-checker
-description: Check database migrations for locking, ordering, and rollback safety. Use after editing files under migrations/.
-tools: Read, Grep, Glob, Bash
-model: inherit
-skills: house-style
----
+**Workflow:** `<name>.toml`, with `description` and a `steps` list. Choose from
+`uses = "builtin.name"`, `agent`, `gate`, `loop`, `parallel`, and `call`.
 
-You review database migrations...
+```toml
+description = "Review migrations and run configured checks"
+[[steps]]
+id = "migrations"
+gate = "migration-checker"
+[[steps]]
+uses = "builtin.checks"
 ```
 
-`tools` is capped to the parent role's tools (the planner has Read, Grep, Glob,
-Write; the generator adds Edit and Bash) and never includes Agent; omit it to
-inherit them. `explorer` is a reserved name. Claude Code-only keys such as
-`color` are ignored, so the file also works as a Claude Code subagent.
+Blocking loops require a gate or `builtin.review`. Parallel branches must use
+read-only agent/gate definitions as specified in `docs/WORKFLOWS.md`. Gates
+need a verdict artifact with `SUMMARY:` and `STATUS: PASS|FAIL`; MEOW enforces
+the contract even if an override omits it. Conditions can use run flags,
+`round`, `steps`, and string `inputs`. Run with `--workflow NAME` and repeated
+`--input name=value`, or set `[workflow].default = "NAME"`. Custom workflow
+execution uses CLI mode in `/meow:run`.
 
-## 4. Register the directory
-
-Add or extend `[custom]` in the chosen config file. Do not touch other tables.
+**Skill:** `<dir>/<name>/SKILL.md`, with frontmatter `name` matching its
+directory and `description` explaining when it applies. Supporting files may
+sit beside it. Register skill directories through `[custom].skills`; optional
+`roles` limits recipients. Definition `skills` and `[agent_skills]` can also
+name installed skills.
 
 ```toml
 [custom]
 skills = ["tools/meow/skills"]
 agents = [{ path = "tools/meow/agents", roles = ["generator"] }]
+workflows = ["tools/meow/workflows"]
 ```
 
-A directory only needs registering once; later files in it are discovered
-automatically. Never put a personal path in `.meow/config.toml`.
+Only extra directories need this table; workflow sources do not take `roles`.
 
-## 5. Verify and report
+## 4. Verify and report
 
-1. `meow native custom --role <role>` for each targeted role: the new entry is
-   listed with the expected scope.
-2. `meow native verify` succeeds (it loads and validates the whole config).
-3. For project scope, `git status` shows the new files as committable.
+Run `meow workflows validate [NAME]`, `meow agents show NAME`, and
+`meow native verify` as applicable. Use `meow native workflow NAME` for expanded
+JSON, `meow native prompt ROLE` for resolved role instructions, and
+`meow native custom --role ROLE` for compatibility delegates and custom skills.
+For project scope, confirm files are committable with `git status`.
 
-Report the definition's path, the config file changed, the roles that receive
-it, any override it creates, and what verification ran. Commit only if the
-user asks.
+Report paths, scope, overrides, selection/config changes, and verification.
+Commit only when the user requests it. Remove a file to remove a definition;
+remove a configured directory entry to unregister its contents. Follow the
+chosen scope's path rules when moving definitions.
 
-## Removing or moving
+## Changing MEOW source
 
-Delete the file to remove one definition, or remove the directory's entry from
-`[custom]` to drop all of them. Moving a project definition to user scope means
-moving the file and registering its new directory in `~/.meow/config.toml`.
-
-## Changing MEOW itself
-
-Built-in roles, prompts, and orchestration are MEOW source code, not
-customizations. Only change them when the user is working on the MEOW
-repository: prompts live in `src/meow/project/prompts.py`, roles in
-`src/meow/agents/`, and native parity in `skills/_shared/native-mode.md`.
-Everything else belongs in `[custom]`, `[agent_skills]` (installed skills by
-identifier), or `[permissions]`.
+Editable shipped role prose lives in
+`src/meow/project/custom/builtin/agents/*.toml`, shipped workflows beside them
+under `builtin/workflows/`. `project/prompts.py` owns computed context and gate
+contracts. Engine and permission changes belong in their owning packages.
+Update the CLI/native documentation together when changing shared behavior.

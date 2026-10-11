@@ -19,6 +19,8 @@ These are the commands meant for normal project work:
 | `meow worktree` | Inspect or safely clean MEOW-owned run worktrees. |
 | `meow resume` | Inspect or continue a saved run. |
 | `meow queue` | Enqueue tasks or run queued tasks serially in the current repository. |
+| `meow workflows` | List, show, validate, or eject workflow definitions. |
+| `meow agents` | List, show, eject, or diff agent definitions. |
 | `meow hooks` | Manage optional host hooks after reviewing what they install. |
 | `meow ipython` | Open the interactive MEOW IPython session. |
 
@@ -33,6 +35,41 @@ top-level MEOW commands are available as bare commands, for example
 `meow run "Add CSV export" --name csv-export`.
 The explicit `%meow ...` magic and regular `!meow ...` shell form are also
 available.
+
+### Selecting and editing workflows
+
+`meow run --workflow NAME` selects `default`, `quick`, `review-only`, or a
+custom workflow. Without the flag, `[workflow].default` chooses it. Repeat
+`--input name=value` for string inputs available to templates and conditions
+as `inputs.name`; the last repeated value wins. These options work with Jira
+and background feature runs and are rejected with `--lint-fix`.
+
+```bash
+meow run "Audit authorization" --workflow review-only --input topic=API
+meow workflows list
+meow workflows show quick
+meow workflows validate [NAME]
+meow workflows eject quick --scope local
+meow agents list
+meow agents show reviewer
+meow agents eject reviewer --scope project
+meow agents diff reviewer
+```
+
+Catalog commands accept `--work-dir PATH`. Eject defaults to project scope,
+also accepts local/user, and refuses to overwrite. `show` and workflow
+`validate` warn when an ejected definition's shipped origin has changed.
+`meow native workflow NAME` returns resolved JSON, including expanded steps
+and the definition fingerprint. `meow native prompt ROLE` uses resolved agent
+prompts/models and includes tools, skills, delegates, and session metadata.
+
+Status shows the workflow name/scope and custom stage results. Workflow-aware
+continuation reloads the saved name, checks its fingerprint, skips completed
+top-level steps, and resumes an interrupted loop review-first. Journals created
+before workflow metadata use the shipped `default` workflow regardless of the
+current configured default. See [WORKFLOWS.md](WORKFLOWS.md) for the complete
+schema, step behavior, templates, and resume rules. Named workflows in
+`/meow:run` use CLI execution; native helpers do not drive custom step trees.
 
 ### Queueing work
 
