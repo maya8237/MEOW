@@ -3,46 +3,42 @@ for `run_sprint` implement, verify and deliver through the round-loop engine in
 `orchestrator`."""
 
 import hashlib
-import json
 from collections.abc import Callable
-from dataclasses import asdict, replace
+from dataclasses import replace
 from pathlib import Path
 
 from meow.agents.planner import PlannerAgent, require_plan_file
-from meow.execution.delivery import deliver_verified_run
 from meow.execution.orchestrator import (
-    PlanNotApprovedError,
     _prepare_sprint,
-    _run_review_rounds,
-    _run_rounds,
 )
-from meow.execution.run_state import TERMINAL_PHASES, RunStateError, RunStore
+from meow.execution.run_state import (
+    TERMINAL_PHASES,
+    CheckResult,
+    RunStateError,
+    RunStore,
+)
 from meow.execution.sprint import Sprint
-from meow.infrastructure.cancellation import RunCancelled, cancellable, check_cancel
+from meow.execution.workflow.engine import LoopExhausted, RunState, run_workflow
+from meow.infrastructure.cancellation import RunCancelled, check_cancel
 from meow.infrastructure.checks import (
-    completion_ready,
     config_fingerprint,
-    configured_checks,
-    run_final_checks,
 )
 from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import get_logger
-from meow.infrastructure.usage import usage_scope
 from meow.infrastructure.worktree import current_branch
 from meow.infrastructure.worktree_setup import run_setup
 from meow.project.config import config_paths, load_config
+from meow.project.custom.definitions import discover
+from meow.project.custom.sources import builtin_sources
+from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
 from meow.project.onboarding import onboard_if_needed
 from meow.project.plan_files import (
     _latest_plan_file,
-    plan_review_file,
-    plan_test_file,
     planned_plan_file,
 )
 from meow.project.plan_state import PlanStore
 from meow.project.preplan import gather_context, prepare_preplan
 from meow.project.shaping import ShapeContext, is_bug_request
-from meow.tasks.model import load_task_graph
-from meow.tasks.runner import run_parallel_plan
 
 logger = get_logger(__name__)
 
@@ -131,6 +127,9 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
     resume_at = options.get("resume_at", "generate")
     if resume_at not in {"generate", "review"}:
         raise ValueError(f"resume_at must be 'generate' or 'review', got {resume_at!r}")
+    select_workflow(
+        load_config(Path(record_root or working_dir)), options.get("workflow")
+    )
     store = RunStore(Path(record_root or working_dir).resolve())
     if run_id is None:
         run_id = store.create(
@@ -177,6 +176,8 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     unattended: bool = False,
     worktree_preexisting: bool = False,
     required_session_roles: set[str] | None = None,
+    workflow: str | None = None,
+    inputs: dict[str, str] | None = None,
 ) -> None:
     """Plan (unless `plan_file` is given) then implement it in a round loop.
 
@@ -278,174 +279,105 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     describe_lint_plan(sprint.config["lint"])
     check_cancel(store, record.id)
 
-    if plan_file is None and resume_at == "generate":
-        store.transition(record.id, "knowledge")
-        check_cancel(store, record.id)
-        evidence = gather_context(active_dir, request)
-        check_cancel(store, record.id)
-        store.transition(record.id, "shaping")
-        preplan = prepare_preplan(
-            active_dir, request, unattended=unattended, evidence=evidence
-        )
+    catalog = sprint.config.get("customizations") or discover(builtin_sources())
+    sprint.config["customizations"] = catalog
+    saved_workflow = record.results.get("workflow")
+    definition = select_workflow(sprint.config, workflow, saved_workflow)
+    steps = expand(definition, catalog)
+    plan_given = plan_file is not None
+    if (
+        plan_file is None
+        and resume_at == "review"
+        and any(step.target == "builtin.plan" for step in steps)
+    ):
+        plan_file = _latest_plan_file(active_dir / sprint.config["docs_dir"])
+
+    def plan_ready(path):
         store.transition(
             record.id,
-            "shaping_finished",
-            results={"preplan": preplan.to_dict()},
+            "planned",
+            plan_file=str(path),
+            plan_fingerprint=(
+                hashlib.sha256(path.read_bytes()).hexdigest()
+                if path.is_file()
+                else None
+            ),
+            config_fingerprint=(
+                config_fingerprint(checks_dir) if config_paths(checks_dir) else None
+            ),
         )
-        check_cancel(store, record.id)
-        if preplan.decision.mode == "needs_user_decision":
-            store.transition(
-                record.id,
-                "needs_user_decision",
-                last_failure="Unresolved product decision before planning",
-            )
-            raise RuntimeError(
-                "Unresolved product decision before planning; inspect meow status"
-            )
-        if preplan.breadboard is not None:
-            store.transition(record.id, "breadboarding")
-            check_cancel(store, record.id)
-            store.transition(record.id, "breadboard_finished")
-        artifact = store.directory / f"{record.id}.preplan.json"
-        artifact.write_text(
-            json.dumps(preplan.to_dict(), indent=2) + "\n", encoding="utf-8"
+        PlanStore(active_dir).claim(
+            path, record.id, owner_finished=lambda owner: _owner_finished(store, owner)
         )
-        sprint.config["_preplan_context"] = preplan.to_dict()
-        if preplan.shape is not None:
-            sprint.config["_shape_context"] = ShapeContext(
-                str(artifact),
-                preplan.shape.chosen_approach,
-                preplan.shape.assumptions,
-            )
 
-    if plan_file is None:
-        if resume_at == "review":
-            plan_file = _latest_plan_file(active_dir / sprint.config["docs_dir"])
-        else:
-            # Claim the plan path before the planner writes it, so a second
-            # run (same --name in place, --jira, queue) cannot clobber a plan
-            # an active run is using.
-            PlanStore(active_dir).claim(
-                planned_plan_file(
-                    active_dir / sprint.config["docs_dir"], effective_name
-                ),
-                record.id,
-                owner_finished=lambda owner: _owner_finished(store, owner),
-            )
-            store.transition(record.id, "planning")
-            logger.info(
-                "planner_started",
-                feature_name=effective_name,
-                working_dir=str(active_dir),
-            )
-            with usage_scope(store, record.id):
-                plan_file = await cancellable(
-                    store,
-                    record.id,
-                    PlannerAgent(sprint).run(
-                        effective_name, request, sprint.config.get("_shape_context")
-                    ),
-                )
-            plan_file = require_plan_file(plan_file)
-            logger.info("planner_finished", plan_file=str(plan_file))
-    store.transition(
-        record.id,
-        "planned",
-        plan_file=str(plan_file),
-        plan_fingerprint=(
-            hashlib.sha256(plan_file.read_bytes()).hexdigest()
-            if plan_file.is_file()
-            else None
-        ),
-        config_fingerprint=(
-            config_fingerprint(checks_dir) if config_paths(checks_dir) else None
-        ),
+    if plan_file is not None:
+        plan_ready(plan_file)
+    state = RunState(
+        sprint=sprint,
+        store=store,
+        run_id=record.id,
+        plan_file=plan_file,
+        flags={
+            "plan_given": plan_given,
+            "resume_review": resume_at == "review",
+            "label_feature_name": feature_name,
+            "inputs": inputs
+            if inputs is not None
+            else (saved_workflow or {}).get("inputs", {}),
+        },
+        approve_plan=approve_plan,
+        test=test,
+        checks_dir=checks_dir,
+        feature_name=effective_name,
+        request=request,
+        plan_ready=plan_ready,
+        completed=set((saved_workflow or {}).get("completed", [])),
+        workflow={
+            **(saved_workflow or {}),
+            "name": definition.name,
+            "scope": definition.source.scope,
+            "fingerprint": fingerprint(definition, catalog),
+            "completed": (saved_workflow or {}).get("completed", []),
+            "inputs": inputs
+            if inputs is not None
+            else (saved_workflow or {}).get("inputs", {}),
+        },
+        statuses=dict(record.results.get("step_statuses", {})),
     )
-    PlanStore(active_dir).claim(
-        plan_file,
-        record.id,
-        owner_finished=lambda owner: _owner_finished(store, owner),
+    state.flags["parallel"] = any(
+        item["phase"] == "tasks_integrated" for item in record.transitions
     )
-
-    if approve_plan is not None and not approve_plan(plan_file):
-        logger.warning("plan_not_approved", plan_file=str(plan_file))
-        store.transition(record.id, "failed", last_failure="Plan not approved")
-        raise PlanNotApprovedError(
-            f"Plan {plan_file} was not approved -- stopping before the generator runs."
+    for step_id, detail in record.results.get("stages", {}).items():
+        state.statuses[step_id] = {"status": detail["status"]}
+    for step in walk(steps):
+        if (
+            step.kind == "gate"
+            and step.blocks == "delivery"
+            and step.id in state.statuses
+        ):
+            state.delivery_gates[step.id] = state.statuses[step.id]["status"]
+    if "checks" in record.results:
+        state.checks_results = [
+            CheckResult(**item) for item in record.results["checks"]
+        ]
+    store.update_results(record.id, workflow=state.workflow)
+    try:
+        await run_workflow(state, steps)
+    except LoopExhausted:
+        logger.error(
+            "sprint_did_not_pass",
+            feature_name=feature_name,
+            max_rounds=sprint.config["max_rounds"],
         )
-
+        store.transition(
+            record.id, "exhausted", last_failure="maximum rounds exhausted"
+        )
+        raise
     check_cancel(store, record.id)
-    PlanStore(active_dir).transition(plan_file, "in-progress", record.id)
-
-    graph = load_task_graph(plan_file) if resume_at == "generate" else None
-    parallel = graph is not None and len(graph.tasks) > 1
-    if parallel:
-        await cancellable(
-            store,
-            record.id,
-            run_parallel_plan(sprint, graph, plan_file, store, record.id),
-        )
-    run_rounds = (
-        _run_review_rounds if resume_at == "review" or parallel else _run_rounds
-    )
-    with usage_scope(store, record.id):
-        passed = await cancellable(
-            store, record.id, run_rounds(sprint, plan_file, test=test)
-        )
-    if passed:
-        if config_paths(checks_dir):
-            store.transition(record.id, "checking")
-            results = await cancellable(
-                store, record.id, run_final_checks(active_dir, sprint.config)
-            )
-            store.transition(
-                record.id,
-                "checks_finished",
-                results={
-                    "checks": [asdict(item) for item in results],
-                },
-            )
-            verdicts = store.load(record.id).results
-            if not completion_ready(
-                results,
-                configured_checks(sprint.config),
-                active_dir,
-                verdicts.get("reviewer", "FAIL"),
-                verdicts.get("tester", "FAIL") if test else None,
-                reviewer_revision=verdicts.get("reviewer_revision", ""),
-            ):
-                store.transition(
-                    record.id,
-                    "failed",
-                    last_failure="Required evidence failed or became stale",
-                )
-                raise RuntimeError(
-                    "Required checks, review, or tester evidence failed; "
-                    "inspect meow status"
-                )
-        if store.load(record.id).phase == "checks_finished":
-            check_cancel(store, record.id)
-            delivery_requested = store.load(record.id).delivery.get("unattended", False)
-            deliver_verified_run(store, record.id, unattended=delivery_requested)
-        check_cancel(store, record.id)
-        store.transition(record.id, "complete")
-        PlanStore(active_dir).transition(plan_file, "complete", record.id)
-        logger.info("sprint_complete", feature_name=feature_name)
-        return
-
-    logger.error(
-        "sprint_did_not_pass",
-        feature_name=feature_name,
-        max_rounds=sprint.config["max_rounds"],
-    )
-    store.transition(record.id, "exhausted", last_failure="maximum rounds exhausted")
-    raise RuntimeError(
-        f"Sprint{f' {feature_name!r}' if feature_name else ''} did not pass "
-        f"after {sprint.config['max_rounds']} "
-        "rounds -- stopping instead of looping forever. Inspect the review "
-        f"file {plan_review_file(plan_file)}"
-        + (f" and tester file {plan_test_file(plan_file)}" if test else ".")
-    )
+    store.transition(record.id, "complete")
+    if state.plan_file is not None:
+        PlanStore(active_dir).transition(state.plan_file, "complete", record.id)
+    logger.info("sprint_complete", feature_name=feature_name)
 
 
 async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would change cli.py's call site
@@ -476,7 +408,9 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
     preplan = prepare_preplan(active_dir, request, evidence=evidence)
     if preplan.decision.mode == "needs_user_decision":
         raise RuntimeError(
-            "Unresolved product decision before planning; specify the intended outcome"
+            "Unresolved product decision before planning: "
+            f"{'; '.join(preplan.decision.reasons)}. "
+            "Rerun meow plan with the intended outcome specified."
         )
     sprint.config["_preplan_context"] = preplan.to_dict()
     sprint.config["_bug_mode"] = is_bug_request(request)

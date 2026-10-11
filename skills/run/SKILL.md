@@ -95,6 +95,15 @@ first; it defines the `meow native` helper and review loop.
 
 ## CLI mode
 
+Choose a workflow when the user names one: pass `--workflow <name>` to
+`meow run`. Inspect available choices with `meow workflows list` and
+`meow workflows show <name>`. Shipped choices are `default` (the full run),
+`quick` (omits knowledge and shaping), and `review-only` (reviews and fixes
+existing code, with checks and no automatic delivery). Without a flag, honor
+`[workflow] default` in config. Pass named inputs as repeated
+`--input name=value` flags. Custom workflows execute through CLI mode;
+the native protocol does not interpret their step trees.
+
 Use CLI mode for all ordinary runs so MEOW owns the complete automatic pre-plan
 flow and its checkpoints. When the user requests `--test`, pass it through to
 `meow run` (including Jira and `--resume-at review` flows); configured servers
@@ -111,7 +120,15 @@ meow run "<feature request>" --name "<generated-feature-name>" --test --work-dir
 **Resuming in CLI mode:** if the user asks to continue, resume, pick up, or
 build on existing code, a worktree, or an earlier plan (any wording), do not
 start a fresh run -- a plain `meow run --name X` plans from scratch in its own
-new worktree. Look in `<project-path>/.worktrees/<name>/<docs_dir>` for a plan
+new worktree. When a saved run ID is available, inspect it with
+`meow status <run_id> --work-dir "<project-path>"`. For a
+`needs_user_decision` pause before planning, obtain the intended outcome and
+continue the same run with `meow resume <run_id> --continue --request
+"<complete clarified request>" --work-dir "<project-path>"`; include all
+remaining requirements because this replaces the whole request. Other saved
+runs continue with `meow resume <run_id> --continue --work-dir
+"<project-path>"`. If there is no saved run, look in
+`<project-path>/.worktrees/<name>/<docs_dir>` for a plan
 (`meow native latest-plan --work-dir "<project-path>" --active-dir
 "<project-path>/.worktrees/<name>"`). If one exists with a numbered task list
 and a `## Sprint Contract`, run `meow run "<request>" --name "<name>"

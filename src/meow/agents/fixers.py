@@ -23,26 +23,36 @@ class _FixerAgent(SessionAgent):
 
     def __init__(self, context: AgentContext, timeout: float | None = None):
         super().__init__(context)
+        agent = self.definition(self.role.replace("_", "-"))
         lint_hook = make_lint_hook(
             context.active_working_dir(),
             context.lint_commands(),
             context.config.get("lint_timeout", 60) if timeout is None else timeout,
         )
         self._open_session(
-            self.options(
-                system_prompt=self.prompt(),
-                allowed_tools=["Read", "Edit", "Write", "Bash", "Grep", "Glob"],
-                role=self.role,
-                hooks={
-                    "PostToolUse": [
-                        HookMatcher(matcher="Write|Edit", hooks=[lint_hook])
-                    ]
-                },
+            self.definition_options(
+                agent,
+                system_prompt=self.prompt(agent=agent),
+                **(
+                    {
+                        "hooks": {
+                            "PostToolUse": [
+                                HookMatcher(matcher="Write|Edit", hooks=[lint_hook])
+                            ]
+                        }
+                    }
+                    if agent.lint_on_edit
+                    else {}
+                ),
             )
         )
 
     async def fix(self, problems: str) -> str:
-        return await self._turn(f"{self.task}\n\n{problems}")
+        message = f"{self.task}\n\n{problems}"
+        agent = self.definition(self.role.replace("_", "-"))
+        if agent.source.scope != "builtin":
+            message = f"{self.prompt(agent=agent)}\n\n{message}"
+        return await self._turn(message)
 
 
 class ReviewFixAgent(_FixerAgent):

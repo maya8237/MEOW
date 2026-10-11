@@ -258,7 +258,7 @@ def worker_main(  # ruff: ignore[too-many-statements]
 ) -> int:
     """Run saved invocation in the detached process, never prompting."""
     from meow.cli.parser import _build_arg_parser
-    from meow.cli.validation import _resolve_input_path
+    from meow.cli.validation import _resolve_input_path, parse_inputs
     from meow.execution.sprint_runner import run_sprint
     from meow.integrations.issue_solver import run_issue_solver
 
@@ -270,7 +270,14 @@ def worker_main(  # ruff: ignore[too-many-statements]
             raise BackgroundError("Saved worker invocation is invalid")
         if args.jira is not None:
             asyncio.run(
-                run_issue_solver(repo, args.jira or None, test=args.test, run_id=run_id)
+                run_issue_solver(
+                    repo,
+                    args.jira or None,
+                    test=args.test,
+                    run_id=run_id,
+                    **({"workflow": args.workflow} if args.workflow else {}),
+                    **({"inputs": parse_inputs(args.input)} if args.input else {}),
+                )
             )
         else:
             asyncio.run(
@@ -286,6 +293,8 @@ def worker_main(  # ruff: ignore[too-many-statements]
                     run_id=run_id,
                     record_root=repo,
                     unattended=True,
+                    **({"workflow": args.workflow} if args.workflow else {}),
+                    **({"inputs": parse_inputs(args.input)} if args.input else {}),
                 )
             )
         return 0

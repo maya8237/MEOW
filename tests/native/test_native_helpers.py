@@ -25,6 +25,13 @@ def test_verdict_without_status_line_fails_closed(tmp_path):
     assert verdict(review) == {"status": "FAIL", "summary": None}
 
 
+def test_verdict_missing_file_fails_closed(tmp_path):
+    review = tmp_path / "branch.1234abcd.review.md"
+    result = verdict(review)
+    assert result["status"] == "FAIL"
+    assert str(review) in result["summary"]
+
+
 def test_latest_plan_pairs_plan_with_its_review(tmp_path):
     docs = _docs(tmp_path)
     plan = docs / "feature.md"

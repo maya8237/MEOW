@@ -8,7 +8,7 @@ from pathlib import Path
 
 from meow.cli.queue_cli import queue
 from meow.cli.review_cli import run_review_command
-from meow.cli.validation import _resolve_input_path
+from meow.cli.validation import _resolve_input_path, parse_inputs
 from meow.execution.orchestrator import PlanNotApprovedError
 from meow.execution.plan_approval import _prompt_plan_approval
 from meow.execution.sprint_runner import run_plan, run_sprint
@@ -36,6 +36,8 @@ def _dispatch_jira_build(args, working_dir: Path) -> None:
                 args.jira or None,
                 approve_plan=approve_plan,
                 **({"test": True} if args.test else {}),
+                **({"workflow": args.workflow} if args.workflow else {}),
+                **({"inputs": parse_inputs(args.input)} if args.input else {}),
             )
         )
     except IssueUnresolvedError as exc:
@@ -58,6 +60,8 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
                 source_branch=args.source_branch,
                 approve_plan=approve_plan,
                 resume_at=args.resume_at,
+                **({"workflow": args.workflow} if args.workflow else {}),
+                **({"inputs": parse_inputs(args.input)} if args.input else {}),
                 **({"unattended": True} if args.unattended else {}),
                 **({"test": True} if args.test else {}),
             )

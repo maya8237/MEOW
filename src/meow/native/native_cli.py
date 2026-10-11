@@ -296,6 +296,9 @@ def add_native_parser(
     _add_knowledge(sub)
     _add_onboard(sub)
     _add_custom(sub)
+    workflow = sub.add_parser("workflow", help="Print the resolved workflow as JSON.")
+    workflow.add_argument("name")
+    _add_dirs(workflow)
     _add_hook(sub)
     _add_shape(sub)
 
@@ -368,6 +371,7 @@ def _prompt(args, working_dir: Path, active: Path) -> dict:
 
 
 _HANDLERS = {
+    "workflow": lambda args, wd, active: native.workflow(wd, active, args.name),
     "prepare": _prepare,
     "verify": _verify,
     "latest-plan": lambda args, wd, active: native.latest_plan(wd, active),

@@ -1,0 +1,12 @@
+description = "Review existing code and fix findings until it passes."
+
+[[steps]]
+id = "rounds"
+loop = [
+  { id = "fix", uses = "builtin.generate", when = "round > 1" },
+  { id = "review", uses = "builtin.review" },
+]
+
+[[steps]]
+id = "checks"
+uses = "builtin.checks"

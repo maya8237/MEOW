@@ -26,7 +26,8 @@ from claude_agent_sdk import (
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
 from meow.project.config_models import LintCommand
-from meow.project.custom import Customizations, skill_plugin_dir
+from meow.project.custom import CustomAgent, Customizations, skill_plugin_dir
+from meow.project.custom.rendering import builtin_agent, render_agent
 from meow.project.permissions import (
     PATH_KEYS,
     PermissionPolicy,
@@ -190,7 +191,7 @@ class AgentContext(Protocol):
     @property
     def use_worktree(self) -> bool: ...
 
-    def model(self, role: str) -> str | None: ...
+    def model(self, role: str, agent: CustomAgent | None = None) -> str | None: ...
 
     def lint_commands(self) -> list[LintCommand]: ...
 
@@ -214,18 +215,24 @@ def _last_text_block(message: AssistantMessage) -> str:
     return texts[-1] if texts else ""
 
 
-async def _consume_query(prompt: str, options: ClaudeAgentOptions, role: str) -> None:
+async def _consume_query(prompt: str, options: ClaudeAgentOptions, role: str) -> str:
     """Run `query()` once to completion, raising `RuntimeError` on a
     non-success result. A `ProcessError` (the CLI subprocess crashed or
     otherwise failed) propagates unchanged for `Agent.run_query`'s retry
     loop to handle."""
     messages: AsyncIterator = query(prompt=prompt, options=options)
     last_text = ""
+    parts = []
     try:
         async for message in messages:
             log_stream_message(role, message, options=options)
             if isinstance(message, AssistantMessage):
                 last_text = _last_text_block(message) or last_text
+                parts.extend(
+                    block.text
+                    for block in message.content
+                    if isinstance(block, TextBlock)
+                )
             if isinstance(message, ResultMessage) and message.subtype != "success":
                 logger.error("agent_query_failed", role=role, subtype=message.subtype)
                 raise RuntimeError(f"{role} failed: {message.subtype}")
@@ -233,6 +240,7 @@ async def _consume_query(prompt: str, options: ClaudeAgentOptions, role: str) ->
         if not exc.stderr and last_text:
             exc.stderr = last_text
         raise
+    return "\n".join(parts)
 
 
 def _process_error_message(
@@ -284,6 +292,54 @@ class Agent:
     def customizations(self) -> Customizations:
         custom = getattr(self.context, "config", {}).get("customizations")
         return custom if isinstance(custom, Customizations) else Customizations()
+
+    def definition(self, name: str) -> CustomAgent:
+        custom = self.customizations()
+        if custom.catalog:
+            return custom.agent(name)
+        return builtin_agent(name)
+
+    def delegates(
+        self, agent: CustomAgent, parent_tools: list[str]
+    ) -> dict[str, AgentDefinition]:
+        definitions = self.custom_agents(agent.role, parent_tools)
+        ceiling = [tool for tool in parent_tools if tool != "Agent"]
+        for name in agent.agents:
+            try:
+                child = Agent.definition(self, name)
+            except (KeyError, OSError) as exc:
+                raise ValueError(f"{agent.file}: unknown delegate {name!r}") from exc
+            definitions[name] = AgentDefinition(
+                description=" ".join(child.description.split()),
+                prompt=render_agent(
+                    child, {"active_dir": self.context.active_working_dir()}
+                ),
+                tools=[
+                    tool
+                    for tool in (child.tools if child.tools is not None else ceiling)
+                    if tool in ceiling
+                ],
+                model=self.context.model(child.role, child),
+                skills=self.skills(child.role, list(child.skills)),
+            )
+        return definitions
+
+    def definition_options(
+        self, agent: CustomAgent, *, system_prompt: str, **extra
+    ) -> ClaudeAgentOptions:
+        tools = list(agent.tools or ())
+        if "allowed_tools" in extra:
+            tools = extra.pop("allowed_tools")
+        extra.setdefault("tools", tools)
+        extra.setdefault("agents", self.delegates(agent, tools))
+        extra.setdefault("skills", list(agent.skills))
+        return self.options(
+            system_prompt=system_prompt,
+            allowed_tools=tools,
+            role=agent.role,
+            definition=agent,
+            **extra,
+        )
 
     def custom_agents(
         self, role: str, parent_tools: list[str]
@@ -345,6 +401,7 @@ class Agent:
         system_prompt: str,
         allowed_tools: list[str],
         role: str,
+        definition: CustomAgent | None = None,
         **extra_options,
     ) -> ClaudeAgentOptions:
         """Build SDK options from project context and agent-specific values."""
@@ -371,7 +428,11 @@ class Agent:
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=allowed_tools,
-            model=self.context.model(role),
+            model=(
+                self.context.model(role, definition)
+                if definition is not None
+                else self.context.model(role)
+            ),
             cwd=str(self.context.active_working_dir()),
             **extra_options,
         )
@@ -383,7 +444,7 @@ class Agent:
         return options
 
     @staticmethod
-    async def run_query(prompt: str, options: ClaudeAgentOptions, role: str) -> None:
+    async def run_query(prompt: str, options: ClaudeAgentOptions, role: str) -> str:
         """Run a one-shot SDK query and raise when the SDK reports failure.
 
         Retries up to `_SDK_CRASH_RETRY_ATTEMPTS` times, with a short
@@ -405,9 +466,9 @@ class Agent:
         for attempt in range(1, _SDK_CRASH_RETRY_ATTEMPTS + 1):
             logger.info("agent_query_started", role=role, attempt=attempt)
             try:
-                await _consume_query(prompt, options, role)
+                response = await _consume_query(prompt, options, role)
                 logger.info("agent_query_finished", role=role)
-                return
+                return response
             except ProcessError as exc:
                 crashed = _looks_like_a_crash(exc.exit_code)
                 if crashed and attempt < _SDK_CRASH_RETRY_ATTEMPTS:
@@ -431,6 +492,17 @@ class Agent:
                     _process_error_message(role, exc, crashed=crashed, attempt=attempt)
                 ) from exc
 
+    async def run_definition_query(self, agent, prompt, options, role):
+        pool = self.context.config.get("_workflow_pool")
+        if agent.session == "persistent" and pool is not None:
+            return await pool.run(
+                self.context,
+                agent.role,
+                options,
+                f"{options.system_prompt}\n\n{prompt}",
+            )
+        return await self.run_query(prompt, options, role)
+
 
 class SessionAgent(Agent):
     """A role that keeps one `ClaudeSDKClient` session across rounds, so later
@@ -441,6 +513,14 @@ class SessionAgent(Agent):
     def _open_session(self, options: ClaudeAgentOptions) -> None:
         self._session_options = options
         self._client = ClaudeSDKClient(options=options)
+
+    def open(self, options: ClaudeAgentOptions) -> None:
+        """Prepare the session for callers outside the agent hierarchy."""
+        self._open_session(options)
+
+    async def send(self, message: str) -> str:
+        """One turn for callers outside the agent hierarchy."""
+        return await self._turn(message)
 
     async def __aenter__(self):
         await self._client.__aenter__()
@@ -469,8 +549,15 @@ class ConfigLookups:
 
     config: dict
 
-    def model(self, role: str) -> str | None:
+    def model(self, role: str, agent: CustomAgent | None = None) -> str | None:
+        """`[models].<role>` if set, else the definition's model, else the
+        role's configured default (None: engine default) or the reviewer's."""
         models = self.config["models"]
+        configured = models.get(role)
+        if configured is not None:
+            return configured
+        if agent is not None and agent.model:
+            return agent.model
         return models.get(role, models.get("reviewer"))
 
     def lint_commands(self) -> list[LintCommand]:

@@ -66,7 +66,7 @@ class FakeProjectContext:
         self._lint_commands = [LintCommand(command="ruff check")]
         self.use_worktree = False
 
-    def model(self, role):
+    def model(self, role, agent=None):
         self.model_calls.append(role)
         return f"model-for-{role}"
 
@@ -343,7 +343,10 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
         options = sdk.call_args.kwargs["options"]
         self.assertEqual(options.model, "model-for-generator")
         self.assertEqual(options.cwd, str(self.context.project_dir))
-        self.assertEqual(options.agents, {"explorer": self.context.explorer})
+        self.assertEqual(
+            options.agents["explorer"].tools, ["Read", "Grep", "Glob", "Bash"]
+        )
+        self.assertEqual(options.agents["explorer"].model, "model-for-explorer")
         matcher = options.hooks["PostToolUse"][0]
         self.assertEqual(matcher.matcher, "Write|Edit")
         self.assertEqual(matcher.hooks, [self.context.lint_hook])
@@ -497,11 +500,10 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
             context.project_dir = root
             context.repo_dir = root
 
-            with (
-                patch.object(ReviewerAgent, "run_query", new_callable=AsyncMock),
-                self.assertRaisesRegex(RuntimeError, "did not produce"),
-            ):
-                await ReviewerAgent(context).review_plan(plan_file)
+            with patch.object(ReviewerAgent, "run_query", new_callable=AsyncMock):
+                status, verdict = await ReviewerAgent(context).review_plan(plan_file)
+            self.assertEqual(status, "FAIL")
+            self.assertIn("did not produce", verdict)
 
             self.assertFalse(review_file.exists())
 

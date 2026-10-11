@@ -286,6 +286,13 @@ class RunStore:
         record.updated_at = _now()
         return self._write(record)
 
+    def update_results(self, run_id: str, **patch: object) -> RunRecord:
+        """Persist workflow progress without adding a phase transition."""
+        record = self.load(run_id)
+        record.results.update({key: _safe(value, key) for key, value in patch.items()})
+        record.updated_at = _now()
+        return self._write(record)
+
     def transition(self, run_id: str, phase: str, **patch: object) -> RunRecord:
         record = self.load(run_id)
         if not phase or not isinstance(phase, str):

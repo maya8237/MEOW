@@ -4,6 +4,34 @@ from pathlib import Path
 
 from meow.project.config import config_root, load_config
 from meow.project.custom import AGENT_ROLES, Customizations, CustomSource
+from meow.project.custom.workflows import expand, fingerprint, select_workflow
+
+
+def _step_json(step):
+    value = {"id": step.id}
+    for name in ("when", "timeout", "task", "blocks", "max_rounds"):
+        if (entry := getattr(step, name)) is not None:
+            value[name] = entry
+    value[step.kind] = (
+        [_step_json(child) for child in step.body]
+        if step.kind in {"loop", "parallel", "sequence"}
+        else step.target
+    )
+    return value
+
+
+def workflow(working_dir: Path, active_dir: Path, name: str) -> dict:
+    config = load_config(config_root(working_dir, active_dir))
+    item = select_workflow(config, name)
+    catalog = config["customizations"]
+    return {
+        "name": item.name,
+        "scope": item.source.scope,
+        "description": item.description,
+        "file": str(item.file),
+        "fingerprint": fingerprint(item, catalog),
+        "steps": [_step_json(step) for step in expand(item, catalog)],
+    }
 
 
 def _source(source: CustomSource) -> dict:

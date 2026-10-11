@@ -26,6 +26,8 @@ deliver) or `meow plan ...` (plan only).
 - [docs/CLI.md](docs/CLI.md): every command, flag, and flag combination.
 - [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md): `.meow/config.toml` schema
   (lint, tester, build, permissions, Jira/GitLab/GitHub MCP, delivery).
+- [docs/WORKFLOWS.md](docs/WORKFLOWS.md): workflow/agent formats, scopes, templates,
+  catalog commands, and resume behavior.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): package ownership rules.
 - [skills/_shared/native-mode.md](skills/_shared/native-mode.md): the native
   (in-session) protocol and the `meow native` JSON helpers.
@@ -55,13 +57,18 @@ package (see ARCHITECTURE.md) and keep the package root to entry points.
   `fixers.py`). The Jira/GitLab/GitHub fetchers share `McpFetcherAgent` in
   `mcp_fetcher.py`. `Sprint` and `ProjectContext` both satisfy `AgentContext`.
 - `execution/`: round loops (`orchestrator.py`), `run`/`plan` flows
-  (`sprint_runner.py`), run journal (`run_state.py`), delivery, queue.
-- `cli/`: argument parsing, dispatch, `review_cli.py`, status, resume.
+  (`sprint_runner.py`), workflow execution/session pools (`workflow/`),
+  run journal (`run_state.py`), delivery, queue.
+- `cli/`: argument parsing, dispatch, `review_cli.py`, status, resume,
+  workflow/agent catalog commands (`catalog_cli.py`).
 - `native/`: agent-free helpers behind `meow native ...` for the skills.
 - `project/`: config loading/schema, `[custom]` skill/agent discovery
   (`project/custom/`), onboarding, permissions, plan files,
-  and all role prompts (`project/prompts.py`; change prompts there, never
-  in a skill, so SDK and native modes stay identical).
+  agent/workflow definitions, templates, and expressions (`project/custom/`).
+  Editable role prose lives in `project/custom/builtin/agents/*.toml`;
+  `project/prompts.py` builds context and code-owned verdict contracts.
+  Change role prose in those definitions, never in a skill, so SDK and native
+  modes stay identical.
 - `infrastructure/`: lint, checks, test runner, worktrees, logging, usage,
   cancellation, background workers.
 - `integrations/`: Jira, GitLab, GitHub, CI review, docs update, knowledge.
@@ -78,5 +85,7 @@ package (see ARCHITECTURE.md) and keep the package root to entry points.
   them inline.
 - `run_sprint` marks a run `failed` whenever it raises before a terminal
   phase; inner steps only record phases, not failures.
+- Agent definitions replace whole files by scope: local > project > user >
+  builtin. Gate contracts and permission policy remain code-owned.
 - Claude owns transcripts; the run journal stores only role-to-session IDs,
   resumed solely by `meow resume`.

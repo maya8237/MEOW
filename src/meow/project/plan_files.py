@@ -44,6 +44,20 @@ def plan_test_file(plan_file: Path) -> Path:
     return plan_file.with_name(plan_file.stem + "-test.md")
 
 
+def _stage_id(step_id: str) -> str:
+    if not re.fullmatch(r"[a-z0-9]+(?:[-_][a-z0-9]+)*", step_id):
+        raise ValueError(f"invalid stage id: {step_id!r}")
+    return step_id
+
+
+def plan_stage_file(plan_file: Path, step_id: str) -> Path:
+    return plan_file.with_name(f"{plan_file.stem}.{_stage_id(step_id)}.stage.md")
+
+
+def stage_file(docs_dir: Path, step_id: str) -> Path:
+    return docs_dir / f"{_stage_id(step_id)}.stage.md"
+
+
 def planned_plan_file(docs_dir: Path, feature_name: str | None) -> Path:
     """Where the planner writes the plan for ``feature_name``."""
     return docs_dir / (f"{feature_name}.md" if feature_name else "plan.md")
@@ -69,7 +83,7 @@ def reject_report_name(feature_name: str | None) -> None:
 
 def is_plan_file_name(name: str) -> bool:
     """False for review and tester verdict files, which are not Sprint Contracts."""
-    return not name.endswith(("review.md", "-test.md"))
+    return not name.endswith(("review.md", "-test.md", ".stage.md"))
 
 
 def _latest_plan_file(docs_dir: Path) -> Path:

@@ -17,7 +17,7 @@ from meow.integrations.knowledge_documents import (
     EvidenceDocumentWriter,
     create_selected_documents,
 )
-from meow.native.native_custom import custom
+from meow.native.native_custom import custom, workflow
 from meow.native.native_lint import LintOptions, lint
 from meow.native.native_prepare import (
     PrepareOptions,
@@ -32,6 +32,7 @@ from meow.project.command_policy import split_command
 from meow.project.config import config_paths, config_root, load_config
 from meow.project.config_env import unresolved_environment_references
 from meow.project.config_models import resolve_command_cwd
+from meow.project.custom.rendering import effective_models
 from meow.project.onboarding import boundary_ok, feature_gaps, is_onboarded
 from meow.project.shaping import (
     assess_request,
@@ -63,6 +64,7 @@ __all__ = [
     "shape_reflect",
     "verdict",
     "verify",
+    "workflow",
 ]
 
 
@@ -165,7 +167,7 @@ def verify(
             }
             for command in config["lint"]
         ],
-        "models": config["models"],
+        "models": effective_models(config),
         "tester": _verify_tester(config, active_dir or working_dir),
         "integrations": integrations,
     }
