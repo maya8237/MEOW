@@ -74,3 +74,31 @@ def skill_plugin_dir(skills: tuple[CustomSkill, ...]) -> Path | None:
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     return final
+
+
+_SCOPE_PLUGIN_NAMES = {
+    "user": "meow-user",
+    "project": "meow-project",
+    "local": "meow-local",
+}
+
+
+def ensure_plugin_root(root: Path, scope: str) -> Path:
+    """Create a scope's Claude plugin root: its manifest and `skills/` folder."""
+    (root / "skills").mkdir(parents=True, exist_ok=True)
+    manifest = root / _MANIFEST
+    if not manifest.is_file():
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(
+            json.dumps(
+                {
+                    "name": _SCOPE_PLUGIN_NAMES[scope],
+                    "description": f"Custom skills created in MEOW at {scope} scope.",
+                    "version": "0.1.0",
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    return root

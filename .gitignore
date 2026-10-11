@@ -211,9 +211,6 @@ tempCodeRunnerFile.py
 .ruff_cache/
 # Keep project-shared MEOW configuration trackable while ignoring local config
 # and all runtime state/artifacts under the same directory.
-.meow/*
-!.meow/
-!.meow/config.toml
 .claude/settings.local.json
 
 # PyPI configuration file
@@ -226,3 +223,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.meow/*
+!.meow/
+!.meow/config.toml
+!.meow/skills/
+!.meow/plugin/
+!.meow/agents/
+!.meow/workflows/

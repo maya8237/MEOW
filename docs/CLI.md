@@ -64,9 +64,13 @@ workflows, agents, and skills from every scope, with their source text. The
 "+ New" button adds a workflow, agent, or skill by copying an existing one under
 a new name (or adds a blank skill). Each item can be saved at project scope
 (`.meow/`), local scope (`.meow/local/`, uncommitted), or user scope (`~/.meow/`).
-Skills go in the first `[custom].skills` folder for that scope; if the config
-has no `[custom]` table, `meow ui` adds one pointing at `.meow/skills` (or
-`skills` under `~/.meow` for user scope). Each workflow shows ready-to-copy
+Skills go in that scope's MEOW plugin: `.meow/plugin/skills/` (project),
+`.meow/local/plugin/skills/` (local), or `~/.meow/plugin/skills/` (user). No
+`[custom]` table is needed. The first skill saved at a scope also writes a
+plugin manifest and registers the plugin in Claude Code settings
+(`CLAUDE_CODE_PLUGIN_DIRS`): `.claude/settings.json` for project, relative
+paths; `.claude/settings.local.json` for local; `~/.claude/settings.json` for
+user. Each workflow shows ready-to-copy
 commands: `meow run "<request>" --workflow NAME --name "<feature-name>"` and
 `/meow:run --workflow NAME "<request>"`. Press Ctrl+C to stop.
 
