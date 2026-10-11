@@ -29,7 +29,7 @@ class Context:
             },
         }
 
-    def model(self, role):
+    def model(self, role, agent=None):
         return self.config["models"].get(role)
 
     @staticmethod

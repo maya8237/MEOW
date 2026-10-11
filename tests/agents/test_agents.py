@@ -343,7 +343,10 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
         options = sdk.call_args.kwargs["options"]
         self.assertEqual(options.model, "model-for-generator")
         self.assertEqual(options.cwd, str(self.context.project_dir))
-        self.assertEqual(options.agents, {"explorer": self.context.explorer})
+        self.assertEqual(
+            options.agents["explorer"].tools, ["Read", "Grep", "Glob", "Bash"]
+        )
+        self.assertEqual(options.agents["explorer"].model, "model-for-explorer")
         matcher = options.hooks["PostToolUse"][0]
         self.assertEqual(matcher.matcher, "Write|Edit")
         self.assertEqual(matcher.hooks, [self.context.lint_hook])

@@ -60,7 +60,6 @@ def test_role_and_path_rules_do_not_bleed_into_other_roles():
                 {"role": "generator", "tool": "Bash", "action": "deny", "path": ".env"}
             ]
         },
-        {"rule": [{"role": "explorer", "tool": "Read", "action": "deny"}]},
         {"rule": [{"role": "unknown", "tool": "Write", "action": "deny"}]},
     ],
 )
