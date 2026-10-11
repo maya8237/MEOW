@@ -46,10 +46,11 @@ def _read_review_file(review_file: Path) -> str:
     """Read the fresh verdict and report a clear error when it is absent."""
     try:
         return review_file.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        raise RuntimeError(
-            f"Reviewer did not produce a readable verdict at {review_file}"
-        ) from exc
+    except (OSError, UnicodeError):
+        return (
+            f"SUMMARY: Reviewer did not produce a readable verdict at {review_file}.\n"
+            "STATUS: FAIL"
+        )
 
 
 _GIT_RETRY_ATTEMPTS = 3

@@ -101,8 +101,13 @@ def render_agent(
         raise ValueError(f"undocumented prompt variable(s): {sorted(unknown)}")
     variables = dict.fromkeys(PROMPT_VARIABLES)
     variables.update(values)
+    template = _template(agent, variant)
+    if values.get("verdict_format") and "verdict_format" not in template_names(
+        template, fragments=agent.fragments
+    ):
+        template += "\n\n{{verdict_format}}"
     return render(
-        _template(agent, variant),
+        template,
         variables,
         fragments=agent.fragments,
         where=str(agent.file),

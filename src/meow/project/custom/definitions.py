@@ -4,11 +4,15 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from meow.infrastructure.logging import get_logger
 from meow.project.custom import frontmatter
 from meow.project.custom.agent_files import read_agent_toml
 from meow.project.custom.sources import AGENT_ROLES, SCOPES, CustomSource
+
+if TYPE_CHECKING:
+    from meow.project.custom.workflows import WorkflowFile
 
 # The synthesized plugin every custom skill is served from; the SDK addresses
 # its skills as `meow-custom:<name>`.
@@ -75,6 +79,7 @@ class Customizations:
     catalog: tuple[CustomAgent, ...] = ()
     # Every source read, for workflow discovery.
     sources: tuple[CustomSource, ...] = ()
+    workflows: tuple["WorkflowFile", ...] = ()
 
     def skills_for(self, role: str) -> list[str]:
         return [s.qualified_name for s in self.skills if s.applies_to(role)]
@@ -88,6 +93,13 @@ class Customizations:
                 return agent
         known = ", ".join(sorted(agent.name for agent in self.catalog))
         raise KeyError(f"no agent named {name!r}; defined agents: {known}")
+
+    def workflow(self, name: str) -> "WorkflowFile":
+        for workflow in self.workflows:
+            if workflow.name == name:
+                return workflow
+        known = ", ".join(sorted(item.name for item in self.workflows))
+        raise KeyError(f"no workflow named {name!r}; defined workflows: {known}")
 
 
 def _name(value: object, where: Path) -> str:
@@ -160,6 +172,14 @@ def load_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
 def _definitions(source: CustomSource) -> list:
     if source.missing:
         return []
+    if source.kind == "workflows":
+        from meow.project.custom.workflows import load_workflow
+
+        return [
+            load_workflow(path, source)
+            for path in sorted(source.path.glob("*.toml"))
+            if path.is_file()
+        ]
     if source.kind == "skills":
         return [
             _load_skill(child, source)
@@ -238,6 +258,7 @@ def discover(sources: list[CustomSource]) -> Customizations:
     sources = _unique(sources)
     skills, skill_overrides = _merge("skills", sources)
     agents, agent_overrides = _merge("agents", sources)
+    workflows, workflow_overrides = _merge("workflows", sources)
     names = {skill.name for skill in skills}
     agents = [
         replace(
@@ -263,8 +284,9 @@ def discover(sources: list[CustomSource]) -> Customizations:
     return Customizations(
         tuple(skills),
         tuple(delegates),
-        tuple(skill_overrides + agent_overrides),
+        tuple(skill_overrides + agent_overrides + workflow_overrides),
         _skipped(sources),
         tuple(agents),
         tuple(sources),
+        tuple(workflows),
     )
