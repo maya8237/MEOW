@@ -45,11 +45,11 @@ class SessionPool:
             def factory():
                 agent = SessionAgent(context)
                 agent.role = role
-                agent._open_session(options)
+                agent.open(options)
                 return agent
 
             agent = await self.open(role, factory)
-            return await agent._turn(message)
+            return await agent.send(message)
 
 
 @dataclass
@@ -189,7 +189,7 @@ class WorkflowRun:
             state.gate_result(step, "FAIL", verdict)
         check_cancel(state.store, state.run_id)
 
-    async def execute(self, step):  # ruff: ignore[complex-structure] -- dispatch one of six validated step kinds
+    async def execute(self, step):
         from meow.execution.workflow import builtin_steps, stages
 
         if step.kind in {"agent", "gate"}:
@@ -200,14 +200,21 @@ class WorkflowRun:
         elif step.kind == "loop":
             await self.run_loop(step)
         elif step.kind == "parallel":
-            async with asyncio.TaskGroup() as tasks:
-                for branch in step.body:
-                    tasks.create_task(self.step(branch))
+            await self.run_parallel(step)
         elif step.kind == "sequence":
             await self.body(step.body)
         else:
             raise ValueError(f"Unexpanded or unsupported step {step.kind!r}")
         self.state.statuses.setdefault(step.id, {"status": "done"})
+
+    async def run_parallel(self, step):
+        """Run branches concurrently; a failed gate surfaces as itself."""
+        try:
+            async with asyncio.TaskGroup() as tasks:
+                for branch in step.body:
+                    tasks.create_task(self.step(branch))
+        except* GateFailed as failures:
+            raise failures.exceptions[0] from None
 
     async def run_loop(self, step):  # ruff: ignore[too-many-statements] -- loop state and session restoration are paired in finally
         state = self.state
@@ -230,6 +237,7 @@ class WorkflowRun:
                     if status != "PASS" and blocks != "advise"
                 ]
                 if not failed:
+                    state.feedback = ""
                     state.statuses[step.id] = {"status": "PASS"}
                     if state.workflow:
                         state.workflow["loop"] = None

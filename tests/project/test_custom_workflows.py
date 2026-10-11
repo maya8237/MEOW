@@ -68,6 +68,23 @@ def test_gate_defaults_depend_on_enclosing_loop(tmp_path):
     assert workflow.steps[1].body[0].blocks == "loop"
 
 
+def test_fingerprint_ignores_line_ending_style(tmp_path):
+    definitions = catalog(tmp_path, '[[steps]]\nid="audit"\nagent="explorer"')
+    workflow = definitions.workflow("custom")
+    before = fingerprint(workflow, definitions)
+    text = definitions.agent("explorer").file.read_bytes().replace(b"\r\n", b"\n")
+    path = tmp_path / "explorer.toml"
+    path.write_bytes(text.replace(b"\n", b"\r\n"))
+    definitions = replace(
+        definitions,
+        catalog=tuple(
+            replace(item, file=path) if item.name == "explorer" else item
+            for item in definitions.catalog
+        ),
+    )
+    assert fingerprint(workflow, definitions) == before
+
+
 def test_fingerprint_tracks_used_agent_and_called_workflow(tmp_path):
     definitions = catalog(tmp_path, '[[steps]]\nid="audit"\nagent="explorer"')
     workflow = definitions.workflow("custom")

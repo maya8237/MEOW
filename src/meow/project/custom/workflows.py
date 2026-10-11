@@ -275,6 +275,11 @@ def validate(workflow: WorkflowFile, catalog: "Customizations") -> list[str]:
     return problems
 
 
+def _normalized(path) -> bytes:
+    """File bytes with CRLF folded to LF, so checkout line endings do not matter."""
+    return path.read_bytes().replace(b"\r\n", b"\n")
+
+
 def fingerprint(workflow: WorkflowFile, catalog: "Customizations") -> str:  # ruff: ignore[complex-structure] -- recursively visit both workflow and agent dependencies once
     files = {}
 
@@ -282,7 +287,7 @@ def fingerprint(workflow: WorkflowFile, catalog: "Customizations") -> str:  # ru
         if ("agent", name) in files:
             return
         agent = catalog.agent(name)
-        files["agent", name] = agent.file.read_bytes()
+        files["agent", name] = _normalized(agent.file)
         for delegate in agent.agents:
             agent_file(delegate)
         for delegate in catalog.agents_for(agent.role):
@@ -291,7 +296,7 @@ def fingerprint(workflow: WorkflowFile, catalog: "Customizations") -> str:  # ru
     def workflow_file(item):
         if ("workflow", item.name) in files:
             return
-        files["workflow", item.name] = item.file.read_bytes()
+        files["workflow", item.name] = _normalized(item.file)
         for step in walk(item.steps):
             if step.kind == "call":
                 workflow_file(catalog.workflow(step.target))
