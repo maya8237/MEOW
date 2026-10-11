@@ -11,6 +11,7 @@ from meow.project.custom.definitions import discover, load_agent
 from meow.project.custom.sources import CustomSource, conventional_dir
 from meow.project.custom.workflows import load_workflow
 from meow.ui.catalog import build_catalog
+from meow.ui.repos import repo_choices
 
 SCOPES = ("project", "local", "user")
 _NAME = re.compile(r"[a-z][a-z0-9_-]{0,62}")
@@ -31,6 +32,7 @@ class CreateError(ValueError):
 
 def create_definition(working_dir: Path, kind: str, payload: dict) -> dict:
     name, description, source, scope = _request(payload)
+    working_dir = _repo(payload, working_dir)
     catalog = build_catalog(working_dir)
     if catalog["error"]:
         raise CreateError(422, catalog["error"])
@@ -65,6 +67,13 @@ def _request(payload: dict) -> tuple[str, str, str, str]:
     if scope not in SCOPES:
         raise CreateError(400, "Scope must be project, local, or user.")
     return name, description, source, scope
+
+
+def _repo(payload: dict, working_dir: Path) -> Path:
+    repo = payload.get("repo") or str(Path(working_dir).resolve())
+    if not isinstance(repo, str) or repo not in repo_choices(working_dir):
+        raise CreateError(400, "Choose a repo from the list.")
+    return Path(repo)
 
 
 def _source(kind: str, items: dict, source: str) -> dict | None:

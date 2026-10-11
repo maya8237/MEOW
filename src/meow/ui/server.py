@@ -9,11 +9,17 @@ from pathlib import Path
 
 from meow.ui.catalog import build_catalog
 from meow.ui.create import CreateError, create_definition
+from meow.ui.repos import remember, repo_choices
 
 DEFAULT_PORT = 8765
 _UI_DIR = Path(__file__).resolve().parent
 _PAGE = _UI_DIR / "index.html"
 _LOGO = _UI_DIR / "logo.png"
+_FONT_DIR = _UI_DIR / "fonts"
+_FONTS = {
+    f"/fonts/{name}": _FONT_DIR / name
+    for name in ("JetBrainsMono-Regular.woff2", "JetBrainsMono-Bold.woff2")
+}
 _CREATE_PATHS = {
     "/api/agents": "agents",
     "/api/workflows": "workflows",
@@ -33,8 +39,12 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, _PAGE.read_bytes(), "text/html; charset=utf-8")
         elif path == "/logo.png":
             self._send(HTTPStatus.OK, _LOGO.read_bytes(), "image/png")
+        elif path in _FONTS:
+            self._send(HTTPStatus.OK, _FONTS[path].read_bytes(), "font/woff2")
         elif path == "/api/catalog":
-            self._json(HTTPStatus.OK, build_catalog(self.server.working_dir))
+            working_dir = self.server.working_dir
+            catalog = {**build_catalog(working_dir), "repos": repo_choices(working_dir)}
+            self._json(HTTPStatus.OK, catalog)
         else:
             self._send(HTTPStatus.NOT_FOUND, b"Not found.", "text/plain; charset=utf-8")
 
@@ -115,6 +125,7 @@ class _Server(ThreadingHTTPServer):
 def serve_ui(
     working_dir: Path, port: int = DEFAULT_PORT, open_browser: bool = True
 ) -> int:
+    remember(Path(working_dir))
     with _Server(port, Path(working_dir)) as server:
         url = f"http://127.0.0.1:{server.server_port}/"
         print(f"MEOW catalog at {url} (Ctrl+C to stop)")
