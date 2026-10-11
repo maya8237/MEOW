@@ -10,7 +10,7 @@ from functools import cache
 
 from meow.project.custom.definitions import CustomAgent, load_agent
 from meow.project.custom.sources import CustomSource, builtin_dir
-from meow.project.custom.templates import render, template_names
+from meow.project.custom.templates import TemplateError, render, template_names
 
 PROMPT_VARIABLES = frozenset({
     # Run and project
@@ -113,11 +113,26 @@ def unknown_variables(agent: CustomAgent) -> list[str]:
     """`file: name` for every name a prompt, variant, or fragment uses that
     no invocation provides."""
     problems = []
-    for template in (agent.prompt, *agent.variants.values()):
-        names = template_names(template, fragments=agent.fragments)
+    for template in (agent.prompt, *agent.variants.values(), *agent.fragments.values()):
+        try:
+            names = template_names(template, fragments=agent.fragments)
+        except (TemplateError, ValueError) as exc:
+            raise TemplateError(f"{agent.file}: {exc}") from exc
         problems.extend(
             f"{agent.file}: unknown variable {name!r}"
             for name in sorted(names)
             if name.split(".")[0] not in PROMPT_VARIABLES
         )
     return list(dict.fromkeys(problems))
+
+
+def validate_agents(catalog) -> None:
+    for agent in catalog.catalog:
+        problems = unknown_variables(agent)
+        for name in agent.agents:
+            try:
+                catalog.agent(name)
+            except KeyError as exc:
+                raise ValueError(f"{agent.file}: unknown delegate {name!r}") from exc
+        if problems:
+            raise ValueError("\n".join(problems))

@@ -152,7 +152,6 @@ def load_config(working_dir: Path) -> dict:
     _validate_os_compatibility(config["lint"])
     config["tester"] = _normalize_tester_config(user_config)
     config["build"] = normalize_build(user_config.get("build", []))
-    config["permissions"] = parse_policy(user_config.get("permissions"))
     config["worktree_setup"] = validate_setup(user_config.get("worktree_setup"))
     delivery = user_config.get("delivery", {})
     if not isinstance(delivery, dict):
@@ -182,5 +181,12 @@ def load_config(working_dir: Path) -> dict:
         *conventional_sources(working_dir, user_config_path().parent),
         *builtin_sources(),
     ])
+    config["permissions"] = parse_policy(
+        user_config.get("permissions"),
+        roles={agent.role for agent in config["customizations"].catalog},
+    )
+    from meow.project.custom.rendering import validate_agents
+
+    validate_agents(config["customizations"])
 
     return config

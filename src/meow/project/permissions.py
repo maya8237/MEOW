@@ -21,6 +21,7 @@ _ROLES = frozenset({
     "github_fetcher",
     "docs_updater",
     "setup",
+    "explorer",
 })
 
 
@@ -101,6 +102,8 @@ class PermissionPolicy:
 
 def parse_policy(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
     raw: object,
+    *,
+    roles: set[str] | frozenset[str] = frozenset(),
 ) -> PermissionPolicy:
     if raw is None:
         return PermissionPolicy()
@@ -122,7 +125,7 @@ def parse_policy(  # ruff: ignore[complex-structure, too-many-branches, too-many
         role, tool, action = (entry.get(key) for key in ("role", "tool", "action"))
         if not all(isinstance(v, str) and v.strip() for v in (role, tool, action)):
             raise ValueError("permission rule requires role, tool, and action")
-        if role not in _ROLES:
+        if role not in _ROLES | roles:
             raise ValueError(f"unsupported permission role: {role}")
         if action not in _ACTIONS:
             raise ValueError(f"unsupported permission action: {action}")

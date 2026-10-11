@@ -25,10 +25,13 @@ def _allowed_edit_path(repo: Path, tool_input: dict) -> bool:
 
 async def update_documentation(prepared: DocsUpdateInput) -> None:
     config = load_config(prepared.repo)
-    options = Agent(ProjectContext(prepared.repo, config)).options(
-        system_prompt=docs_update_prompt(prepared.baseline_sha, prepared.head_sha),
-        allowed_tools=["Read", "Grep", "Glob", "Edit", "Write"],
-        role="docs_updater",
+    role = Agent(ProjectContext(prepared.repo, config))
+    agent = role.definition("docs-updater")
+    options = role.definition_options(
+        agent,
+        system_prompt=docs_update_prompt(
+            prepared.baseline_sha, prepared.head_sha, agent=agent
+        ),
     )
     guard_tools(
         options,

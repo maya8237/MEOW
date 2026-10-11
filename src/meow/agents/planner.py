@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from meow.agents.base import Agent
-from meow.agents.explorer import ExplorerAgent
 from meow.project.plan_files import planned_plan_file
 from meow.project.prompts import planner_prompt
 from meow.project.shaping import ShapeContext
@@ -29,21 +28,16 @@ class PlannerAgent(Agent):
         docs_dir.mkdir(parents=True, exist_ok=True)
         plan_file = planned_plan_file(docs_dir, feature_name)
 
-        tools = ["Read", "Grep", "Glob", "Write", "Agent"]
-        options = self.options(
+        agent = self.definition("planner")
+        options = self.definition_options(
+            agent,
             system_prompt=planner_prompt(
                 plan_file,
                 shape_context,
                 self.context.config.get("_preplan_context"),
                 bug_mode=bool(self.context.config.get("_bug_mode", False)),
+                agent=agent,
             ),
-            allowed_tools=tools,
-            role="planner",
-            agents={
-                **self.custom_agents("planner", tools),
-                "explorer": ExplorerAgent(self.context).definition(),
-            },
-            skills=["superpowers:writing-plans"],
         )
         await self.run_query(request, options, "Planner")
         return require_plan_file(plan_file)

@@ -63,12 +63,13 @@ class VerificationAgent(Agent):
         servers = self._mcp_servers()
         if servers:
             extra["mcp_servers"] = servers
-        allowed_tools = ["Read", "Grep", "Glob", "Bash", "Write"]
+        agent = self.definition("tester")
+        allowed_tools = list(agent.tools or ())
         allowed_tools.extend(f"mcp__{name}__*" for name in servers)
-        return self.options(
-            system_prompt=tester_prompt(report_file),
+        return self.definition_options(
+            agent,
+            system_prompt=tester_prompt(report_file, agent=agent),
             allowed_tools=allowed_tools,
-            role="tester",
             **extra,
         )
 

@@ -258,16 +258,18 @@ class ReviewerAgent(Agent):
         self, context: "CiReviewContext"
     ) -> tuple[str, str]:
         """Return the final SDK response without granting mutation tools."""
-        options = self.options(
+        agent = self.definition("reviewer")
+        tools = [t for t in (agent.tools or ()) if t in {"Read", "Grep", "Glob"}]
+        options = self.definition_options(
+            agent,
             system_prompt=ci_review_prompt(
-                context.source_sha, context.target_sha, context.merge_base
+                context.source_sha, context.target_sha, context.merge_base, agent=agent
             ),
-            allowed_tools=["Read", "Grep", "Glob"],
-            tools=["Read", "Grep", "Glob"],
+            allowed_tools=tools,
+            tools=tools,
             strict_mcp_config=True,
             mcp_servers={},
             setting_sources=[],
-            role="reviewer",
             permission_mode="dontAsk",
         )
         prompt = f"Fixed diff:\n{context.diff or '(empty diff)'}"
@@ -336,7 +338,9 @@ class ReviewerAgent(Agent):
         docs_dir = self.context.config["docs_dir"]
         git_context, has_diff = _git_review_context(self.context)
         lint_evidence = await self._lint_evidence()
-        options = self.options(
+        agent = self.definition("reviewer")
+        options = self.definition_options(
+            agent,
             system_prompt=prompt_review_prompt(
                 review_basis,
                 review_file,
@@ -344,10 +348,8 @@ class ReviewerAgent(Agent):
                 has_diff=has_diff,
                 docs_dir=docs_dir,
                 check_worktree_hygiene=self.context.use_worktree,
+                agent=agent,
             ),
-            allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
-            role="reviewer",
-            skills=["superpowers:verification-before-completion"],
         )
         query_prompt = prompt_review_query(
             review_basis,
@@ -383,15 +385,18 @@ class ReviewerAgent(Agent):
         review_dir.mkdir(parents=True, exist_ok=True)
         review_file = review_dir / new_review_filename(flavor)
         _prepare_review_file(review_file)
-        options = self.options(
+        agent = self.definition("reviewer")
+        options = self.definition_options(
+            agent,
             system_prompt=remote_review_prompt(
                 review_file,
                 request_label,
                 check_worktree_hygiene=self.context.use_worktree,
+                agent=agent,
             ),
-            allowed_tools=["Read", "Grep", "Glob", "Write"],
-            role="reviewer",
-            skills=["superpowers:verification-before-completion"],
+            allowed_tools=[
+                t for t in (agent.tools or ()) if t in {"Read", "Grep", "Glob", "Write"}
+            ],
         )
         query_prompt = remote_review_query(request_label, title, description, diff)
         await self.run_query(query_prompt, options, "Reviewer")
@@ -412,17 +417,17 @@ class ReviewerAgent(Agent):
         _prepare_review_file(review_file)
         diff_text = _branch_diff(self.context.active_working_dir(), target, branch)
         lint_evidence = await self._lint_evidence()
-        options = self.options(
+        agent = self.definition("reviewer")
+        options = self.definition_options(
+            agent,
             system_prompt=branch_review_prompt(
                 target,
                 branch,
                 review_file,
                 self.context.lint_commands(),
                 check_worktree_hygiene=self.context.use_worktree,
+                agent=agent,
             ),
-            allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
-            role="reviewer",
-            skills=["superpowers:verification-before-completion"],
         )
         query_prompt = branch_review_query(
             target, branch, diff_text, lint_evidence.report()
@@ -450,7 +455,9 @@ class ReviewerAgent(Agent):
         review_file = plan_review_file(plan_file)
         _prepare_review_file(review_file)
         lint_evidence = await self._lint_evidence()
-        options = self.options(
+        agent = self.definition("reviewer")
+        options = self.definition_options(
+            agent,
             system_prompt=plan_review_prompt(
                 plan_file,
                 review_file,
@@ -458,10 +465,8 @@ class ReviewerAgent(Agent):
                 focus=focus,
                 check_worktree_hygiene=self.context.use_worktree,
                 shape_context=shape_context,
+                agent=agent,
             ),
-            allowed_tools=["Read", "Grep", "Glob", "Bash", "Write"],
-            role="reviewer",
-            skills=["superpowers:verification-before-completion"],
         )
         await self.run_query(
             plan_review_query(plan_file, lint_evidence.report()), options, "Reviewer"

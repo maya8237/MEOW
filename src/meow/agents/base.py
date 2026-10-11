@@ -27,6 +27,7 @@ from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
 from meow.project.config_models import LintCommand
 from meow.project.custom import CustomAgent, Customizations, skill_plugin_dir
+from meow.project.custom.rendering import builtin_agent, render_agent
 from meow.project.permissions import (
     PATH_KEYS,
     PermissionPolicy,
@@ -285,6 +286,54 @@ class Agent:
         custom = getattr(self.context, "config", {}).get("customizations")
         return custom if isinstance(custom, Customizations) else Customizations()
 
+    def definition(self, name: str) -> CustomAgent:
+        custom = self.customizations()
+        if custom.catalog:
+            return custom.agent(name)
+        return builtin_agent(name)
+
+    def delegates(
+        self, agent: CustomAgent, parent_tools: list[str]
+    ) -> dict[str, AgentDefinition]:
+        definitions = self.custom_agents(agent.role, parent_tools)
+        ceiling = [tool for tool in parent_tools if tool != "Agent"]
+        for name in agent.agents:
+            try:
+                child = Agent.definition(self, name)
+            except (KeyError, OSError) as exc:
+                raise ValueError(f"{agent.file}: unknown delegate {name!r}") from exc
+            definitions[name] = AgentDefinition(
+                description=" ".join(child.description.split()),
+                prompt=render_agent(
+                    child, {"active_dir": self.context.active_working_dir()}
+                ),
+                tools=[
+                    tool
+                    for tool in (child.tools if child.tools is not None else ceiling)
+                    if tool in ceiling
+                ],
+                model=self.context.model(child.role, child),
+                skills=self.skills(child.role, list(child.skills)),
+            )
+        return definitions
+
+    def definition_options(
+        self, agent: CustomAgent, *, system_prompt: str, **extra
+    ) -> ClaudeAgentOptions:
+        tools = list(agent.tools or ())
+        if "allowed_tools" in extra:
+            tools = extra.pop("allowed_tools")
+        extra.setdefault("tools", tools)
+        extra.setdefault("agents", self.delegates(agent, tools))
+        extra.setdefault("skills", list(agent.skills))
+        return self.options(
+            system_prompt=system_prompt,
+            allowed_tools=tools,
+            role=agent.role,
+            definition=agent,
+            **extra,
+        )
+
     def custom_agents(
         self, role: str, parent_tools: list[str]
     ) -> dict[str, AgentDefinition]:
@@ -345,6 +394,7 @@ class Agent:
         system_prompt: str,
         allowed_tools: list[str],
         role: str,
+        definition: CustomAgent | None = None,
         **extra_options,
     ) -> ClaudeAgentOptions:
         """Build SDK options from project context and agent-specific values."""
@@ -371,7 +421,11 @@ class Agent:
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=allowed_tools,
-            model=self.context.model(role),
+            model=(
+                self.context.model(role, definition)
+                if definition is not None
+                else self.context.model(role)
+            ),
             cwd=str(self.context.active_working_dir()),
             **extra_options,
         )

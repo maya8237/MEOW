@@ -3,24 +3,23 @@
 from claude_agent_sdk import AgentDefinition
 
 from meow.agents.base import Agent, AgentContext
-from meow.project.custom.rendering import builtin_role_agent
 from meow.project.prompts import explorer_prompt
 
 
 class ExplorerAgent(Agent):
     """Read-only codebase exploration available to other agents."""
 
-    def definition(self) -> AgentDefinition:
-        prompt = explorer_prompt(self.context.active_working_dir())
+    def definition(self, name: str | None = None):
+        if name is not None:
+            return super().definition(name)
+        agent = super().definition("explorer")
+        prompt = explorer_prompt(self.context.active_working_dir(), agent=agent)
         return AgentDefinition(
-            description=(
-                "Read-only codebase/log/test-output exploration. Use for any "
-                "research whose raw output doesn't need to be kept in full."
-            ),
+            description=" ".join(agent.description.split()),
             prompt=prompt,
-            tools=["Read", "Grep", "Glob", "Bash"],
-            model=self.context.model("explorer", builtin_role_agent("explorer")),
-            skills=self.skills("explorer", ["superpowers:systematic-debugging"]),
+            tools=list(agent.tools or ()),
+            model=self.context.model(agent.role, agent),
+            skills=self.skills(agent.role, list(agent.skills)),
         )
 
 
