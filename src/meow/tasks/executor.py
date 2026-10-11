@@ -1,5 +1,6 @@
 """Isolated task workers and incremental integration into one checkout."""
 
+import asyncio
 import re
 import subprocess
 from collections.abc import Awaitable, Callable
@@ -13,10 +14,16 @@ from .scheduler import TaskOutcome, run_task_graph
 _RUN_ID = re.compile(r"[0-9a-f]{32}\Z")
 
 
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", *args], cwd=repo, text=True, capture_output=True, check=True
-    ).stdout.strip()
+async def _git(repo: Path, *args: str) -> str:
+    done = await asyncio.to_thread(
+        subprocess.run,
+        ["git", *args],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    return done.stdout.strip()
 
 
 def _owned(path: str, spec: TaskSpec) -> bool:
@@ -60,39 +67,43 @@ async def execute_in_worktrees(  # ruff: ignore[complex-structure, too-many-argu
         raise ValueError("invalid run ID")
     repo = repo.resolve()
     common_dir = Path(
-        _git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+        await _git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
     )
     root = common_dir.parent.resolve()
     worker_root = root / ".worktrees"
     worker_root.mkdir(exist_ok=True)
-    if subprocess.run(
+    ignored = await asyncio.to_thread(
+        subprocess.run,
         ["git", "check-ignore", "-q", ".worktrees/task-probe"],
         cwd=root,
         check=False,
-    ).returncode:
+    )
+    if ignored.returncode:
         raise ValueError(".worktrees must be gitignored before task execution")
-    head = _git(repo, "rev-parse", "HEAD")
-    if _git(repo, "status", "--porcelain"):
+    head = await _git(repo, "rev-parse", "HEAD")
+    if await _git(repo, "status", "--porcelain"):
         raise ValueError("integration checkout must be clean")
     conflict = None
+    add_lock = asyncio.Lock()
 
     async def worker(spec: TaskSpec) -> TaskOutcome:
         task_dir = worker_root / f"{run_id}-{spec.id}"
         if task_dir.exists():
             raise ValueError(f"task worktree already exists: {task_dir}")
         # A failure leaves the registered checkout and its edits for inspection.
-        _git(repo, "worktree", "add", "--detach", str(task_dir), head)
+        async with add_lock:
+            await _git(repo, "worktree", "add", "--detach", str(task_dir), head)
         if prepare is not None:
             await prepare(task_dir)
         await implement(spec, task_dir)
-        _git(task_dir, "add", "-A")
-        staged = _git(task_dir, "diff", "--cached", "--name-only").splitlines()
+        await _git(task_dir, "add", "-A")
+        staged = (await _git(task_dir, "diff", "--cached", "--name-only")).splitlines()
         if not staged:
             raise ValueError(f"task {spec.id} produced no changes")
         outside = [path for path in staged if not _owned(path, spec)]
         if outside:
             raise ValueError(f"task {spec.id} edited outside ownership: {outside}")
-        _git(
+        await _git(
             task_dir,
             "-c",
             "user.name=MEOW",
@@ -103,12 +114,15 @@ async def execute_in_worktrees(  # ruff: ignore[complex-structure, too-many-argu
             f"meow task {spec.id}",
         )
         return TaskOutcome(
-            spec.id, "complete", str(task_dir), _git(task_dir, "rev-parse", "HEAD")
+            spec.id,
+            "complete",
+            str(task_dir),
+            await _git(task_dir, "rev-parse", "HEAD"),
         )
 
-    async def integrate(outcome: TaskOutcome) -> bool:  # ruff: ignore[unused-async]
+    async def integrate(outcome: TaskOutcome) -> bool:
         nonlocal head, conflict
-        result = integrate_results(repo, head, (outcome,))
+        result = await asyncio.to_thread(integrate_results, repo, head, (outcome,))
         if result.conflict:
             conflict = result.conflict
             return False
