@@ -7,6 +7,7 @@ from typing import Any
 
 from meow.infrastructure.lint import run_lint_on_file
 from meow.project.config import load_config
+from meow.project.plan_files import is_plan_file_name
 from meow.project.plan_state import PlanStore
 
 
@@ -50,8 +51,14 @@ def _edited_path(event: dict) -> str | None:
 
 
 def _plan_path(event: dict, root: Path) -> Path | None:
+    """The plan a hook event names: an explicit `plan_file`/`plan`, else the
+    plan file Claude Code just edited, which must sit directly in the plan
+    directory. Raises ValueError when the project config is invalid."""
     value = event.get("plan_file") or event.get("plan")
+    edited = False
     if not isinstance(value, str) or not value:
+        value, edited = _edited_path(event), True
+    if not value:
         return None
     path = Path(value)
     path = path if path.is_absolute() else root / path
@@ -60,7 +67,21 @@ def _plan_path(event: dict, root: Path) -> Path | None:
         path.relative_to(root)
     except ValueError:
         return None
+    if edited and not _is_plan_in_docs(path, root):
+        return None
     return path
+
+
+def _docs_dir(root: Path) -> Path:
+    return (root / load_config(root)["docs_dir"]).resolve()
+
+
+def _is_plan_in_docs(path: Path, root: Path) -> bool:
+    return (
+        path.suffix == ".md"
+        and is_plan_file_name(path.name)
+        and path.parent == _docs_dir(root)
+    )
 
 
 def lint_after_edit(event: dict) -> dict:  # ruff: ignore[too-many-return-statements]
@@ -123,14 +144,17 @@ def shaping_ripple(event: dict) -> dict:
     )
 
 
-def capture_completed_plan(event: dict) -> dict:  # ruff: ignore[too-many-return-statements]
+def capture_completed_plan(event: dict) -> dict:  # ruff: ignore[too-many-return-statements, complex-structure]
     event, error = _event(event)
     if error:
         return error
     root = _root(event)
     if root is None:
         return {"ok": True, "quiet": True, "reason": "no project plan event"}
-    path = _plan_path(event, root)
+    try:
+        path = _plan_path(event, root)
+    except ValueError as exc:
+        return {"ok": False, "kind": "diagnostic", "message": str(exc)}
     if path is None:
         return {"ok": True, "quiet": True, "reason": "no canonical plan event"}
     if not path.is_file():
@@ -144,7 +168,7 @@ def capture_completed_plan(event: dict) -> dict:  # ruff: ignore[too-many-return
         current = store.read(path)
         metadata = (
             current
-            if current.lifecycle != "draft"
+            if current.lifecycle != "draft" or store.exists(path)
             else store.transition(
                 path,
                 "draft",
@@ -157,17 +181,20 @@ def capture_completed_plan(event: dict) -> dict:  # ruff: ignore[too-many-return
         return {"ok": False, "kind": "diagnostic", "message": str(exc)}
 
 
-def validate_plan_stop(event: dict) -> dict:  # ruff: ignore[too-many-return-statements]
+def validate_plan_stop(event: dict) -> dict:  # ruff: ignore[too-many-return-statements, complex-structure]
     event, error = _event(event)
     if error:
         return error
     root = _root(event)
     if root is None:
         return {"ok": True, "quiet": True}
-    path = _plan_path(event, root)
-    if path is None:
-        return {"ok": True, "quiet": True}
     try:
+        path = _plan_path(event, root)
+        if path is None:
+            open_plans = PlanStore(root).open_plans(_docs_dir(root))
+            if len(open_plans) != 1:
+                return {"ok": True, "quiet": True}
+            path = open_plans[0]
         metadata = PlanStore(root).read(path)
     except (OSError, ValueError) as exc:
         return {"ok": False, "kind": "diagnostic", "message": str(exc)}
