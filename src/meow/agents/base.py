@@ -388,10 +388,10 @@ class Agent:
             unattended=bool(self.context.config.get("_unattended", False)),
             project_root=self.context.active_working_dir(),
         )
-        # Auto-approved tools would never reach the callback; under dontAsk
-        # nothing does, so stripping them would only deny them.
+        # dontAsk pre-approves tools without consulting the callback, so the
+        # policy must decide every call under the default mode instead.
         if extra_options.get("permission_mode") == "dontAsk":
-            return allowed_tools
+            extra_options["permission_mode"] = "default"
         gated = role_policy.gated_tools()
         return [tool for tool in allowed_tools if tool not in gated]
 

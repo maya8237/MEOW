@@ -6,6 +6,7 @@ from pathlib import Path
 from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled, check_cancel, delivery_lock
 from meow.infrastructure.worktree import _is_linked_worktree
+from meow.infrastructure.worktree_setup import is_secret_like
 
 
 def _git(
@@ -32,6 +33,13 @@ def _branch_and_remote(
     if "origin" not in _git(directory, "remote").stdout.splitlines():
         raise RuntimeError("No origin remote configured for automatic push")
     return branch, "origin"
+
+
+def _unstage_secret_like(directory: Path) -> None:
+    staged = _git(directory, "diff", "--cached", "--name-only").stdout.splitlines()
+    secrets = [path for path in staged if is_secret_like(Path(path).name)]
+    if secrets:
+        _git(directory, "reset", "-q", "--", *secrets)
 
 
 def deliver_verified_run(
@@ -71,6 +79,7 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
         check_cancel(store, run_id)
         _git(active, "add", "-A")
         _git(active, "reset", "-q", "--", ".meow", check=False)
+        _unstage_secret_like(active)
         # Re-stage the one shareable MEOW file; the update pass also handles
         # its deletion without bringing runtime state back into the commit.
         _git(active, "add", "-f", "--", ".meow/config.toml", check=False)

@@ -60,7 +60,15 @@ def stage_file(docs_dir: Path, step_id: str) -> Path:
 
 def planned_plan_file(docs_dir: Path, feature_name: str | None) -> Path:
     """Where the planner writes the plan for ``feature_name``."""
-    return docs_dir / (f"{feature_name}.md" if feature_name else "plan.md")
+    if not feature_name:
+        return docs_dir / "plan.md"
+    if (
+        feature_name in {".", ".."}
+        or Path(feature_name).name != feature_name
+        or "\\" in feature_name
+    ):
+        raise ValueError(f"{feature_name!r} must be a plain file name, not a path")
+    return docs_dir / f"{feature_name}.md"
 
 
 def reject_report_name(feature_name: str | None) -> None:
