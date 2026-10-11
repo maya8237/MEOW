@@ -168,6 +168,12 @@ The directory can be anywhere you choose within those rules (for example
 `tools/meow/`, `docs/agents/`, or `~/dotfiles/meow-skills`). A project-scope
 path that escapes the repository or is git-ignored is rejected, because it
 would not reach your collaborators; declare it in the local config instead.
+Project-scope custom folders resolve from the launch checkout, even when MEOW
+runs in a feature worktree based on another branch.
+
+A missing user-scope folder logs a `custom_source_missing` warning and is
+skipped. `meow native custom` reports it under the `skipped` key. Missing project
+or local folders still raise an error.
 
 **Precedence.** When the same skill or agent name appears in more than one
 scope, local project beats project, which beats user; `meow native custom`
@@ -190,7 +196,8 @@ and `skills` (custom skill names or installed skill identifiers). Other Claude
 Code keys, such as `color` or `permissionMode`, are ignored, so the same file
 also works as a Claude Code subagent. `explorer` is reserved. Custom agents are
 subagents of the roles that can delegate, `planner` and `generator` (both by
-default; restrict with `roles`).
+default; restrict with `roles`). The reviewer role would need the `Agent` tool
+to use custom agents.
 
 **Permission boundary.** A custom agent never gets more than its parent role:
 its tools are capped to the parent's tools, it cannot spawn further agents,
