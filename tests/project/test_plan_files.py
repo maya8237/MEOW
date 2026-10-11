@@ -64,3 +64,8 @@ class LatestReviewFileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_reviewed_plan_file_inverts_plan_review_file():
+    plan = Path("docs") / "add-export.md"
+    assert plan_files.reviewed_plan_file(plan_files.plan_review_file(plan)) == plan

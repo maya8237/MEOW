@@ -64,13 +64,13 @@ def _is_doc_path(path: str) -> bool:
 
 
 def prepare_docs_update(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
-    repo: Path, since: str | None
+    repo: Path, since: str | None, target_branch: str = "dev"
 ) -> DocsUpdateInput:
-    """Validate a clean dev checkout and resolve the bounded evidence window."""
+    """Validate a clean target-branch checkout and resolve the evidence window."""
     repo = repo.resolve()
     branch = _git(repo, "symbolic-ref", "--quiet", "--short", "HEAD").stdout.strip()
-    if branch != "dev":
-        raise DocsUpdateError("docs-update must run on the dev branch")
+    if branch != target_branch:
+        raise DocsUpdateError(f"docs-update must run on the {target_branch} branch")
     if _changed_paths(repo):
         raise DocsUpdateError("docs-update requires a clean working tree")
     head = _git(repo, "rev-parse", "HEAD").stdout.strip()

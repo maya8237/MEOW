@@ -1,6 +1,5 @@
 """Optional request shaping and breadboard artifacts."""
 
-# ruff: noqa
 from __future__ import annotations
 
 import json
@@ -58,6 +57,9 @@ _BUG_REQUEST = re.compile(
 )
 
 
+_BROAD_REQUEST_WORDS = 45
+
+
 def is_bug_request(request: str) -> bool:
     """Return whether a request calls for diagnosis rather than feature work."""
     return bool(_BUG_REQUEST.search(request))
@@ -65,7 +67,7 @@ def is_bug_request(request: str) -> bool:
 
 def assess_request(request: str) -> ShapeRecommendation:
     words = request.lower().split()
-    broad = len(words) > 45 or any(
+    broad = len(words) > _BROAD_REQUEST_WORDS or any(
         token in request.lower()
         for token in (
             "dashboard",
@@ -126,7 +128,9 @@ def load_shape_artifact(path: Path) -> ShapeArtifact | BreadboardArtifact:
     return BreadboardArtifact(**payload)
 
 
-def reflect_breadboard(artifact: BreadboardArtifact) -> tuple[str, ...]:
+def reflect_breadboard(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements] -- one independent check per rule
+    artifact: BreadboardArtifact,
+) -> tuple[str, ...]:
     findings = []
     if not artifact.places:
         findings.append("missing place names")

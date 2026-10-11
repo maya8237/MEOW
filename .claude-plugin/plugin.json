@@ -2,7 +2,7 @@
   "name": "meow",
   "displayName": "MEOW",
   "description": "Simple, template-driven harness engineering for Claude Agent SDK: turn requests and issues into verified branches with minimal supervision.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "MEOW contributors",
     "url": "https://github.com/maya8237/MEOW"

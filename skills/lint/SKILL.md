@@ -47,5 +47,4 @@ meow run --lint-fix --report-only --work-dir "<project-path>"
 ```
 
 Exit 0 with `Lint is clean -- no issues found.` means done; otherwise fix each
-`$ <command>` block it printed and re-run to confirm. If `meow` isn't on PATH,
-tell the user to install it (README: `pip install -e .` in a venv, or `pipx install -e .`).
+`$ <command>` block it printed and re-run to confirm.

@@ -4,6 +4,15 @@ All notable changes to MEOW will be documented here.
 
 ## Unreleased
 
+- Claude Code hooks now return `additionalContext` / `systemMessage`, so lint
+  failures and advisories actually reach the session.
+- A lint program that cannot start is reported as a failing command instead
+  of aborting the review, lint-fix, or post-edit hook.
+- A failing mandatory tester command now rewrites the saved tester report to
+  `STATUS: FAIL`; report-only review runs are terminal, and `meow status`
+  only suggests `meow resume` for resumable runs.
+- `meow docs-update` follows `[delivery].target_branch`; the Windows installer
+  shows its update prompts when input is piped.
 - Custom skills and agents: `[custom]` lists directories of Claude Code-format
   skills and agent files in local project, project (versioned, never
   git-ignored), or user scope. CLI roles load them through a generated

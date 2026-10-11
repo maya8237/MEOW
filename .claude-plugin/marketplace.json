@@ -11,7 +11,7 @@
       "displayName": "MEOW",
       "source": "./",
       "description": "Configure once, submit software work, and let MEOW's harness carry it to a verified branch.",
-      "version": "0.1.0"
+      "version": "0.1.1"
     }
   ]
 }

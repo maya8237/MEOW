@@ -125,9 +125,7 @@ Use `--unattended` for non-interactive delivery or `--background`; it requires
 an isolated worktree and cannot be combined with `--no-worktree`, manual plan
 approval, `--from`, `--resume-at review`, or `--lint-fix`. An in-place
 `--no-worktree` run does not automatically commit or push.
-If `meow` isn't on PATH, tell the user to install it (README: `pip install -e .`
-in a venv, or `pipx install -e .`). Stream its progress (`[planner]`, `[generator]`,
+Stream its progress (`[planner]`, `[generator]`,
 `[reviewer]`) to the user. Report the plan and review file paths on success
 (or, for `--jira`, the printed `{"issue": ..., "branch": ...}` JSON line), or
 that it failed after `max_rounds` and where the last review is.
-

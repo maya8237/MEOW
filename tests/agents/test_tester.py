@@ -80,6 +80,9 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(status, "FAIL")
         self.assertIn("Mandatory test command failed", text)
+        self.assertNotIn("STATUS: PASS", text)
+        saved = (self.root / "feature-test.md").read_text(encoding="utf-8")
+        self.assertEqual(saved, text)
 
     async def test_browser_artifacts_and_flows_reach_tester_prompt(self):
         browser = BrowserEvidence(

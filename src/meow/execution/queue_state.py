@@ -5,12 +5,16 @@ from __future__ import annotations
 import json
 import os
 import socket
+import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 _WINDOWS_QUERY_LIMITED_INFORMATION = 0x1000
+# A lock with no readable owner after this long was left by a worker that died
+# between creating the file and writing its PID.
+_UNREADABLE_LOCK_GRACE_SECONDS = 30
 _WINDOWS_ERROR_ACCESS_DENIED = 5
 
 
@@ -49,11 +53,16 @@ def _pid_is_alive(pid: int) -> bool:
 
 
 def _lock_is_active(path: Path) -> bool | None:
+    """False for a reclaimable lock, None when it cannot be judged yet."""
     try:
         lock = json.loads(path.read_text(encoding="utf-8"))
         pid = int(lock["pid"])
     except (OSError, TypeError, ValueError, KeyError):
-        return None
+        try:
+            age = time.time() - path.stat().st_mtime
+        except OSError:
+            return None
+        return False if age > _UNREADABLE_LOCK_GRACE_SECONDS else None
     return _pid_is_alive(pid)
 
 

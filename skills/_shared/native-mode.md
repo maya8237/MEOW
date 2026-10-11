@@ -17,7 +17,7 @@ user fallback at `~/.meow/config.toml`.
 
 Run checkpoints are stored in `.meow/runs/`. Inspect one with
 `meow status [RUN_ID] [--verbose]` or `meow resume [RUN_ID]`. The latter only
-inspects until `--continue` or `--auto-resume` is supplied. Native execution
+inspects until `--continue` is supplied. Native execution
 must write a checkpoint before and after planner, generator, reviewer, tester,
 and required check phases; an interrupted generator turn is marked as a
 possible mutation. Inspect and review the actual worktree against the saved
@@ -29,9 +29,9 @@ reviewer PASS, and enabled tester PASS. SDK usage missing from evidence is
 ## The `meow native` helper
 
 `meow native <command>` prints one JSON document on stdout (failures: message
-on stderr, exit 1). It starts no agents. If `meow` is not on PATH, tell the
-user to install it (README: a venv with `pip install -e .`, or `pipx install -e .`)
-and stop; do not guess at a venv path. Flags shared by every command:
+on stderr, exit 1). It starts no agents. If `meow` is not on PATH (in any
+mode), tell the user to run the README's install script and stop; do not
+guess at a venv path. Flags shared by every command:
 `--working-dir PATH` (also `--work-dir`/`-d`; project root with
 `.meow/config.toml`, default cwd) and, where applicable, `--active-dir PATH`
 (the worktree that `prepare` returned; default = working dir).

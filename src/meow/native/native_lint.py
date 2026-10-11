@@ -27,10 +27,7 @@ async def _lint_one_file(
     active_dir: Path, commands: list[LintCommand], file_path: str, timeout: float
 ) -> list[str]:
     per_file = [entry for entry in commands if entry.per_file]
-    try:
-        return await run_lint_on_file(active_dir, per_file, file_path, timeout)
-    except OSError as exc:
-        return [f"Could not run lint on {file_path}: {exc}"]
+    return await run_lint_on_file(active_dir, per_file, file_path, timeout)
 
 
 async def _lint_project(
@@ -43,10 +40,7 @@ async def _lint_project(
     blocking: list[str] = []
     informational: list[str] = []
     for entry in commands:
-        try:
-            problems = await check_lint_commands(active_dir, [entry], timeout)
-        except OSError as exc:
-            problems = [f"$ {entry.command}\nCould not run: {exc}"]
+        problems = await check_lint_commands(active_dir, [entry], timeout)
         (blocking if all_blocking or entry.gate else informational).extend(problems)
     return {"clean": not blocking, "blocking": blocking, "informational": informational}
 

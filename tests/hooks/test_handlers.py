@@ -151,3 +151,15 @@ def test_shaping_ripple_reads_claude_code_tool_input():
         "tool_input": {"file_path": "docs/shaping/breadboard.md"},
     })
     assert advisory["advisory"] is True
+
+
+def test_advisories_use_fields_claude_code_reads(tmp_path):
+    advisory = shaping_ripple({"file_path": "docs/shaping/breadboard.md"})
+    context = advisory["hookSpecificOutput"]
+    assert context["hookEventName"] == "PostToolUse"
+    assert "Shaping artifact changed" in context["additionalContext"]
+    assert "hookSpecificOutput" not in shaping_ripple({"file_path": "src/app.py"})
+
+    plan = _plan(tmp_path)
+    stop = validate_plan_stop({"cwd": str(tmp_path), "plan_file": str(plan)})
+    assert stop["systemMessage"] == stop["message"]

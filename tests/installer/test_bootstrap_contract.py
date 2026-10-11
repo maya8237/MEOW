@@ -144,7 +144,7 @@ def test_powershell_existing_install_reports_up_to_date_and_forwards_setup_outpu
 
     assert 'Write-Host "MEOW $currentVersion is already up to date :)"' in powershell
     assert re.search(
-        r"already up to date.*?Read-Host",
+        r"already up to date.*?Read-Answer",
         powershell,
         re.DOTALL,
     )

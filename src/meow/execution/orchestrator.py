@@ -329,7 +329,7 @@ async def _run_review_rounds(  # ruff: ignore[too-many-arguments]
         return True
 
     async with Generator(sprint, plan_file) as generator:
-        instruction = _fix_instruction(verdict, test=False)
+        instruction = _fix_instruction(verdict, test=test)
         for round_num in range(2, sprint.config["max_rounds"] + 1):
             await _generate(generator, sprint, instruction, round_num)
             status, verdict = await _review_round(

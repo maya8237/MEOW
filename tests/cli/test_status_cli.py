@@ -173,3 +173,17 @@ def test_status_shows_task_progress_and_ownership(tmp_path, capsys):
     assert "Tasks: 1 complete, 1 running" in output
     assert status(tmp_path, record.id, verbose=True) == 0
     assert "src/ui" in capsys.readouterr().out
+
+
+def test_status_does_not_suggest_resume_for_review_runs(tmp_path):
+    from meow.cli.status_cli import recovery_command
+
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="review", request="r", repo=tmp_path, worktree=tmp_path, branch="b"
+    )
+    assert "meow resume" not in recovery_command(record)
+    prompt = store.create(
+        source="prompt", request="r", repo=tmp_path, worktree=tmp_path, branch="b"
+    )
+    assert recovery_command(prompt).startswith(f"meow resume {prompt.id}")

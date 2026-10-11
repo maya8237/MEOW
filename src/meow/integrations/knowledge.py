@@ -63,8 +63,10 @@ _LINK = re.compile(r"\[[^]]+\]\(([^)]+)\)")
 _CODE_WORDS = re.compile(r"\b(?:class|def|function|module|package|src|api|CLI)\b", re.I)
 
 
-def _evidence(path: Path, line: int, text: str) -> str:
-    return f"{path.as_posix()}:{line}: {text.strip()}"
+def _evidence(rel: str, line: int, text: str) -> str:
+    """Evidence cites the repository-relative path, so finding IDs (which hash
+    it) are the same in every checkout and worktree."""
+    return f"{rel}:{line}: {text.strip()}"
 
 
 def audit_project(
@@ -78,7 +80,6 @@ def audit_project(
         target = root / required
         checked.add(target.relative_to(root).as_posix())
         if not target.is_file():
-            proposed = required if required != "docs/ARCHITECTURE.md" else required
             findings.append(
                 AuditFinding(
                     "missing",
@@ -87,7 +88,7 @@ def audit_project(
                     "warning",
                     False,
                     f"Create {required} from observed repository evidence.",
-                    proposed,
+                    required,
                 )
             )
     docs: list[Path] = []
@@ -121,7 +122,7 @@ def audit_project(
                         AuditFinding(
                             "broken_link",
                             rel,
-                            (_evidence(path, number, line),),
+                            (_evidence(rel, number, line),),
                             "error",
                             False,
                             "Replace the link with an in-repository target or an intentional external URL.",
@@ -134,7 +135,7 @@ def audit_project(
                         AuditFinding(
                             "broken_link",
                             rel,
-                            (_evidence(path, number, line),),
+                            (_evidence(rel, number, line),),
                             "error",
                             False,
                             "Fix or remove the relative link after verifying the intended target.",
@@ -148,7 +149,7 @@ def audit_project(
                 AuditFinding(
                     "drift",
                     rel,
-                    (_evidence(path, 1, lines[0] if lines else rel),),
+                    (_evidence(rel, 1, lines[0] if lines else rel),),
                     "info",
                     True,
                     "Human-verify that prescriptive prose still matches the current implementation.",

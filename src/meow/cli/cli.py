@@ -45,7 +45,6 @@ from meow.infrastructure.worktree_controls import (
 )
 from meow.integrations.ci_review import CiReviewError, run_ci_review
 from meow.integrations.docs_update import (
-    DocsUpdateError,
     prepare_docs_update,
     run_docs_update,
 )
@@ -132,9 +131,10 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         )
     if args.command == "docs-update":
         try:
-            prepared = prepare_docs_update(working_dir, args.since)
+            target = load_config(working_dir)["delivery"]["target_branch"]
+            prepared = prepare_docs_update(working_dir, args.since, target)
             result = asyncio.run(run_docs_update(prepared))
-        except (DocsUpdateError, RuntimeError, OSError) as exc:
+        except (ValueError, RuntimeError, OSError) as exc:
             print(f"docs-update failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc
         print(f"Baseline: {result.baseline_sha}")
@@ -182,7 +182,9 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
     )
     if args.command == "run" and args.background:
         try:
-            run_id = launch_background(working_dir, sys.argv[1:])
+            run_id = launch_background(
+                working_dir, sys.argv[1:] if argv is None else list(argv)
+            )
         except BackgroundError as exc:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from exc

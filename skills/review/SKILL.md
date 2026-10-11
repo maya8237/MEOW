@@ -169,8 +169,6 @@ Omitting every source flag reviews the latest plan in `docs_dir` (default
 `--gitlab` and `--github` combined with `--fix` are rejected -- there is no
 local checkout to fix. `--ci` is mutually exclusive with prompt text, other
 sources, `--fix`, `--test`, and `--no-worktree`; it reviews the exact detached
-CI checkout and writes report/verdict artifacts. If `meow`
-isn't on PATH, tell the user to install it (README: `pip install -e .` in a
-venv, or `pipx install -e .`). Stream `[reviewer]`/`[generator]`/
+CI checkout and writes report/verdict artifacts. Stream `[reviewer]`/`[generator]`/
 `[review_fixer]` progress; report PASS or, after `max_rounds`, the review
 file path.

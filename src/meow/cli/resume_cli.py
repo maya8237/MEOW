@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from meow.cli.status_cli import render
+from meow.cli.status_cli import RESUMABLE_SOURCES, render
 from meow.execution.run_state import RunRecord, RunStateError, RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.cancellation import clear_cancel
@@ -105,7 +105,7 @@ async def resume(  # ruff: ignore[complex-structure, too-many-return-statements,
     if record.phase == "complete":
         print("Run already complete.", file=sys.stderr)
         return 1
-    if record.source not in {"prompt", "jira", "native"}:
+    if record.source not in RESUMABLE_SOURCES:
         print(
             f"Cannot resume {record.source} run with feature agents. "
             f"Inspect with meow status {record.id} and rerun its command.",

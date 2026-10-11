@@ -5,7 +5,7 @@ from pathlib import Path
 from claude_agent_sdk import ClaudeAgentOptions
 
 from meow.agents.base import Agent
-from meow.agents.reviewer import _verdict_status
+from meow.agents.reviewer import _verdict_status, force_fail
 from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.project.plan_files import plan_test_file
 from meow.project.prompts import tester_prompt
@@ -155,8 +155,9 @@ class VerificationAgent(Agent):
                 if command.gate
                 and (command.timed_out or command.exit_code not in {0, None})
             ]
-            return "FAIL", (
-                f"{verdict.rstrip()}\n\nMandatory test command failed: "
-                f"{'; '.join(failures)}.\nSTATUS: FAIL"
+            verdict = force_fail(
+                verdict, f"Mandatory test command failed: {'; '.join(failures)}."
             )
+            report_file.write_text(verdict, encoding="utf-8")
+            return "FAIL", verdict
         return status, verdict
