@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MEOW catalog</title>
+<style>
+  :root { color-scheme: light dark; --line: #8884; --muted: #888; --accent: #6b5ce7; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; }
+  nav button { background: none; border: 0; padding: 6px 10px; cursor: pointer; color: inherit; border-bottom: 2px solid transparent; }
+  nav button[aria-selected="true"] { border-bottom-color: var(--accent); font-weight: 600; }
+  nav .count { color: var(--muted); font-size: 12px; }
+  input[type="search"] { margin-left: auto; padding: 5px 8px; min-width: 220px; }
+  main { flex: 1; display: grid; grid-template-columns: minmax(220px, 320px) 1fr; min-height: 0; }
+  aside { border-right: 1px solid var(--line); overflow: auto; }
+  aside ul { list-style: none; margin: 0; padding: 0; }
+  aside li button { width: 100%; text-align: left; background: none; border: 0; padding: 8px 12px; cursor: pointer; color: inherit; border-bottom: 1px solid var(--line); }
+  aside li button[aria-current="true"] { background: #6b5ce722; }
+  .name { font-weight: 600; }
+  .desc { color: var(--muted); font-size: 12px; }
+  section.detail { overflow: auto; padding: 16px 20px; }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); margin-right: 6px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 12px 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; word-break: break-all; }
+  pre { background: #8881; padding: 12px; border-radius: 6px; overflow: auto; white-space: pre-wrap; }
+  .error { background: #c0392b22; border: 1px solid #c0392b; padding: 10px 12px; margin: 10px 16px 0; border-radius: 6px; white-space: pre-wrap; }
+  .notes { color: var(--muted); font-size: 12px; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .empty { color: var(--muted); padding: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MEOW catalog</h1>
+  <nav id="tabs"></nav>
+  <input id="search" type="search" placeholder="Filter by name or description">
+</header>
+<div id="error" class="error" hidden></div>
+<main>
+  <aside>
+    <ul id="list"></ul>
+    <div id="notes" class="notes" hidden></div>
+  </aside>
+  <section id="detail" class="detail"></section>
+</main>
+<script>
+const TABS = [
+  ["workflows", "Workflows"],
+  ["agents", "Agents"],
+  ["skills", "Skills"],
+];
+const state = { data: null, tab: "workflows", query: "", selected: null };
+const $ = (id) => document.getElementById(id);
+
+function el(tag, props = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (key === "text") node.textContent = value;
+    else if (key === "className") node.className = value;
+    else node.setAttribute(key, value);
+  }
+  for (const child of children) node.append(child);
+  return node;
+}
+
+function items() {
+  const all = state.data ? state.data[state.tab] : [];
+  const query = state.query.trim().toLowerCase();
+  if (!query) return all;
+  return all.filter((item) =>
+    item.name.toLowerCase().includes(query) ||
+    (item.description || "").toLowerCase().includes(query));
+}
+
+function renderTabs() {
+  const nav = $("tabs");
+  nav.replaceChildren(...TABS.map(([key, label]) => {
+    const count = state.data ? state.data[key].length : 0;
+    const button = el("button", { role: "tab", "aria-selected": String(key === state.tab) }, [
+      document.createTextNode(label + " "),
+      el("span", { className: "count", text: `(${count})` }),
+    ]);
+    button.addEventListener("click", () => {
+      state.tab = key;
+      state.selected = null;
+      render();
+    });
+    return button;
+  }));
+}
+
+function renderList() {
+  const list = items();
+  const selectedName = state.selected && state.selected.name;
+  if (!list.some((item) => item.name === selectedName)) {
+    state.selected = list[0] || null;
+  }
+  const rows = list.map((item) => {
+    const button = el("button", { "aria-current": String(item === state.selected) }, [
+      el("div", { className: "name", text: item.name }),
+      el("div", { className: "desc", text: item.description || "" }),
+    ]);
+    button.addEventListener("click", () => {
+      state.selected = item;
+      render();
+    });
+    return el("li", {}, [button]);
+  });
+  $("list").replaceChildren(...rows);
+  if (!rows.length) {
+    $("list").replaceChildren(el("li", { className: "empty", text: "Nothing matches." }));
+  }
+}
+
+function field(label, value) {
+  if (value === null || value === undefined || value === "" || (Array.isArray(value) && !value.length)) {
+    return null;
+  }
+  const text = Array.isArray(value) ? value.join(", ") : String(value);
+  return [el("dt", { text: label }), el("dd", { text })];
+}
+
+function renderDetail() {
+  const item = state.selected;
+  const detail = $("detail");
+  if (!item) {
+    detail.replaceChildren(el("div", { className: "empty", text: "Select an item." }));
+    return;
+  }
+  const badges = [el("span", { className: "badge", text: item.scope })];
+  if (item.ejected) badges.push(el("span", { className: "badge", text: "ejected" }));
+  if (item.delegate) badges.push(el("span", { className: "badge", text: "delegate" }));
+  const facts = {
+    workflows: [
+      ["File", item.file],
+      ["Steps", (item.steps || []).map((step) => `${step.id} (${step.kind})`)],
+    ],
+    agents: [
+      ["File", item.file],
+      ["Role", item.role],
+      ["Tools", item.tools === null ? "inherited" : item.tools],
+      ["Model", item.model || "inherited"],
+      ["Skills", item.skills],
+    ],
+    skills: [
+      ["Qualified name", item.qualified_name],
+      ["Directory", item.directory],
+    ],
+  }[state.tab];
+  const rows = facts.map(([label, value]) => field(label, value)).filter(Boolean).flat();
+  detail.replaceChildren(
+    el("h2", { text: item.name }),
+    el("div", {}, badges),
+    el("p", { text: item.description || "" }),
+    el("dl", {}, rows),
+    el("pre", { text: item.text }),
+  );
+}
+
+function renderNotes() {
+  const notes = $("notes");
+  const lines = state.data ? state.data.notes : [];
+  notes.hidden = !lines.length;
+  notes.replaceChildren(...lines.map((line) => el("div", { text: line })));
+}
+
+function render() {
+  if (!state.data) return;
+  const error = $("error");
+  error.hidden = !state.data.error;
+  error.textContent = state.data.error || "";
+  renderTabs();
+  renderList();
+  renderDetail();
+  renderNotes();
+}
+
+async function load() {
+  const response = await fetch("/api/catalog", { cache: "no-store" });
+  state.data = await response.json();
+  render();
+}
+
+$("search").addEventListener("input", (event) => {
+  state.query = event.target.value;
+  render();
+});
+
+load().catch((error) => {
+  $("error").hidden = false;
+  $("error").textContent = `Could not load the catalog: ${error}`;
+});
+</script>
+</body>
+</html>

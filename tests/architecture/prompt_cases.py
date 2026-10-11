@@ -11,8 +11,8 @@ from pathlib import Path
 from meow.project.config_models import LintCommand
 from meow.project.shaping import ShapeContext
 
-PLAN = Path("C:/repo/.meow/plans/feature.md")
-REVIEW = Path("C:/repo/.meow/plans/feature-review.md")
+PLAN = Path("/repo/.meow/plans/feature.md")
+REVIEW = Path("/repo/.meow/plans/feature-review.md")
 SHAPE = ShapeContext("docs/shape.json", "bounded adapter", ("legacy API remains",))
 LINT = [LintCommand("ruff check"), LintCommand("fallow", gate=False)]
 EVIDENCE = {"files": ["src/a.py"], "notes": "x"}
@@ -23,7 +23,7 @@ def cases() -> list[tuple[str, str, tuple, dict]]:
     found: list[tuple[str, str, tuple, dict]] = [
         ("docs_update", "docs_update_prompt", ("abc123", "def456"), {}),
         ("tester", "tester_prompt", (REVIEW,), {}),
-        ("explorer", "explorer_prompt", (Path("C:/repo"),), {}),
+        ("explorer", "explorer_prompt", (Path("/repo"),), {}),
         ("generator", "generator_prompt", (PLAN,), {}),
         ("review_fixer", "review_fixer_prompt", (), {}),
         ("lint_fixer", "lint_fixer_prompt", (), {}),

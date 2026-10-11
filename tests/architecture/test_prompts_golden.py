@@ -21,7 +21,7 @@ GOLDEN = json.loads(
 
 
 def _words(text: str) -> str:
-    return " ".join(text.split())
+    return " ".join(text.replace("\\", "/").split())
 
 
 @pytest.mark.parametrize(("case_id", "builder", "args", "kwargs"), cases())
