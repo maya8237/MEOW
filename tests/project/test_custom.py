@@ -12,7 +12,7 @@ from meow.agents import generator, planner
 from meow.agents.base import ProjectContext
 from meow.agents.explorer import make_explorer_agent
 from meow.execution.sprint import Sprint
-from meow.native import native
+from meow.native import native, native_custom
 from meow.project.config import load_config
 from meow.project.custom import PLUGIN_NAME, skill_plugin_dir
 
@@ -339,3 +339,42 @@ def test_native_custom_lists_what_a_role_receives(project, home):
     assert auditor["model"] is None
     assert auditor["scope"] == "project"
     assert len(everything["skills"]) == len(everything["agents"]) == 1
+
+
+def _user_config_with_missing_folder(project: Path, home: Path) -> None:
+    skill(home / ".meow" / "kept", "style")
+    write(
+        home / ".meow" / "config.toml",
+        '[custom]\nskills = ["gone", "kept"]\n',
+    )
+
+
+def test_missing_user_scope_folder_is_skipped_and_reported(project, home):
+    _user_config_with_missing_folder(project, home)
+
+    custom = load_config(project)["customizations"]
+
+    assert [s.name for s in custom.skills] == ["style"]
+    (note,) = custom.skipped
+    assert "gone" in note
+    assert "user scope" in note
+
+
+def test_missing_local_scope_folder_still_raises(project, home):
+    write(
+        project / ".meow" / "config.local.toml",
+        '[custom]\nskills = ["missing"]\n',
+    )
+
+    with pytest.raises(ValueError, match="does not exist"):
+        load_config(project)
+
+
+def test_native_custom_reports_skipped_sources(project, home):
+    _user_config_with_missing_folder(project, home)
+
+    result = native_custom.custom(project, project)
+
+    expected = list(load_config(project)["customizations"].skipped)
+    assert len(expected) == 1
+    assert result["skipped"] == expected

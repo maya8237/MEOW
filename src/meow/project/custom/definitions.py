@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from meow.infrastructure.logging import get_logger
 from meow.project.custom import frontmatter
 from meow.project.custom.sources import AGENT_ROLES, SCOPES, CustomSource
 
@@ -13,6 +14,7 @@ PLUGIN_NAME = "meow-custom"
 RESERVED_AGENT_NAMES = frozenset({"explorer"})
 _NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _NAME_MAX = 64
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,8 @@ class Customizations:
     agents: tuple[CustomAgent, ...] = ()
     # "<kind> <name>: <scope> overrides <scope>" for each shadowed definition.
     overrides: tuple[str, ...] = ()
+    # One sentence per configured user-scope directory that does not exist.
+    skipped: tuple[str, ...] = ()
 
     def skills_for(self, role: str) -> list[str]:
         return [s.qualified_name for s in self.skills if s.applies_to(role)]
@@ -122,6 +126,8 @@ def _load_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
 
 
 def _definitions(source: CustomSource) -> list:
+    if source.missing:
+        return []
     if source.kind == "skills":
         return [
             _load_skill(child, source)
@@ -157,6 +163,24 @@ def _merge(kind: str, sources: list[CustomSource]) -> tuple[list, list[str]]:
     return list(chosen.values()), overrides
 
 
+def _skipped(sources: list[CustomSource]) -> tuple[str, ...]:
+    notes = []
+    for source in sources:
+        if not source.missing:
+            continue
+        notes.append(
+            f"custom {source.kind} directory {source.path} does not exist "
+            f"(user scope, from {source.config_file}); skipped"
+        )
+        logger.warning(
+            "custom_source_missing",
+            kind=source.kind,
+            path=str(source.path),
+            config_file=str(source.config_file),
+        )
+    return tuple(notes)
+
+
 def discover(sources: list[CustomSource]) -> Customizations:
     """Read every configured directory and resolve scope precedence.
 
@@ -179,5 +203,8 @@ def discover(sources: list[CustomSource]) -> Customizations:
         for agent in agents
     ]
     return Customizations(
-        tuple(skills), tuple(agents), tuple(skill_overrides + agent_overrides)
+        tuple(skills),
+        tuple(agents),
+        tuple(skill_overrides + agent_overrides),
+        _skipped(sources),
     )
