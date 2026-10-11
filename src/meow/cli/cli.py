@@ -53,6 +53,7 @@ from meow.integrations.docs_update import (
 from meow.native.native_cli import run_native
 from meow.project.config import load_config
 from meow.project.onboarding import onboard_if_needed
+from meow.ui import serve_ui
 
 logger = get_logger(__name__)
 
@@ -87,6 +88,14 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from exc
         return
+    if args.command == "ui":
+        try:
+            raise SystemExit(
+                serve_ui(working_dir, args.port, open_browser=not args.no_browser)
+            )
+        except OSError as exc:
+            print(f"Could not start the catalog page: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
     if args.command == "_worker":
         raise SystemExit(worker_main(working_dir, args.run_id, args.nonce))
     if args.command == "status":

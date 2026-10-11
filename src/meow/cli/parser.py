@@ -6,6 +6,7 @@ from importlib.metadata import version
 
 from meow.cli.catalog_cli import add_catalog_parsers
 from meow.native.native_cli import add_native_parser
+from meow.ui import DEFAULT_PORT
 
 _VISIBLE_COMMANDS = (
     "run",
@@ -19,6 +20,7 @@ _VISIBLE_COMMANDS = (
     "ipython",
     "workflows",
     "agents",
+    "ui",
 )
 
 
@@ -178,6 +180,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
 
     _add_run_parser(subparsers)
     add_catalog_parsers(subparsers)
+    ui_parser = subparsers.add_parser(
+        "ui", help="Browse workflows, agents, and skills in a local page."
+    )
+    ui_parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    ui_parser.add_argument("--no-browser", action="store_true")
+    _add_common_args(ui_parser)
     worker_parser = _add_hidden_parser(subparsers, "_worker")
     worker_parser.add_argument("run_id")
     worker_parser.add_argument("--nonce", required=True)
