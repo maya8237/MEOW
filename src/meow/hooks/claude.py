@@ -121,11 +121,12 @@ def install_claude_hooks(  # ruff: ignore[complex-structure, too-many-statements
             old_entry = item.get("entry") if isinstance(item, dict) else None
             if (
                 isinstance(old_entry, dict)
+                and isinstance(item.get("event"), str)
                 and _entry_command(old_entry) == COMMANDS[name]
-                and (item["event"] != event or old_entry != entry)
+                and (item.get("event") != event or old_entry != entry)
             ):
                 manifest_entries.remove(item)
-                stale = hooks.get(item["event"])
+                stale = hooks.get(item.get("event"))
                 while isinstance(stale, list) and old_entry in stale:
                     stale.remove(old_entry)
         if entry not in entries:
