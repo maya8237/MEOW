@@ -1,4 +1,5 @@
 import http.client
+import json
 import shutil
 import threading
 from http import HTTPStatus
@@ -8,6 +9,7 @@ from urllib.request import urlopen
 import pytest
 
 from meow.project.custom.sources import builtin_dir
+from meow.ui import create as create_module
 from meow.ui.catalog import build_catalog
 from meow.ui.server import _Server
 
@@ -93,3 +95,186 @@ def test_server_rejects_foreign_host_and_unknown_paths(running):
     connection = http.client.HTTPConnection("127.0.0.1", running.server_port)
     connection.request("GET", "/etc/passwd")
     assert connection.getresponse().status == HTTPStatus.NOT_FOUND
+
+
+def test_server_serves_logo(running):
+    with urlopen(f"http://127.0.0.1:{running.server_port}/logo.png") as response:
+        assert response.headers["Content-Type"] == "image/png"
+        assert response.read(8) == b"\x89PNG\r\n\x1a\n"
+
+
+def _post(port, path, payload, headers=None):
+    sent = {"Content-Type": "application/json", **(headers or {})}
+    connection = http.client.HTTPConnection("127.0.0.1", port)
+    connection.request("POST", path, body=json.dumps(payload), headers=sent)
+    response = connection.getresponse()
+    return response.status, json.loads(response.read())
+
+
+def test_create_agent_copies_existing_definition(running, project):
+    status, body = _post(
+        running.server_port,
+        "/api/agents",
+        {"name": "helper", "description": "Helps out.", "source": "explorer"},
+    )
+
+    assert status == HTTPStatus.CREATED
+    created = project / ".meow" / "agents" / "helper.toml"
+    assert body["file"] == str(created)
+    text = created.read_text(encoding="utf-8")
+    assert text.startswith('name = "helper"\ndescription = "Helps out."\n')
+    assert "ejected_from" not in text
+    agents = {item["name"]: item for item in build_catalog(project)["agents"]}
+    assert agents["helper"]["scope"] == "project"
+
+
+def test_create_workflow_copies_existing_definition(running, project):
+    status, _ = _post(
+        running.server_port,
+        "/api/workflows",
+        {"name": "nightly-copy", "description": "Copy.", "source": "nightly"},
+    )
+
+    assert status == HTTPStatus.CREATED
+    workflows = {item["name"] for item in build_catalog(project)["workflows"]}
+    assert "nightly-copy" in workflows
+
+
+def test_create_skill_in_configured_folder(running, project):
+    status, body = _post(
+        running.server_port,
+        "/api/skills",
+        {"name": "journal", "description": "Keeps a journal.", "source": ""},
+    )
+
+    assert status == HTTPStatus.CREATED
+    assert (project / "tools" / "skills" / "journal" / "SKILL.md") == Path(body["file"])
+    skills = {item["name"]: item for item in build_catalog(project)["skills"]}
+    assert skills["journal"]["description"] == "Keeps a journal."
+
+
+def test_create_skill_copies_existing_skill(running, project):
+    status, _ = _post(
+        running.server_port,
+        "/api/skills",
+        {"name": "notes-copy", "description": "Copy.", "source": "notes"},
+    )
+
+    assert status == HTTPStatus.CREATED
+    copied = project / "tools" / "skills" / "notes-copy" / "SKILL.md"
+    assert copied.read_text(encoding="utf-8").startswith("---\nname: notes-copy\n")
+    assert "Body." in copied.read_text(encoding="utf-8")
+
+
+def test_create_skill_without_config_adds_default_folder(tmp_path):
+    status, _ = _create(tmp_path, "skills", {"name": "fresh", "description": "New."})
+
+    assert status == HTTPStatus.CREATED
+    assert (tmp_path / ".meow" / "skills" / "fresh" / "SKILL.md").is_file()
+    config = (tmp_path / ".meow" / "config.toml").read_text(encoding="utf-8")
+    assert '[custom]\nskills = [".meow/skills"]' in config
+    assert "fresh" in {item["name"] for item in build_catalog(tmp_path)["skills"]}
+
+
+def _create(project_dir, kind, payload):
+    server = _Server(0, project_dir)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        return _post(server.server_port, f"/api/{kind}", payload)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_create_at_local_scope(running, project):
+    status, _ = _post(
+        running.server_port,
+        "/api/agents",
+        {
+            "name": "localhelper",
+            "description": "Local.",
+            "source": "explorer",
+            "scope": "local",
+        },
+    )
+
+    assert status == HTTPStatus.CREATED
+    assert (project / ".meow" / "local" / "agents" / "localhelper.toml").is_file()
+
+
+def test_create_at_user_scope(running, project, tmp_path, monkeypatch):
+    home = tmp_path / "home" / ".meow"
+    monkeypatch.setattr(create_module, "user_config_path", lambda: home / "config.toml")
+
+    status, _ = _post(
+        running.server_port,
+        "/api/workflows",
+        {
+            "name": "shared-flow",
+            "description": "Shared.",
+            "source": "nightly",
+            "scope": "user",
+        },
+    )
+
+    assert status == HTTPStatus.CREATED
+    assert (home / "workflows" / "shared-flow.toml").is_file()
+
+
+def test_create_user_skill_registers_user_folder(tmp_path, monkeypatch):
+    home = tmp_path / "home" / ".meow"
+    monkeypatch.setattr(create_module, "user_config_path", lambda: home / "config.toml")
+    project = tmp_path / "project"
+    project.mkdir()
+
+    status, _ = _create(
+        project, "skills", {"name": "shared", "description": "Shared.", "scope": "user"}
+    )
+
+    assert status == HTTPStatus.CREATED
+    assert (home / "skills" / "shared" / "SKILL.md").is_file()
+    assert 'skills = ["skills"]' in (home / "config.toml").read_text(encoding="utf-8")
+
+
+def test_create_rejects_unknown_scope(running):
+    status, _ = _post(
+        running.server_port,
+        "/api/agents",
+        {"name": "helper2", "source": "explorer", "scope": "global"},
+    )
+
+    assert status == HTTPStatus.BAD_REQUEST
+
+
+def test_create_rejects_bad_requests(running, project):
+    port = running.server_port
+    status, body = _post(
+        port, "/api/agents", {"name": "Bad Name", "source": "explorer"}
+    )
+    assert status == HTTPStatus.BAD_REQUEST
+    assert "lowercase" in body["error"]
+
+    status, _ = _post(port, "/api/agents", {"name": "triage", "source": "explorer"})
+    assert status == HTTPStatus.CONFLICT
+
+    status, _ = _post(port, "/api/agents", {"name": "fresh", "source": "missing"})
+    assert status == HTTPStatus.BAD_REQUEST
+
+    status, _ = _post(
+        port,
+        "/api/agents",
+        {"name": "fresh", "source": "explorer"},
+        {"Content-Type": "text/plain"},
+    )
+    assert status == HTTPStatus.UNSUPPORTED_MEDIA_TYPE
+
+    status, _ = _post(
+        port,
+        "/api/agents",
+        {"name": "fresh", "source": "explorer"},
+        {"Origin": "http://evil.example"},
+    )
+    assert status == HTTPStatus.FORBIDDEN
+
+    assert not (project / ".meow" / "agents" / "fresh.toml").exists()
