@@ -19,6 +19,8 @@ from meow.infrastructure.checks import (
 )
 from meow.project.config import load_config
 
+MAX_KILL_SECONDS = 10
+
 
 @pytest.fixture(autouse=True)
 def _meow_config_directory(tmp_path):
@@ -199,3 +201,43 @@ def test_final_checks_rerun_when_build_changes_code(tmp_path):
         results = asyncio.run(run_final_checks(tmp_path, config))
     assert len(results) == len([lint, build])
     assert checks_current(results, [lint, build], tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("command", "cwd"),
+    [
+        (sys.executable, "missing-dir"),  # cwd that does not exist in this checkout
+        ('"unterminated', "."),  # unbalanced quote
+        ("", "."),  # empty command
+    ],
+)
+def test_unlaunchable_check_is_a_failed_result_not_a_crash(tmp_path, command, cwd):
+    from pathlib import Path
+
+    (tmp_path / ".meow" / "config.toml").write_text("x=1", encoding="utf-8")
+    check = Check("lint", "lint-1", command, (), True, 5, Path(cwd))
+    result = run_check(tmp_path, check)
+    assert not result.passed
+    assert result.exit_code is None
+    assert result.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_timed_out_check_leaves_no_orphaned_children(tmp_path):
+    import time
+
+    (tmp_path / ".meow" / "config.toml").write_text("x=1", encoding="utf-8")
+    marker = tmp_path / "survivor"
+    child = f"import time;time.sleep(1.5);open(r'{marker}','w').close()"
+    code = (
+        "import subprocess, sys, time;"
+        f"subprocess.Popen([sys.executable, '-c', {child!r}]);"
+        "time.sleep(60)"
+    )
+    check = Check("lint", "lint-1", sys.executable, ("-c", code), True, 0.5)
+    started = time.monotonic()
+    result = run_check(tmp_path, check)
+    assert result.timed_out
+    assert time.monotonic() - started < MAX_KILL_SECONDS
+    time.sleep(2.5)
+    assert not marker.exists()
