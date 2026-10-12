@@ -104,3 +104,42 @@ def test_external_cancellation_waits_for_active_workers_to_stop():
         assert sorted(stopped) == ["api", "ui"]
 
     asyncio.run(scenario())
+
+
+RETRIED = 2
+
+
+def test_independent_task_survives_a_failure_and_transient_errors_retry():
+    calls = {"ui": 0}
+
+    async def worker(spec):  # ruff: ignore[unused-async]
+        if spec.id == "api":
+            raise ValueError("owned path violated")
+        if spec.id == "ui":
+            calls["ui"] += 1
+            if calls["ui"] == 1:
+                raise OSError("transient")
+        return TaskOutcome(spec.id, "complete", f"/tmp/{spec.id}", spec.id)
+
+    outcomes = asyncio.run(run_task_graph(_graph(), worker, max_parallel=2, retries=1))
+    by_id = {item.id: item for item in outcomes}
+    assert by_id["api"].status == "failed"
+    assert "owned path" in by_id["api"].error
+    assert by_id["ui"].status == "complete"
+    assert calls["ui"] == RETRIED
+    assert by_id["integration"].status == "skipped"
+    assert "api" in by_id["integration"].error
+
+
+def test_completed_tasks_are_not_rerun():
+    ran = []
+
+    async def worker(spec):  # ruff: ignore[unused-async]
+        ran.append(spec.id)
+        return TaskOutcome(spec.id, "complete", f"/tmp/{spec.id}", spec.id)
+
+    outcomes = asyncio.run(
+        run_task_graph(_graph(), worker, max_parallel=2, completed={"api", "ui"})
+    )
+    assert ran == ["integration"]
+    assert [item.status for item in outcomes] == ["complete"] * 3

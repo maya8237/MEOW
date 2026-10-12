@@ -66,7 +66,7 @@ def _check_clean_tree(args, working_dir: Path) -> None:
         raise SystemExit(1) from exc
 
 
-def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-statements] -- command dispatch
+def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-statements, too-many-locals] -- command dispatch
     configure_logging()
     if argv is None and len(sys.argv) == 1:
         start_ipython()
@@ -96,6 +96,16 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         except OSError as exc:
             print(f"Could not start the catalog page: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc
+    if args.command == "detach":
+        from meow.infrastructure.background import detach_command
+
+        try:
+            info = detach_command(working_dir, args.detach_argv, args.log)
+        except (BackgroundError, OSError) as exc:
+            print(f"Detach failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        print(json.dumps(info))
+        return
     if args.command == "_worker":
         raise SystemExit(worker_main(working_dir, args.run_id, args.nonce))
     if args.command == "status":

@@ -187,6 +187,46 @@ def launch_background(  # ruff: ignore[too-many-statements]
     return record.id
 
 
+def detach_command(
+    working_dir: Path, argv: list[str], log: str | None = None
+) -> dict[str, object]:
+    """Start `argv` in its own session/process group so nothing kills it.
+
+    The process keeps running after the caller exits, is interrupted, or has
+    its context compacted. Output goes to a log file; poll it and the PID.
+    """
+    argv = argv[1:] if argv[:1] == ["--"] else list(argv)
+    if not argv:
+        raise BackgroundError("Nothing to run: meow detach [--log FILE] -- COMMAND ...")
+    working_dir = working_dir.resolve()
+    if log is None:
+        directory = working_dir / ".meow" / "detached"
+        directory.mkdir(parents=True, exist_ok=True)
+        log_path = directory / f"{int(time.time())}-{secrets.token_hex(3)}.log"
+    else:
+        log_path = Path(log).resolve()
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+    creationflags = 0
+    if sys.platform == "win32":
+        creationflags = (
+            subprocess.CREATE_NEW_PROCESS_GROUP
+            | subprocess.CREATE_NO_WINDOW
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+        )
+    with log_path.open("ab") as stream:
+        process = subprocess.Popen(
+            argv,
+            cwd=working_dir,
+            stdin=subprocess.DEVNULL,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+            start_new_session=sys.platform != "win32",
+            creationflags=creationflags,
+            close_fds=True,
+        )
+    return {"pid": process.pid, "log": str(log_path), "argv": argv}
+
+
 def _wait_for_registration(store: RunStore, run_id: str, nonce: str) -> RunRecord:
     for _ in range(100):
         record = store.load(run_id)

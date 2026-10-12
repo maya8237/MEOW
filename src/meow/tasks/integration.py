@@ -23,7 +23,7 @@ class IntegrationResult:
     conflict: str | None = None
 
 
-def integrate_results(  # ruff: ignore[complex-structure]
+def integrate_results(  # ruff: ignore[complex-structure, too-many-branches]
     repo: Path, base: str, outcomes: tuple[TaskOutcome, ...]
 ) -> IntegrationResult:
     """Cherry-pick successful commits; retain worker checkouts on conflict."""

@@ -202,3 +202,20 @@ def test_missing_session_reference_refuses_resume(tmp_path, capsys):
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()
     assert "missing claude session" in capsys.readouterr().err.lower()
+
+
+def test_repair_rebaselines_a_changed_plan(tmp_path, capsys):
+    store, record = _record(tmp_path)
+    plan = tmp_path / "plan.md"
+    plan.write_text("one", encoding="utf-8")
+    store.transition(
+        record.id, "planned", plan_file=str(plan), plan_fingerprint="stale"
+    )
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
+        run.assert_not_awaited()
+        assert (
+            asyncio.run(resume(tmp_path, record.id, continue_run=True, repair=True))
+            == 0
+        )
+    assert "re-baselined" in capsys.readouterr().out

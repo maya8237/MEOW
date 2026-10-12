@@ -45,7 +45,7 @@ async def _attempt(
             await asyncio.sleep(min(2.0 * attempt, 10.0))
 
 
-async def run_task_graph(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements, too-many-arguments, too-many-locals]
+async def run_task_graph(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements, too-many-arguments]
     graph: TaskGraph,
     worker: Callable[[TaskSpec], Awaitable[TaskOutcome]],
     *,

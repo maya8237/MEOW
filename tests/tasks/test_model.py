@@ -63,3 +63,27 @@ def test_optional_task_graph_file_is_validated(tmp_path):
     )
     with pytest.raises(ValueError):
         load_task_graph(plan)
+
+
+def test_prose_verification_is_normalized_to_a_list(tmp_path):
+    import json
+
+    from meow.tasks.model import load_task_graph
+
+    plan = tmp_path / "plan.md"
+    (tmp_path / "plan.md.tasks.json").write_text(
+        json.dumps({
+            "tasks": [
+                {
+                    "id": "a",
+                    "depends_on": [],
+                    "owned_paths": "src/a",
+                    "verification": "- python -m pytest tests/a\n- ruff check src/a",
+                }
+            ]
+        }),
+        encoding="utf-8",
+    )
+    task = load_task_graph(plan).tasks[0]
+    assert task.verification == ("python -m pytest tests/a", "ruff check src/a")
+    assert task.owned_paths == ("src/a",)
