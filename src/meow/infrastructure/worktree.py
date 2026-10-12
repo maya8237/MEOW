@@ -6,6 +6,7 @@ has no dependency on `Sprint`, config, or any agent.
 """
 
 import contextlib
+import os
 import re
 import shutil
 import subprocess
@@ -324,6 +325,7 @@ def _add_detached_worktree(  # ruff: ignore[too-many-arguments]
     *,
     release_on_failure: bool,
 ) -> None:
+    _prune_worktrees(git, working_dir)
     argv = [git, "-C", str(working_dir), "worktree", "add", "--detach"]
     argv.append(str(worktree_dir))
     if source_branch:
@@ -342,10 +344,32 @@ def _add_detached_worktree(  # ruff: ignore[too-many-arguments]
         ) from exc
 
 
+# A stuck credential prompt, hook or network must fail the call, not the run.
+_GIT_TIMEOUT = 600
+
+
 def _run_git(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        argv, cwd=cwd, capture_output=True, text=True, check=False, encoding="utf-8"
-    )
+    try:
+        return subprocess.run(
+            argv,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding="utf-8",
+            timeout=_GIT_TIMEOUT,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"{' '.join(argv)} timed out after {_GIT_TIMEOUT}s in {cwd}"
+        ) from None
+
+
+def _prune_worktrees(git: str, working_dir: Path) -> None:
+    """Forget worktrees whose directory is gone (cleaned CI workspace, manual
+    rm); git otherwise refuses to re-add their path or check out their branch."""
+    _run_git([git, "worktree", "prune"], cwd=working_dir)
 
 
 def current_branch(directory: Path, default: str = "detached") -> str:
@@ -402,6 +426,7 @@ def _ensure_branch_worktree(
         )
 
     (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)
+    _prune_worktrees(git, working_dir)
     branch_exists = (
         _run_git(
             [git, "rev-parse", "--verify", "--quiet", branch_name], cwd=working_dir
@@ -447,6 +472,7 @@ def _ensure_existing_branch_worktree(
         )
 
     (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)
+    _prune_worktrees(git, working_dir)
     if _ref_exists(git, working_dir, f"refs/heads/{branch_name}"):
         argv = [git, "worktree", "add", str(worktree_dir), branch_name]
     else:
