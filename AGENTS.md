@@ -72,6 +72,8 @@ package (see ARCHITECTURE.md) and keep the package root to entry points.
 - `infrastructure/`: lint, checks, test runner, worktrees, logging, usage,
   cancellation, background workers.
 - `integrations/`: Jira, GitLab, GitHub, CI review, docs update, knowledge.
+- `ui/`: the local `meow ui` catalog page and server; the repo registry
+  it reads lives in `project/repos.py`.
 - `hooks/`, `installer/`, `tasks/`, `evaluation/`: as named.
 
 ## Invariants worth knowing

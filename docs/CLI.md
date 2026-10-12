@@ -58,9 +58,11 @@ meow agents diff reviewer
 meow ui [--port 8765] [--no-browser]
 ```
 
-`meow ui` serves the catalog page on 127.0.0.1 only and reads the project's
-configuration on every page load, so edits show up on refresh. It lists
-workflows, agents, and skills from every scope, with their source text. The
+`meow ui` serves the catalog page on 127.0.0.1 only and rebuilds the catalog
+when configuration or definition files change. It lists workflows, agents, and
+skills from every scope, with their source text, merged across the current
+repo and every repo remembered in `~/.meow/repos.toml` (repos are remembered
+when onboarded or saved into); a repo picker narrows the view. The
 "+ New" button adds a workflow, agent, or skill by copying an existing one under
 a new name (or adds a blank skill). Each item can be saved at project scope
 (`.meow/`), local scope (`.meow/local/`, uncommitted), or user scope (`~/.meow/`).
