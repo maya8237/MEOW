@@ -24,15 +24,17 @@
   @font-face { font-family: "JetBrains Mono"; src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2"); font-weight: 700; }
   body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
   header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
-  header img { width: 32px; height: 32px; filter: drop-shadow(0 0 6px #a855f1aa); }
-  header h1 { font-size: 16px; margin: 0; }
+  header img { width: 32px; height: 32px; flex-shrink: 0; filter: drop-shadow(0 0 6px #a855f1aa); }
+  header h1 { font-size: 16px; margin: 0; flex-shrink: 0; white-space: nowrap; }
+  nav { display: flex; flex-shrink: 0; white-space: nowrap; }
   nav button { background: none; border: 0; padding: 6px 10px; cursor: pointer; color: inherit; border-bottom: 2px solid transparent; }
   nav button[aria-selected="true"] { border-bottom-color: var(--accent); font-weight: 600; color: var(--accent-text); }
   nav .count { color: var(--muted); font-size: 12px; }
-  #new { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-weight: 600; }
+  #new { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-weight: 600; flex-shrink: 0; white-space: nowrap; }
   #new:disabled { background: var(--line); color: var(--muted); cursor: not-allowed; }
   input, select { background: var(--field); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; }
   input:focus, select:focus { outline: 1px solid var(--accent); }
+  #repo-filter { flex: 1; min-width: 0; }
   #search { margin-left: auto; min-width: 220px; }
   main { flex: 1; display: grid; grid-template-columns: minmax(220px, 320px) 1fr; min-height: 0; }
   aside { border-right: 1px solid var(--line); overflow: auto; }
