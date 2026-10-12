@@ -40,3 +40,25 @@ def test_second_queue_worker_does_not_run_items(tmp_path, monkeypatch):
     assert asyncio.run(queue_runner.run_queue(tmp_path)) == 0
     assert called is False
     lock.release()
+
+
+def test_item_orphaned_by_a_killed_worker_is_reported_failed_not_stuck(
+    tmp_path, monkeypatch
+):
+    store = QueueStore(tmp_path)
+    orphan = store.enqueue("died mid-run")
+    later = store.enqueue("next")
+    store.claim(orphan.id)  # the worker that owned it was SIGKILLed
+    seen = []
+
+    async def fake_run(*args, **_kwargs):
+        await asyncio.sleep(0)
+        seen.append(args[2])
+
+    monkeypatch.setattr(queue_runner, "run_sprint", fake_run)
+    assert asyncio.run(queue_runner.run_queue(tmp_path)) == 0
+    records = {item.id: item for item in store.list()}
+    assert records[orphan.id].status == "failed"
+    assert "worker" in records[orphan.id].error
+    assert records[later.id].status == "completed"
+    assert seen == ["next"]
