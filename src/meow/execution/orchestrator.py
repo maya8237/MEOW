@@ -18,7 +18,12 @@ from meow.agents.generator import Generator
 from meow.agents.reviewer import ReviewerAgent
 from meow.agents.tester import VerificationAgent
 from meow.execution.sprint import Sprint, build_sprint
-from meow.infrastructure.checks import code_revision
+from meow.infrastructure.checks import (
+    StageBaseline,
+    adopt_stage_artifacts,
+    code_revision,
+    stage_baseline,
+)
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.quality import (
     QualityStoreError,
@@ -57,6 +62,21 @@ def _journal(sprint: Sprint, phase: str, **patch: object) -> None:
                 "reviewer_revision": code_revision(sprint.active_working_dir()),
             }
         store.transition(run_id, phase, **patch)
+
+
+def _stage_baseline(sprint: Sprint) -> StageBaseline | None:
+    if sprint.config.get("_run_journal") is None:
+        return None
+    return stage_baseline(sprint.active_working_dir())
+
+
+def _adopt_artifacts(sprint: Sprint, baseline: StageBaseline | None) -> None:
+    """Keep the review valid across a stage that only left new files behind."""
+    journal = sprint.config.get("_run_journal")
+    if journal is not None and baseline is not None:
+        adopt_stage_artifacts(
+            journal[0], journal[1], sprint.active_working_dir(), baseline
+        )
 
 
 def _capture_quality(sprint: Sprint, verdict: str) -> None:
@@ -133,6 +153,7 @@ async def review_then_test(  # ruff: ignore[too-many-arguments]
         label = "Lint" if "Blocking lint failures" in verdict else "Reviewer"
         return ReviewTestResult("FAIL", f"{label} feedback:\n{verdict}", review_status)
 
+    baseline = _stage_baseline(sprint)
     try:
         async with prepared_test_stage(
             sprint.active_working_dir(), sprint.config
@@ -150,6 +171,7 @@ async def review_then_test(  # ruff: ignore[too-many-arguments]
         "tester_finished",
         results=_tester_results(review_status, tester_status, evidence),
     )
+    _adopt_artifacts(sprint, baseline)
     if tester_status != "PASS" or evidence.blocking_failed:
         return ReviewTestResult(
             "FAIL", f"Tester feedback:\n{tester_verdict}", review_status, tester_status
