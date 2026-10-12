@@ -241,7 +241,7 @@ def configured_checks(config: dict) -> list[Check]:
     return checks
 
 
-def _kill_group(process: subprocess.Popen) -> None:
+def kill_process_tree(process: subprocess.Popen) -> None:
     """Kill the command and everything it spawned, not just the direct child."""
     if os.name == "nt":
         subprocess.run(
@@ -256,7 +256,7 @@ def _kill_group(process: subprocess.Popen) -> None:
         process.kill()
 
 
-def _capture(
+def run_captured(
     argv: list[str], cwd: Path, env: dict[str, str], timeout: float
 ) -> tuple[int | None, str, bool]:
     """Run to completion; (exit code, output, timed out). A timeout kills the
@@ -274,14 +274,14 @@ def _capture(
             data, _ = process.communicate(timeout=timeout)
             return process.returncode, data.decode("utf-8", errors="replace"), False
         except subprocess.TimeoutExpired:
-            _kill_group(process)
+            kill_process_tree(process)
             try:
                 data, _ = process.communicate(timeout=5)
             except subprocess.TimeoutExpired:
                 data = b""
             return None, data.decode("utf-8", errors="replace"), True
         except BaseException:
-            _kill_group(process)
+            kill_process_tree(process)
             raise
 
 
@@ -306,7 +306,7 @@ def run_check(
         argv = [*split_command(check.command), *check.args]
         if not argv:
             raise ValueError("empty command")
-        exit_code, output, timed_out = _capture(
+        exit_code, output, timed_out = run_captured(
             argv,
             resolve_command_cwd(repo, check.cwd),
             {**os.environ, **(check.env or {})},
