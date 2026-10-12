@@ -134,6 +134,24 @@ class QueueStore:
                 return item
         raise QueueStateError(f"Queue item {item_id} is missing")
 
+    def recover_orphans(self) -> list[QueueItem]:
+        """Fail items left `running` by a worker that died without cleaning up.
+
+        Call only while holding the worker lock, when no live worker can own
+        them. They are failed, not retried: the interrupted run may have left
+        half-written work in the checkout for a person to inspect.
+        """
+        orphans = [item for item in self._load_all() if item.status == "running"]
+        return [
+            self.update(
+                item.id,
+                status="failed",
+                error="worker exited before finishing; inspect the checkout "
+                "and re-queue the request",
+            )
+            for item in orphans
+        ]
+
     def claim(self, item_id: str) -> QueueItem:
         item = next(
             (candidate for candidate in self._load_all() if candidate.id == item_id),
