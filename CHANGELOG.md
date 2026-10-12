@@ -4,6 +4,14 @@ All notable changes to MEOW will be documented here.
 
 ## Unreleased
 
+- The installer now registers MEOW's checkout as a user-wide Claude Code
+  plugin through its marketplace (`extraKnownMarketplaces` and
+  `enabledPlugins` in `~/.claude/settings.json`) instead of the
+  `CLAUDE_CODE_PLUGIN_DIRS` variable, so `/meow:*` skills (including
+  `/meow:migration`) load after restarting Claude Code; a legacy entry is removed.
+- Onboarding, which runs on first use and from the installer, now migrates a
+  legacy `.harness.toml` to `.meow/config.toml` automatically (`docs_dir`
+  dropped, legacy file kept). `/meow:migration` covers the rest.
 - Claude Code hooks now return `additionalContext` / `systemMessage`, so lint
   failures and advisories actually reach the session.
 - A lint program that cannot start is reported as a failing command instead

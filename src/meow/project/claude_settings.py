@@ -137,7 +137,7 @@ def register_marketplace(
     marketplace_name: str,
     marketplace_dir: Path,
     *,
-    relative_to: Path,
+    relative_to: Path | None = None,
 ) -> None:
     """Declare a directory marketplace in a settings file and enable its plugin.
 
@@ -153,9 +153,8 @@ def register_marketplace(
             f"{settings_path}: extraKnownMarketplaces and enabledPlugins must be "
             "JSON objects; it was not changed"
         )
-    entry = _entry_for(
-        Path(marketplace_dir).expanduser().resolve(), Path(relative_to).resolve()
-    )
+    base = Path(relative_to).expanduser().resolve() if relative_to else None
+    entry = _entry_for(Path(marketplace_dir).expanduser().resolve(), base)
     wanted = {"source": {"source": "directory", "path": entry}}
     plugin_key = f"{marketplace_name}@{marketplace_name}"
     if known.get(marketplace_name) == wanted and enabled.get(plugin_key) is True:
@@ -165,3 +164,43 @@ def register_marketplace(
     data["extraKnownMarketplaces"] = known
     data["enabledPlugins"] = enabled
     _write_settings(settings_path, data)
+
+
+def remove_plugin_dir(settings_path: Path, plugin_dir: Path) -> bool:
+    """Drop `plugin_dir` from the plugin-dir environment setting; True if changed."""
+    settings_path = Path(settings_path)
+    if not settings_path.is_file():
+        return False
+    data = _load_settings(settings_path)
+    env = _settings_env(data, settings_path)
+    separator = os.pathsep
+    entries = _plugin_entries(env, settings_path, separator)
+    wanted = path_key(plugin_dir)
+    kept = [entry for entry in entries if _entry_path(entry, None) != wanted]
+    if len(kept) == len(entries):
+        return False
+    if kept:
+        env[PLUGIN_DIRS_ENV] = separator.join(kept)
+    else:
+        env.pop(PLUGIN_DIRS_ENV, None)
+    data["env"] = env
+    _write_settings(settings_path, data)
+    return True
+
+
+def register_checkout_plugin(settings_path: Path, checkout: Path) -> None:
+    """Enable MEOW's own checkout as a user-wide plugin through its marketplace.
+
+    The checkout root carries `.claude-plugin/marketplace.json`, so it is
+    declared as a directory marketplace and its plugin enabled. A legacy
+    plugin-dir entry for the same checkout is removed so the plugin is not
+    loaded twice.
+    """
+    checkout = Path(checkout).expanduser().resolve()
+    manifest = checkout / ".claude-plugin" / "marketplace.json"
+    try:
+        name = json.loads(manifest.read_text(encoding="utf-8"))["name"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ValueError(f"{manifest} is missing or has no marketplace name") from exc
+    register_marketplace(settings_path, str(name), checkout)
+    remove_plugin_dir(settings_path, checkout)

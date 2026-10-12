@@ -417,6 +417,7 @@ def installer_checkout(tmp_path):
         shutil.copy2(ROOT / filename, checkout / filename)
     (checkout / ".git").mkdir()
     (checkout / "skills").mkdir()
+    shutil.copytree(ROOT / ".claude-plugin", checkout / ".claude-plugin")
     return checkout
 
 
