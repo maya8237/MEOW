@@ -6,6 +6,9 @@ from meow.project import repos
 
 
 @pytest.fixture(autouse=True)
-def _isolated_repo_registry(tmp_path, monkeypatch):
-    """Keep `remember()` from writing the developer's real repo registry."""
-    monkeypatch.setattr(repos, "registry_path", lambda: tmp_path / "repos.toml")
+def _isolated_home(tmp_path_factory, monkeypatch):
+    """Keep the developer's real ~/.meow config and repo registry out of tests."""
+    home = tmp_path_factory.mktemp("home")
+    for name in ("HOME", "USERPROFILE"):
+        monkeypatch.setenv(name, str(home))
+    monkeypatch.setattr(repos, "registry_path", lambda: home / "repos.toml")
