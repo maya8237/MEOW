@@ -87,3 +87,16 @@ def test_prose_verification_is_normalized_to_a_list(tmp_path):
     task = load_task_graph(plan).tasks[0]
     assert task.verification == ("python -m pytest tests/a", "ruff check src/a")
     assert task.owned_paths == ("src/a",)
+
+
+def test_root_ownership_overlaps_every_independent_task():
+    import pytest
+
+    from meow.tasks.model import TaskGraph, TaskSpec
+
+    graph = TaskGraph((
+        TaskSpec("a", (), (".",), ()),
+        TaskSpec("b", (), ("src",), ()),
+    ))
+    with pytest.raises(ValueError, match="overlap"):
+        graph.validate()

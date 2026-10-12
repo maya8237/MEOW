@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .integration import integrate_results
-from .model import TaskGraph, TaskSpec
+from .model import TaskGraph, TaskSpec, normalize_path, owns
 from .scheduler import TaskOutcome, run_task_graph
 
 _RUN_ID = re.compile(r"[0-9a-f]{32}\Z")
@@ -42,11 +42,8 @@ def _discard_worktree(repo: Path, task_dir: Path) -> None:
 
 
 def _owned(path: str, spec: TaskSpec) -> bool:
-    value = path.replace("\\", "/").casefold()
-    return any(
-        value == owner.casefold() or value.startswith(f"{owner.casefold()}/")
-        for owner in spec.owned_paths
-    )
+    value = normalize_path(path)
+    return any(owns(normalize_path(owner), value) for owner in spec.owned_paths)
 
 
 def _ensure_ignored(root: Path, common_dir: Path) -> None:
@@ -145,7 +142,14 @@ async def execute_in_worktrees(  # ruff: ignore[complex-structure, too-many-argu
             await prepare(task_dir)
         await implement(spec, task_dir)
         await _git(task_dir, "add", "-A")
-        staged = (await _git(task_dir, "diff", "--cached", "--name-only")).splitlines()
+        # NUL-separated: plain --name-only quotes non-ASCII names.
+        staged = [
+            name
+            for name in (
+                await _git(task_dir, "diff", "--cached", "--name-only", "-z")
+            ).split("\0")
+            if name
+        ]
         if not staged:
             raise ValueError(f"task {spec.id} produced no changes")
         outside = [path for path in staged if not _owned(path, spec)]
