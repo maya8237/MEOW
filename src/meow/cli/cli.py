@@ -174,8 +174,8 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         print(report.render(args.verbose))
         return
     if args.command == "resume":
-        raise SystemExit(
-            asyncio.run(
+        try:
+            code = asyncio.run(
                 resume(
                     working_dir,
                     args.run_id,
@@ -184,7 +184,10 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
                     repair=args.repair,
                 )
             )
-        )
+        except _EXPECTED_FAILURES as exc:
+            print(f"\n{_describe_failure(exc)}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        raise SystemExit(code)
     if args.command == "docs-update":
         try:
             target = load_config(working_dir)["delivery"]["target_branch"]

@@ -219,3 +219,51 @@ def test_repair_rebaselines_a_changed_plan(tmp_path, capsys):
             == 0
         )
     assert "re-baselined" in capsys.readouterr().out
+
+
+def _onboarded_worktree(tmp_path):
+    """A linked worktree holding the only config (auto-onboarded, not merged)."""
+    repo = tmp_path / "repo"
+    active = tmp_path / "worktree"
+    repo.mkdir()
+    git = ["git", "-C", str(repo)]
+    subprocess.run(["git", "init", "-q", "-b", "dev", str(repo)], check=True)
+    subprocess.run([*git, "config", "user.name", "Test"], check=True)
+    subprocess.run([*git, "config", "user.email", "test@example.com"], check=True)
+    (repo / "file.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run([*git, "add", "file.txt"], check=True)
+    subprocess.run([*git, "commit", "-qm", "base"], check=True)
+    subprocess.run(
+        [*git, "worktree", "add", "-q", "-b", "feature", str(active)], check=True
+    )
+    (active / ".meow").mkdir()
+    (active / ".meow" / "config.toml").write_text("max_rounds = 1\n", encoding="utf-8")
+    store = RunStore(repo)
+    record = store.create(
+        source="prompt", request="x", repo=repo, worktree=active, branch="feature"
+    )
+    store.transition(
+        record.id,
+        "interrupted_mutation",
+        config_fingerprint=config_fingerprint(active),
+    )
+    return repo, active, store, record
+
+
+def test_validate_accepts_config_that_only_the_worktree_holds(tmp_path):
+    with patch("meow.project.config.user_config_path", return_value=tmp_path / "none"):
+        repo, _, store, record = _onboarded_worktree(tmp_path)
+        assert _validate(store.load(record.id), repo) is None
+
+
+def test_resume_does_not_report_a_missing_config_for_an_onboarded_worktree(
+    tmp_path, capsys
+):
+    with (
+        patch("meow.project.config.user_config_path", return_value=tmp_path / "none"),
+        patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run,
+    ):
+        repo, _, _, record = _onboarded_worktree(tmp_path)
+        assert asyncio.run(resume(repo, record.id, continue_run=True)) == 0
+    run.assert_awaited_once()
+    assert "configuration" not in capsys.readouterr().err.lower()
