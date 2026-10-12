@@ -64,6 +64,16 @@ def _no_symlinks(root: Path, relative: Path) -> Path:
     return current
 
 
+def _already_copied(source: Path, destination: Path) -> bool:
+    """True when `destination` is a regular file with exactly `source`'s bytes."""
+    if not destination.is_file() or destination.is_symlink():
+        return False
+    try:
+        return source.read_bytes() == destination.read_bytes()
+    except OSError:
+        return False
+
+
 def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-arguments, too-many-branches]
     repo: Path,
     worktree: Path,
@@ -77,13 +87,16 @@ def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-
         relative = _relative(relative_text)
         source = _no_symlinks(repo, relative)
         destination = _no_symlinks(worktree, relative)
-        if not source.is_file() or destination.exists():
+        if source.is_file() and _already_copied(source, destination):
+            pass  # an earlier attempt copied it; resume re-applies setup
+        elif not source.is_file() or destination.exists():
             raise WorktreeSetupError(
                 "setup copy requires a regular source and vacant destination: "
                 f"{relative}"
             )
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, destination, follow_symlinks=False)
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, destination, follow_symlinks=False)
         if record_action:
             record_action({"kind": "copy", "path": relative_text, "status": "passed"})
     for argv in manifest["commands"]:
