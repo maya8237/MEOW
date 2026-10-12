@@ -4,9 +4,11 @@ import asyncio
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
@@ -263,7 +265,18 @@ def _artifact_stamp(root: Path, name: str) -> tuple[int, int] | None:
     return stat.st_mtime_ns, stat.st_size
 
 
-async def _run_browser(active_dir: Path, tester: dict) -> BrowserEvidence | None:
+def _url_env(urls: tuple[str, ...]) -> dict[str, str]:
+    """Tell a browser provider where the (possibly relocated) servers listen."""
+    if not urls:
+        return {}
+    env = {"MEOW_DEV_SERVER_URL": urls[0]}
+    env["MEOW_DEV_SERVER_URLS"] = os.pathsep.join(urls)
+    return env
+
+
+async def _run_browser(
+    active_dir: Path, tester: dict, urls: tuple[str, ...] = ()
+) -> BrowserEvidence | None:
     browser = tester.get("browser")
     if not isinstance(browser, dict):
         return None
@@ -293,7 +306,7 @@ async def _run_browser(active_dir: Path, tester: dict) -> BrowserEvidence | None
         str(browser["entrypoint"]),
         tuple(browser.get("args", [])),
         float(browser.get("timeout", 300)),
-        browser.get("env"),
+        {**(browser.get("env") or {}), **_url_env(urls)},
         required,
     )
     try:
@@ -346,21 +359,89 @@ def _reachable(url: str) -> bool:
     return _probe(url) is None
 
 
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0", ""})
+
+
+def _url_port(url: str) -> tuple[str, int] | None:
+    """Host and port of a loopback readiness URL, or None for any other host."""
+    parts = urllib.parse.urlsplit(url)
+    host = parts.hostname or ""
+    if host not in _LOOPBACK_HOSTS:
+        return None
+    try:
+        port = parts.port
+    except ValueError:
+        return None
+    return host, port or (443 if parts.scheme == "https" else 80)
+
+
+def _port_in_use(host: str, port: int) -> bool:
+    """True when something already listens on the loopback port (any protocol)."""
+    target = "127.0.0.1" if host in {"", "0.0.0.0", "localhost"} else host
+    family = socket.AF_INET6 if ":" in target else socket.AF_INET
+    with socket.socket(family, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.5)
+        return probe.connect_ex((target, port)) == 0
+
+
+def _free_port(host: str) -> int:
+    target = host if host in {"::1"} else "127.0.0.1"
+    family = socket.AF_INET6 if ":" in target else socket.AF_INET
+    with socket.socket(family, socket.SOCK_STREAM) as probe:
+        probe.bind((target, 0))
+        return probe.getsockname()[1]
+
+
+def _with_port(url: str, port: int) -> str:
+    parts = urllib.parse.urlsplit(url)
+    host = parts.hostname or "localhost"
+    netloc = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+    return urllib.parse.urlunsplit(parts._replace(netloc=netloc))
+
+
+def _relocated(server: DevServerCommand, port: int) -> DevServerCommand:
+    """The server re-pointed at `port`: `{port}` substituted, `PORT` exported."""
+
+    def fill(text: str) -> str:
+        return text.replace("{" + "port}", str(port))
+
+    env = {key: fill(value) for key, value in (server.env or {}).items()}
+    env["PORT"] = str(port)
+    return DevServerCommand(
+        server.cwd,
+        fill(server.command),
+        tuple(fill(arg) for arg in server.args),
+        env,
+        _with_port(server.ready_url, port),
+        server.startup_timeout,
+    )
+
+
 async def _start_server(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches]
     active_dir: Path, server: DevServerCommand
 ):
+    """Start the server; returns (owned process, the URL it is actually serving)."""
     try:
         cwd = resolve_command_cwd(active_dir, server.cwd)
     except (OSError, ValueError) as exc:
         raise VerificationSetupError(
             server.command, active_dir / server.cwd, exc
         ) from exc
-    if await asyncio.to_thread(_reachable, server.ready_url):
-        raise VerificationSetupError(
-            server.command,
-            cwd,
-            f"readiness URL {server.ready_url} is already serving before launch",
-        )
+    location = _url_port(server.ready_url)
+    taken = (
+        await asyncio.to_thread(_port_in_use, *location)
+        if location
+        else await asyncio.to_thread(_reachable, server.ready_url)
+    )
+    if taken:
+        if location is None:
+            raise VerificationSetupError(
+                server.command,
+                cwd,
+                f"readiness URL {server.ready_url} is already serving before launch",
+            )
+        # Never test against someone else's server: move to a free port.
+        server = _relocated(server, _free_port(location[0]))
     argv = _argv(server.command, server.args)
     try:
         if os.name == "nt":
@@ -403,7 +484,7 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
                 )
             last_error = await asyncio.to_thread(_probe, server.ready_url)
             if last_error is None:
-                return owned
+                return owned, server.ready_url
             await asyncio.sleep(0.1)
         raise VerificationSetupError(
             server.command,
@@ -421,16 +502,18 @@ async def prepared_test_stage(active_dir: Path, config: dict):
     """Run configured suites and keep owned servers alive for the caller."""
     tester = config.get("tester", {})
     servers: list[_OwnedProcess] = []
+    urls: list[str] = []
     try:
         for server in tester.get("dev_server", []):
-            servers.append(await _start_server(active_dir, server))
+            owned, url = await _start_server(active_dir, server)
+            servers.append(owned)
+            urls.append(url)
         commands = []
         for command in tester.get("tests", []):
             commands.append(await _run_test(active_dir, command))
-        urls = tuple(server.ready_url for server in tester.get("dev_server", []))
-        browser = await _run_browser(active_dir, tester)
+        browser = await _run_browser(active_dir, tester, tuple(urls))
         yield VerificationStageEvidence(
-            tuple(commands), urls, (browser,) if browser else ()
+            tuple(commands), tuple(urls), (browser,) if browser else ()
         )
     finally:
         for process in reversed(servers):
