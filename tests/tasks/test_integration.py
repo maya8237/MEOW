@@ -81,3 +81,23 @@ def test_conflict_preserves_worker_commits_and_aborts_cherry_pick(tmp_path):
     assert _git(repo, "status", "--porcelain") == ""
     assert _git(repo, "rev-parse", "first") == a
     assert _git(repo, "rev-parse", "second") == b
+
+
+def test_integration_works_where_git_has_no_identity(tmp_path, monkeypatch):
+    repo, base = _repo(tmp_path)
+    a = _task_commit(repo, base, "api", "api.txt", "api")
+    _git(repo, "checkout", "-b", "integration", base)
+    _git(repo, "config", "--unset", "user.name")
+    _git(repo, "config", "--unset", "user.email")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "none"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for name in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "EMAIL"):
+        monkeypatch.delenv(name, raising=False)
+
+    result = integrate_results(
+        repo, base, (TaskOutcome("api", "complete", str(repo), a),)
+    )
+
+    assert result.conflict is None
+    assert result.applied == ("api",)

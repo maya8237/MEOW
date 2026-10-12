@@ -16,6 +16,14 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
     )
 
 
+def _identity(repo: Path) -> list[str]:
+    """`-c` overrides giving cherry-pick a committer when git has none (a
+    fresh CI container); a configured identity is left alone."""
+    if _git(repo, "var", "GIT_COMMITTER_IDENT", check=False).returncode == 0:
+        return []
+    return ["-c", "user.name=MEOW", "-c", "user.email=meow@local"]
+
+
 @dataclass(frozen=True)
 class IntegrationResult:
     applied: tuple[str, ...]
@@ -50,8 +58,9 @@ def integrate_results(  # ruff: ignore[complex-structure, too-many-branches]
         if not _COMMIT.fullmatch(outcome.commit):
             raise ValueError(f"{outcome.id} has an invalid commit ID")
     applied = []
+    identity = _identity(repo)
     for outcome in outcomes:
-        result = _git(repo, "cherry-pick", outcome.commit, check=False)
+        result = _git(repo, *identity, "cherry-pick", outcome.commit, check=False)
         if result.returncode:
             _git(repo, "cherry-pick", "--abort", check=False)
             return IntegrationResult(

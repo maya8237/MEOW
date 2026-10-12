@@ -1,5 +1,7 @@
 """Commit and push a verified run from an eligible checkout."""
 
+import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -8,13 +10,32 @@ from meow.infrastructure.cancellation import RunCancelled, check_cancel, deliver
 from meow.infrastructure.worktree import _is_linked_worktree
 from meow.infrastructure.worktree_setup import is_secret_like
 
+# An unattended run must fail a stuck push (credential prompt, hook, network)
+# rather than wait on it forever.
+_GIT_TIMEOUT = 600
+_FALLBACK_IDENTITY = ("-c", "user.name=MEOW", "-c", "user.email=meow@local")
+_NO_IDENTITY = re.compile(
+    r"unable to auto-detect|identity unknown|empty ident|tell me who you are", re.I
+)
+
 
 def _git(
     directory: Path, *args: str, check: bool = True
 ) -> subprocess.CompletedProcess:
-    result = subprocess.run(
-        ["git", *args], cwd=directory, capture_output=True, text=True, check=False
-    )
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=directory,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_GIT_TIMEOUT,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"git {' '.join(args)} timed out after {_GIT_TIMEOUT}s"
+        ) from None
     if check and result.returncode:
         detail = result.stderr.strip() or result.stdout.strip()
         raise RuntimeError(f"git {' '.join(args)} failed: {detail}")
@@ -40,6 +61,16 @@ def _unstage_secret_like(directory: Path) -> None:
     secrets = [path for path in staged if is_secret_like(Path(path).name)]
     if secrets:
         _git(directory, "reset", "-q", "--", *secrets)
+
+
+def _commit(directory: Path, message: list[str]) -> None:
+    committed = _git(directory, "commit", *message, check=False)
+    if committed.returncode and _NO_IDENTITY.search(committed.stderr):
+        # No git identity here (fresh CI container): commit as MEOW.
+        _git(directory, *_FALLBACK_IDENTITY, "commit", *message)
+    elif committed.returncode:
+        detail = committed.stderr.strip() or committed.stdout.strip()
+        raise RuntimeError(f"git commit failed: {detail}")
 
 
 def deliver_verified_run(
@@ -90,7 +121,7 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
             onboarded = record.results.get("onboarding", {}).get("files")
             if onboarded:
                 message += ["-m", "Onboarded: " + ", ".join(onboarded)]
-            _git(active, "commit", *message)
+            _commit(active, message)
         commit = _git(active, "rev-parse", "HEAD").stdout.strip()
         store.transition(
             run_id,

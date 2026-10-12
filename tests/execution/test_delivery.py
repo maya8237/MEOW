@@ -8,6 +8,8 @@ import pytest
 from meow.execution.delivery import deliver_verified_run
 from meow.execution.run_state import RunStore
 
+MAX_HANG_SECONDS = 15
+
 
 def git(directory: Path, *args: str) -> str:
     result = subprocess.run(
@@ -186,3 +188,47 @@ def test_commit_message_has_no_onboarding_note_by_default(tmp_path):
     deliver_verified_run(store, run_id)
 
     assert "Onboarded" not in git(active, "log", "-1", "--format=%b")
+
+
+def test_delivery_commits_where_git_has_no_identity(tmp_path, monkeypatch):
+    """A fresh CI container has no user.name/user.email configured."""
+    repo, remote = repository(tmp_path)
+    git(repo, "config", "--unset", "user.name")
+    git(repo, "config", "--unset", "user.email")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "none"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for name in ("NAME", "EMAIL"):
+        for kind in ("AUTHOR", "COMMITTER"):
+            monkeypatch.delenv(f"GIT_{kind}_{name}", raising=False)
+    monkeypatch.delenv("EMAIL", raising=False)
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "--detach", str(active))
+    (active / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, active)
+
+    assert deliver_verified_run(store, run_id) is True
+
+    assert git(remote, "rev-parse", f"refs/heads/meow/{run_id}")
+
+
+def test_delivery_does_not_hang_on_a_stuck_push(tmp_path, monkeypatch):
+    import time
+
+    from meow.execution import delivery
+
+    repo, _ = repository(tmp_path)
+    hook = repo / ".git" / "hooks" / "pre-push"
+    hook.write_text("#!/bin/sh\nexec sleep 30\n", encoding="utf-8")
+    hook.chmod(0o755)
+    monkeypatch.setattr(delivery, "_GIT_TIMEOUT", 1)
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "--detach", str(active))
+    (active / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, active)
+
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="timed out"):
+        deliver_verified_run(store, run_id)
+    assert time.monotonic() - started < MAX_HANG_SECONDS
+    assert store.load(run_id).phase == "delivery_failed"
