@@ -197,3 +197,44 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
             await issue_solver.run_issue_solver(Path("/project"))
 
         mock_fetch.assert_not_awaited()
+
+
+class UnattendedForwardingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_foreground_unattended_flag_reaches_the_sprint(self):
+        config = {
+            "jira": {"project_key": "PROJ", "mcp": {"command": "uvx", "args": []}}
+        }
+        issue = {"key": "PROJ-1", "summary": "Fix", "description": "Details."}
+        with (
+            patch("meow.integrations.issue_solver.load_config", return_value=config),
+            patch(
+                "meow.integrations.issue_solver._fetch_issue",
+                new=AsyncMock(return_value=issue),
+            ),
+            patch(
+                "meow.integrations.issue_solver._ensure_branch_worktree",
+                return_value=Path("/project/wt"),
+            ),
+            patch(
+                "meow.integrations.issue_solver.run_sprint", new=AsyncMock()
+            ) as sprint,
+        ):
+            await issue_solver.run_issue_solver(
+                Path("/project"), "PROJ-1", unattended=True
+            )
+        self.assertTrue(sprint.await_args.kwargs["unattended"])
+
+    def test_cli_forwards_unattended_to_the_jira_flow(self):
+        from meow.cli import cli
+
+        with (
+            patch("meow.execution.run_policy._ensure_clean_tree"),
+            patch("meow.cli.cli._boot_repo"),
+            patch(
+                "meow.cli.dispatch.run_issue_solver", new_callable=AsyncMock
+            ) as solver,
+            patch("sys.argv", ["meow", "run", "--jira", "PROJ-1", "--unattended"]),
+        ):
+            solver.return_value = {"issue": "PROJ-1", "branch": "issue/PROJ-1"}
+            cli.cli_main()
+        self.assertTrue(solver.await_args.kwargs["unattended"])
