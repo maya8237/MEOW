@@ -44,3 +44,23 @@ def test_fix_pass_skips_a_command_that_cannot_start(tmp_path):
 
     command = LintCommand("ruff check", fix_flag="--fix", cwd=tmp_path / "nope")
     asyncio.run(apply_lint_fixes(tmp_path, [command], 10))
+
+
+def test_timed_out_lint_command_leaves_no_orphans(tmp_path):
+    import asyncio
+    import sys
+    import time
+
+    from meow.infrastructure.lint import _run_subprocess
+
+    marker = tmp_path / "survivor"
+    child = f"import time;time.sleep(1.5);open(r'{marker}','w').close()"
+    code = (
+        "import subprocess, sys, time;"
+        f"subprocess.Popen([sys.executable, '-c', {child!r}]);"
+        "time.sleep(60)"
+    )
+    result = asyncio.run(_run_subprocess(tmp_path, [sys.executable, "-c", code], 0.5))
+    assert result is None
+    time.sleep(2.5)
+    assert not marker.exists()

@@ -126,3 +126,6 @@ async def cancellable(  # ruff: ignore[non-pep695-generic-function]
     finally:
         if not task.done():
             task.cancel()
+            # Let the operation unwind (kill its subprocesses, close its
+            # session) before the caller moves on.
+            await asyncio.gather(task, return_exceptions=True)

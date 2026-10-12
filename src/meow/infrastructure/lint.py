@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from meow.infrastructure.checks import kill_process_tree
 from meow.infrastructure.logging import get_logger
 from meow.project.config_models import LintCommand, resolve_command_cwd
 
@@ -56,13 +57,14 @@ async def _run_subprocess(
             env={**os.environ, **(env or {})},
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=os.name != "nt",
         )
     except OSError as exc:
         return _CANNOT_START, f"Could not run lint command {argv[0]}: {exc}"
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except TimeoutError:
-        process.kill()
+        kill_process_tree(process)
         await process.wait()
         return None
 

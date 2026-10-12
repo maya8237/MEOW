@@ -85,3 +85,25 @@ def test_cancel_stops_active_await_and_records_cancelled(tmp_path):
     assert stopped.is_set()
     assert store.load(record.id).phase == "cancelled"
     assert tmp_path.is_dir()
+
+
+def test_outer_timeout_waits_for_the_operation_to_unwind(tmp_path):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    unwound = []
+
+    async def operation():
+        try:
+            await asyncio.sleep(60)
+        finally:
+            await asyncio.sleep(0.05)
+            unwound.append(True)
+
+    async def scenario():
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(cancellable(store, record.id, operation()), 0.3)
+        return list(unwound)
+
+    assert asyncio.run(scenario()) == [True]

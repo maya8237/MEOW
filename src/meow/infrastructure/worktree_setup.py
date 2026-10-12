@@ -1,10 +1,12 @@
 """Explicit, validated setup for newly created feature worktrees."""
 
+import os
 import re
 import shutil
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
+
+from meow.infrastructure.checks import run_captured
 
 _SENSITIVE = re.compile(
     r"(^|[._-])(env|secrets?|credentials?|tokens?|keys?)([._-]|$)", re.I
@@ -13,6 +15,9 @@ _SENSITIVE = re.compile(
 
 def is_secret_like(name: str) -> bool:
     return _SENSITIVE.search(name) is not None
+
+
+_COMMAND_TIMEOUT = 300
 
 
 class WorktreeSetupError(RuntimeError):
@@ -106,24 +111,21 @@ def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-
                 f"setup command requires approval or is denied by policy: {argv[0]}"
             )
         try:
-            result = subprocess.run(
-                argv,
-                cwd=worktree,
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=300,
+            exit_code, _output, timed_out = run_captured(
+                argv, worktree, dict(os.environ), _COMMAND_TIMEOUT
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except (OSError, ValueError) as exc:
             raise WorktreeSetupError(f"setup command failed: {argv[0]}: {exc}") from exc
+        if timed_out:
+            raise WorktreeSetupError(f"setup command timed out: {argv[0]}")
         if record_action:
             record_action({
                 "kind": "command",
                 "argv": argv,
-                "status": "passed" if result.returncode == 0 else "failed",
-                "exit_code": result.returncode,
+                "status": "passed" if exit_code == 0 else "failed",
+                "exit_code": exit_code,
             })
-        if result.returncode:
+        if exit_code:
             raise WorktreeSetupError(
-                f"setup command failed: {argv[0]} (exit {result.returncode})"
+                f"setup command failed: {argv[0]} (exit {exit_code})"
             )
