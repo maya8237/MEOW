@@ -70,3 +70,23 @@ def test_native_checkpoint_fingerprints_repository_config_for_worktree(tmp_path)
         expected = config_fingerprint(repo)
 
     assert record.config_fingerprint == expected
+
+
+def test_late_generator_checkpoint_marks_saved_review_stale(tmp_path):
+    subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(tmp_path)]
+    (tmp_path / "a.txt").write_text("1", encoding="utf-8")
+    subprocess.run([*git, "add", "."], check=True)
+    subprocess.run([*git, "commit", "-qm", "one"], check=True)
+    run_id = checkpoint(tmp_path, tmp_path, "planning", request="x")["run_id"]
+    checkpoint(tmp_path, tmp_path, "reviewer_started", run_id=run_id)
+    checkpoint(tmp_path, tmp_path, "reviewer_finished", run_id=run_id, reviewer="PASS")
+    results = RunStore(tmp_path).load(run_id).results
+    assert results["reviewer"] == "PASS"
+
+    (tmp_path / "a.txt").write_text("2", encoding="utf-8")
+    subprocess.run([*git, "commit", "-qam", "two"], check=True)
+    checkpoint(tmp_path, tmp_path, "generator_finished", run_id=run_id)
+    results = RunStore(tmp_path).load(run_id).results
+    assert results["reviewer"] == "STALE"
+    assert results["reviewer_revision"] == ""
