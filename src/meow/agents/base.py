@@ -578,7 +578,7 @@ class SessionAgent(Agent):
         self._entered = False
         await self._client.__aexit__(*exc)
 
-    async def _restart(self) -> None:
+    async def _restart(self, reason: str = "reached its context limit") -> None:
         """Replace the full session with a fresh one carrying a short recap."""
         logger.warning(
             "session_recycled", role=self.role, context_tokens=self._context_size
@@ -599,33 +599,63 @@ class SessionAgent(Agent):
             await self._client.__aenter__()
         self._context_size = 0
         self._recap = (
-            "Your previous session reached its context limit and was replaced. "
+            f"Your previous session {reason} and was replaced. "
             "Re-read the plan and inspect the working tree (git status, git diff) "
             "to see what is already done; do not redo finished work.\n\n"
         )
 
     async def _turn(self, message: str) -> str:
-        """Send one message and return the assistant's text for that turn."""
+        """Send one message and return the assistant's text for that turn.
+
+        A full context window or a crashed CLI process replaces the session and
+        replays the turn, the same recovery one-shot queries get for crashes."""
         if self._entered and self._context_size > _SESSION_TOKEN_LIMIT:
             await self._restart()
-        for attempt in _TURN_ATTEMPTS:
+        overflows = crashes = 0
+        while True:
             logger.info("session_turn_started", role=self.role)
             try:
                 text = await self._run_turn(self._recap + message)
             except _ContextOverflow:
-                if attempt == len(_TURN_ATTEMPTS) or not self._entered:
-                    raise RuntimeError(
-                        f"{self.role} session exceeded its context window"
-                    ) from None
-                await self._restart()
+                overflows += 1
+                await self._recover_overflow(overflows)
+                continue
+            except ProcessError as exc:
+                crashes += 1
+                await self._recover_crash(exc, crashes)
                 continue
             self._recap = ""
             logger.info("session_turn_finished", role=self.role)
             return text
-        raise AssertionError("unreachable")
+
+    async def _recover_overflow(self, overflows: int) -> None:
+        """Replace a session that ran out of context, or give up."""
+        if overflows >= len(_TURN_ATTEMPTS) or not self._entered:
+            raise RuntimeError(
+                f"{self.role} session exceeded its context window"
+            ) from None
+        await self._restart()
+
+    async def _recover_crash(self, exc: ProcessError, crashes: int) -> None:
+        """Replace a session whose CLI process crashed, or re-raise `exc`."""
+        if (
+            not _looks_like_a_crash(exc.exit_code)
+            or not self._entered
+            or crashes >= _SDK_CRASH_RETRY_ATTEMPTS
+        ):
+            raise exc
+        logger.warning(
+            "session_crash_retry",
+            role=self.role,
+            attempt=crashes,
+            exit_code=exc.exit_code,
+        )
+        await asyncio.sleep(_SDK_CRASH_RETRY_BACKOFF * 2 ** (crashes - 1))
+        await self._restart("ended unexpectedly")
 
     async def _run_turn(self, message: str) -> str:  # ruff: ignore[complex-structure]
         text = []
+        last_call = 0
         try:
             await self._client.query(message)
             async for item in self._client.receive_response():
@@ -636,17 +666,32 @@ class SessionAgent(Agent):
                         for block in item.content
                         if isinstance(block, TextBlock)
                     )
+                    if item.parent_tool_use_id is None:
+                        last_call = _context_tokens(item) or last_call
                 elif isinstance(item, ResultMessage):
-                    self._context_size = _context_tokens(item) or self._context_size
-                    if getattr(item, "is_error", False) and _CONTEXT_OVERFLOW.search(
-                        str(getattr(item, "result", "") or "")
-                    ):
-                        raise _ContextOverflow
+                    # The result's usage totals every API call of the turn; the
+                    # last call alone is what the next turn's context starts at.
+                    self._context_size = (
+                        last_call or _context_tokens(item) or self._context_size
+                    )
+                    self._check_result(item)
         except ProcessError as exc:
             if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
                 raise _ContextOverflow from exc
             raise
         return "\n".join(text)
+
+    def _check_result(self, result: ResultMessage) -> None:
+        """A failed turn must fail, not hand its partial text back as success."""
+        failed = getattr(result, "is_error", False) is True
+        if not failed and getattr(result, "subtype", "success") == "success":
+            return
+        detail = str(getattr(result, "result", "") or "")
+        if _CONTEXT_OVERFLOW.search(detail):
+            raise _ContextOverflow
+        raise RuntimeError(
+            f"{self.role} failed: {result.subtype}" + (f": {detail}" if detail else "")
+        )
 
 
 class _ContextOverflow(Exception):

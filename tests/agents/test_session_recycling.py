@@ -78,3 +78,59 @@ class SessionRecyclingTests(unittest.IsolatedAsyncioTestCase):
             async with agent:
                 with self.assertRaisesRegex(RuntimeError, "context window"):
                     await agent.send("go")
+
+
+class SessionTurnFailureTests(unittest.IsolatedAsyncioTestCase):
+    async def test_error_result_is_a_failed_turn_not_a_success(self):
+        client = _client([_text("partial"), _result(error="Invalid API key")])
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", side_effect=[client]):
+            agent.open(MagicMock())
+            async with agent:
+                with self.assertRaisesRegex(RuntimeError, "Invalid API key"):
+                    await agent.send("go")
+
+    async def test_cli_crash_replays_the_turn_on_a_fresh_session(self):
+        from claude_agent_sdk import ProcessError
+
+        crashed = _client([])
+        crashed.query = AsyncMock(side_effect=ProcessError("died", exit_code=-11))
+        second = _client([_text("done"), _result(10)])
+        agent = _agent()
+        with (
+            patch("meow.agents.base.ClaudeSDKClient", side_effect=[crashed, second]),
+            patch("meow.agents.base._SDK_CRASH_RETRY_BACKOFF", 0),
+        ):
+            agent.open(MagicMock())
+            async with agent:
+                self.assertEqual(await agent.send("go"), "done")
+        self.assertIn("working tree", second.query.await_args.args[0])
+
+    async def test_ordinary_nonzero_exit_is_not_replayed(self):
+        from claude_agent_sdk import ProcessError
+
+        failing = _client([])
+        failing.query = AsyncMock(side_effect=ProcessError("bad", exit_code=1))
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", side_effect=[failing]):
+            agent.open(MagicMock())
+            async with agent:
+                with self.assertRaises(ProcessError):
+                    await agent.send("go")
+
+    async def test_context_size_is_the_last_call_not_the_turn_total(self):
+        """A turn of many tool calls re-reads the cache each call; summing them
+        in the result's usage must not look like a 150k+ context."""
+        call = AssistantMessage(
+            content=[TextBlock(text="one")],
+            model="m",
+            usage={"input_tokens": 20_000},
+        )
+        first = _client([call, _result(base._SESSION_TOKEN_LIMIT * 4)])
+        second = _client([_text("two"), _result(10)])
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", side_effect=[first, second]):
+            agent.open(MagicMock())
+            async with agent:
+                await agent.send("a")
+                self.assertEqual(agent._context_size, 20_000)
