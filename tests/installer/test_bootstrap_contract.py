@@ -323,6 +323,7 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
     )
     (checkout / ".git").mkdir()
     (checkout / "skills").mkdir()
+    shutil.copytree(ROOT / ".claude-plugin", checkout / ".claude-plugin")
     (checkout / "pyproject.toml").write_text(
         "\n".join(["[project]", 'name = "meow"', 'version = "9.9.9"', ""]),
         encoding="utf-8",
