@@ -7,10 +7,14 @@ from typing import TYPE_CHECKING
 
 from claude_agent_sdk import ResultMessage
 
+from meow.infrastructure.logging import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from meow.execution.run_state import RunStore
+
+logger = get_logger(__name__)
 
 _active_usage: ContextVar[tuple["RunStore", str] | None] = ContextVar(
     "meow_active_usage", default=None
@@ -86,4 +90,7 @@ def record_result(role: str, message: object) -> None:
     scope = _active_usage.get()
     if scope is not None and isinstance(message, ResultMessage):
         store, run_id = scope
-        store.add_usage(run_id, usage_entry(role, message))
+        try:
+            store.add_usage(run_id, usage_entry(role, message))
+        except Exception as exc:  # bookkeeping must not abort a healthy turn
+            logger.warning("usage_not_recorded", role=role, reason=str(exc))
