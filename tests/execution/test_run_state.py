@@ -137,3 +137,32 @@ def test_redacts_secrets_and_bounds_output(tmp_path):
     assert "abc123" not in raw
     assert len(json.loads(raw)["results"]["lint"]["output"]) <= MAX_OUTPUT
     assert json.loads(raw)["results"]["lint"]["usage"] == "unavailable"
+
+
+def test_latest_survives_a_record_deleted_while_listing(tmp_path, monkeypatch):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    ghost = store.directory / "20200101-000000-deadbeef.json"
+    real = store.record_paths()
+    monkeypatch.setattr(store, "record_paths", lambda: [ghost, *real])
+    assert store.latest().id == record.id
+
+
+def test_stored_check_results_tolerate_schema_drift():
+    from meow.execution.run_state import CheckResult
+
+    item = {
+        "kind": "lint",
+        "command": "ruff check .",
+        "required": True,
+        "exit_code": 0,
+        "duration": 1.0,
+        "output": "",
+        "revision": "r",
+        "config_fingerprint": "f",
+    }
+    assert CheckResult.from_record({**item, "added_later": 1}).passed
+    assert CheckResult.from_record({"kind": "lint"}) is None
+    assert CheckResult.from_record("garbage") is None

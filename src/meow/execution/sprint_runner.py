@@ -370,9 +370,9 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
         ):
             state.delivery_gates[step.id] = state.statuses[step.id]["status"]
     if "checks" in record.results:
-        state.checks_results = [
-            CheckResult(**item) for item in record.results["checks"]
-        ]
+        stored = record.results["checks"]
+        rebuilt = [CheckResult.from_record(item) for item in stored]
+        state.checks_results = [item for item in rebuilt if item is not None]
     store.update_results(record.id, workflow=state.workflow)
     try:
         await run_workflow(state, steps)
