@@ -64,3 +64,25 @@ def test_policy_denies_setup_command_before_execution(tmp_path):
             manifest,
             command_decision=lambda _argv: "deny",
         )
+
+
+def test_setup_can_be_rerun_after_a_later_command_failed(tmp_path):
+    """Resume re-applies setup; a copy that already landed is not a collision."""
+    import sys
+
+    repo = tmp_path / "repo"
+    worktree = tmp_path / "worktree"
+    repo.mkdir()
+    worktree.mkdir()
+    (repo / "local.cfg").write_text("value", encoding="utf-8")
+    flag = worktree / "ready"
+    code = f"import pathlib,sys; sys.exit(0 if pathlib.Path(r'{flag}').exists() else 1)"
+    manifest = validate_setup({
+        "copy": ["local.cfg"],
+        "commands": [[sys.executable, "-c", code]],
+    })
+    with pytest.raises(WorktreeSetupError, match="exit 1"):
+        run_setup(repo, worktree, manifest)
+    flag.write_text("", encoding="utf-8")  # the transient cause is fixed
+    run_setup(repo, worktree, manifest)  # must not trip over the copied file
+    assert (worktree / "local.cfg").read_text(encoding="utf-8") == "value"
