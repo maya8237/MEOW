@@ -30,9 +30,20 @@ def integrate_results(  # ruff: ignore[complex-structure]
     repo = repo.resolve()
     head = _git(repo, "rev-parse", "HEAD").stdout.strip()
     if head != base:
-        raise ValueError("integration checkout changed since task planning")
-    if _git(repo, "status", "--porcelain").stdout.strip():
-        raise ValueError("integration checkout has uncommitted changes")
+        # A commit made in the integration checkout mid-run is fine as long as
+        # it builds on the revision the tasks started from: cherry-picks then
+        # land on top of it. Anything else (reset, branch switch) is refused.
+        ancestor = _git(repo, "merge-base", "--is-ancestor", base, head, check=False)
+        if ancestor.returncode:
+            raise ValueError(
+                "integration checkout moved off the task base "
+                f"({base[:12]} -> {head[:12]}); restore the branch and resume"
+            )
+    if _git(repo, "status", "--porcelain", "--untracked-files=no").stdout.strip():
+        raise ValueError(
+            "integration checkout has uncommitted changes; commit or stash them "
+            "and run meow resume to integrate the finished tasks"
+        )
     for outcome in outcomes:
         if outcome.status != "complete" or not outcome.commit:
             return IntegrationResult((), head, f"{outcome.id} did not complete")

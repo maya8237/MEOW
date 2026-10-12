@@ -233,6 +233,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
             "before planning; requires --continue."
         ),
     )
+    resume_parser.add_argument(
+        "--repair",
+        action="store_true",
+        help=(
+            "Re-baseline resume gates that block a run: adopt the current plan, "
+            "config, branch, and workflow, relocate a moved worktree, and "
+            "start fresh sessions for missing Claude session references."
+        ),
+    )
     _add_common_args(resume_parser)
     queue_parser = subparsers.add_parser(
         "queue", help="Queue a task or run queued tasks serially."

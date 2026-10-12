@@ -29,6 +29,7 @@ from meow.project.plan_files import planned_plan_file
 from meow.project.plan_state import PlanStore
 from meow.project.preplan import gather_context, prepare_preplan
 from meow.project.shaping import ShapeContext
+from meow.tasks.executor import preflight
 from meow.tasks.model import load_task_graph
 from meow.tasks.runner import run_parallel_plan
 
@@ -112,8 +113,20 @@ async def approve_plan(state):  # ruff: ignore[unused-async]
 
 
 async def tasks(state):
-    graph = load_task_graph(state.plan_file) if state.plan_file else None
+    try:
+        graph = load_task_graph(state.plan_file) if state.plan_file else None
+    except ValueError as exc:
+        # An invalid planner graph must not stop an unattended run: the plan
+        # itself is still valid, so implement it sequentially.
+        logger.warning("task_graph_ignored", reason=str(exc))
+        state.store.update_results(state.run_id, task_graph_error=str(exc))
+        return
     if graph is not None and len(graph.tasks) > 1:
+        problem = preflight(state.sprint.active_working_dir())
+        if problem is not None:
+            logger.warning("parallel_tasks_unavailable", reason=problem)
+            state.store.update_results(state.run_id, parallel_unavailable=problem)
+            return
         await run_parallel_plan(
             state.sprint, graph, state.plan_file, state.store, state.run_id
         )

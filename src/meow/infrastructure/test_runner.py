@@ -150,8 +150,9 @@ class VerificationStageEvidence:
 
     @property
     def blocking_failed(self) -> bool:
+        # An unknown exit code is a failure, never a pass.
         return any(
-            command.gate and (command.timed_out or command.exit_code not in {0, None})
+            command.gate and (command.timed_out or command.exit_code != 0)
             for command in self.commands
         ) or any(
             item.required and item.status in {"failed", "unavailable"}

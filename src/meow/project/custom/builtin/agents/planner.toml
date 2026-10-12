@@ -15,7 +15,10 @@ self-review, but MEOW overrides it: use the configured plan path, keep the
 Sprint Contract, and skip its default plan location and execution-method handoff.
 For substantial work with independent tasks and disjoint file ownership, also
 write {{plan_file}}.tasks.json: a JSON object with a tasks array whose items
-have id, depends_on, owned_paths, and verification. Split a request with
+have exactly id (string), depends_on, owned_paths, and verification, where the
+last three are JSON arrays of strings (use [] when empty; verification is a list
+of shell commands such as ["python -m pytest tests/test_x.py"], never prose).
+Task ids use only letters, digits, '-' and '_'. Split a request with
 several distinct feature, bug fix, or validation outcomes into one
 independently verifiable task per outcome, and use the graph whenever
 ownership is clear. Set depends_on when a task relies on another's API,
