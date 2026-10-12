@@ -7,6 +7,7 @@ own JSON output file. Each subclass names its server, role and request kind.
 """
 
 import json
+import re
 import tempfile
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -186,6 +187,32 @@ class GithubFetcherAgent(McpFetcherAgent):
         )
 
 
+_FENCE = re.compile(r"^\s*```[A-Za-z0-9_-]*\s*\n(.*?)\n?```\s*$", re.DOTALL)
+
+
+def _as_text(value: object) -> object:
+    """A fetched field as text: lists join by line, objects serialize."""
+    if isinstance(value, list):
+        return "\n".join(str(_as_text(item)) for item in value)
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False)
+    return value
+
+
+def _parse_record(role: str, text: str) -> dict:
+    """The JSON object a fetcher wrote, tolerating a markdown code fence."""
+    fenced = _FENCE.match(text)
+    try:
+        data = json.loads(fenced.group(1) if fenced else text)
+    except ValueError as exc:
+        raise RuntimeError(f"{role} output is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            f"{role} output must be a JSON object, got {type(data).__name__}"
+        )
+    return {key: _as_text(value) for key, value in data.items()}
+
+
 async def fetch_record(
     fetcher: McpFetcherAgent,
     fetch: Callable[[Path], Awaitable[None]],
@@ -196,7 +223,7 @@ async def fetch_record(
     with tempfile.TemporaryDirectory() as tmp:
         output_file = Path(tmp) / f"{fetcher.server}.json"
         await fetch(output_file)
-        data = json.loads(output_file.read_text(encoding="utf-8"))
+        data = _parse_record(fetcher.role, output_file.read_text(encoding="utf-8"))
     missing = [field for field in required if data.get(field) is None]
     if missing:
         raise RuntimeError(f"{fetcher.role} output is missing {missing}: {data}")
