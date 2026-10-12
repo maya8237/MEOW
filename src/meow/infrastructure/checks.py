@@ -3,8 +3,10 @@
 import asyncio
 import hashlib
 import os
+import signal
 import subprocess
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -170,6 +172,50 @@ def configured_checks(config: dict) -> list[Check]:
     return checks
 
 
+def _kill_group(process: subprocess.Popen) -> None:
+    """Kill the command and everything it spawned, not just the direct child."""
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            capture_output=True,
+            check=False,
+        )
+    else:
+        with suppress(ProcessLookupError, PermissionError):
+            os.killpg(process.pid, signal.SIGKILL)
+    with suppress(OSError):
+        process.kill()
+
+
+def _capture(
+    argv: list[str], cwd: Path, env: dict[str, str], timeout: float
+) -> tuple[int | None, str, bool]:
+    """Run to completion; (exit code, output, timed out). A timeout kills the
+    whole process tree so nothing keeps editing the checkout afterwards."""
+    with subprocess.Popen(
+        argv,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        start_new_session=os.name != "nt",
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+    ) as process:
+        try:
+            data, _ = process.communicate(timeout=timeout)
+            return process.returncode, data.decode("utf-8", errors="replace"), False
+        except subprocess.TimeoutExpired:
+            _kill_group(process)
+            try:
+                data, _ = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                data = b""
+            return None, data.decode("utf-8", errors="replace"), True
+        except BaseException:
+            _kill_group(process)
+            raise
+
+
 def run_check(
     repo: Path,
     check: Check,
@@ -187,24 +233,17 @@ def run_check(
     before = time.monotonic()
     revision = revision or code_revision(repo)
     fingerprint = fingerprint or config_fingerprint(repo)
-    argv = [*split_command(check.command), *check.args]
     try:
-        result = subprocess.run(
+        argv = [*split_command(check.command), *check.args]
+        if not argv:
+            raise ValueError("empty command")
+        exit_code, output, timed_out = _capture(
             argv,
-            cwd=resolve_command_cwd(repo, check.cwd),
-            env={**os.environ, **(check.env or {})},
-            capture_output=True,
-            timeout=check.timeout,
-            check=False,
+            resolve_command_cwd(repo, check.cwd),
+            {**os.environ, **(check.env or {})},
+            check.timeout,
         )
-        output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
-        exit_code, timed_out = result.returncode, False
-    except subprocess.TimeoutExpired as exc:
-        output = ((exc.stdout or b"") + (exc.stderr or b"")).decode(
-            "utf-8", errors="replace"
-        )
-        exit_code, timed_out = None, True
-    except OSError as exc:
+    except (OSError, ValueError) as exc:  # unlaunchable: a failed gate, not a crash
         output, exit_code, timed_out = str(exc), None, False
     return CheckResult(
         check.kind,
