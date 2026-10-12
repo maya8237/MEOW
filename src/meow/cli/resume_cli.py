@@ -8,6 +8,7 @@ from pathlib import Path
 from meow.cli.status_cli import RESUMABLE_SOURCES, recovery_command, render
 from meow.execution.run_state import RunRecord, RunStateError, RunStore
 from meow.execution.sprint_runner import run_sprint
+from meow.infrastructure.background import inspect_worker
 from meow.infrastructure.cancellation import clear_cancel
 from meow.infrastructure.checks import config_fingerprint
 from meow.infrastructure.worktree import current_branch
@@ -247,6 +248,15 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
     print(render(record))
     if problem := _request_problem(record, request, continue_run):
         print(problem, file=sys.stderr)
+        return 1
+    if (continue_run or repair) and inspect_worker(
+        record, include_terminal=True
+    ).state in {"running", "starting"}:
+        print(
+            "Cannot resume or repair while the background worker is running or "
+            "starting. Wait for it to stop before retrying.",
+            file=sys.stderr,
+        )
         return 1
     if repair and record.phase != "complete":
         patch, actions = _repair(record, working_dir)

@@ -79,14 +79,14 @@ def _process_identity(  # ruff: ignore[too-many-return-statements, complex-struc
 
 
 def inspect_worker(  # ruff: ignore[too-many-return-statements]
-    record: RunRecord,
+    record: RunRecord, *, include_terminal: bool = False
 ) -> WorkerState:
     data = record.background if isinstance(record.background, dict) else {}
     pid = data.get("pid")
     log = data.get("log")
     if not data:
         return WorkerState("not_background", None, None)
-    if record.phase in TERMINAL_PHASES:
+    if record.phase in TERMINAL_PHASES and not include_terminal:
         return WorkerState(record.phase, pid if isinstance(pid, int) else None, log)
     expected = data.get("start_identity")
     if not isinstance(pid, int) or not isinstance(expected, str) or not expected:
