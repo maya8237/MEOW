@@ -1,8 +1,12 @@
 """Resume is inspect-first and validates saved identity before mutation."""
 
 import asyncio
+import os
 import subprocess
+import time
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from meow.cli.resume_cli import _validate, resume
 from meow.execution.run_state import RunStore
@@ -33,6 +37,28 @@ def test_inspect_only_does_not_start_agents(tmp_path, capsys):
     assert "interrupted_mutation" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("registered", [False, True])
+@pytest.mark.parametrize("phase", ["interrupted_mutation", "cancelled", "delivered"])
+def test_resume_refuses_live_background_worker(tmp_path, capsys, registered, phase):
+    store, record = _record(tmp_path)
+    store.transition(record.id, phase)
+    metadata = {"launch_started_at": time.time()}
+    if registered:
+        metadata.update(pid=os.getpid(), start_identity="live-worker")
+    store.update_background(record.id, **metadata)
+    with (
+        patch(
+            "meow.infrastructure.background._process_identity",
+            return_value="live-worker",
+        ),
+        patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run,
+    ):
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
+    run.assert_not_awaited()
+    assert store.load(record.id).phase == phase
+    assert "worker" in capsys.readouterr().err.lower()
+
+
 def test_branch_mismatch_refuses_before_agent(tmp_path, capsys):
     store, record = _record(tmp_path)
     store.transition(record.id, "interrupted_mutation", branch="other")
@@ -40,6 +66,14 @@ def test_branch_mismatch_refuses_before_agent(tmp_path, capsys):
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) != 0
     run.assert_not_awaited()
     assert "branch" in capsys.readouterr().err.lower()
+
+
+def test_repair_refuses_starting_worker_without_rewriting_journal(tmp_path):
+    store, record = _record(tmp_path)
+    store.update_background(record.id, launch_started_at=time.time())
+    before = store.load(record.id)
+    assert asyncio.run(resume(tmp_path, record.id, repair=True)) == 1
+    assert store.load(record.id) == before
 
 
 def test_mutating_interruption_resumes_with_review_first(tmp_path):
