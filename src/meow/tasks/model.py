@@ -1,12 +1,15 @@
 """Bounded, serializable task dependencies and file ownership."""
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 
 from meow.infrastructure.worktree import _reject_reserved_name
 
 MAX_TASKS = 16
+# Task IDs become file, worktree, and branch names, so keep them to a safe set.
+_TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 
 
 def _path(value: str) -> str:
@@ -44,8 +47,12 @@ class TaskGraph:
         if not 1 <= len(self.tasks) <= MAX_TASKS:
             raise ValueError(f"task graph needs 1 to {MAX_TASKS} tasks")
         ids = [task.id for task in self.tasks]
-        if any(not task_id or not task_id.isidentifier() for task_id in ids):
-            raise ValueError("task IDs must be nonempty identifiers")
+        for task_id in ids:
+            if not _TASK_ID.fullmatch(task_id):
+                raise ValueError(
+                    f"task ID {task_id!r} is invalid: use 1-64 letters, digits, "
+                    "'-' or '_', starting with a letter or digit (e.g. task-1)"
+                )
         # Task IDs become file and worktree names; compare them the way a
         # case-insensitive filesystem would, and refuse Windows device names.
         if len({task_id.casefold() for task_id in ids}) != len(ids):

@@ -129,3 +129,42 @@ def test_browser_evidence_is_preserved_in_run_results():
     results = _tester_results("PASS", "PASS", evidence)
     assert results["browser"]["status"] == "passed"
     assert results["browser"]["artifacts"] == [".meow/home.png"]
+
+
+def test_dev_server_moves_to_a_free_port_when_the_configured_one_is_taken(tmp_path):
+    import socket
+    import sys
+
+    from meow.project.config_models import DevServerCommand
+
+    script = tmp_path / "serve.py"
+    script.write_text(
+        "import http.server, sys\n"
+        "http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])),"
+        " http.server.SimpleHTTPRequestHandler).serve_forever()\n",
+        encoding="utf-8",
+    )
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        busy = taken.getsockname()[1]
+        server = DevServerCommand(
+            Path("."),
+            sys.executable,
+            (str(script), "{port}"),
+            None,
+            f"http://127.0.0.1:{busy}/",
+            20,
+        )
+
+        async def run():
+            async with prepared_test_stage(
+                tmp_path, {"tester": {"dev_server": [server]}}
+            ) as evidence:
+                (url,) = evidence.server_urls
+                assert url != server.ready_url
+                assert _reachable(url)
+                return url
+
+        url = asyncio.run(run())
+    assert not _reachable(url)

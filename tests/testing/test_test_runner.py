@@ -161,9 +161,10 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
                 Path("."), "unused", ready_url=ready, startup_timeout=1
             )
             config = {"tester": {"tests": [], "dev_server": [server], "base_url": None}}
-            with self.assertRaisesRegex(VerificationSetupError, "already serving"):
+            # The taken port is relocated, so the launch itself is what fails.
+            with self.assertRaisesRegex(VerificationSetupError, "unused"):
                 async with prepared_test_stage(self.root, config):
-                    self.fail("collision should fail before entering the stage")
+                    self.fail("the missing command should fail the stage")
         finally:
             collision.kill()
             await collision.wait()
@@ -324,3 +325,18 @@ def test_probe_treats_http_error_as_ready_and_allows_slow_loopback():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_task_ids_accept_slugs_and_reject_unsafe_names():
+    import pytest
+
+    from meow.tasks.model import TaskGraph, TaskSpec
+
+    def graph(task_id):
+        return TaskGraph((TaskSpec(task_id, (), ("src",), ("true",)),))
+
+    for good in ("task-1", "1", "api_client", "T2"):
+        graph(good).validate()
+    for bad in ("", "-x", "a b", "a/b", "a.b", "x" * 65):
+        with pytest.raises(ValueError, match="invalid"):
+            graph(bad).validate()

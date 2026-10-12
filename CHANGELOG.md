@@ -4,13 +4,19 @@ All notable changes to MEOW will be documented here.
 
 ## Unreleased
 
+- Planner task graphs accept ids such as `task-1` or `1` (letters, digits, `-`,
+  `_`) instead of failing with "task IDs must be nonempty identifiers".
+- Tester dev servers: when the `ready_url` port is already in use, MEOW starts
+  the server on a free port instead of failing. `{port}` in `command`, `args`,
+  or `env` is replaced and `PORT` is exported; the real URL goes to the tester
+  and to browser providers as `MEOW_DEV_SERVER_URL`.
 - The installer now registers MEOW's checkout as a user-wide Claude Code
   plugin through its marketplace (`extraKnownMarketplaces` and
   `enabledPlugins` in `~/.claude/settings.json`) instead of the
   `CLAUDE_CODE_PLUGIN_DIRS` variable, so `/meow:*` skills (including
   `/meow:migration`) load after restarting Claude Code; a legacy entry is removed.
 - Onboarding, which runs on first use and from the installer, now migrates a
-  legacy `.harness.toml` to `.meow/config.toml` automatically (`docs_dir`
+  legacy harness config file to `.meow/config.toml` automatically (`docs_dir`
   dropped, legacy file kept). `/meow:migration` covers the rest.
 - Claude Code hooks now return `additionalContext` / `systemMessage`, so lint
   failures and advisories actually reach the session.
