@@ -216,6 +216,22 @@ def force_fail(verdict: str, appendix: str) -> str:
     return f"{failed.rstrip()}\n\n{appendix}"
 
 
+# About 50k tokens: a lockfile or generated file in a diff must not push the
+# one-shot review past the model's context window and fail the whole run.
+MAX_CONTEXT_CHARS = 200_000
+
+
+def clip_context(text: str, what: str = "diff", limit: int = MAX_CONTEXT_CHARS) -> str:
+    """`text` cut to `limit` characters, saying how much was left out."""
+    if len(text) <= limit:
+        return text
+    return (
+        text[:limit]
+        + f"\n\n... {what} truncated: {len(text) - limit} more characters omitted. "
+        "Inspect the rest with git yourself.\n"
+    )
+
+
 def prompt_review_query(  # ruff: ignore[too-many-arguments] -- pure builder
     basis: str, git_context: str, *, has_diff: bool, docs_dir: str, lint_report: str
 ) -> str:
@@ -225,11 +241,17 @@ def prompt_review_query(  # ruff: ignore[too-many-arguments] -- pure builder
         if basis
         else no_prompt_review_instructions(has_diff=has_diff, docs_dir=docs_dir)
     )
-    return f"{head}\n\n{git_context}\n\nHarness lint evidence:\n{lint_report}"
+    return (
+        f"{head}\n\n{clip_context(git_context, 'git context')}\n\n"
+        f"Harness lint evidence:\n{clip_context(lint_report, 'lint report')}"
+    )
 
 
 def plan_review_query(plan_file: Path, lint_report: str) -> str:
-    return f"Review {plan_file}\n\nHarness lint evidence:\n{lint_report}"
+    return (
+        f"Review {plan_file}\n\n"
+        f"Harness lint evidence:\n{clip_context(lint_report, 'lint report')}"
+    )
 
 
 def remote_review_query(
@@ -239,7 +261,7 @@ def remote_review_query(
     return (
         f"{request_label} title: {title}\n\n"
         f"{request_label} description:\n{description}\n\n"
-        f"{request_label} diff:\n{diff}"
+        f"{request_label} diff:\n{clip_context(diff)}"
     )
 
 
@@ -247,8 +269,8 @@ def branch_review_query(target: str, branch: str, diff: str, lint_report: str) -
     return (
         f"Diff of branch {branch!r} against target {target!r} "
         f"(git diff {target}...{branch}, including any uncommitted changes):\n\n"
-        + (diff or "(no diff -- branch matches target)")
-        + f"\n\nHarness lint evidence:\n{lint_report}"
+        + (clip_context(diff) or "(no diff -- branch matches target)")
+        + f"\n\nHarness lint evidence:\n{clip_context(lint_report, 'lint report')}"
     )
 
 
