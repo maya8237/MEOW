@@ -159,7 +159,10 @@ def _remember_session(options: object, message: object) -> None:
     callback = getattr(options, "_meow_session_callback", None)
     session_id = _message_session_id(message)
     if callable(callback) and session_id:
-        callback(session_id)
+        try:
+            callback(session_id)
+        except Exception as exc:  # a journal write must not abort the turn
+            logger.warning("session_not_recorded", reason=str(exc))
 
 
 def log_stream_message(  # ruff: ignore[complex-structure]

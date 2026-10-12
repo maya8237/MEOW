@@ -74,3 +74,36 @@ def test_received_results_append_without_phase_transition(tmp_path):
     assert "Turns: 4" in concise
     assert "generator" in render(saved, verbose=True)
     assert "Tokens: unavailable" in render(record)
+
+
+def test_journal_write_failure_does_not_abort_the_agent_stream():
+    """Usage and session bookkeeping is best-effort: a full disk or a corrupt
+    record must not kill a healthy agent turn."""
+    from types import SimpleNamespace
+
+    from claude_agent_sdk import ResultMessage
+
+    from meow.agents.base import log_stream_message
+    from meow.infrastructure.usage import record_result, usage_scope
+
+    class Broken:
+        def add_usage(self, *_args):  # ruff: ignore[no-self-use]
+            raise OSError("No space left on device")
+
+    result = ResultMessage(
+        subtype="success",
+        duration_ms=1,
+        duration_api_ms=1,
+        is_error=False,
+        num_turns=1,
+        session_id="s",
+        usage={"input_tokens": 1},
+    )
+
+    def explode(_session_id):
+        raise OSError("No space left on device")
+
+    options = SimpleNamespace(_meow_session_callback=explode)
+    with usage_scope(Broken(), "run"):
+        record_result("generator", result)
+        log_stream_message("generator", result, options=options)
