@@ -70,15 +70,17 @@ async def _run_subprocess(
     return process.returncode, "\n".join(part for part in streams if part.strip())
 
 
-async def _run_one_lint_command(
+async def _run_one_lint_command(  # ruff: ignore[too-many-return-statements]
     working_dir: Path, entry: LintCommand, file_path: str, timeout: float
 ) -> str | None:
     """Run one per-file command, returning its failure report, or None."""
-    cwd = resolve_command_cwd(working_dir, entry.cwd)
     effective_timeout = entry.timeout or timeout
-    result = await _run_subprocess(
-        cwd, entry.argv_for_file(file_path), effective_timeout, entry.env
-    )
+    try:
+        cwd = resolve_command_cwd(working_dir, entry.cwd)
+        argv = entry.argv_for_file(file_path)
+    except ValueError as exc:  # missing cwd, empty or unparsable command
+        return f"$ {entry.command}\n{exc}"
+    result = await _run_subprocess(cwd, argv, effective_timeout, entry.env)
     if result is None:
         logger.warning(
             "lint_command_timed_out",
@@ -93,10 +95,7 @@ async def _run_one_lint_command(
         # The fixing command may exit successfully while leaving findings.
         # Report the check-only state of the edited file, not stale fix output.
         result = await _run_subprocess(
-            cwd,
-            [*entry.argv(), file_path],
-            effective_timeout,
-            entry.env,
+            cwd, [*entry.argv(), file_path], effective_timeout, entry.env
         )
         if result is None:
             return (
@@ -129,12 +128,15 @@ async def apply_lint_fixes(
     for entry in commands:
         if not entry.fix_flag:
             continue
-        result = await _run_subprocess(
-            resolve_command_cwd(working_dir, entry.cwd),
-            [*entry.argv(), entry.fix_flag],
-            entry.timeout or timeout,
-            entry.env,
-        )
+        try:
+            cwd = resolve_command_cwd(working_dir, entry.cwd)
+            argv = [*entry.argv(), entry.fix_flag]
+        except ValueError as exc:  # the check pass reports it as a failure
+            logger.warning(
+                "lint_fix_command_skipped", command=entry.command, reason=str(exc)
+            )
+            continue
+        result = await _run_subprocess(cwd, argv, entry.timeout or timeout, entry.env)
         if result is None:
             logger.warning(
                 "lint_fix_command_timed_out",
@@ -162,12 +164,15 @@ async def check_lint_evidence(
     informational = []
     for entry in commands:
         effective_timeout = entry.timeout or timeout
-        result = await _run_subprocess(
-            resolve_command_cwd(working_dir, entry.cwd),
-            entry.argv(),
-            effective_timeout,
-            entry.env,
-        )
+        try:
+            cwd = resolve_command_cwd(working_dir, entry.cwd)
+            argv = entry.argv()
+        except ValueError as exc:  # missing cwd, empty or unparsable command
+            (blocking if entry.gate else informational).append(
+                f"$ {entry.command}\n{exc}"
+            )
+            continue
+        result = await _run_subprocess(cwd, argv, effective_timeout, entry.env)
         if result is None:
             logger.warning(
                 "lint_command_timed_out",
