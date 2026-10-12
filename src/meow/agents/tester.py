@@ -167,10 +167,9 @@ class VerificationAgent(Agent):
         if evidence.blocking_failed:
             failures = [
                 f"{command.command} "
-                f"({'timeout' if command.timed_out else command.exit_code})"
+                f"({'timeout' if command.timed_out else command.exit_code if command.exit_code is not None else 'unknown exit'})"
                 for command in evidence.commands
-                if command.gate
-                and (command.timed_out or command.exit_code not in {0, None})
+                if command.gate and (command.timed_out or command.exit_code != 0)
             ]
             verdict = force_fail(
                 verdict, f"Mandatory test command failed: {'; '.join(failures)}."

@@ -116,6 +116,26 @@ class TaskGraph:
         return {"tasks": [asdict(task) for task in self.tasks]}
 
 
+_LIST_FIELDS = ("depends_on", "owned_paths", "verification")
+
+
+def _string_list(value: object) -> tuple[str, ...]:
+    """Normalize a planner-written list field.
+
+    Planners often write a single command or a prose paragraph instead of a
+    list; accept a string (split on lines, bullets dropped) or null so a
+    near-valid graph is repaired instead of discarded.
+    """
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        lines = (line.strip().lstrip("-*").strip() for line in value.splitlines())
+        return tuple(line for line in lines if line)
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return tuple(value)
+    raise ValueError("task entry fields have invalid types")
+
+
 def load_task_graph(  # ruff: ignore[complex-structure]
     plan_file: Path,
 ) -> TaskGraph | None:
@@ -140,18 +160,15 @@ def load_task_graph(  # ruff: ignore[complex-structure]
             "verification",
         }:
             raise ValueError("task entry has missing or unknown fields")
-        if not isinstance(entry["id"], str) or any(
-            not isinstance(entry[key], list)
-            or any(not isinstance(value, str) for value in entry[key])
-            for key in ("depends_on", "owned_paths", "verification")
-        ):
+        if not isinstance(entry["id"], str):
             raise ValueError("task entry fields have invalid types")
+        lists = {key: _string_list(entry[key]) for key in _LIST_FIELDS}
         tasks.append(
             TaskSpec(
                 entry["id"],
-                tuple(entry["depends_on"]),
-                tuple(entry["owned_paths"]),
-                tuple(entry["verification"]),
+                lists["depends_on"],
+                lists["owned_paths"],
+                lists["verification"],
             )
         )
     graph = TaskGraph(tuple(tasks))

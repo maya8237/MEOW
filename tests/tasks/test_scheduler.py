@@ -43,7 +43,9 @@ def test_failed_worker_blocks_dependents_and_preserves_result():
 
     outcomes = asyncio.run(run_task_graph(_graph(), worker, max_parallel=2))
     assert any(item.id == "api" and item.status == "failed" for item in outcomes)
-    assert not any(item.id == "integration" for item in outcomes)
+    assert all(
+        item.status == "skipped" for item in outcomes if item.id == "integration"
+    )
 
 
 def test_cancel_prevents_any_worker_start():

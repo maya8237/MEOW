@@ -1,6 +1,7 @@
 """Bridge a validated task graph to isolated generator workers."""
 
 import asyncio
+import os
 from pathlib import Path
 
 from meow.agents.generator import Generator
@@ -14,6 +15,19 @@ from meow.project.permissions import PermissionPolicy
 
 from .executor import execute_in_worktrees
 from .model import TaskGraph, TaskSpec
+from .scheduler import PermanentTaskError, TaskOutcome
+
+_SHELL_OPERATORS = ("&&", "||", "|", ";", ">", "<")
+
+
+def _verification_argv(command: str) -> list[str]:
+    """Plain commands run directly; shell syntax runs in a shell that keeps the
+    failing exit status (a pipeline must not report only its last stage)."""
+    if any(op in command for op in _SHELL_OPERATORS):
+        if os.name == "nt":
+            return ["cmd", "/c", command]
+        return ["bash", "-o", "pipefail", "-c", command]
+    return _argv(command, ())
 
 
 async def verify_task(  # ruff: ignore[complex-structure, too-many-statements]
@@ -22,7 +36,7 @@ async def verify_task(  # ruff: ignore[complex-structure, too-many-statements]
     """Run declared checks before a worker can commit or integrate its slice."""
     evidence: list[dict[str, object]] = []
     for command in spec.verification:
-        argv = _argv(command, ())
+        argv = _verification_argv(command)
         if not argv:
             raise ValueError(f"task {spec.id} has an empty verification command")
         try:
@@ -37,7 +51,7 @@ async def verify_task(  # ruff: ignore[complex-structure, too-many-statements]
             except TimeoutError:
                 process.kill()
                 await process.wait()
-                raise RuntimeError(
+                raise PermanentTaskError(
                     f"task {spec.id} verification timed out: {command}"
                 ) from None
             except asyncio.CancelledError:
@@ -45,7 +59,7 @@ async def verify_task(  # ruff: ignore[complex-structure, too-many-statements]
                 await process.wait()
                 raise
         except OSError as exc:
-            raise RuntimeError(
+            raise PermanentTaskError(
                 f"task {spec.id} verification could not start: {command}: {exc}"
             ) from exc
         item: dict[str, object] = {
@@ -54,10 +68,11 @@ async def verify_task(  # ruff: ignore[complex-structure, too-many-statements]
             "output": output.decode("utf-8", errors="replace")[:4000],
         }
         evidence.append(item)
-        if process.returncode:
-            raise RuntimeError(
+        if process.returncode != 0:  # None (unknown) is a failure too
+            tail = str(item["output"]).strip()[-600:]
+            raise PermanentTaskError(
                 f"task {spec.id} verification failed: {command} "
-                f"(exit {process.returncode})"
+                f"(exit {process.returncode})" + (f"\n{tail}" if tail else "")
             )
     return evidence
 
@@ -70,8 +85,27 @@ async def run_parallel_plan(  # ruff: ignore[complex-structure, too-many-stateme
     run_id: str,
 ) -> bool:
     """Run independent slices, integrate them, then return for final review."""
+    saved = store.load(run_id).results.get("tasks")
+    saved = saved if isinstance(saved, dict) else {}
+    # Tasks already cherry-picked into the integration checkout by an earlier
+    # attempt are kept; everything else restarts from a clean worktree.
+    integrated = {
+        task_id
+        for task_id, detail in saved.items()
+        if isinstance(detail, dict)
+        and detail.get("status") == "complete"
+        and task_id in {spec.id for spec in graph.tasks}
+    }
     task_state = {
-        spec.id: {"status": "waiting", "owned_paths": list(spec.owned_paths)}
+        spec.id: {
+            "status": "complete" if spec.id in integrated else "waiting",
+            "owned_paths": list(spec.owned_paths),
+            **(
+                {"verification": saved[spec.id].get("verification", [])}
+                if spec.id in integrated
+                else {}
+            ),
+        }
         for spec in graph.tasks
     }
     store.transition(run_id, "tasks_waiting", results={"tasks": task_state})
@@ -81,6 +115,14 @@ async def run_parallel_plan(  # ruff: ignore[complex-structure, too-many-stateme
     def on_change(task_id: str, state: str) -> None:
         task_state[task_id]["status"] = state
         store.transition(run_id, "tasks_running", results={"tasks": task_state})
+
+    def on_outcome(outcome: TaskOutcome) -> None:
+        if outcome.error:
+            task_state[outcome.id]["error"] = outcome.error[:2000]
+        if outcome.worktree:
+            task_state[outcome.id]["worktree"] = outcome.worktree
+        if outcome.commit:
+            task_state[outcome.id]["commit"] = outcome.commit
 
     async def prepare(task_dir: Path) -> None:  # ruff: ignore[unused-async]
         manifest = config.get("worktree_setup", {"copy": [], "commands": []})
@@ -125,11 +167,28 @@ async def run_parallel_plan(  # ruff: ignore[complex-structure, too-many-stateme
         cancel=lambda: cancel_requested(store, run_id),
         on_change=on_change,
         prepare=prepare,
+        on_outcome=on_outcome,
+        completed=integrated,
     )
     if not result.passed:
+        details = [
+            f"{item.id}: {item.status}" + (f" ({item.error})" if item.error else "")
+            for item in result.outcomes
+            if item.status != "complete"
+        ]
         reason = result.conflict or "one or more tasks failed or were cancelled"
-        store.transition(run_id, "tasks_failed", last_failure=reason)
-        raise RuntimeError(f"Parallel task execution stopped: {reason}")
+        if details:
+            reason = f"{reason}: " + "; ".join(details)
+        store.transition(
+            run_id,
+            "tasks_failed",
+            last_failure=reason,
+            results={"tasks": task_state},
+        )
+        raise RuntimeError(
+            f"Parallel task execution stopped: {reason}. Fix the cause and run "
+            f"meow resume {run_id} --continue to retry only the unfinished tasks."
+        )
     store.transition(
         run_id, "tasks_integrated", results={"integrated_revision": result.revision}
     )

@@ -65,16 +65,13 @@ def test_integrated_tasks_resume_at_review(tmp_path):
     assert run.await_args.kwargs["resume_at"] == "review"
 
 
-def test_partial_tasks_preserve_worktrees_and_refuse_unsafe_replay(tmp_path, capsys):
+def test_partial_tasks_resume_and_replay_unfinished_slices(tmp_path):
     store, record = _record(tmp_path)
     store.transition(record.id, "tasks_running")
     with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
-        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
-    run.assert_not_awaited()
-    assert store.load(record.id).phase == "tasks_running"
-    error = capsys.readouterr().err.lower()
-    assert "task worktrees" in error
-    assert "review" in error
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    assert run.await_args.kwargs["resume_at"] == "generate"
+    assert store.load(record.id).phase == "resuming"
 
 
 def test_lint_fix_checkpoint_does_not_start_feature_agent(tmp_path, capsys):
