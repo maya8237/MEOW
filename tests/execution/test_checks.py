@@ -241,3 +241,56 @@ def test_timed_out_check_leaves_no_orphaned_children(tmp_path):
     assert time.monotonic() - started < MAX_KILL_SECONDS
     time.sleep(2.5)
     assert not marker.exists()
+
+
+def test_final_checks_settle_when_a_check_writes_a_different_report_each_run(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
+    (tmp_path / "source.py").write_text("x = 1\n", encoding="utf-8")
+    build = Check(
+        "build",
+        "build",
+        sys.executable,
+        ("-c", "import time; open('junit.xml', 'w').write(str(time.time_ns()))"),
+    )
+    config = {"lint": [], "build": [], "tester": {"tests": []}}
+    with patch("meow.infrastructure.checks.configured_checks", return_value=[build]):
+        results = asyncio.run(run_final_checks(tmp_path, config))
+    assert all(result.passed for result in results)
+    assert checks_current(results, [build], tmp_path)
+
+
+def test_final_checks_do_not_settle_when_a_check_edits_tracked_source(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
+    (tmp_path / "source.py").write_text("0\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "-qm",
+            "init",
+        ],
+        check=True,
+    )
+    bump = Check(
+        "build",
+        "bump",
+        sys.executable,
+        (
+            "-c",
+            "p=open('source.py'); n=int(p.read())+1; "
+            "open('source.py','w').write(str(n))",
+        ),
+    )
+    config = {"lint": [], "build": [], "tester": {"tests": []}}
+    with patch("meow.infrastructure.checks.configured_checks", return_value=[bump]):
+        results = asyncio.run(run_final_checks(tmp_path, config))
+    assert not checks_current(results, [bump], tmp_path)  # source keeps moving

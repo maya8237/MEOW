@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 
@@ -139,13 +139,27 @@ def tracked_revision(repo: Path) -> str:
     """Hash HEAD and the content of tracked files only; untracked files (reports,
     screenshots, build output) are not part of it."""
     root = repo.resolve()
-    digest = hashlib.sha256()
-    for argv in (["rev-parse", "HEAD"], ["diff", "HEAD", "--binary"]):
-        done = subprocess.run(
+
+    def git(*argv: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
             ["git", *argv], cwd=root, capture_output=True, check=False
         )
-        if done.returncode and argv[0] == "diff":
-            return code_revision(repo)  # not a usable repository: be strict
+
+    digest = hashlib.sha256()
+    head = git("rev-parse", "--verify", "-q", "HEAD")
+    digest.update(head.stdout)
+    # With no commit yet, the staged tree stands in for HEAD.
+    diffs = (
+        [git("diff", "HEAD", "--binary")]
+        if head.returncode == 0
+        else [
+            git("diff", "--cached", "--binary"),
+            git("diff", "--binary"),
+        ]
+    )
+    if any(done.returncode for done in diffs):
+        return code_revision(repo)  # not a usable repository: be strict
+    for done in diffs:
         digest.update(done.stdout)
     return digest.hexdigest()
 
@@ -355,17 +369,28 @@ def completion_ready(  # ruff: ignore[too-many-arguments, too-many-positional-ar
 
 
 async def run_final_checks(repo: Path, config: dict) -> list[CheckResult]:
-    """Run current gates after the last edit, reusing the managed test stage."""
+    """Run current gates after the last edit, reusing the managed test stage.
+
+    A batch that edits tracked source is re-run (its results describe code that
+    no longer exists). A batch that only left untracked output behind (a
+    timestamped report) cannot be made to converge by re-running, so its
+    results are re-stamped to the tree they produced.
+    """
     checks = configured_checks(config)
     for _attempt in range(3):
+        tracked = await asyncio.to_thread(tracked_revision, repo)
         results = await _run_check_batch(repo, config, checks)
-        revision = code_revision(repo)
+        revision = await asyncio.to_thread(code_revision, repo)
         fingerprint = config_fingerprint(repo)
         if all(
             result.revision == revision and result.config_fingerprint == fingerprint
             for result in results
         ):
             return results
+        if await asyncio.to_thread(tracked_revision, repo) == tracked and all(
+            r.config_fingerprint == fingerprint for r in results
+        ):
+            return [replace(result, revision=revision) for result in results]
     return results
 
 
