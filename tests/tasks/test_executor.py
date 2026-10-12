@@ -188,3 +188,51 @@ def test_worktree_add_calls_are_serialized(tmp_path, monkeypatch):
     result, _ = _ticks_while_executing(repo)
     assert result.passed
     assert peak == 1
+
+
+def _repo(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Test")
+    _git(repo, "config", "user.email", "test@example.com")
+    (repo / ".gitignore").write_text(".worktrees/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    return repo
+
+
+def test_ownership_accepts_planner_spellings_of_a_directory(tmp_path):
+    """`src/`, `./src` and `src\\` own `src/a.py`; the graph validator already
+    treats them as the same path, so the edit check must too."""
+    repo = _repo(tmp_path)
+    graph = TaskGraph((
+        TaskSpec("one", (), ("src/",), ()),
+        TaskSpec("two", (), ("./lib",), ()),
+        TaskSpec("three", (), ("docs\\",), ()),
+    ))
+
+    async def implement(spec, worktree):  # ruff: ignore[unused-async]
+        folder = {"one": "src", "two": "lib", "three": "docs"}[spec.id]
+        (worktree / folder).mkdir()
+        (worktree / folder / "a.txt").write_text(spec.id, encoding="utf-8")
+
+    result = asyncio.run(
+        execute_in_worktrees(repo, graph, "c" * 32, implement, max_parallel=1)
+    )
+    assert result.passed, [o.error for o in result.outcomes]
+
+
+def test_ownership_accepts_non_ascii_file_names(tmp_path):
+    """git quotes non-ASCII names in `--name-only`; they must still match."""
+    repo = _repo(tmp_path)
+    graph = TaskGraph((TaskSpec("one", (), ("src",), ()),))
+
+    async def implement(_spec, worktree):  # ruff: ignore[unused-async]
+        (worktree / "src").mkdir()
+        (worktree / "src" / "café.txt").write_text("x", encoding="utf-8")
+
+    result = asyncio.run(
+        execute_in_worktrees(repo, graph, "d" * 32, implement, max_parallel=1)
+    )
+    assert result.passed, [o.error for o in result.outcomes]

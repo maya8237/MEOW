@@ -25,8 +25,18 @@ def _path(value: str) -> str:
     return "/".join(path.parts).casefold()
 
 
+def owns(owner: str, path: str) -> bool:
+    """Whether a normalized `owner` covers a normalized `path` ("" is the root)."""
+    return not owner or path == owner or path.startswith(f"{owner}/")
+
+
+def normalize_path(value: str) -> str:
+    """Casefolded, slash-separated, project-relative form used to compare paths."""
+    return "/".join(PurePosixPath(value.replace("\\", "/")).parts).casefold()
+
+
 def _overlap(left: str, right: str) -> bool:
-    return left == right or left.startswith(f"{right}/") or right.startswith(f"{left}/")
+    return owns(left, right) or owns(right, left)
 
 
 @dataclass(frozen=True)
