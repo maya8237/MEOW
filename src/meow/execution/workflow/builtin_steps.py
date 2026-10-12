@@ -1,5 +1,6 @@
 """Existing MEOW operations exposed as composable workflow steps."""
 
+import asyncio
 import json
 from dataclasses import asdict, replace
 
@@ -11,16 +12,20 @@ from meow.agents.tester import VerificationAgent
 from meow.execution.delivery import deliver_verified_run
 from meow.execution.orchestrator import (
     PlanNotApprovedError,
+    _adopt_artifacts,
     _fix_instruction,
     _generate,
     _journal,
     _review_round,
+    _stage_baseline,
     _tester_results,
 )
 from meow.infrastructure.checks import (
+    adopt_stage_artifacts,
     completion_ready,
     configured_checks,
     run_final_checks,
+    stage_baseline,
 )
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.test_runner import prepared_test_stage
@@ -194,6 +199,7 @@ async def review(state, step):
             results={"reviewer": status},
         )
         if status == "PASS" and state.test:
+            baseline = _stage_baseline(state.sprint)
             async with prepared_test_stage(
                 state.sprint.active_working_dir(), state.sprint.config
             ) as evidence:
@@ -205,6 +211,7 @@ async def review(state, step):
                 "tester_finished",
                 results=_tester_results(status, tester_status, evidence),
             )
+            _adopt_artifacts(state.sprint, baseline)
             if tester_status != "PASS" or evidence.blocking_failed:
                 status, verdict = "FAIL", f"Tester feedback:\n{tester_verdict}"
     state.gate_result(
@@ -232,8 +239,11 @@ async def checks(state):
     if not config_paths(state.checks_dir):
         return
     state.journal("checking")
-    state.checks_results = await run_final_checks(
-        state.sprint.active_working_dir(), state.sprint.config
+    active = state.sprint.active_working_dir()
+    baseline = await asyncio.to_thread(stage_baseline, active)
+    state.checks_results = await run_final_checks(active, state.sprint.config)
+    await asyncio.to_thread(
+        adopt_stage_artifacts, state.store, state.run_id, active, baseline
     )
     state.journal(
         "checks_finished",

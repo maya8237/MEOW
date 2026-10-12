@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 
-from meow.execution.run_state import MAX_OUTPUT, CheckResult
+from meow.execution.run_state import MAX_OUTPUT, CheckResult, RunStore
 from meow.infrastructure.test_runner import prepared_test_stage
 from meow.project.command_policy import split_command
 from meow.project.config import config_paths
@@ -90,6 +90,16 @@ def config_fingerprint(repo: Path) -> str:
     return digest.hexdigest()
 
 
+# Tool caches that appear whenever code runs; never part of the reviewed code.
+_GENERATED_DIRS = frozenset({
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".hypothesis",
+})
+
+
 def code_revision(repo: Path) -> str:
     """Hash HEAD and content, including edits that have not been committed."""
     root = repo.resolve()
@@ -117,11 +127,56 @@ def code_revision(repo: Path) -> str:
         paths = [root / os.fsdecode(name) for name in files.stdout.split(b"\0") if name]
     for path in sorted(paths):
         if path.is_file() and not any(
-            part in {".meow", ".test-tmp"} for part in path.relative_to(root).parts
+            part in {".meow", ".test-tmp"} | _GENERATED_DIRS
+            for part in path.relative_to(root).parts
         ):
             digest.update(str(path.relative_to(root)).encode())
             digest.update(hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()
+
+
+def tracked_revision(repo: Path) -> str:
+    """Hash HEAD and the content of tracked files only; untracked files (reports,
+    screenshots, build output) are not part of it."""
+    root = repo.resolve()
+    digest = hashlib.sha256()
+    for argv in (["rev-parse", "HEAD"], ["diff", "HEAD", "--binary"]):
+        done = subprocess.run(
+            ["git", *argv], cwd=root, capture_output=True, check=False
+        )
+        if done.returncode and argv[0] == "diff":
+            return code_revision(repo)  # not a usable repository: be strict
+        digest.update(done.stdout)
+    return digest.hexdigest()
+
+
+@dataclass(frozen=True)
+class StageBaseline:
+    """The tree a stage started from, for `adopt_stage_artifacts`."""
+
+    revision: str
+    tracked: str
+
+
+def stage_baseline(repo: Path) -> StageBaseline:
+    return StageBaseline(code_revision(repo), tracked_revision(repo))
+
+
+def adopt_stage_artifacts(
+    store: RunStore, run_id: str, repo: Path, baseline: StageBaseline
+) -> None:
+    """Keep a current review valid across a stage that only added files.
+
+    Tests, builds and testers leave reports and screenshots behind. When the
+    review covered the tree the stage started from and no tracked file changed,
+    the reviewed code is untouched, so the review is re-stamped to the new tree.
+    An edit to tracked source is left to invalidate it.
+    """
+    if store.load(run_id).results.get("reviewer_revision") != baseline.revision:
+        return
+    if tracked_revision(repo) != baseline.tracked:
+        return
+    store.update_results(run_id, reviewer_revision=code_revision(repo))
 
 
 def configured_checks(config: dict) -> list[Check]:
