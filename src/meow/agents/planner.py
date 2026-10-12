@@ -12,6 +12,12 @@ def require_plan_file(plan_file: Path) -> Path:
     """Require the planner to leave a usable plan artifact behind."""
     if not plan_file.is_file():
         raise FileNotFoundError(f"Planner did not create plan file: {plan_file}")
+    try:
+        blank = not plan_file.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError):
+        return plan_file  # cannot judge; the consumer reports a read failure
+    if blank:
+        raise RuntimeError(f"Planner left an empty plan file: {plan_file}")
     return plan_file
 
 
