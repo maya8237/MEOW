@@ -1,7 +1,11 @@
 """Shared setup and one-shot execution for MEOW agents."""
 
 import asyncio
+import copy
+import os
+import re
 from collections.abc import AsyncIterator, Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -37,6 +41,10 @@ from meow.project.permissions import (
 logger = get_logger(__name__)
 
 _PREVIEW_LEN = 200
+_BASH_TIMEOUT_ENV = {
+    "BASH_DEFAULT_TIMEOUT_MS": str(30 * 60 * 1000),
+    "BASH_MAX_TIMEOUT_MS": str(2 * 60 * 60 * 1000),
+}
 _SDK_CRASH_RETRY_ATTEMPTS = 3
 _SDK_CRASH_RETRY_BACKOFF = 1.0
 _NTSTATUS_SEVERITY_BIT = 0x80000000
@@ -395,7 +403,7 @@ class Agent:
         gated = role_policy.gated_tools()
         return [tool for tool in allowed_tools if tool not in gated]
 
-    def options(
+    def options(  # ruff: ignore[complex-structure, too-many-statements]
         self,
         *,
         system_prompt: str,
@@ -425,7 +433,13 @@ class Agent:
                 if role_key not in resumed and "resume" not in extra_options:
                     extra_options["resume"] = session_id
                     resumed.add(role_key)
+        # Long builds and test suites must not be killed by the CLI's default
+        # two-minute Bash timeout; explicit user/env settings still win.
+        env = dict(extra_options.pop("env", None) or {})
+        for name, value in _BASH_TIMEOUT_ENV.items():
+            env.setdefault(name, os.environ.get(name, value))
         options = ClaudeAgentOptions(
+            env=env,
             system_prompt=system_prompt,
             allowed_tools=allowed_tools,
             model=(
@@ -504,11 +518,44 @@ class Agent:
         return await self.run_query(prompt, options, role)
 
 
+# A persistent SDK session grows with every turn. Past roughly this many input
+# tokens the CLI starts failing every turn, so the session is rebuilt first.
+_SESSION_TOKEN_LIMIT = 150_000
+_TURN_ATTEMPTS = (1, 2)
+_CONTEXT_OVERFLOW = re.compile(
+    r"prompt is too long|context (?:window|length|limit)|too many tokens|"
+    r"maximum context|exceed(?:s|ed)? .{0,30}context",
+    re.I,
+)
+
+
+def _context_tokens(result: object) -> int:
+    usage = getattr(result, "usage", None)
+    if not isinstance(usage, dict):
+        return 0
+    return sum(
+        value
+        for key in (
+            "input_tokens",
+            "cache_creation_input_tokens",
+            "cache_read_input_tokens",
+        )
+        if isinstance(value := usage.get(key), int) and not isinstance(value, bool)
+    )
+
+
 class SessionAgent(Agent):
     """A role that keeps one `ClaudeSDKClient` session across rounds, so later
-    turns remember what earlier ones already tried."""
+    turns remember what earlier ones already tried.
+
+    When the session nears the context limit (or a turn fails because it hit
+    it), the client is rebuilt and the turn is replayed with a recap, so a long
+    unattended run never dies on a full context window."""
 
     role = ""
+    _entered = False
+    _context_size = 0
+    _recap = ""
 
     def _open_session(self, options: ClaudeAgentOptions) -> None:
         self._session_options = options
@@ -524,24 +571,86 @@ class SessionAgent(Agent):
 
     async def __aenter__(self):
         await self._client.__aenter__()
+        self._entered = True
         return self
 
     async def __aexit__(self, *exc):
+        self._entered = False
         await self._client.__aexit__(*exc)
+
+    async def _restart(self) -> None:
+        """Replace the full session with a fresh one carrying a short recap."""
+        logger.warning(
+            "session_recycled", role=self.role, context_tokens=self._context_size
+        )
+        old = self._client
+        options = copy.copy(self._session_options)
+        for name in ("resume", "continue_conversation"):
+            if hasattr(options, name):
+                setattr(options, name, None if name == "resume" else False)
+        callback = getattr(self._session_options, "_meow_session_callback", None)
+        if callback is not None:
+            options._meow_session_callback = callback
+        self._session_options = options
+        self._client = ClaudeSDKClient(options=options)
+        if self._entered:
+            with suppress(Exception):
+                await old.__aexit__(None, None, None)
+            await self._client.__aenter__()
+        self._context_size = 0
+        self._recap = (
+            "Your previous session reached its context limit and was replaced. "
+            "Re-read the plan and inspect the working tree (git status, git diff) "
+            "to see what is already done; do not redo finished work.\n\n"
+        )
 
     async def _turn(self, message: str) -> str:
         """Send one message and return the assistant's text for that turn."""
-        logger.info("session_turn_started", role=self.role)
-        await self._client.query(message)
+        if self._entered and self._context_size > _SESSION_TOKEN_LIMIT:
+            await self._restart()
+        for attempt in _TURN_ATTEMPTS:
+            logger.info("session_turn_started", role=self.role)
+            try:
+                text = await self._run_turn(self._recap + message)
+            except _ContextOverflow:
+                if attempt == len(_TURN_ATTEMPTS) or not self._entered:
+                    raise RuntimeError(
+                        f"{self.role} session exceeded its context window"
+                    ) from None
+                await self._restart()
+                continue
+            self._recap = ""
+            logger.info("session_turn_finished", role=self.role)
+            return text
+        raise AssertionError("unreachable")
+
+    async def _run_turn(self, message: str) -> str:  # ruff: ignore[complex-structure]
         text = []
-        async for item in self._client.receive_response():
-            log_stream_message(self.role, item, options=self._session_options)
-            if isinstance(item, AssistantMessage):
-                text.extend(
-                    block.text for block in item.content if isinstance(block, TextBlock)
-                )
-        logger.info("session_turn_finished", role=self.role)
+        try:
+            await self._client.query(message)
+            async for item in self._client.receive_response():
+                log_stream_message(self.role, item, options=self._session_options)
+                if isinstance(item, AssistantMessage):
+                    text.extend(
+                        block.text
+                        for block in item.content
+                        if isinstance(block, TextBlock)
+                    )
+                elif isinstance(item, ResultMessage):
+                    self._context_size = _context_tokens(item) or self._context_size
+                    if getattr(item, "is_error", False) and _CONTEXT_OVERFLOW.search(
+                        str(getattr(item, "result", "") or "")
+                    ):
+                        raise _ContextOverflow
+        except ProcessError as exc:
+            if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
+                raise _ContextOverflow from exc
+            raise
         return "\n".join(text)
+
+
+class _ContextOverflow(Exception):
+    """The SDK session ran out of context window."""
 
 
 class ConfigLookups:

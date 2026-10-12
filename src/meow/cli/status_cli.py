@@ -5,7 +5,12 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
-from meow.execution.run_state import RunRecord, RunStateError, RunStore
+from meow.execution.run_state import (
+    TERMINAL_PHASES,
+    RunRecord,
+    RunStateError,
+    RunStore,
+)
 from meow.infrastructure.background import inspect_worker, reconcile_worker
 from meow.infrastructure.quality import Concern, QualityStoreError, concerns_for_run
 from meow.infrastructure.usage import usage_totals
@@ -68,7 +73,7 @@ def _decision_lines(record: RunRecord) -> list[str]:
     ]
 
 
-def render(  # ruff: ignore[complex-structure, too-many-statements]
+def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches, too-many-locals]
     record: RunRecord, *, verbose: bool = False, concerns: tuple[Concern, ...] = ()
 ) -> str:
     started = datetime.fromisoformat(record.created_at)
@@ -78,15 +83,35 @@ def render(  # ruff: ignore[complex-structure, too-many-statements]
     def available(value: object) -> str:
         return str(value) if value is not None else "unavailable"
 
+    updated = datetime.fromisoformat(record.updated_at)
+    idle = max(0, int((datetime.now(UTC) - updated).total_seconds()))
+    entries = record.usage.get("entries", []) if isinstance(record.usage, dict) else []
+    stamps = [e["at"] for e in entries if isinstance(e, dict) and e.get("at")]
+    usage_note = ""
+    if record.phase not in TERMINAL_PHASES:
+        usage_note = (
+            f" (as of {stamps[-1]}; later turns not yet reported)"
+            if stamps
+            else " (no SDK result reported yet)"
+        )
+    tasks_error = next(
+        (
+            f"{task_id}: {detail['error']}"
+            for task_id, detail in (record.results.get("tasks") or {}).items()
+            if isinstance(detail, dict) and detail.get("error")
+        ),
+        None,
+    )
+    reviewer = record.results.get("reviewer", "unavailable")
     lines = [
         f"Run: {record.id}",
         f"Phase: {record.phase}",
         f"Elapsed: {elapsed}s",
+        f"Last checkpoint: {idle}s ago",
         f"Turns: {available(totals['turns'])}",
-        f"Tokens: {available(totals['tokens'])}",
-        f"Cost (USD): {available(totals['cost_usd'])}",
-        "Last result/failure: "
-        f"{record.last_failure or record.results.get('reviewer', 'unavailable')}",
+        f"Tokens: {available(totals['tokens'])}{usage_note}",
+        f"Cost (USD): {available(totals['cost_usd'])}{usage_note}",
+        f"Last result/failure: {record.last_failure or tasks_error or reviewer}",
         f"Worktree: {record.worktree}",
         f"Branch: {record.branch}",
         f"Recovery: {recovery_command(record)}",
@@ -116,7 +141,14 @@ def render(  # ruff: ignore[complex-structure, too-many-statements]
         )
         summary = ", ".join(
             f"{counts[state]} {state}"
-            for state in ("complete", "running", "waiting", "failed", "cancelled")
+            for state in (
+                "complete",
+                "running",
+                "waiting",
+                "failed",
+                "skipped",
+                "cancelled",
+            )
             if counts[state]
         )
         lines.append(f"Tasks: {summary or 'unavailable'}")
@@ -124,6 +156,7 @@ def render(  # ruff: ignore[complex-structure, too-many-statements]
             lines.extend(
                 f"  {task_id}: {detail.get('status', 'unknown')} "
                 f"owns {detail.get('owned_paths', [])}"
+                + (f" error: {detail['error']}" if detail.get("error") else "")
                 for task_id, detail in tasks.items()
                 if isinstance(detail, dict)
             )

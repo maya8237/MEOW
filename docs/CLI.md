@@ -17,7 +17,8 @@ These are the commands meant for normal project work:
 | `meow status` | Inspect a saved or background run. |
 | `meow cancel` | Ask a running sprint to stop cooperatively. |
 | `meow worktree` | Inspect or safely clean MEOW-owned run worktrees. |
-| `meow resume` | Inspect or continue a saved run. |
+| `meow resume` | Inspect or continue a saved run. `--repair` re-baselines blocked resume gates (plan, config, branch, workflow, worktree, missing sessions). A partially finished task graph resumes and reruns only unfinished tasks. |
+| `meow detach [--log FILE] -- CMD...` | Start a long command fully detached (own session, log file); prints JSON with `pid` and `log`. |
 | `meow queue` | Enqueue tasks or run queued tasks serially in the current repository. |
 | `meow workflows` | List, show, validate, or eject workflow definitions. |
 | `meow agents` | List, show, eject, or diff agent definitions. |

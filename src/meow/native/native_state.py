@@ -105,6 +105,17 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
             ),
             **({"tester": tester} if tester is not None else {}),
         }
+    if phase in {"generator_started", "generator_finished"}:
+        # Checkpoints can arrive out of order. A verdict recorded against an
+        # older revision must not survive code written after it.
+        revision = code_revision(active_dir)
+        results = patch.setdefault("results", {})
+        results["generator_revision"] = revision
+        saved = record.results.get("reviewer_revision")
+        if saved and saved != revision:
+            results["reviewer"] = "STALE"
+            results["reviewer_revision"] = ""
+            results.pop("tester", None)
     if not record.config_fingerprint and config_paths(repo):
         patch["config_fingerprint"] = config_fingerprint(repo)
     record = store.transition(run_id, phase, **patch)
@@ -116,7 +127,7 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
     }
 
 
-async def finalize(  # ruff: ignore[too-many-statements]
+async def finalize(  # ruff: ignore[too-many-statements, complex-structure]
     repo: Path, active_dir: Path, run_id: str
 ) -> dict:
     """Run current configured gates and seal a reviewed native run."""
@@ -157,5 +168,18 @@ async def finalize(  # ruff: ignore[too-many-statements]
         deliver_verified_run(store, run_id)
         store.transition(run_id, "complete")
     else:
-        store.transition(run_id, "failed", last_failure="Required evidence failed")
+        reason = "Required evidence failed"
+        if verdicts.get("reviewer") == "STALE":
+            reason = (
+                "Review is stale: code changed after the reviewer verdict. "
+                "Rerun the reviewer, checkpoint it, then finalize again"
+            )
+        elif verdicts.get("reviewer_revision") not in {None, ""} and verdicts.get(
+            "reviewer_revision"
+        ) != code_revision(active_dir):
+            reason = (
+                "Reviewed revision differs from the current code; rerun the "
+                "reviewer, checkpoint it, then finalize again"
+            )
+        store.transition(run_id, "failed", last_failure=reason)
     return {"run_id": run_id, "complete": passed}

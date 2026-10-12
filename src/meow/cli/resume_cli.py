@@ -78,7 +78,9 @@ def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, to
     return None
 
 
-def _repair(record: RunRecord, working_dir: Path) -> tuple[dict, list[str]]:
+def _repair(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+    record: RunRecord, working_dir: Path
+) -> tuple[dict, list[str]]:
     """Adopt the current on-disk state for every resume gate that can drift.
 
     Returns the record fields to rewrite and a human-readable list of actions.
@@ -222,7 +224,7 @@ def _request_problem(  # ruff: ignore[complex-structure, too-many-return-stateme
     return None
 
 
-async def resume(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-statements, too-many-branches] -- inspect-first recovery with validation
+async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-many-return-statements, too-many-statements, too-many-branches] -- inspect-first recovery with validation
     working_dir: Path,
     run_id: str | None = None,
     *,

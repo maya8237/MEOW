@@ -23,6 +23,16 @@ TERMINAL_PHASES = frozenset({
     "needs_user_decision",
     "review_finished",
 })
+# Phases that mean work is under way again: any earlier failure is stale.
+_ACTIVE_PHASES = frozenset({
+    "resuming",
+    "preparing",
+    "planning",
+    "generator_started",
+    "reviewer_started",
+    "checking",
+    "tasks_waiting",
+})
 _SECRET_KEY = re.compile(
     r"(?:token|secret|password|credential|api.?key|authorization)", re.I
 )
@@ -259,7 +269,7 @@ class RunStore:
         entries = previous.get("entries", [])
         if not isinstance(entries, list):
             entries = []
-        record.usage = {"entries": [*entries, _safe(entry)]}
+        record.usage = {"entries": [*entries, _safe({**entry, "at": _now()})]}
         record.updated_at = _now()
         return self._write(record)
 
@@ -306,6 +316,8 @@ class RunStore:
                 record.results.update(safe_value)
             else:
                 setattr(record, key, safe_value)
+        if "last_failure" not in patch and phase in _ACTIVE_PHASES:
+            record.last_failure = None  # a resumed/progressing run is not failed
         record.phase = phase
         record.updated_at = _now()
         record.transitions.append({

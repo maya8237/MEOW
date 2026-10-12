@@ -243,6 +243,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
         ),
     )
     _add_common_args(resume_parser)
+    detach_parser = _add_hidden_parser(subparsers, "detach")
+    detach_parser.add_argument("--log", metavar="FILE", default=None)
+    detach_parser.add_argument("detach_argv", nargs=argparse.REMAINDER)
+    _add_common_args(detach_parser)
     queue_parser = subparsers.add_parser(
         "queue", help="Queue a task or run queued tasks serially."
     )

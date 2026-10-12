@@ -500,6 +500,25 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
         raise
 
 
+async def _start_server_with_fallback(active_dir: Path, server: DevServerCommand):
+    """Start the server, retrying on a fresh port if it loses a port race.
+
+    The port can be taken between the free-port probe and the server's bind;
+    that shows up as an early exit or a readiness timeout, so try new ports
+    before reporting the tester stage as unavailable.
+    """
+    attempts = 3
+    for attempt in range(1, attempts + 1):
+        try:
+            return await _start_server(active_dir, server)
+        except VerificationSetupError:
+            location = _url_port(server.ready_url)
+            if attempt == attempts or location is None:
+                raise
+            server = _relocated(server, _free_port(location[0]))
+    raise AssertionError("unreachable")
+
+
 @asynccontextmanager
 async def prepared_test_stage(active_dir: Path, config: dict):
     """Run configured suites and keep owned servers alive for the caller."""
@@ -508,7 +527,7 @@ async def prepared_test_stage(active_dir: Path, config: dict):
     urls: list[str] = []
     try:
         for server in tester.get("dev_server", []):
-            owned, url = await _start_server(active_dir, server)
+            owned, url = await _start_server_with_fallback(active_dir, server)
             servers.append(owned)
             urls.append(url)
         commands = []
