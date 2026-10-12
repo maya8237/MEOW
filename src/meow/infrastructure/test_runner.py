@@ -167,6 +167,14 @@ def _argv(command: str, args: tuple[str, ...]) -> list[str]:
     return argv
 
 
+def _launch_argv(command: str, args: tuple[str, ...]) -> list[str]:
+    """`_argv` for a process about to start: no command is a ValueError."""
+    argv = _argv(command, args)
+    if not argv:
+        raise ValueError("empty command")
+    return argv
+
+
 def _decode(data: bytes) -> str:
     output = data.decode("utf-8", errors="replace")
     if len(output) > MAX_OUTPUT_CHARS:
@@ -208,10 +216,11 @@ async def _terminate(  # ruff: ignore[too-many-branches, complex-structure, too-
     except TimeoutError:
         if os.name == "nt":
             process.kill()
-        else:
-            with suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-        await process.wait()
+    if os.name != "nt":
+        # The leader may exit on SIGTERM while its children ignore it.
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+    await process.wait()
 
 
 async def _run_test(
@@ -223,9 +232,9 @@ async def _run_test(
         raise VerificationSetupError(
             command.command, active_dir / command.cwd, exc
         ) from exc
-    argv = _argv(command.command, command.args)
     env = {**os.environ, **(command.env or {})}
     try:
+        argv = _launch_argv(command.command, command.args)
         process = await asyncio.create_subprocess_exec(
             *argv,
             cwd=cwd,
@@ -445,8 +454,8 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
             )
         # Never test against someone else's server: move to a free port.
         server = _relocated(server, _free_port(location[0]))
-    argv = _argv(server.command, server.args)
     try:
+        argv = _launch_argv(server.command, server.args)
         if os.name == "nt":
             process, job = await asyncio.to_thread(
                 _spawn_windows_job_process,
