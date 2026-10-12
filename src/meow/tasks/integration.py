@@ -24,6 +24,19 @@ def _identity(repo: Path) -> list[str]:
     return ["-c", "user.name=MEOW", "-c", "user.email=meow@local"]
 
 
+def _failure(repo: Path, task: str, result: subprocess.CompletedProcess) -> str | None:
+    """Why a cherry-pick stopped; None when it only found nothing to apply."""
+    if _git(repo, "diff", "--name-only", "--diff-filter=U", check=False).stdout.strip():
+        return f"{task} conflicts during integration"
+    detail = (result.stderr or result.stdout).strip()
+    if (
+        "empty" in detail
+        and _git(repo, "diff", "--cached", "--quiet", check=False).returncode == 0
+    ):
+        return None
+    return f"{task} could not be applied during integration: {detail}"
+
+
 @dataclass(frozen=True)
 class IntegrationResult:
     applied: tuple[str, ...]
@@ -62,12 +75,16 @@ def integrate_results(  # ruff: ignore[complex-structure, too-many-branches]
     for outcome in outcomes:
         result = _git(repo, *identity, "cherry-pick", outcome.commit, check=False)
         if result.returncode:
+            failure = _failure(repo, outcome.id, result)
             _git(repo, "cherry-pick", "--abort", check=False)
-            return IntegrationResult(
-                tuple(applied),
-                _git(repo, "rev-parse", "HEAD").stdout.strip(),
-                f"{outcome.id} conflicts during integration",
-            )
+            if failure:
+                return IntegrationResult(
+                    tuple(applied),
+                    _git(repo, "rev-parse", "HEAD").stdout.strip(),
+                    failure,
+                )
+            # Its change is already in the branch (two tasks made the same
+            # edit): nothing left to apply, and not a conflict.
         applied.append(outcome.id)
     return IntegrationResult(
         tuple(applied), _git(repo, "rev-parse", "HEAD").stdout.strip()

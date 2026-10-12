@@ -101,3 +101,32 @@ def test_integration_works_where_git_has_no_identity(tmp_path, monkeypatch):
 
     assert result.conflict is None
     assert result.applied == ("api",)
+
+
+def test_change_already_in_the_branch_is_not_a_conflict(tmp_path):
+    repo, base = _repo(tmp_path)
+    a = _task_commit(repo, base, "first", "same.txt", "same\n")
+    b = _task_commit(repo, base, "second", "same.txt", "same\n")
+    _git(repo, "checkout", "-b", "integration", base)
+    result = integrate_results(
+        repo,
+        base,
+        (
+            TaskOutcome("first", "complete", str(repo), a),
+            TaskOutcome("second", "complete", str(repo), b),
+        ),
+    )
+    assert result.conflict is None
+    assert result.applied == ("first", "second")
+    assert _git(repo, "status", "--porcelain") == ""
+
+
+def test_unapplicable_commit_is_not_reported_as_a_conflict(tmp_path):
+    repo, base = _repo(tmp_path)
+    _git(repo, "checkout", "-b", "integration", base)
+    result = integrate_results(
+        repo, base, (TaskOutcome("api", "complete", str(repo), "a" * 40),)
+    )
+    assert result.applied == ()
+    assert "api" in result.conflict
+    assert "conflicts" not in result.conflict

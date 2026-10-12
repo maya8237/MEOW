@@ -4,7 +4,7 @@ import json
 import os
 import re
 import tempfile
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -86,6 +86,14 @@ def _safe(value: object, key: str = "") -> object:  # ruff: ignore[complex-struc
     return str(value)
 
 
+def _mtime(path: Path) -> int:
+    """Modification time; a record deleted mid-listing sorts oldest."""
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return -1
+
+
 @dataclass(frozen=True)
 class CheckResult:
     kind: str
@@ -102,6 +110,18 @@ class CheckResult:
     @property
     def passed(self) -> bool:
         return not self.timed_out and self.exit_code == 0
+
+    @classmethod
+    def from_record(cls, item: object) -> "CheckResult | None":
+        """Rebuild a stored result; None when the schema drifted (the check
+        then simply runs again instead of failing the resume)."""
+        if not isinstance(item, dict):
+            return None
+        names = {field.name for field in fields(cls)}
+        try:
+            return cls(**{key: value for key, value in item.items() if key in names})
+        except TypeError:
+            return None
 
 
 @dataclass
@@ -257,7 +277,7 @@ class RunStore:
         ]
 
     def latest(self) -> RunRecord:
-        paths = sorted(self.record_paths(), key=lambda p: p.stat().st_mtime_ns)
+        paths = sorted(self.record_paths(), key=_mtime)
         if not paths:
             raise RunStateError("No runs found. Start one with meow run.")
         return self.load(paths[-1].stem)
