@@ -528,6 +528,17 @@ async def _start_server_with_fallback(active_dir: Path, server: DevServerCommand
     raise AssertionError("unreachable")
 
 
+async def _run_test_tolerating_advisory(active_dir: Path, command):
+    try:
+        return await _run_test(active_dir, command)
+    except VerificationSetupError as exc:
+        if command.gate:
+            raise
+        return VerificationCommandEvidence(
+            exc.cwd, command.command, None, str(exc), False, False
+        )
+
+
 @asynccontextmanager
 async def prepared_test_stage(active_dir: Path, config: dict):
     """Run configured suites and keep owned servers alive for the caller."""
@@ -541,15 +552,7 @@ async def prepared_test_stage(active_dir: Path, config: dict):
             urls.append(url)
         commands = []
         for command in tester.get("tests", []):
-            try:
-                evidence = await _run_test(active_dir, command)
-            except VerificationSetupError as exc:
-                if command.gate:
-                    raise
-                evidence = VerificationCommandEvidence(
-                    exc.cwd, command.command, None, str(exc), False, False
-                )
-            commands.append(evidence)
+            commands.append(await _run_test_tolerating_advisory(active_dir, command))
         browser = await _run_browser(active_dir, tester, tuple(urls))
         yield VerificationStageEvidence(
             tuple(commands), tuple(urls), (browser,) if browser else ()
