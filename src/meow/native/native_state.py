@@ -1,6 +1,7 @@
 """Native run state: the on-disk round counter (`meow native round`) and the
 run-journal checkpoints and gated finalize shared with CLI runs."""
 
+import asyncio
 import hashlib
 import json
 from dataclasses import asdict
@@ -9,11 +10,13 @@ from pathlib import Path
 from meow.execution.delivery import deliver_verified_run
 from meow.execution.run_state import RunStore
 from meow.infrastructure.checks import (
+    adopt_stage_artifacts,
     code_revision,
     completion_ready,
     config_fingerprint,
     configured_checks,
     run_final_checks,
+    stage_baseline,
 )
 from meow.infrastructure.worktree import current_branch
 from meow.project.config import config_paths, config_root, load_config
@@ -143,7 +146,11 @@ async def finalize(  # ruff: ignore[too-many-statements, complex-structure]
     config = load_config(config_root(repo, active_dir))
     store.transition(run_id, "checking")
     try:
+        baseline = await asyncio.to_thread(stage_baseline, active_dir)
         results = await run_final_checks(active_dir, config)
+        await asyncio.to_thread(
+            adopt_stage_artifacts, store, run_id, active_dir, baseline
+        )
     except BaseException as exc:
         store.transition(run_id, "failed", last_failure=str(exc))
         raise

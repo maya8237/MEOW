@@ -76,3 +76,24 @@ def test_native_finalize_loads_repository_config_for_worktree(tmp_path):
 
     load.assert_called_once_with(repo)
     assert not result["complete"]
+
+
+def test_native_finalize_tolerates_files_written_by_checks(tmp_path):
+    import sys
+
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com"]
+    subprocess.run([*git, "init", "-q", "-b", "dev", str(tmp_path)], check=True)
+    (tmp_path / "source.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / ".meow").mkdir()
+    code = "open('report.xml', 'w').write('<ok/>')"
+    (tmp_path / ".meow" / "config.toml").write_text(
+        f"[[build]]\ncommand = {sys.executable!r}\nargs = ['-c', {code!r}]\n",
+        encoding="utf-8",
+    )
+    subprocess.run([*git, "-C", str(tmp_path), "add", "-A"], check=True)
+    subprocess.run([*git, "-C", str(tmp_path), "commit", "-qm", "base"], check=True)
+    run_id = checkpoint(tmp_path, tmp_path, "planned", request="work")["run_id"]
+    checkpoint(tmp_path, tmp_path, "reviewer_finished", reviewer="PASS", run_id=run_id)
+    with patch("meow.native.native_state.deliver_verified_run"):
+        result = asyncio.run(finalize(tmp_path, tmp_path, run_id))
+    assert result["complete"], RunStore(tmp_path).load(run_id).last_failure
