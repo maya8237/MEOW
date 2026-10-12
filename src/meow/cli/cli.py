@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -56,6 +57,31 @@ from meow.project.onboarding import onboard_if_needed
 from meow.ui import serve_ui
 
 logger = get_logger(__name__)
+
+
+# Anything a run can raise on a misbehaving environment: I/O, timeouts (also an
+# OSError), failed git/subprocess calls, and groups from parallel workflow
+# branches. Programming errors (TypeError, KeyError, ...) keep their traceback.
+_EXPECTED_FAILURES = (
+    ValueError,
+    RuntimeError,
+    OSError,
+    subprocess.SubprocessError,
+    ExceptionGroup,
+)
+
+
+def _describe_failure(exc: BaseException) -> str:
+    """One readable message; a group is flattened to its leaf failures."""
+    if isinstance(exc, BaseExceptionGroup):
+        return "\n".join(_describe_failure(item) for item in exc.exceptions)
+    if isinstance(exc, subprocess.CalledProcessError):
+        command = " ".join(str(part) for part in exc.cmd)
+        detail = str(exc.stderr or exc.output or "").strip()
+        return f"Command failed (exit {exc.returncode}): {command}" + (
+            f"\n{detail}" if detail else ""
+        )
+    return str(exc) or type(exc).__name__
 
 
 def _check_clean_tree(args, working_dir: Path) -> None:
@@ -227,7 +253,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         return
     try:
         _dispatch(args, working_dir, use_worktree=use_worktree)
-    except (ValueError, RuntimeError, FileNotFoundError) as exc:
+    except _EXPECTED_FAILURES as exc:
         # The last-resort net: a handful of specific, expected failures
         # (DirtyWorkingTreeError, PlanNotApprovedError, IssueUnresolvedError,
         # review's own ValueError) are already caught closer to their source
@@ -239,7 +265,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         # failure in this CLI gets. FileNotFoundError is here specifically
         # for a missing MEOW config/plan file -- far and away the most
         # likely first mistake a new user makes.
-        print(f"\n{exc}", file=sys.stderr)
+        print(f"\n{_describe_failure(exc)}", file=sys.stderr)
         raise SystemExit(1) from exc
 
 
