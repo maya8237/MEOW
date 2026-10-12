@@ -23,6 +23,27 @@ def _port() -> int:
         return sock.getsockname()[1]
 
 
+def test_advisory_launch_failure_does_not_abort_remaining_checks(tmp_path):
+    config = {
+        "tester": {
+            "tests": [
+                VerificationCommand(Path("."), "missing-meow-advisory-zz", gate=False),
+                VerificationCommand(Path("."), sys.executable, args=("-c", "pass")),
+            ]
+        }
+    }
+
+    async def scenario():
+        async with prepared_test_stage(tmp_path, config) as evidence:
+            advisory, required = evidence.commands
+            assert advisory.exit_code is None
+            assert "missing-meow-advisory-zz" in advisory.output
+            assert required.exit_code == 0
+            assert not evidence.blocking_failed
+
+    asyncio.run(scenario())
+
+
 class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-many-public-methods]
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
