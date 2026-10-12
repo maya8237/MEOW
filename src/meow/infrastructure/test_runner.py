@@ -68,7 +68,9 @@ def _spawn_windows_job_process(  # ruff: ignore[too-many-statements]
         None,
         None,
         False,
-        win32process.CREATE_SUSPENDED | win32process.CREATE_NEW_PROCESS_GROUP,
+        win32process.CREATE_SUSPENDED
+        | win32process.CREATE_NEW_PROCESS_GROUP
+        | win32process.CREATE_NO_WINDOW,
         env,
         str(cwd),
         startup,

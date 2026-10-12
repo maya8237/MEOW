@@ -4,6 +4,9 @@ All notable changes to MEOW will be documented here.
 
 ## Unreleased
 
+- Windows: every child process (git, linters, tests) and tester dev servers
+  start with `CREATE_NO_WINDOW`, so no stray `git.exe` or `bun.exe` console
+  windows appear.
 - Planner task graphs accept ids such as `task-1` or `1` (letters, digits, `-`,
   `_`) instead of failing with "task IDs must be nonempty identifiers".
 - Tester dev servers: when the `ready_url` port is already in use, MEOW starts
