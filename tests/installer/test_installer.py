@@ -139,7 +139,9 @@ def test_main_onboards_each_literal_destination_and_prints_next_steps(
     project.mkdir()
     calls = []
 
-    monkeypatch.setattr(_runtime, "append_plugin_dir", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        _runtime, "register_checkout_plugin", lambda *_args, **_kwargs: None
+    )
 
     def fake_onboard(root):
         calls.append(root)
@@ -167,7 +169,9 @@ def test_main_registers_new_and_already_onboarded_projects(tmp_path, monkeypatch
     fresh.mkdir()
     registry = tmp_path / "home" / ".meow" / "repos.toml"
     monkeypatch.setattr(repos_module, "registry_path", lambda: registry)
-    monkeypatch.setattr(_runtime, "append_plugin_dir", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        _runtime, "register_checkout_plugin", lambda *_args, **_kwargs: None
+    )
     monkeypatch.setattr(
         _runtime,
         "onboard_project",
@@ -200,7 +204,9 @@ def test_main_skips_project_setup_when_the_user_declines(tmp_path, monkeypatch):
     calls = []
     prompts = []
 
-    monkeypatch.setattr(_runtime, "append_plugin_dir", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        _runtime, "register_checkout_plugin", lambda *_args, **_kwargs: None
+    )
     monkeypatch.setattr(_runtime, "onboard_project", lambda root: calls.append(root))
 
     def fake_input(prompt):
@@ -218,7 +224,9 @@ def test_main_skips_project_setup_when_the_user_declines(tmp_path, monkeypatch):
 def test_main_exits_quietly_on_ctrl_c(tmp_path, monkeypatch, capsys):
     repo = tmp_path / "meow"
     repo.mkdir()
-    monkeypatch.setattr(_runtime, "append_plugin_dir", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        _runtime, "register_checkout_plugin", lambda *_args, **_kwargs: None
+    )
 
     def interrupt(_prompt):
         raise KeyboardInterrupt
@@ -235,3 +243,32 @@ def test_cancelled_message_says_how_many_projects_were_set_up():
     two = _runtime._cancelled_message(2)
     assert "2 projects set up before you stopped" in two
     assert "claude /meow:onboard" in two
+
+
+def test_register_checkout_plugin_enables_marketplace_and_drops_legacy_env(tmp_path):
+    import json
+
+    from meow.project.claude_settings import PLUGIN_DIRS_ENV, register_checkout_plugin
+
+    repo = tmp_path / "meow"
+    (repo / ".claude-plugin").mkdir(parents=True)
+    (repo / ".claude-plugin" / "marketplace.json").write_text(
+        json.dumps({"name": "meow", "plugins": []}), encoding="utf-8"
+    )
+    settings = tmp_path / "settings.json"
+    settings.write_text(
+        json.dumps({"env": {PLUGIN_DIRS_ENV: str(repo), "KEEP": "1"}}),
+        encoding="utf-8",
+    )
+
+    register_checkout_plugin(settings, repo)
+    register_checkout_plugin(settings, repo)
+
+    data = json.loads(settings.read_text(encoding="utf-8"))
+    assert data["extraKnownMarketplaces"]["meow"]["source"] == {
+        "source": "directory",
+        "path": str(repo.resolve()),
+    }
+    assert data["enabledPlugins"]["meow@meow"] is True
+    assert PLUGIN_DIRS_ENV not in data["env"]
+    assert data["env"]["KEEP"] == "1"

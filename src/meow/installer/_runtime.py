@@ -9,7 +9,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from meow.installer._prompt import path_prompt
-from meow.project.claude_settings import append_plugin_dir, path_key
+from meow.project.claude_settings import path_key, register_checkout_plugin
 from meow.project.onboarding import onboard_project
 from meow.project.repos import remember
 
@@ -135,11 +135,14 @@ def _parser() -> argparse.ArgumentParser:
 
 def _register_plugin(repo_dir: Path, output: Callable[[str], None]) -> bool:
     try:
-        append_plugin_dir(_settings_path(), repo_dir)
+        register_checkout_plugin(_settings_path(), repo_dir)
     except (OSError, ValueError) as exc:
         output(f"Could not update Claude user settings: {exc}")
         return False
-    output(f"Registered MEOW as a user-wide Claude plugin directory: {repo_dir}")
+    output(
+        f"Registered MEOW as a user-wide Claude plugin: {repo_dir}\n"
+        "Restart Claude Code to load /meow:* skills (including /meow:migration)."
+    )
     return True
 
 

@@ -14,6 +14,7 @@ from pathlib import Path
 
 from meow.hooks.claude import inspect_claude_hooks
 from meow.project.config import config_paths
+from meow.project.migration import migrate_legacy_config
 from meow.project.repos import remember
 
 BOUNDARY = (
@@ -241,6 +242,8 @@ def _apply(
         files.append(".gitignore")
     error = _verify(root)
     config = root / CONFIG_RELPATH
+    if error is None and write_config and migrate_legacy_config(root):
+        files.append(CONFIG_RELPATH)
     if error is None and write_config and not config.is_file():
         existing = {key for table in _config_tables(root) for key in table}
         config.parent.mkdir(parents=True, exist_ok=True)
