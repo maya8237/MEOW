@@ -11,9 +11,15 @@ from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.cancellation import clear_cancel
 from meow.infrastructure.checks import config_fingerprint
 from meow.infrastructure.worktree import current_branch
-from meow.project.config import load_config
+from meow.project.config import config_root, load_config
 from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
 from meow.project.preplan import assess_preplan, gather_context
+
+
+def _config_dir(record: RunRecord) -> Path:
+    """Where this run's config lives: the repo, or the worktree that was
+    auto-onboarded and has not merged its `.meow/config.toml` yet."""
+    return config_root(Path(record.repo), Path(record.worktree))
 
 
 def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-branches, too-many-statements]
@@ -59,7 +65,7 @@ def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, to
             return f"Plan changed: {plan}. Restore the saved plan before continuing."
     if record.config_fingerprint:
         try:
-            current = config_fingerprint(repo)
+            current = config_fingerprint(_config_dir(record))
         except OSError:
             return (
                 "Configuration missing. Restore the repository MEOW config "
@@ -72,7 +78,7 @@ def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, to
             )
     if saved := record.results.get("workflow"):
         try:
-            select_workflow(load_config(repo), saved=saved)
+            select_workflow(load_config(_config_dir(record)), saved=saved)
         except (OSError, ValueError, KeyError) as exc:
             return str(exc)
     return None
@@ -116,7 +122,7 @@ def _repair(  # ruff: ignore[complex-structure, too-many-branches, too-many-stat
             actions.append(f"plan {plan} is missing and cannot be restored")
     if record.config_fingerprint:
         try:
-            current = config_fingerprint(repo)
+            current = config_fingerprint(_config_dir(record))
         except OSError:
             current = None
         if current is not None and current != record.config_fingerprint:
@@ -125,7 +131,7 @@ def _repair(  # ruff: ignore[complex-structure, too-many-branches, too-many-stat
     saved = record.results.get("workflow")
     if saved:
         try:
-            config = load_config(repo)
+            config = load_config(_config_dir(record))
             catalog = config["customizations"]
             workflow = catalog.workflow(saved["name"])
             current_print = fingerprint(workflow, catalog)
@@ -179,7 +185,7 @@ def _resume_at(record: RunRecord) -> str:
     )
     saved_workflow = record.results.get("workflow")
     if saved_workflow:
-        config = load_config(Path(record.repo))
+        config = load_config(_config_dir(record))
         workflow = select_workflow(config, saved=saved_workflow)
         active = saved_workflow.get("loop") or saved_workflow.get("active")
         review_first = any(

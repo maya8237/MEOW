@@ -27,7 +27,7 @@ from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.worktree import current_branch
 from meow.infrastructure.worktree_setup import run_setup
-from meow.project.config import config_paths, load_config
+from meow.project.config import config_paths, config_root, load_config
 from meow.project.custom.definitions import discover
 from meow.project.custom.sources import builtin_sources
 from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
@@ -203,6 +203,9 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     """
     config_dir = Path(record_root or working_dir).resolve()
     store = RunStore(config_dir)
+    # A resumed run works inside a worktree that auto-onboarding configured
+    # before the repo itself had a config; keep reading it from there.
+    settings_dir = config_root(config_dir, working_dir)
     record = store.load(run_id)
     store.transition(record.id, "preparing")
     check_cancel(store, record.id)
@@ -224,7 +227,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
         feature_name,
         use_worktree=use_worktree,
         source_branch=source_branch,
-        config_dir=config_dir,
+        config_dir=settings_dir,
         fresh=fresh,
     )
     branch = current_branch(active_dir)
@@ -273,7 +276,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
         check_cancel(store, record.id)
         store.transition(record.id, "prepared", results={"setup_complete": True})
     sprint, checks_dir = _run_onboarding(
-        store, record.id, sprint, (active_dir, config_dir)
+        store, record.id, sprint, (active_dir, settings_dir)
     )
     test = test or bool(sprint.config.get("tester", {}).get("tests"))
     describe_lint_plan(sprint.config["lint"])

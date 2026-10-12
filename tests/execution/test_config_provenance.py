@@ -101,3 +101,63 @@ def test_run_sprint_checks_active_worktree_with_repository_config(tmp_path):
     )
     final_checks.assert_awaited_once_with(active, config)
     assert RunStore(repo).latest().config_fingerprint == config_fingerprint(repo)
+
+
+def test_resumed_run_reads_config_from_the_onboarded_worktree(tmp_path):
+    """The repo has no config yet (auto-onboarding wrote it in the worktree)."""
+    repo = tmp_path / "repo"
+    active = tmp_path / "worktree"
+    repo.mkdir()
+    active.mkdir()
+    (active / ".meow").mkdir()
+    (active / ".meow" / "config.toml").write_text("max_rounds = 1\n", encoding="utf-8")
+    plan_file = active / "plan.md"
+    plan_file.write_text("# Plan\n", encoding="utf-8")
+    config = {
+        "lint": [],
+        "max_rounds": 1,
+        "models": {},
+        "docs_dir": ".",
+        "tester": {"tests": []},
+        "worktree_setup": {"copy": [], "commands": []},
+    }
+    sprint = Sprint(repo, config, None, None, active, True)
+
+    with (
+        patch("meow.project.config.user_config_path", return_value=tmp_path / "none"),
+        patch(
+            "meow.execution.sprint_runner._prepare_sprint",
+            return_value=(sprint, "feature", active),
+        ) as prepare,
+        patch(
+            "meow.execution.workflow.builtin_steps._review_round",
+            new_callable=AsyncMock,
+            return_value=("PASS", "STATUS: PASS"),
+        ),
+        patch(
+            "meow.execution.workflow.builtin_steps.run_final_checks",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as final_checks,
+        patch(
+            "meow.execution.workflow.builtin_steps.configured_checks", return_value=[]
+        ),
+        patch(
+            "meow.execution.workflow.builtin_steps.completion_ready", return_value=True
+        ),
+        patch("meow.execution.workflow.builtin_steps.deliver_verified_run"),
+    ):
+        asyncio.run(
+            run_sprint(
+                active,
+                None,
+                "review the change",
+                use_worktree=False,
+                plan_file=plan_file,
+                resume_at="review",
+                record_root=repo,
+            )
+        )
+
+    assert prepare.call_args.kwargs["config_dir"] == active
+    final_checks.assert_awaited_once_with(active, config)
