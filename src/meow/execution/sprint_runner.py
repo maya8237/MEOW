@@ -151,9 +151,19 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
     except RunCancelled:
         raise
     except BaseException as exc:
+        _mark_failed(store, run_id, exc)
+        raise
+
+
+def _mark_failed(store: RunStore, run_id: str, exc: BaseException) -> None:
+    """Record why the run died; an unreadable journal must not hide the cause."""
+    try:
         if store.load(run_id).phase not in _SETTLED_PHASES:
             store.transition(run_id, "failed", last_failure=str(exc))
-        raise
+    except (RunStateError, OSError) as journal_error:
+        logger.error(
+            "run_failure_not_recorded", run_id=run_id, reason=str(journal_error)
+        )
 
 
 # A run in one of these phases already says why it stopped.
