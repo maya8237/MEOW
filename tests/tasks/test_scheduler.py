@@ -62,6 +62,31 @@ def test_cancel_prevents_any_worker_start():
     assert called == []
 
 
+def test_cancel_marker_stops_workers_without_waiting_for_completion():
+    async def scenario():
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+        stopped = []
+
+        async def worker(spec):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.append(spec.id)
+
+        runner = asyncio.create_task(
+            run_task_graph(_graph(), worker, max_parallel=2, cancel=cancelled.is_set)
+        )
+        await started.wait()
+        cancelled.set()
+        outcomes = await asyncio.wait_for(runner, timeout=2)
+        assert sorted(stopped) == ["api", "ui"]
+        assert {item.status for item in outcomes} == {"cancelled"}
+
+    asyncio.run(scenario())
+
+
 def test_dependent_starts_after_parent_is_integrated():
     integrated = []
     graph = TaskGraph((

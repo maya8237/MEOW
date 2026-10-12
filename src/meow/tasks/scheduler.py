@@ -87,7 +87,8 @@ async def run_task_graph(  # ruff: ignore[complex-structure, too-many-branches, 
             if cancel() and not stopped:
                 stopped = True
                 for task in running:
-                    task.cancel()
+                    if not task.cancelling():
+                        task.cancel()
             if not stopped:
                 for task_id in graph.ready(done):
                     if task_id in started:
@@ -123,7 +124,7 @@ async def run_task_graph(  # ruff: ignore[complex-structure, too-many-branches, 
             if not running:
                 break
             finished, _ = await asyncio.wait(
-                running, return_when=asyncio.FIRST_COMPLETED
+                running, timeout=0.25, return_when=asyncio.FIRST_COMPLETED
             )
             for task in finished:
                 task_id = running.pop(task)
