@@ -579,7 +579,10 @@ class SessionAgent(Agent):
 
     async def __aexit__(self, *exc):
         self._entered = False
-        await self._client.__aexit__(*exc)
+        try:
+            await self._client.__aexit__(*exc)
+        except Exception as error:  # the process may already be gone
+            logger.warning("session_close_failed", role=self.role, reason=str(error))
 
     async def _restart(self, reason: str = "reached its context limit") -> None:
         """Replace the full session with a fresh one carrying a short recap."""

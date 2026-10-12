@@ -134,3 +134,25 @@ class SessionTurnFailureTests(unittest.IsolatedAsyncioTestCase):
             async with agent:
                 await agent.send("a")
                 self.assertEqual(agent._context_size, 20_000)
+
+
+class SessionCloseTests(unittest.IsolatedAsyncioTestCase):
+    async def test_failure_while_closing_a_finished_session_is_not_a_run_failure(self):
+        client = _client([_text("done"), _result(10)])
+        client.__aexit__ = AsyncMock(side_effect=RuntimeError("process already gone"))
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", side_effect=[client]):
+            agent.open(MagicMock())
+            async with agent:
+                self.assertEqual(await agent.send("go"), "done")
+        client.__aexit__.assert_awaited_once()
+
+    async def test_close_failure_does_not_mask_the_original_error(self):
+        client = _client([_text("x"), _result(10)])
+        client.__aexit__ = AsyncMock(side_effect=RuntimeError("close failed"))
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", side_effect=[client]):
+            agent.open(MagicMock())
+            with self.assertRaisesRegex(ValueError, "the real problem"):
+                async with agent:
+                    raise ValueError("the real problem")
