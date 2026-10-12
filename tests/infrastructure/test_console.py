@@ -6,15 +6,24 @@ from meow.infrastructure import console
 
 def test_children_get_no_window_flag_on_windows(monkeypatch):
     seen = []
+    hidden = []
+
+    class FakeInfo:
+        dwFlags = 0
+        wShowWindow = 1
 
     class FakePopen:
-        def __init__(self, *args, creationflags=0, **kwargs):
+        def __init__(self, *args, creationflags=0, startupinfo=None, **kwargs):
             seen.append(creationflags)
+            hidden.append(startupinfo)
 
     monkeypatch.setattr(subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(subprocess, "STARTUPINFO", FakeInfo, raising=False)
+    monkeypatch.setattr(subprocess, "STARTF_USESHOWWINDOW", 1, raising=False)
+    monkeypatch.setattr(subprocess, "SW_HIDE", 0, raising=False)
     monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
-    monkeypatch.setattr(subprocess, "CREATE_NEW_CONSOLE", 0x10, raising=False)
-    monkeypatch.setattr(subprocess, "DETACHED_PROCESS", 0x8, raising=False)
+    for name, value in (("CREATE_NEW_CONSOLE", 0x10), ("DETACHED_PROCESS", 0x8)):
+        monkeypatch.setattr(subprocess, name, value, raising=False)
     monkeypatch.setattr(console, "_VISIBLE_FLAGS", 0x08000000 | 0x10 | 0x8)
     monkeypatch.setattr(console.os, "name", "nt")
 
@@ -25,6 +34,8 @@ def test_children_get_no_window_flag_on_windows(monkeypatch):
     subprocess.Popen(["git"], creationflags=0x10)
 
     assert seen == [0x08000000, 0x200 | 0x08000000, 0x10]
+    assert hidden[0].wShowWindow == 0 and hidden[0].dwFlags == 1
+    assert hidden[2] is None
 
 
 def test_noop_off_windows():
