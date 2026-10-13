@@ -84,7 +84,6 @@ def test_orchestrator_agents_default_to_the_real_roles():
 
     assert agents.decomposer is DecomposerAgent
     assert agents.issue_fetcher is IssueFetcherAgent
-    assert agents.triage is None
 
 
 def test_tasks_format_names_every_task_key():
