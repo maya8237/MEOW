@@ -20,6 +20,13 @@ environment variables with either POSIX syntax (`$HOME` or `${HOME}`) or
 Windows syntax (`%USERPROFILE%`); expansion is applied recursively to
 configured tables and lists. Unknown variables are left unchanged.
 
+When a run creates a feature worktree, it normally reads configuration from
+the original project root, including `.meow/config.local.toml`; the worktree
+does not need its own copy. The exception is a project with no shared
+`.meow/config.toml`: if auto-onboarding creates that file in the worktree,
+the run reads configuration from the worktree until the shared config is
+available in the original project root.
+
 Each `[[lint]]` entry may set `cwd`, `include`, `exclude`, `args`, `env`, and
 `timeout`. `include` and `exclude` are repository-relative path prefixes. A
 per-file lint command runs only for edits inside its `cwd` and included paths;
