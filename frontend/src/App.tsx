@@ -28,13 +28,28 @@ import {
 import CreateDialog from "@/components/CreateDialog";
 import ItemDetail from "@/components/ItemDetail";
 import CopyButton from "@/components/CopyButton";
+import SessionsView from "@/components/SessionsView";
+import SessionLauncher from "@/components/SessionLauncher";
+import { Recipe } from "@/lib/sessions";
 
 const icons = { workflows: Workflow, agents: Bot, skills: BookOpen };
+type RunItem = {
+  kind: "workflow" | "skill" | "agent";
+  item: Catalog["workflows"][number];
+};
+type LauncherState = {
+  recipe?: Partial<Recipe>;
+  item?: RunItem;
+  sessionId?: string;
+  editOnly?: boolean;
+  unknownFlags?: boolean;
+} | null;
 
 export default function App() {
   const [data, setData] = useState<Catalog | null>(null);
   const [repo, setRepo] = useState("");
   const [kind, setKind] = useState<Kind>("workflows");
+  const [showSessions, setShowSessions] = useState(false);
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope | "">("");
   const [selected, setSelected] = useState("");
@@ -46,6 +61,8 @@ export default function App() {
   );
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [launcher, setLauncher] = useState<LauncherState>(null);
+  const [focusSessionId, setFocusSessionId] = useState("");
   const search = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -174,6 +191,18 @@ export default function App() {
               </button>
             );
           })}
+          <button
+            type="button"
+            className="nav-item"
+            aria-pressed={showSessions}
+            onClick={() => {
+              setShowSessions(true);
+              setSaved(null);
+            }}
+          >
+            <Workflow />
+            <span>Sessions</span>
+          </button>
         </nav>
         <div className="navigation-bottom">
           <div className="connection">
@@ -194,8 +223,12 @@ export default function App() {
       <main className="workspace">
         <header className="workspace-header">
           <div>
-            <h1>{tab.label}</h1>
-            <p>{tab.description}</p>
+            <h1>{showSessions ? "Sessions" : tab.label}</h1>
+            <p>
+              {showSessions
+                ? "Launch commands, follow output, and manage attempts."
+                : tab.description}
+            </p>
           </div>
           <div className="header-actions">
             <Button
@@ -209,11 +242,13 @@ export default function App() {
             </Button>
             <Button
               id="new-item"
-              onClick={() => setCreating(true)}
+              onClick={() =>
+                showSessions ? setLauncher({}) : setCreating(true)
+              }
               disabled={!data || !!data.error}
             >
               <Plus />
-              New item
+              {showSessions ? "New session" : "New item"}
             </Button>
           </div>
         </header>
@@ -282,148 +317,183 @@ export default function App() {
             </Button>
           </div>
         )}
-        <div className="catalog-layout">
-          <section className="catalog-pane" aria-label={`${tab.label} catalog`}>
-            <div className="catalog-filters">
-              <div className="search-field">
-                <Search aria-hidden="true" />
-                <Input
-                  ref={search}
-                  type="search"
-                  aria-label="Search catalog"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={`Search ${tab.label.toLowerCase()}`}
-                />
-                <kbd>Ctrl K</kbd>
-              </div>
-              <div className="scope-row">
-                <select
-                  aria-label="Scope"
-                  value={scope}
-                  onChange={(event) =>
-                    setScope(event.target.value as Scope | "")
-                  }
-                >
-                  <option value="">All scopes</option>
-                  {scopes.map((entry) => (
-                    <option key={entry.value} value={entry.value}>
-                      {entry.label}
-                    </option>
-                  ))}
-                </select>
-                <span>
-                  {items.length} {items.length === 1 ? "item" : "items"}
-                </span>
-              </div>
+        {showSessions ? (
+          data ? (
+            <SessionsView
+              repo={repo}
+              catalog={data}
+              focusSessionId={focusSessionId}
+              onSessionFocused={() => setFocusSessionId("")}
+              onRunRecipe={(recipe, item, sessionId, unknownFlags, editOnly) =>
+                setLauncher({ recipe, item, sessionId, unknownFlags, editOnly })
+              }
+            />
+          ) : (
+            <div className="empty-state">
+              <LoaderCircle className="animate-spin" />
+              <h2>Loading sessions…</h2>
             </div>
-            {!data ? (
-              <div className="empty-state">
-                <LoaderCircle className="animate-spin" />
-                <h2>{error ? "Catalog unavailable" : "Loading catalog…"}</h2>
-                <p>
-                  {error
-                    ? "Check the server connection and retry."
-                    : "Reading workflows, agents, and skills."}
-                </p>
-              </div>
-            ) : items.length ? (
-              <ul className="catalog-list">
-                {items.map((item) => (
-                  <li key={itemKey(item)}>
-                    <button
-                      className="catalog-item"
-                      aria-current={
-                        itemKey(item) === (active && itemKey(active))
-                          ? "true"
-                          : undefined
-                      }
-                      onClick={() => setSelected(itemKey(item))}
-                    >
-                      <div className="catalog-item-heading">
-                        <span className="item-name">{item.name}</span>
-                        <ArrowUpRight aria-hidden="true" />
-                      </div>
-                      <p>{item.description || "No description provided."}</p>
-                      <div className="catalog-item-meta">
-                        <Badge variant="secondary">
-                          {scopeLabel(item.scope)}
-                        </Badge>
-                        <span>
-                          {item.repo
-                            ? repoName(item.repo, data.repos)
-                            : "All repositories"}
-                        </span>
-                        {kind === "workflows" && (
-                          <span>{item.steps?.length || 0} steps</span>
-                        )}
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="empty-state">
-                <Search />
-                <h2>
-                  {query || scope
-                    ? "No matches found"
-                    : `No ${tab.label.toLowerCase()} yet`}
-                </h2>
-                <p>
-                  {query || scope
-                    ? "Try another search or widen the scope."
-                    : "Create your first definition to get started."}
-                </p>
-                {query || scope ? (
-                  <Button variant="outline" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : (
-                  <Button
-                    disabled={!!data.error}
-                    onClick={() => setCreating(true)}
+          )
+        ) : (
+          <div className="catalog-layout">
+            <section
+              className="catalog-pane"
+              aria-label={`${tab.label} catalog`}
+            >
+              <div className="catalog-filters">
+                <div className="search-field">
+                  <Search aria-hidden="true" />
+                  <Input
+                    ref={search}
+                    type="search"
+                    aria-label="Search catalog"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={`Search ${tab.label.toLowerCase()}`}
+                  />
+                  <kbd>Ctrl K</kbd>
+                </div>
+                <div className="scope-row">
+                  <select
+                    aria-label="Scope"
+                    value={scope}
+                    onChange={(event) =>
+                      setScope(event.target.value as Scope | "")
+                    }
                   >
-                    <Plus />
-                    New item
-                  </Button>
-                )}
+                    <option value="">All scopes</option>
+                    {scopes.map((entry) => (
+                      <option key={entry.value} value={entry.value}>
+                        {entry.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span>
+                    {items.length} {items.length === 1 ? "item" : "items"}
+                  </span>
+                </div>
               </div>
-            )}
-            {!!data?.notes.length && (
-              <details className="catalog-notes">
-                <summary>
-                  {data.notes.length} catalog{" "}
-                  {data.notes.length === 1 ? "notice" : "notices"}
-                </summary>
-                {data.notes.map((note, index) => (
-                  <p key={index}>{note}</p>
-                ))}
-              </details>
-            )}
-          </section>
-          <section className="detail-pane" aria-label="Selected definition">
-            {active ? (
-              <ItemDetail
-                key={`${kind}:${itemKey(active)}`}
-                item={active}
-                repos={data?.repos || []}
-                kind={kind}
-                onCopyError={setNotice}
-                onDuplicate={() => setCreating(true)}
-              />
-            ) : (
-              <div className="empty-state detail-empty">
-                <Icon />
-                <h2>Your workflow starts here</h2>
-                <p>
-                  Choose a definition from the catalog to inspect its steps,
-                  source, and settings.
-                </p>
-              </div>
-            )}
-          </section>
-        </div>
+              {!data ? (
+                <div className="empty-state">
+                  <LoaderCircle className="animate-spin" />
+                  <h2>{error ? "Catalog unavailable" : "Loading catalog…"}</h2>
+                  <p>
+                    {error
+                      ? "Check the server connection and retry."
+                      : "Reading workflows, agents, and skills."}
+                  </p>
+                </div>
+              ) : items.length ? (
+                <ul className="catalog-list">
+                  {items.map((item) => (
+                    <li key={itemKey(item)}>
+                      <button
+                        className="catalog-item"
+                        aria-current={
+                          itemKey(item) === (active && itemKey(active))
+                            ? "true"
+                            : undefined
+                        }
+                        onClick={() => setSelected(itemKey(item))}
+                      >
+                        <div className="catalog-item-heading">
+                          <span className="item-name">{item.name}</span>
+                          <ArrowUpRight aria-hidden="true" />
+                        </div>
+                        <p>{item.description || "No description provided."}</p>
+                        <div className="catalog-item-meta">
+                          <Badge variant="secondary">
+                            {scopeLabel(item.scope)}
+                          </Badge>
+                          <span>
+                            {item.repo
+                              ? repoName(item.repo, data.repos)
+                              : "All repositories"}
+                          </span>
+                          {kind === "workflows" && (
+                            <span>{item.steps?.length || 0} steps</span>
+                          )}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="empty-state">
+                  <Search />
+                  <h2>
+                    {query || scope
+                      ? "No matches found"
+                      : `No ${tab.label.toLowerCase()} yet`}
+                  </h2>
+                  <p>
+                    {query || scope
+                      ? "Try another search or widen the scope."
+                      : "Create your first definition to get started."}
+                  </p>
+                  {query || scope ? (
+                    <Button variant="outline" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : (
+                    <Button
+                      disabled={!!data.error}
+                      onClick={() => setCreating(true)}
+                    >
+                      <Plus />
+                      New item
+                    </Button>
+                  )}
+                </div>
+              )}
+              {!!data?.notes.length && (
+                <details className="catalog-notes">
+                  <summary>
+                    {data.notes.length} catalog{" "}
+                    {data.notes.length === 1 ? "notice" : "notices"}
+                  </summary>
+                  {data.notes.map((note, index) => (
+                    <p key={index}>{note}</p>
+                  ))}
+                </details>
+              )}
+            </section>
+            <section className="detail-pane" aria-label="Selected definition">
+              {active ? (
+                <ItemDetail
+                  key={`${kind}:${itemKey(active)}`}
+                  item={active}
+                  repos={data?.repos || []}
+                  kind={kind}
+                  onCopyError={setNotice}
+                  onDuplicate={() => setCreating(true)}
+                  onRun={() =>
+                    setLauncher({
+                      item: {
+                        kind:
+                          kind === "workflows"
+                            ? "workflow"
+                            : kind === "skills"
+                              ? "skill"
+                              : "agent",
+                        item: active,
+                      },
+                    })
+                  }
+                />
+              ) : (
+                <div className="empty-state detail-empty">
+                  <Icon />
+                  <h2>Your workflow starts here</h2>
+                  <p>
+                    Choose a definition from the catalog to inspect its steps,
+                    source, and settings.
+                  </p>
+                </div>
+              )}
+            </section>
+          </div>
+        )}
       </main>
       {creating && data && (
         <CreateDialog
@@ -449,6 +519,30 @@ export default function App() {
               command: `/meow:customize Write the contents of the ${singular} ${JSON.stringify(item.name)} at ${JSON.stringify(item.file.replace(/\\/g, "/"))} in repository ${JSON.stringify(payload.repo.replace(/\\/g, "/"))} (${payload.scope} scope). Intended behavior: ${JSON.stringify(payload.description)}. Use the starter file as a starting point and customize it to match this intent.`,
             });
             setCreating(false);
+            setRevision((value) => value + 1);
+          }}
+        />
+      )}
+      {launcher && data && (
+        <SessionLauncher
+          repo={
+            launcher.recipe?.repo ||
+            launcher.item?.item.repo ||
+            repo ||
+            data.repos[0] ||
+            ""
+          }
+          initialRecipe={launcher.recipe}
+          catalogItem={launcher.item}
+          catalog={data}
+          sessionId={launcher.sessionId}
+          editOnly={launcher.editOnly}
+          unknownFlags={launcher.unknownFlags}
+          onClose={() => setLauncher(null)}
+          onSaved={(id) => {
+            setFocusSessionId(id);
+            setLauncher(null);
+            setShowSessions(true);
             setRevision((value) => value + 1);
           }}
         />
