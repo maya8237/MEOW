@@ -140,6 +140,18 @@ class IssueFetcherAgent(McpFetcherAgent):
             output_file,
         )
 
+    async def fetch_many(self, jql: str, output_file: Path) -> None:
+        """Write `{"issues": [{"key", "summary", "description"}]}` for a JQL search."""
+        await self._fetch(
+            f"Search Jira with this JQL query: {jql} -- page through the results "
+            "and collect every matching issue, at most 100.",
+            '"issues" -- an array holding one object per matching issue, each with '
+            'exactly the keys "key", "summary", and "description" (description as '
+            "plain text, not markup)",
+            "",
+            output_file,
+        )
+
 
 _DIFF_FIELDS = '"title", "description", and "diff" (diff as plain unified-diff text)'
 
@@ -199,13 +211,18 @@ def _as_text(value: object) -> object:
     return value
 
 
-def _parse_record(role: str, text: str) -> dict:
-    """The JSON object a fetcher wrote, tolerating a markdown code fence."""
+def _parse_json(role: str, text: str) -> object:
+    """The JSON value a fetcher wrote, tolerating a markdown code fence."""
     fenced = _FENCE.match(text)
     try:
-        data = json.loads(fenced.group(1) if fenced else text)
+        return json.loads(fenced.group(1) if fenced else text)
     except ValueError as exc:
         raise RuntimeError(f"{role} output is not valid JSON: {exc}") from exc
+
+
+def _parse_record(role: str, text: str) -> dict:
+    """The JSON object a fetcher wrote, tolerating a markdown code fence."""
+    data = _parse_json(role, text)
     if not isinstance(data, dict):
         raise RuntimeError(
             f"{role} output must be a JSON object, got {type(data).__name__}"
@@ -217,9 +234,13 @@ async def fetch_record(
     fetcher: McpFetcherAgent,
     fetch: Callable[[Path], Awaitable[None]],
     required: tuple[str, ...],
+    *,
+    preflight: bool = True,
 ) -> dict:
-    """Preflight `fetcher`, run `fetch` into a temp file, and validate the JSON."""
-    await fetcher.check_active()
+    """Preflight `fetcher` (unless `preflight` is False because the caller
+    already did), run `fetch` into a temp file, and validate the JSON."""
+    if preflight:
+        await fetcher.check_active()
     with tempfile.TemporaryDirectory() as tmp:
         output_file = Path(tmp) / f"{fetcher.server}.json"
         await fetch(output_file)
@@ -228,3 +249,30 @@ async def fetch_record(
     if missing:
         raise RuntimeError(f"{fetcher.role} output is missing {missing}: {data}")
     return data
+
+
+def _issue(role: str, item: object) -> dict:
+    """One `{"key", "summary", "description"}` entry of a fetched issue list."""
+    if not isinstance(item, dict):
+        raise RuntimeError(f"{role} output issue must be a JSON object: {item!r}")
+    issue = {name: _as_text(item.get(name)) for name in ("key", "summary")}
+    if not all(isinstance(value, str) and value.strip() for value in issue.values()):
+        raise RuntimeError(f"{role} output issue needs a key and a summary: {item!r}")
+    description = _as_text(item.get("description"))
+    return {**issue, "description": description if isinstance(description, str) else ""}
+
+
+async def fetch_issue_list(fetcher: IssueFetcherAgent, jql: str) -> list[dict]:
+    """Preflight `fetcher`, run a JQL search, and return its issues as text records."""
+    await fetcher.check_active()
+    with tempfile.TemporaryDirectory() as tmp:
+        output_file = Path(tmp) / "jira-issues.json"
+        await fetcher.fetch_many(jql, output_file)
+        data = _parse_json(fetcher.role, output_file.read_text(encoding="utf-8"))
+    issues = data.get("issues") if isinstance(data, dict) else data
+    if not isinstance(issues, list):
+        raise RuntimeError(
+            f"{fetcher.role} output must hold an 'issues' list, got "
+            f"{type(issues).__name__}"
+        )
+    return [_issue(fetcher.role, item) for item in issues]

@@ -136,7 +136,9 @@ def _mr_review(context: ProjectContext, provider: str) -> dict:
     }
 
 
-def _branch_review(context: ProjectContext, target: str, branch: str) -> dict:
+def _branch_review(
+    context: ProjectContext, target: str, branch: str, objective: str | None = None
+) -> dict:
     docs_dir = context.config["docs_dir"]
     review_dir = context.active_working_dir() / docs_dir
     review_file = review_dir / new_review_filename("branch")
@@ -147,6 +149,7 @@ def _branch_review(context: ProjectContext, target: str, branch: str) -> dict:
         review_file,
         context.lint_commands(),
         check_worktree_hygiene=context.use_worktree,
+        objective=objective,
         agent=Agent(context).definition("reviewer"),
     )
     query = branch_review_query(target, branch, diff_text, _lint_report(context))

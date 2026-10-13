@@ -50,7 +50,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
         help_text = output.getvalue()
         self.assertIn(
-            "{run,review,plan,status,cancel,worktree,resume,hooks,ipython,workflows,agents,ui}",
+            "{run,review,plan,orchestrate,status,cancel,worktree,resume,hooks,ipython,workflows,agents,ui}",
             help_text,
         )
         self.assertNotIn("_worker", help_text)
@@ -2317,3 +2317,14 @@ class CliShortcutTests(unittest.TestCase):
         self.assertNotIn("--fun", plain.getvalue())
         self.assertIn("v=review", plain.getvalue())
         self.assertIn("pounce=run", fun.getvalue())
+
+
+def test_orchestrator_task_command_is_internal(capsys):
+    import pytest
+
+    usage_error = 2
+    with pytest.raises(SystemExit) as exc:
+        cli.cli_main(["_orchestrator-task", "0123456789ab", "t1"])
+
+    assert exc.value.code == usage_error
+    assert "_orchestrator-task is internal" in capsys.readouterr().err

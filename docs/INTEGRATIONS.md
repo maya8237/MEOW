@@ -290,6 +290,56 @@ Keep tokens in the process environment or in the ignored
 `.meow/config.toml`. MEOW expands `$NAME`, `${NAME}`, and `%NAME%` in string
 configuration values without evaluating them as shell code.
 
+## `[orchestrator]` — for `meow orchestrate`
+
+Every key is optional. These are the defaults:
+
+```toml
+[orchestrator]
+max_parallel = 3
+max_recovery_cycles = 3
+review_rounds = 3
+branch_prefix = "orchestrator/"
+poll_seconds = 5
+open_pr = true
+```
+
+| Field | Default | Notes |
+|---|---|---|
+| `max_parallel` | `3` | Tasks running at once (integer, at least 1). `--max-parallel` overrides it for one run. |
+| `max_recovery_cycles` | `3` | Triage-and-retry cycles one task may use before the orchestrator blocks (integer, at least 0). A task split into subtasks passes its counter on to them. |
+| `review_rounds` | `3` | Review/fix rounds of the whole-objective review before it blocks (integer, at least 1). |
+| `branch_prefix` | `"orchestrator/"` | Prefix of the integration branch (`<prefix>ID`) and the task branches (`<prefix>ID-TASK`). Non-empty, no spaces, no `..`, no leading `-`. |
+| `poll_seconds` | `5` | Seconds between checks of the child runs while `meow orchestrate` drives (greater than 0). |
+| `open_pr` | `true` | Open a pull or merge request after pushing. `--no-pr` turns it off for one run. |
+
+Unknown keys and values of the wrong type are rejected when the config loads.
+`[models]` also accepts `decomposer`, `triage`, `integrator`, and
+`pull_request` to choose a model per orchestrator role.
+
+**Jira input.** `--jira KEY ...` and `--jql "..."` need `[jira]` (with
+`project_key`) and `[jira.mcp]` exactly as described above. The orchestrator
+only reads Jira: it never comments on or transitions an issue. In native mode
+(`/meow:orchestrate`) the session's connected Jira tools do the fetching
+instead.
+
+**Pull request creation.** After pushing, the orchestrator opens a pull or merge
+request from the integration branch into the base branch. The provider is
+chosen from the host of the `origin` remote: `github.com`, or any host
+containing `github`, is GitHub; a host containing `gitlab`, or equal to the host
+of `[gitlab.mcp].env.GITLAB_URL`, is GitLab; any other host has no provider. The
+chosen provider must also have its `[github.mcp]` or `[gitlab.mcp]` table,
+otherwise the request is skipped with "provider not configured". The configured
+MCP server must expose a tool whose name contains `create_pull_request`
+(GitHub) or `create_merge_request` (GitLab). The pull-request agent may call
+only tools whose names contain `create_pull_request`, `create_merge_request`,
+`list_pull_requests`, `list_merge_requests`, or `search_pull_requests` (the
+last three let it reuse an open request for the branch), and it writes only its
+result file. A missing provider or a failed creation never undoes the push: the
+orchestrator ends `delivered`, `meow orchestrate` exits with code 3, and it
+prints `PR not opened: REASON` with a manual link. Native mode opens the request
+with the GitHub or GitLab tools already connected to the session.
+
 ---
 
 ## Running `meow run --jira` on a schedule
@@ -407,3 +457,7 @@ Enable and test it with `systemctl enable --now meow-run-jira.timer`, then
 | `meow review --review-file` pointing at a branch review file | `RuntimeError` explaining it can't be resumed this way (no target branch to re-diff against) — re-run with `--fix --branch <branch> --target <target>` instead |
 | `meow review --review-file` omitted and no review file anywhere in `docs_dir` | `FileNotFoundError` naming `docs_dir` and pointing at `--review-file` |
 | `meow review --fix` (any source) never passes within `max_rounds` | `RuntimeError` naming the review file, same stop/raise shape regardless of source |
+| `meow orchestrate --jira` or `--jql` run without `[jira]`/`[jira.mcp]` | Exit code 1 naming the missing table or key, before any worktree is created |
+| `meow orchestrate` run with uncommitted changes | Refused with exit code 1, the same rule as `meow run` |
+| `meow orchestrate` cannot push the integration branch | The orchestrator is `failed` with the git error and nothing is lost; fix `origin`, then `meow orchestrate resume ID` retries delivery |
+| `meow orchestrate` finds no configured GitHub or GitLab provider, or opening the request fails | Still `delivered`; exit code 3 with `PR not opened: REASON` and a manual link |

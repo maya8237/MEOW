@@ -40,7 +40,8 @@ docs stay in `docs/`.
 ## Plugin skills
 
 `skills/*/SKILL.md`: `/meow:run` (CLI by default), `/meow:plan`,
-`/meow:review`, and `/meow:lint` (native by default); `/meow:onboard`
+`/meow:review`, `/meow:lint`, and `/meow:orchestrate` (native by default;
+its task sprints still run as detached CLI workers); `/meow:onboard`
 (add-ons; projects are onboarded automatically on first use),
 `/meow:migration` (legacy layouts), and `/meow:customize`. Keep each skill's
 CLI and native sections in step with docs/CLI.md.
@@ -55,13 +56,16 @@ package (see ARCHITECTURE.md) and keep the package root to entry points.
   policy, and runs one-shot queries. `SessionAgent` keeps one
   `ClaudeSDKClient` across rounds (generator, and the review/lint fixers in
   `fixers.py`). The Jira/GitLab/GitHub fetchers share `McpFetcherAgent` in
-  `mcp_fetcher.py`. `Sprint` and `ProjectContext` both satisfy `AgentContext`.
+  `mcp_fetcher.py`; the orchestrator roles are in `orchestration.py`. `Sprint` and `ProjectContext` both satisfy `AgentContext`.
 - `execution/`: round loops (`orchestrator.py`), `run`/`plan` flows
   (`sprint_runner.py`), workflow execution/session pools (`workflow/`),
-  run journal (`run_state.py`), delivery, queue.
+  run journal (`run_state.py`), delivery, queue. `orchestration/` runs
+  `meow orchestrate`: model, journal, scheduler, merges, triage, the shared
+  `tick()`, final review, delivery, and the CLI driver `runner.py`.
 - `cli/`: argument parsing, dispatch, `review_cli.py`, status, resume,
-  workflow/agent catalog commands (`catalog_cli.py`).
-- `native/`: agent-free helpers behind `meow native ...` for the skills.
+  workflow/agent catalog commands (`catalog_cli.py`), `orchestrate_cli.py`.
+- `native/`: agent-free helpers behind `meow native ...` for the skills
+  (`native_orchestrate.py` serves `/meow:orchestrate`).
 - `project/`: config loading/schema, `[custom]` skill/agent discovery
   (`project/custom/`), onboarding, permissions, plan files,
   agent/workflow definitions, templates, and expressions (`project/custom/`).
@@ -85,6 +89,11 @@ package (see ARCHITECTURE.md) and keep the package root to entry points.
 - Plan, review, and tester file names come from `project/plan_files.py`
   (`plan_review_file`, `plan_test_file`, `new_review_filename`); never rebuild
   them inline.
+- The orchestrator has one supervisor step, `execution/orchestration/tick.py`;
+  the CLI runner and `meow native orchestrate` both call it. Nothing is pushed
+  before the `delivering` phase, and the integration branch
+  `orchestrator/<id>` never shares a ref prefix with a task branch
+  (`orchestrator/<id>-<task>`).
 - `run_sprint` marks a run `failed` whenever it raises before a terminal
   phase; inner steps only record phases, not failures.
 - Agent definitions replace whole files by scope: local > project > user >

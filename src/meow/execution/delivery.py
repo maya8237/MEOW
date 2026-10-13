@@ -28,15 +28,20 @@ def _git(
     return result
 
 
-def _branch_and_remote(
-    directory: Path, fallback_branch: str | None = None
-) -> tuple[str, str]:
+def _checked_out_branch(directory: Path, fallback_branch: str | None = None) -> str:
     branch = _git(directory, "branch", "--show-current").stdout.strip()
     if not branch:
         if not fallback_branch:
             raise RuntimeError("Automatic delivery requires a checked-out branch")
         _git(directory, "switch", "-c", fallback_branch)
         branch = fallback_branch
+    return branch
+
+
+def _branch_and_remote(
+    directory: Path, fallback_branch: str | None = None
+) -> tuple[str, str]:
+    branch = _checked_out_branch(directory, fallback_branch)
     if "origin" not in _git(directory, "remote").stdout.splitlines():
         raise RuntimeError("No origin remote configured for automatic push")
     return branch, "origin"
@@ -59,16 +64,35 @@ def _commit(directory: Path, message: list[str]) -> None:
         raise RuntimeError(f"git commit failed: {detail}")
 
 
+def commit_worktree(active: Path, message: list[str]) -> str:
+    """Commit everything shareable in `active` and return its HEAD sha.
+
+    Stages all changes, keeps MEOW runtime state (`.meow/`, except the shared
+    `.meow/config.toml`) and secret-like files out, and commits only when
+    something is staged, so a clean tree just returns the current HEAD.
+    """
+    _git(active, "add", "-A")
+    _git(active, "reset", "-q", "--", ".meow", check=False)
+    _unstage_secret_like(active)
+    # Re-stage the one shareable MEOW file; the update pass also handles
+    # its deletion without bringing runtime state back into the commit.
+    _git(active, "add", "-f", "--", ".meow/config.toml", check=False)
+    _git(active, "add", "-u", "--", ".meow/config.toml", check=False)
+    if _git(active, "diff", "--cached", "--quiet", check=False).returncode:
+        _commit(active, message)
+    return _git(active, "rev-parse", "HEAD").stdout.strip()
+
+
 def deliver_verified_run(
-    store: RunStore, run_id: str, *, unattended: bool = False
+    store: RunStore, run_id: str, *, unattended: bool = False, push: bool = True
 ) -> bool:
     """Hold the run's delivery lock until commit/push has finished."""
     with delivery_lock(store, run_id):
-        return _deliver_verified_run(store, run_id, unattended=unattended)
+        return _deliver_verified_run(store, run_id, unattended=unattended, push=push)
 
 
-def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structure]
-    store: RunStore, run_id: str, *, unattended: bool = False
+def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches]
+    store: RunStore, run_id: str, *, unattended: bool = False, push: bool = True
 ) -> bool:
     """Deliver after verified checks, from a linked worktree or unattended run.
 
@@ -83,32 +107,25 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
         return False
     try:
         check_cancel(store, run_id)
-        branch, remote = _branch_and_remote(active, f"meow/{run_id}")
+        if push:
+            branch, remote = _branch_and_remote(active, f"meow/{run_id}")
+        else:
+            branch, remote = _checked_out_branch(active, f"meow/{run_id}"), None
         previous = record.delivery
-        if previous.get("pushed") and previous.get("commit"):
+        if push and previous.get("pushed") and previous.get("commit"):
             return True
-        store.transition(
-            run_id,
-            "delivery_started",
-            branch=branch,
-            delivery={**previous, "branch": branch, "remote": remote},
-        )
+        started = {**previous, "branch": branch}
+        if remote:
+            started["remote"] = remote
+        else:
+            started["push"] = False
+        store.transition(run_id, "delivery_started", branch=branch, delivery=started)
         check_cancel(store, run_id)
-        _git(active, "add", "-A")
-        _git(active, "reset", "-q", "--", ".meow", check=False)
-        _unstage_secret_like(active)
-        # Re-stage the one shareable MEOW file; the update pass also handles
-        # its deletion without bringing runtime state back into the commit.
-        _git(active, "add", "-f", "--", ".meow/config.toml", check=False)
-        _git(active, "add", "-u", "--", ".meow/config.toml", check=False)
-        if _git(active, "diff", "--cached", "--quiet", check=False).returncode:
-            check_cancel(store, run_id)
-            message = ["-m", f"MEOW run {run_id}: {record.request[:72]}"]
-            onboarded = record.results.get("onboarding", {}).get("files")
-            if onboarded:
-                message += ["-m", "Onboarded: " + ", ".join(onboarded)]
-            _commit(active, message)
-        commit = _git(active, "rev-parse", "HEAD").stdout.strip()
+        message = ["-m", f"MEOW run {run_id}: {record.request[:72]}"]
+        onboarded = record.results.get("onboarding", {}).get("files")
+        if onboarded:
+            message += ["-m", "Onboarded: " + ", ".join(onboarded)]
+        commit = commit_worktree(active, message)
         store.transition(
             run_id,
             "committed",
@@ -118,6 +135,8 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
                 "committed": True,
             },
         )
+        if not push:
+            return True
         check_cancel(store, run_id)
         _git(active, "push", "-u", remote, branch)
         store.transition(

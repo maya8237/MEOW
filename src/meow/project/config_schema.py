@@ -402,6 +402,75 @@ def _normalize_lint_commands(user_config: dict) -> list[LintCommand]:
     return entries
 
 
+ORCHESTRATOR_DEFAULTS = {
+    "max_parallel": 3,
+    "max_recovery_cycles": 3,
+    "review_rounds": 3,
+    "branch_prefix": "orchestrator/",
+    "poll_seconds": 5,
+    "open_pr": True,
+}
+
+
+def _orchestrator_int(table: dict, key: str, minimum: int) -> int:
+    value = table.get(key, ORCHESTRATOR_DEFAULTS[key])
+    if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [orchestrator].{key} must be an integer "
+            f">= {minimum}, got {value!r}."
+        )
+    return value
+
+
+def _orchestrator_prefix(table: dict) -> str:
+    prefix = table.get("branch_prefix", ORCHESTRATOR_DEFAULTS["branch_prefix"])
+    if (
+        not isinstance(prefix, str)
+        or not prefix
+        or any(char.isspace() for char in prefix)
+        or ".." in prefix
+        or prefix.startswith("-")
+    ):
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [orchestrator].branch_prefix must be a "
+            "non-empty string without spaces or '..' that does not start with "
+            f"'-', got {prefix!r}."
+        )
+    return prefix
+
+
+def _normalize_orchestrator_config(user_config: dict) -> dict:
+    """Validate `[orchestrator]` and fill in the pinned defaults."""
+    table = user_config.get("orchestrator", {})
+    if not isinstance(table, dict):
+        raise ValueError(f"{CONFIG_FILENAME}: [orchestrator] must be a table")
+    unknown = sorted(set(table) - set(ORCHESTRATOR_DEFAULTS))
+    if unknown:
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [orchestrator] has unknown keys: {', '.join(unknown)}"
+        )
+    poll = table.get("poll_seconds", ORCHESTRATOR_DEFAULTS["poll_seconds"])
+    if isinstance(poll, bool) or not isinstance(poll, (int, float)) or poll <= 0:
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [orchestrator].poll_seconds must be a number "
+            f"> 0, got {poll!r}."
+        )
+    open_pr = table.get("open_pr", ORCHESTRATOR_DEFAULTS["open_pr"])
+    if not isinstance(open_pr, bool):
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [orchestrator].open_pr must be true or false, "
+            f"got {open_pr!r}."
+        )
+    return {
+        "max_parallel": _orchestrator_int(table, "max_parallel", 1),
+        "max_recovery_cycles": _orchestrator_int(table, "max_recovery_cycles", 0),
+        "review_rounds": _orchestrator_int(table, "review_rounds", 1),
+        "branch_prefix": _orchestrator_prefix(table),
+        "poll_seconds": poll,
+        "open_pr": open_pr,
+    }
+
+
 def _validate_max_rounds(config: dict) -> None:
     """Reject a non-positive or non-integer `max_rounds` up front.
 

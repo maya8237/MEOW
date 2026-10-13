@@ -73,6 +73,24 @@ def mcp_fetch_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-ar
     )
 
 
+def pull_request_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- pure builder
+    label: str, request: str, head: str, base: str, output_file: Path
+) -> str:
+    """Open one pull/merge request through an MCP server, reusing an open one."""
+    return (
+        f"You open one {label} {request} through the configured {label} MCP "
+        f"server -- nothing else. First list or search the open {request}s "
+        f"whose source branch is '{head}' and whose target branch is '{base}'. "
+        f"If one exists, do not create another: use it. Otherwise create a "
+        f"{request} from '{head}' into '{base}' with exactly the title and body "
+        f"given in the task message; it is not a draft. Then write a JSON "
+        f'object with exactly the key "url" (the web URL of the {request}) to '
+        f"{output_file}. Do not write any other file. Never merge, close, "
+        f"approve, comment on, or edit a {request}, and never push or modify "
+        "branches."
+    )
+
+
 def shape_context_instructions(context: ShapeContext | None) -> str:
     values = shape_values(context)
     if values is None:
@@ -181,6 +199,121 @@ def planner_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mirrorin
     )
 
 
+def tasks_format() -> str:
+    """The tasks-document contract `model.parse_tasks_document` parses."""
+    return (
+        'Write one JSON object {"tasks": [...]} and nothing else. Each entry has '
+        'exactly the keys "id" (1-64 letters, digits, "-" or "_", starting with '
+        'a letter or digit, unique ignoring case), "request" (the full task '
+        'description as text), "depends_on" (an array of other task ids, [] when '
+        'none), "expected_paths" (an array of project-relative paths, [] when '
+        'unknown), and "source_ref" (the Jira key the task resolves, or null). '
+        "The dependencies must not form a cycle."
+    )
+
+
+def decomposer_prompt(
+    output_file: Path,
+    *,
+    max_tasks: int,
+    task_drafts: str | None = None,
+    agent: CustomAgent | None = None,
+) -> str:
+    """Instructions for the decomposer role; `task_drafts` fixes the tasks (Jira)."""
+    return render_agent(
+        _agent(agent, "decomposer"),
+        {
+            "output_file": output_file,
+            "max_tasks": max_tasks,
+            "task_drafts": task_drafts,
+            "tasks_format": tasks_format(),
+        },
+    )
+
+
+def decomposer_query(objective: str, *, correction: str | None = None) -> str:
+    """The user turn for the decomposer; `correction` is the last validation error."""
+    query = f"Objective:\n{objective}"
+    if correction:
+        query += (
+            f"\n\nYour previous output was rejected: {correction}\n"
+            "Write a corrected document that fixes this."
+        )
+    return query
+
+
+def decision_format() -> str:
+    """The triage decision contract `execution.orchestration.triage` parses."""
+    return (
+        "Write your decision as one JSON object, and nothing else, to the "
+        'output file. Keys: "action" (required): one of "retry", '
+        '"resume", "rescope", "reintegrate", "blocked". '
+        '"rationale" (required): one or two sentences naming the evidence '
+        'behind the choice. "notes": for "resume" and "reintegrate", '
+        "concrete findings appended to the plan for the next attempt. "
+        '"request": for "rescope", the corrected full task request. '
+        '"subtasks": for "rescope", a list of objects with "id", '
+        '"request", "depends_on", and "expected_paths" that replace '
+        'the task. "prerequisite": for "rescope", one such object for a '
+        'task that must be merged before this one. "needed": for '
+        '"blocked", exactly what a human must provide or decide. A '
+        '"rescope" gives exactly one of "request", "subtasks", '
+        "\"prerequisite\". Task ids use letters, digits, '-' and '_' (at "
+        "most 64 characters, starting with a letter or digit) and must not "
+        "repeat an existing task id."
+    )
+
+
+def triage_prompt(output_file: Path, *, agent: CustomAgent | None = None) -> str:
+    """Instructions for deciding how a failed orchestrator task recovers."""
+    return render_agent(
+        _agent(agent, "triage"),
+        {"output_file": output_file, "decision_format": decision_format()},
+    )
+
+
+def triage_query(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- pure builder
+    task_request: str,
+    cause: str,
+    evidence: list[str],
+    cycles: int,
+    max_cycles: int,
+) -> str:
+    """The task message for one triage decision."""
+    listed = "\n".join(f"- {path}" for path in evidence) or "(none)"
+    return (
+        f"A task attempt failed.\n\nTask request:\n{task_request}\n\n"
+        f"Failure cause: {cause}\nRecovery cycles used: {cycles} of {max_cycles}"
+        f"\n\nEvidence files to read before deciding:\n{listed}"
+    )
+
+
+def integrator_prompt(
+    active_dir: Path, conflicted_paths: list[str], *, agent: CustomAgent | None = None
+) -> str:
+    """Instructions for resolving the conflicts of one orchestrator merge."""
+    return render_agent(
+        _agent(agent, "integrator"),
+        {
+            "active_dir": active_dir,
+            "conflicted_paths": "\n".join(f"- {path}" for path in conflicted_paths),
+        },
+    )
+
+
+def integrator_query(
+    conflicted_paths: list[str], task_request: str, merged_requests: list[str]
+) -> str:
+    """The task message for one conflict resolution."""
+    merged = "\n".join(f"- {request}" for request in merged_requests) or "(none)"
+    return (
+        "Resolve the merge conflicts in: "
+        + ", ".join(conflicted_paths)
+        + f"\n\nTask being merged:\n{task_request}"
+        + f"\n\nTasks already merged:\n{merged}"
+    )
+
+
 def generator_prompt(plan_file: Path, *, agent: CustomAgent | None = None) -> str:
     return render_agent(_agent(agent, "generator"), {"plan_file": plan_file})
 
@@ -271,6 +404,7 @@ def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
     *,
     check_worktree_hygiene: bool,
     shape_context: ShapeContext | None = None,
+    objective: str | None = None,
     agent: CustomAgent | None = None,
 ) -> str:
     return render_agent(
@@ -283,6 +417,7 @@ def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
             "check_worktree_hygiene": check_worktree_hygiene,
             "verdict_format": verdict_format(review_file, "concern"),
             "shape": shape_values(shape_context),
+            "objective": objective,
         },
         variant="branch",
     )
