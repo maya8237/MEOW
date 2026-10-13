@@ -274,6 +274,70 @@ def test_concurrent_recipe_edit_and_attempt_creation_preserve_both(  # ruff: ign
     )
 
 
+def test_finishing_previous_attempt_cannot_overwrite_next_starting_state(  # ruff: ignore[complex-structure, too-many-statements]
+    tmp_path, monkeypatch
+):
+    from contextlib import contextmanager
+
+    from meow.ui import sessions
+    from meow.ui.sessions import SessionStore
+
+    store = SessionStore(tmp_path)
+    recipe = valid_recipe(tmp_path)
+    store.save_recipe(recipe)
+    previous = store.create_attempt(recipe.id, recipe, worker_token="first")
+    store.update_attempt(recipe.id, previous.id, state="running")
+    old_sync_waiting = threading.Event()
+    release_old_sync = threading.Event()
+    next_attempt_created = threading.Event()
+    errors = []
+    original_file_transaction = sessions._file_transaction
+
+    @contextmanager
+    def pause_old_session_sync(path, resource):
+        if resource == "session" and threading.current_thread().name == "old-finisher":
+            old_sync_waiting.set()
+            if not release_old_sync.wait(5):
+                raise TimeoutError("old attempt sync was not released")
+        with original_file_transaction(path, resource):
+            yield
+
+    monkeypatch.setattr(sessions, "_file_transaction", pause_old_session_sync)
+
+    def finish_previous():
+        try:
+            store.finish_attempt(recipe.id, previous.id, "succeeded", 0)
+        except BaseException as exc:
+            errors.append(exc)
+
+    def create_next():
+        try:
+            store.create_attempt(recipe.id, recipe, worker_token="second")
+            next_attempt_created.set()
+        except BaseException as exc:
+            errors.append(exc)
+
+    finisher = threading.Thread(target=finish_previous, name="old-finisher")
+    creator = threading.Thread(target=create_next, name="next-launcher")
+    finisher.start()
+    assert old_sync_waiting.wait(5)
+    creator.start()
+    try:
+        assert next_attempt_created.wait(5)
+    finally:
+        release_old_sync.set()
+    finisher.join(5)
+    creator.join(5)
+
+    assert not finisher.is_alive() and not creator.is_alive()
+    assert errors == []
+    saved = store.load(recipe.id)
+    assert saved.attempts[0] == previous.id
+    assert saved.attempts[-1] != previous.id
+    assert saved.state == "starting"
+    assert store._read_attempt(recipe.id, saved.attempts[-1]).state == "starting"
+
+
 def test_registration_timeout_persists_failed_attempt(tmp_path, monkeypatch):
     from meow.infrastructure import ui_sessions
     from meow.ui.sessions import SessionStore
