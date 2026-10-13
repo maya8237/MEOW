@@ -55,3 +55,15 @@
 - GREEN: same command after the fix — 2 passed in 2.04s.
 - `rtk ruff format` on the three changed Python files — all formatted.
 - `rtk ruff check` on the three changed Python files — passed with `[]`.
+
+## Review fix round 2
+
+- Finding: path redaction stopped at whitespace, exposing the suffix of Windows
+  and POSIX filesystem paths containing spaces in API error messages.
+- Change: filesystem exceptions now map to safe public messages. Permission
+  failures remain actionable; other local file failures receive a generic
+  message. Validation and non-filesystem errors retain their existing details.
+- RED: `$env:PYTHONPATH='src'; rtk proxy C:/Users/m/Documents/MEOW/.venv/Scripts/python.exe -m pytest tests/ui/test_session_api.py::test_filesystem_error_responses_redact_server_paths -q` — 4 failed; GET and POST each leaked the suffix for Windows and POSIX paths with spaces.
+- GREEN: same command after the fix — 4 passed in 3.06s.
+- `rtk ruff format src/meow/ui/session_api.py tests/ui/test_session_api.py` — 2 files left unchanged.
+- `rtk ruff check src/meow/ui/session_api.py tests/ui/test_session_api.py` — passed with `[]`.

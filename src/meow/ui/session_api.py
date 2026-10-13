@@ -55,7 +55,11 @@ def _public_error(value: str | None) -> str | None:
 
 
 def public_error(error: BaseException | str) -> str:
-    """Keep useful failure text while removing absolute server-side paths."""
+    """Keep filesystem failures useful without exposing server-side paths."""
+    if isinstance(error, PermissionError):
+        return "Permission denied while accessing local UI files."
+    if isinstance(error, OSError):
+        return "A local file operation failed."
     return _public_error(str(error)) or "Request failed."
 
 

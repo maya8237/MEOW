@@ -247,11 +247,13 @@ def test_session_serializers_use_exact_public_fields(running, project):
 
 
 @pytest.mark.parametrize("method", ["get", "post"])
+@pytest.mark.parametrize(
+    "private_path", [r"C:\private data\file.db", "/srv/private data/file.db"]
+)
 def test_filesystem_error_responses_redact_server_paths(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
-    running, project, tmp_path, monkeypatch, method
+    running, project, monkeypatch, method, private_path
 ):
-    private_path = tmp_path / "server-secret" / "meow.db"
-    failure = OSError(f"permission denied: {private_path}")
+    failure = PermissionError(f"permission denied: {private_path}")
     if method == "get":
         monkeypatch.setattr(
             session_api, "get", lambda *_args: (_ for _ in ()).throw(failure)
@@ -272,8 +274,8 @@ def test_filesystem_error_responses_redact_server_paths(  # ruff: ignore[too-man
 
     message = json.loads(body)["error"]
     assert status == HTTPStatus.BAD_REQUEST
-    assert str(private_path) not in message
-    assert "permission denied" in message
+    assert "file.db" not in message
+    assert "permission denied" in message.lower()
 
 
 def test_output_cursor_clamps_and_resets_after_truncation(running, project):
