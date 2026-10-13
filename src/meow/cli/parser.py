@@ -190,6 +190,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     worker_parser.add_argument("run_id")
     worker_parser.add_argument("--nonce", required=True)
     _add_common_args(worker_parser)
+    orchestrator_task_parser = _add_hidden_parser(subparsers, "_orchestrator-task")
+    orchestrator_task_parser.add_argument("orchestrator_id")
+    orchestrator_task_parser.add_argument("task_id")
+    orchestrator_task_parser.add_argument(
+        "--resume-at",
+        dest="resume_at",
+        choices=["generate", "review"],
+        default="generate",
+    )
+    orchestrator_task_parser.add_argument("--plan", default=None)
+    orchestrator_task_parser.add_argument("--test", action="store_true")
+    orchestrator_task_parser.add_argument("--preexisting", action="store_true")
+    _add_common_args(orchestrator_task_parser)
     _add_review_parser(subparsers)
     _add_plan_parser(subparsers)
     status_parser = subparsers.add_parser("status", help="Inspect a saved run.")

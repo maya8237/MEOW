@@ -99,6 +99,8 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         return
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+    if args.command == "_orchestrator-task":
+        parser.error("_orchestrator-task is internal")
     if args.command == "ipython":
         start_ipython()
         return
