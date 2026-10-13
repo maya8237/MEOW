@@ -276,3 +276,141 @@ test("making a copy of a skill keeps its selected source after loading", async (
   await user.selectOptions(screen.getByLabelText("Start from"), "");
   expect(screen.getByLabelText("Start from")).toHaveValue("");
 });
+
+test("Sessions aggregates repositories and disambiguates duplicate basenames", async () => {
+  const user = userEvent.setup();
+  const repos = ["C:/teams/alpha/project", "D:/teams/beta/project"];
+  const makeSession = (id: string, repo: string, name: string) => ({
+    id,
+    name,
+    repo,
+    state: "draft",
+    mode: "cli",
+    command: "run",
+    created_at: "2026-10-13T10:00:00Z",
+    updated_at: "2026-10-13T10:00:00Z",
+    archived: false,
+    active_attempt_id: null,
+    attempt_count: 0,
+    last_attempt: null,
+  });
+  const sessions = [
+    makeSession("a".repeat(32), repos[0], "Alpha work"),
+    makeSession("b".repeat(32), repos[1], "Beta work"),
+  ];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/catalog"))
+        return new Response(JSON.stringify({ ...catalog, repos }));
+      if (url.startsWith("/api/sessions?") || url === "/api/sessions") {
+        const selected = new URL(url, "http://local").searchParams.get("repo");
+        return new Response(
+          JSON.stringify({
+            sessions: selected
+              ? sessions.filter((item) => item.repo === selected)
+              : sessions,
+          }),
+        );
+      }
+      if (url.startsWith("/api/runs"))
+        return new Response(JSON.stringify({ runs: [] }));
+      if (url.startsWith("/api/sessions/")) {
+        const id = url.split("/")[3].split("?")[0];
+        const entry = sessions.find((item) => item.id === id)!;
+        return new Response(
+          JSON.stringify({
+            session: {
+              ...entry,
+              recipe: {
+                name: entry.name,
+                repo: entry.repo,
+                mode: "cli",
+                command: "run",
+                request: "",
+                workflow: null,
+                inputs: {},
+                arguments: [],
+                options: {},
+              },
+              attempts: [],
+            },
+          }),
+        );
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    }),
+  );
+  render(<App />);
+  await screen.findByRole("heading", { name: "quick" });
+  await user.click(screen.getByRole("button", { name: "Sessions" }));
+  expect(await screen.findByText("Alpha work")).toBeInTheDocument();
+  expect(screen.getByText("Beta work")).toBeInTheDocument();
+  expect(screen.getAllByText("alpha/project").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("beta/project").length).toBeGreaterThan(0);
+  await user.selectOptions(screen.getByLabelText("Repository"), repos[0]);
+  expect(await screen.findByText("Alpha work")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.queryByText("Beta work")).not.toBeInTheDocument(),
+  );
+});
+
+test("workflow Run opens the CLI launcher with its workflow selected", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "quick" });
+  await user.click(screen.getByRole("button", { name: "Run workflow quick" }));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.getByLabelText("Execution mode")).toHaveValue("cli");
+  expect(screen.getByLabelText("Command")).toHaveValue("run");
+  expect(screen.getByLabelText("Workflow")).toHaveValue("quick");
+});
+
+test("skill Run uses its qualified Claude command and unverified agents have no Run action", async () => {
+  const skill = {
+    name: "notes",
+    qualified_name: "meow-custom:notes",
+    description: "Take notes",
+    scope: "project",
+    repo: "/repo",
+    directory: "/repo/skills/notes",
+    text: "Skill source",
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () => new Response(JSON.stringify({ ...catalog, skills: [skill] })),
+    ),
+  );
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "quick" });
+  await user.click(screen.getByRole("button", { name: /Agents/ }));
+  expect(
+    screen.queryByRole("button", { name: "Run agent explorer" }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /Skills/ }));
+  await user.click(
+    screen.getByRole("button", { name: "Run skill meow-custom:notes" }),
+  );
+  expect(screen.getByLabelText("Execution mode")).toHaveValue("claude");
+  expect(screen.getByLabelText("Command")).toHaveValue("/meow-custom:notes");
+});
+
+test("a verified Claude agent Run preselects the agent option", async () => {
+  const agent = { ...catalog.agents[0], claude_resolvable: true };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () => new Response(JSON.stringify({ ...catalog, agents: [agent] })),
+    ),
+  );
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "quick" });
+  await user.click(screen.getByRole("button", { name: /Agents/ }));
+  await user.click(screen.getByRole("button", { name: "Run agent explorer" }));
+  expect(screen.getByLabelText("Execution mode")).toHaveValue("claude");
+  expect(screen.getByText("Agent: explorer")).toBeInTheDocument();
+});

@@ -26,12 +26,14 @@ export default function ItemDetail({
   kind,
   onCopyError,
   onDuplicate,
+  onRun,
 }: {
   item: CatalogItem;
   repos: string[];
   kind: Kind;
   onCopyError: (message: string) => void;
   onDuplicate: () => void;
+  onRun: () => void;
 }) {
   const [sourceOpen, setSourceOpen] = useState(false);
   const workDir = item.repo ? ` --work-dir "${item.repo}"` : "";
@@ -82,6 +84,44 @@ export default function ItemDetail({
       <p className="item-description">
         {item.description || "No description provided."}
       </p>
+      {(kind === "workflows" ||
+        kind === "skills" ||
+        (kind === "agents" && item.claude_resolvable)) && (
+        <section className="catalog-run-action" aria-label="Run definition">
+          <div>
+            <h3>
+              {kind === "workflows"
+                ? "Run this workflow"
+                : kind === "skills"
+                  ? "Run this skill"
+                  : "Use this agent"}
+            </h3>
+            <p>
+              {kind === "workflows"
+                ? "Start a CLI session with this workflow selected."
+                : kind === "skills"
+                  ? "Start a Claude session with this qualified skill command."
+                  : "Start a Claude session with this verified Claude agent."}
+            </p>
+          </div>
+          <Button
+            onClick={onRun}
+            aria-label={
+              kind === "workflows"
+                ? `Run workflow ${item.name}`
+                : kind === "skills"
+                  ? `Run skill ${item.qualified_name || item.name}`
+                  : `Run agent ${item.name}`
+            }
+          >
+            {kind === "workflows"
+              ? "Run CLI"
+              : kind === "skills"
+                ? "Run in Claude"
+                : "Run with Claude"}
+          </Button>
+        </section>
+      )}
       {kind === "workflows" && (
         <section className="workflow-section" aria-labelledby="steps-title">
           <div className="section-heading">
