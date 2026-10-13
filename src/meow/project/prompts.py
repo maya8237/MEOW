@@ -181,6 +181,49 @@ def planner_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mirrorin
     )
 
 
+def tasks_format() -> str:
+    """The tasks-document contract `model.parse_tasks_document` parses."""
+    return (
+        'Write one JSON object {"tasks": [...]} and nothing else. Each entry has '
+        'exactly the keys "id" (1-64 letters, digits, "-" or "_", starting with '
+        'a letter or digit, unique ignoring case), "request" (the full task '
+        'description as text), "depends_on" (an array of other task ids, [] when '
+        'none), "expected_paths" (an array of project-relative paths, [] when '
+        'unknown), and "source_ref" (the Jira key the task resolves, or null). '
+        "The dependencies must not form a cycle."
+    )
+
+
+def decomposer_prompt(
+    output_file: Path,
+    *,
+    max_tasks: int,
+    task_drafts: str | None = None,
+    agent: CustomAgent | None = None,
+) -> str:
+    """Instructions for the decomposer role; `task_drafts` fixes the tasks (Jira)."""
+    return render_agent(
+        _agent(agent, "decomposer"),
+        {
+            "output_file": output_file,
+            "max_tasks": max_tasks,
+            "task_drafts": task_drafts,
+            "tasks_format": tasks_format(),
+        },
+    )
+
+
+def decomposer_query(objective: str, *, correction: str | None = None) -> str:
+    """The user turn for the decomposer; `correction` is the last validation error."""
+    query = f"Objective:\n{objective}"
+    if correction:
+        query += (
+            f"\n\nYour previous output was rejected: {correction}\n"
+            "Write a corrected document that fixes this."
+        )
+    return query
+
+
 def generator_prompt(plan_file: Path, *, agent: CustomAgent | None = None) -> str:
     return render_agent(_agent(agent, "generator"), {"plan_file": plan_file})
 

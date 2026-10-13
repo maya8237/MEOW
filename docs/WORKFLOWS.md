@@ -138,7 +138,8 @@ values or list/code structure.
 | `shape`, `preplan`, `lint_instructions`, `focus` | Computed shaping, lint, and review context |
 | `review_basis`, `has_diff`, `request_label`, `target`, `branch`, `source_sha`, `target_sha`, `merge_base` | Review context |
 | `baseline`, `head` | Documentation-update revisions |
-| `verdict_format` | Code-owned gate contract |
+| `objective`, `task_drafts`, `max_tasks`, `conflicted_paths` | Orchestrator context: the objective text, the fixed Jira task drafts, the task cap, the files a merge left conflicted |
+| `verdict_format`, `tasks_format`, `decision_format` | Code-owned contracts: the gate verdict, the orchestrator task graph, the triage decision |
 
 Values unavailable to an invocation are empty. `when` uses the run flags,
 `round`, `steps`, and `inputs`; task/prompt templates also receive the other

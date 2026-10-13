@@ -56,8 +56,15 @@ PROMPT_VARIABLES = frozenset({
     "parallel",
     "unattended",
     "checks_configured",
+    # Orchestrator roles
+    "objective",
+    "task_drafts",
+    "max_tasks",
+    "conflicted_paths",
     # Code-owned contracts
     "verdict_format",
+    "tasks_format",
+    "decision_format",
 })
 _RUN_VALUES = ContextVar("agent_run_values", default=None)
 
