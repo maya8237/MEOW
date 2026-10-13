@@ -170,6 +170,39 @@ def list_schedules(repo: Path) -> list[dict]:
     )
 
 
+def _replace_trigger(job: dict, path: Path) -> None:
+    if job["backend"] == "windows":
+        scheduled_tasks.register_windows(job, path.with_suffix(".xml"), replace=True)
+    else:
+        scheduled_tasks.register_linux(job, _unit_dir(), replace=True)
+
+
+def edit_schedule(repo: Path, schedule_id: str, at: str) -> dict:
+    """Move a pending trigger, preserving its identity and frozen run settings."""
+    when = parse_at(at)
+    path = _path(repo, schedule_id)
+    with _file_transaction(path.with_suffix(".lock"), "schedule", timeout=240):
+        original = _read(path)
+        if original["state"] != "scheduled":
+            raise ValueError("Only pending schedules can be edited")
+        job = {**original, "at": when.isoformat(), "state": "registering"}
+        _atomic_json(path, job)
+        try:
+            _replace_trigger(job, path)
+        except (ValueError, OSError) as exc:
+            try:
+                _replace_trigger(original, path)
+            except (ValueError, OSError) as rollback:
+                original.update(
+                    state="failed", error=f"{exc}; restore failed: {rollback}"
+                )
+            _atomic_json(path, original)
+            raise
+        job.update(state="scheduled", updated_at=datetime.now(UTC).isoformat())
+        _atomic_json(path, job)
+    return job
+
+
 def cancel_schedule(repo: Path, schedule_id: str) -> dict:
     path = _path(repo, schedule_id)
     with _file_transaction(path.with_suffix(".lock"), "schedule"):
@@ -215,11 +248,13 @@ def execute_schedule(repo: Path, schedule_id: str) -> int:
     """Claim once, then execute outside the metadata lock. Never prompt."""
     repo = repo.resolve()
     path = _path(repo, schedule_id)
-    # Native registration can take two 30-second commands, plus rollback.
+    # Native registration or editing may include slow commands and rollback.
     # An imminent trigger must wait until that transaction publishes its result.
-    with _file_transaction(path.with_suffix(".lock"), "schedule", timeout=120):
+    with _file_transaction(path.with_suffix(".lock"), "schedule", timeout=240):
         job = _read(path)
-        if job["state"] != "scheduled":
+        if job["state"] != "scheduled" or datetime.now(UTC) < datetime.fromisoformat(
+            job["at"]
+        ):
             return 0
         job.update(state="running", started_at=datetime.now(UTC).isoformat())
         _atomic_json(path, job)

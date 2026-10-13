@@ -34,7 +34,9 @@ def _unit_quote(value: str) -> str:
     return f'"{escaped}"'
 
 
-def register_linux(job: dict, directory: Path) -> None:
+def register_linux(  # ruff: ignore[too-many-statements]
+    job: dict, directory: Path, *, replace: bool = False
+) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     name = f"meow-{job['id']}"
     command = " ".join(_unit_quote(arg) for arg in job["worker_argv"])
@@ -56,8 +58,14 @@ def register_linux(job: dict, directory: Path) -> None:
     )
     try:
         scheduler_command(["systemctl", "--user", "daemon-reload"])
-        scheduler_command(["systemctl", "--user", "enable", "--now", timer.name])
+        if replace:
+            scheduler_command(["systemctl", "--user", "restart", timer.name])
+        else:
+            scheduler_command(["systemctl", "--user", "enable", "--now", timer.name])
     except ValueError:
+        if replace:
+            # Keep the enabled unit for the caller to restore its original time.
+            raise
         # A failed enable can still have installed a symlink or started the timer.
         with suppress(ValueError):
             scheduler_command(["systemctl", "--user", "disable", "--now", timer.name])
@@ -66,7 +74,9 @@ def register_linux(job: dict, directory: Path) -> None:
         raise
 
 
-def register_windows(job: dict, path: Path) -> None:  # ruff: ignore[too-many-statements]
+def register_windows(  # ruff: ignore[too-many-statements]
+    job: dict, path: Path, *, replace: bool = False
+) -> None:
     namespace = "http://schemas.microsoft.com/windows/2004/02/mit/task"
     ET.register_namespace("", namespace)
     task = ET.Element(f"{{{namespace}}}Task", version="1.2")
@@ -103,6 +113,7 @@ def register_windows(job: dict, path: Path) -> None:  # ruff: ignore[too-many-st
         f"MEOW-{job['id']}",
         "/XML",
         str(path),
+        *(["/F"] if replace else []),
     ])
 
 

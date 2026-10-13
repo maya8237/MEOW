@@ -209,10 +209,15 @@ export default function SessionsView({
 
   async function action(
     actionName:
-      "stop" | "archive" | "unarchive" | "duplicate" | "cancel-schedule",
+      | "stop"
+      | "archive"
+      | "unarchive"
+      | "duplicate"
+      | "cancel-schedule"
+      | "edit-schedule",
     values: object = {},
   ) {
-    if (!selectedSession) return;
+    if (!selectedSession) return false;
     setBusy(true);
     setError("");
     try {
@@ -228,12 +233,14 @@ export default function SessionsView({
           session: result.session,
         });
       setRevision((value) => value + 1);
+      return true;
     } catch (reason) {
       setError(
         reason instanceof Error
           ? reason.message
           : `Could not ${actionName} this session.`,
       );
+      return false;
     } finally {
       setBusy(false);
     }
@@ -471,6 +478,9 @@ export default function SessionsView({
           onStop={() => void action("stop")}
           onCancelSchedule={(scheduleId) =>
             void action("cancel-schedule", { schedule_id: scheduleId })
+          }
+          onEditSchedule={(scheduleId, at) =>
+            action("edit-schedule", { schedule_id: scheduleId, at })
           }
           onArchive={() => void action("archive")}
           onUnarchive={() => void action("unarchive")}

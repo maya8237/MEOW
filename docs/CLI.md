@@ -24,7 +24,7 @@ These are the commands meant for normal project work:
 | `meow workflows` | List, show, validate, or eject workflow definitions. |
 | `meow agents` | List, show, eject, or diff agent definitions. |
 | `meow ui` | Open the local catalog and manage command sessions for registered repositories. |
-| `meow schedule` | Schedule an unattended run for later, list schedules, or cancel a trigger. |
+| `meow schedule` | Schedule an unattended run for later, list or edit schedules, or cancel a trigger. |
 | `meow hooks` | Manage optional host hooks after reviewing what they install. |
 | `meow ipython` | Open the interactive MEOW IPython session. |
 
@@ -46,6 +46,7 @@ available.
 meow schedule add --at "2026-12-01T09:00:00+02:00" -- run "Add CSV export" --name csv-export
 meow schedule add --at "09:00" --work-dir /path/to/project -- run --jira PROJ-123
 meow schedule list --work-dir /path/to/project
+meow schedule edit <schedule-id> --at "2026-12-02T10:30:00+02:00" --work-dir /path/to/project
 meow schedule cancel <schedule-id> --work-dir /path/to/project
 ```
 
@@ -61,7 +62,10 @@ project directory, validates the run flags, and rejects manual approval,
 `--no-worktree`, `--lint-fix`, `--background`, and `--from`. Requests and arguments
 are saved as data under `.meow/schedules/`, with the run's output in the matching
 `.log` file. The JSON response includes the identifier, UTC execution time, and
-state. Cancellation removes the OS trigger; an already running job uses the
+state. `edit` changes a pending schedule's time while keeping its identifier,
+request, and frozen settings. Started, completed, and cancelled schedules cannot
+be edited. If updating the OS trigger fails, MEOW attempts to restore the original
+time and reports the failure. Cancellation removes the OS trigger; an already running job uses the
 normal run or session stop controls. Keep MEOW's Python installation and project
 at their registered paths. Credentials must be available to the scheduler user.
 
@@ -70,7 +74,9 @@ at 9" and registers the same CLI schedule. `/meow:run` routes future-time reques
 to that skill before beginning work. In the UI session launcher, select
 **Schedule for later**, choose **Run at**, preview the command, and select
 **Schedule session**. The reviewed recipe is frozen for that execution; session
-details show the time and a cancellation control. UI times use the browser's
+details show the time, **Edit time**, and a cancellation control. **Edit time**
+opens a local date/time input; **Save time** updates the pending trigger.
+UI times use the browser's
 local timezone and are stored as UTC.
 
 ### Selecting and editing workflows

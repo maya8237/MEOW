@@ -160,6 +160,7 @@ export const sessionAction = (
     | "archive"
     | "unarchive"
     | "schedule"
+    | "edit-schedule"
     | "cancel-schedule",
   values: object = {},
 ) =>
