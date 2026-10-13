@@ -1,4 +1,8 @@
+import os
+import sys
+import time
 import tomllib
+from pathlib import Path
 
 import pytest
 
@@ -30,7 +34,6 @@ def test_bun_option_defaults_to_yes_and_preserves_user_config(tmp_path, monkeypa
 
 
 def test_installer_accepting_bun_migrates_entered_project(tmp_path, monkeypatch):
-    from meow.infrastructure import node_dependencies
     from meow.project.onboarding import OnboardingReport
 
     project = tmp_path / "project"
@@ -40,19 +43,16 @@ def test_installer_accepting_bun_migrates_entered_project(tmp_path, monkeypatch)
     monkeypatch.setattr(
         _runtime, "onboard_project", lambda _root: OnboardingReport((), None, ())
     )
-    monkeypatch.setattr(node_dependencies.shutil, "which", lambda name: name)
     calls = []
-
-    def install(argv, cwd, _env, _timeout):
-        calls.append((argv, cwd))
-        return 0, "", False
-
-    monkeypatch.setattr(node_dependencies, "run_captured", install)
+    monkeypatch.setattr(
+        _runtime,
+        "start_bun_migration",
+        lambda projects, _output: calls.extend(projects),
+    )
     answers = iter(("", "y", str(project), ""))
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     assert _runtime.main(["--repo-dir", str(tmp_path)]) == 0
-    assert calls == [(["bun", "install", "--force", "--linker", "isolated"], project)]
-    assert (project / "bunfig.toml").is_file()
+    assert calls == [project]
 
 
 @pytest.mark.parametrize(
@@ -84,7 +84,6 @@ def test_declining_bun_does_not_write_user_config(tmp_path, monkeypatch):
 def test_accepting_bun_migrates_registered_repos_without_new_onboarding(
     tmp_path, monkeypatch
 ):
-    from meow.infrastructure import node_dependencies
     from meow.project.repos import remember
 
     project = tmp_path / "registered"
@@ -92,14 +91,14 @@ def test_accepting_bun_migrates_registered_repos_without_new_onboarding(
     (project / "package.json").write_text('{"packageManager":"bun@1.4.0"}')
     remember(project)
     monkeypatch.setattr(_runtime, "register_checkout_plugin", lambda *_args: None)
-    monkeypatch.setattr(node_dependencies.shutil, "which", lambda name: name)
+    calls = []
     monkeypatch.setattr(
-        node_dependencies, "run_captured", lambda *_args: (0, "", False)
+        _runtime, "start_bun_migration", lambda projects, _out: calls.extend(projects)
     )
     answers = iter(("", "n"))
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     assert _runtime.main(["--repo-dir", str(tmp_path)]) == 0
-    assert (project / "bunfig.toml").is_file()
+    assert calls == [project]
 
 
 def test_bun_config_is_idempotent_and_invalid_toml_is_preserved(tmp_path):
@@ -143,7 +142,64 @@ def test_migrates_onboarded_bun_repo_and_rebuilds_existing_modules(
             tmp_path,
         )
     ]
-    assert tomllib.loads((tmp_path / "bunfig.toml").read_text())["install"] == {
-        "linker": "isolated",
-        "globalStore": True,
-    }
+    assert not (tmp_path / "bunfig.toml").exists()
+
+
+def test_migration_warns_without_changing_project_bunfig(tmp_path, monkeypatch):
+    from meow.installer import bun
+
+    (tmp_path / "package.json").write_text('{"packageManager":"bun@1.4.0"}')
+    config = tmp_path / "bunfig.toml"
+    original = "[install]\nglobalStore = false\n"
+    config.write_text(original)
+    monkeypatch.setattr(bun, "run_node_install", lambda *_args: None)
+    output = []
+    bun.migrate_bun_projects([tmp_path], output.append)
+    assert config.read_text() == original
+    assert any("Warning" in line and "override" in line for line in output)
+
+
+def test_bun_migration_runs_in_background_and_logs_nested_app(tmp_path, monkeypatch):  # ruff: ignore[too-many-statements]
+    from meow.installer.bun import start_bun_migration
+
+    app = tmp_path / "repo" / "frontend"
+    app.mkdir(parents=True)
+    (app / "package.json").write_text('{"packageManager":"bun@1.4.0"}')
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    started, release = tmp_path / "started", tmp_path / "release"
+    fake = bin_dir / "fake.py"
+    fake.write_text(
+        "import time\nfrom pathlib import Path\n"
+        f"Path({str(started)!r}).touch()\n"
+        "for _ in range(100):\n"
+        f"    if Path({str(release)!r}).exists(): break\n    time.sleep(.1)\n"
+    )
+    executable = bin_dir / ("bun.cmd" if os.name == "nt" else "bun")
+    executable.write_text(
+        f'@echo off\n"{sys.executable}" "{fake}"\n'
+        if os.name == "nt"
+        else f'#!/bin/sh\nexec "{sys.executable}" "{fake}"\n'
+    )
+    executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ["PATH"])
+    output = []
+    job = start_bun_migration([app.parent], output.append)
+    log = Path(job["log"])
+    try:
+        for _ in range(100):
+            if started.exists():
+                break
+            time.sleep(0.1)
+        assert started.exists(), log.read_text(encoding="utf-8")
+        assert not release.exists()  # installer returned while Bun is still waiting
+        assert any(str(log) in line for line in output)
+    finally:
+        release.touch()
+    for _ in range(100):
+        if "Bun migration finished" in log.read_text(encoding="utf-8"):
+            break
+        time.sleep(0.1)
+    assert "Bun migration finished" in log.read_text(encoding="utf-8")
+    assert "frontend" in log.read_text(encoding="utf-8")
+    assert not (app / "bunfig.toml").exists()

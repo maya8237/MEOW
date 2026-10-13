@@ -24,9 +24,17 @@ curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.
 ```
 
 Installation offers Bun shared dependency storage (default **Yes**) and
-automatically migrates registered and selected Bun projects. MEOW prepares
+automatically migrates registered and selected Bun projects in the background,
+printing a log path. Only user Bun settings are changed; existing project
+`bunfig.toml` files generate warnings. MEOW prepares
 missing Node dependencies in SDK and native worktrees with or without this
 option. See [worktree setup and Bun storage](docs/INTEGRATIONS.md#new-worktree-setup).
+
+Installation uses the newest working Python 3.12+ on PATH, after checking
+Python and pip with a timeout. Windows discovery uses `where.exe`, without the
+`py` launcher. Upgrades uninstall previous MEOW packages before installing the
+replacement; broken interpreters produce a warning when their old installation
+cannot be removed. Background commands run without opening extra windows.
 
 ## Run
 

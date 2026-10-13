@@ -12,6 +12,7 @@ repository_url='https://github.com/maya8237/MEOW.git'
 origin_pyproject_url='https://raw.githubusercontent.com/maya8237/MEOW/main/pyproject.toml'
 default_parent=${HOME:-"$(pwd)"}
 python_candidates='python3.15 python3.14 python3.13 python3.12 python3 python'
+python_probe_timeout=10
 failure_reported=0
 reply=''
 existing_python=''
@@ -108,19 +109,55 @@ run_with_spinner() (
     exit "$spinner_status"
 )
 
-is_supported_python() {
-    command -v "$1" >/dev/null 2>&1 \
-        && "$1" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' >/dev/null 2>&1
+is_supported_python() (
+    command -v "$1" >/dev/null 2>&1 || return 1
+    # A launcher can exist on PATH yet crash or hang. Check Python and pip
+    # before using that interpreter for installation or checkout discovery.
+    probe_output=$(mktemp) || return 1
+    trap 'rm -f "$probe_output"' 0
+    "$1" -c 'import sys, runpy; sys.exit(2) if sys.version_info < (3, 12) else None; print("%d.%d.%d" % sys.version_info[:3], flush=True); sys.argv = ["pip", "--version"]; runpy.run_module("pip", run_name="__main__")' </dev/null >"$probe_output" 2>/dev/null &
+    probe_pid=$!
+    (sleep "$python_probe_timeout"; kill -KILL "$probe_pid" 2>/dev/null) >/dev/null 2>&1 &
+    timer_pid=$!
+    if wait "$probe_pid" 2>/dev/null; then probe_status=0; else probe_status=$?; fi
+    kill "$timer_pid" 2>/dev/null || true
+    wait "$timer_pid" 2>/dev/null || true
+    if [ "$probe_status" -ne 0 ]; then
+        printf 'Warning: %s failed the Python health check (Python 3.12+ and pip required; %ss timeout). Trying another interpreter.\n' "$1" "$python_probe_timeout" >&2
+        return 1
+    fi
+    sed -n '1p' "$probe_output"
+)
+
+python_paths() {
+    # Include every matching executable on PATH, not just the first alias.
+    for candidate in $python_candidates; do command -v "$candidate" 2>/dev/null || true; done
+    (
+        IFS=:
+        for directory in $PATH; do
+            for candidate in "${directory:-.}"/python*; do
+                [ -f "$candidate" ] && [ -x "$candidate" ] || continue
+                case ${candidate##*/} in
+                    python|python3|python3.[0-9]|python3.[0-9][0-9]|python3.[0-9]t|python3.[0-9][0-9]t|python.exe|python3.exe|python3.[0-9].exe|python3.[0-9][0-9].exe) printf '%s\n' "$candidate" ;;
+                esac
+            done
+        done
+    )
 }
 
 select_python() {
-    for candidate in $python_candidates; do
-        if is_supported_python "$candidate"; then
-            printf '%s\n' "$candidate"
-            return 0
-        fi
-    done
-    return 1
+    python_paths | awk '!seen[$0]++' | (
+        best_python=''
+        best_score=0
+        while IFS= read -r candidate; do
+            version=$(is_supported_python "$candidate") || continue
+            score=$(printf '%s\n' "$version" | awk -F. 'NF == 3 {print $1*1000000+$2*1000+$3}')
+            [ -n "$score" ] || continue
+            if [ "$score" -gt "$best_score" ]; then best_python=$candidate; best_score=$score; fi
+        done
+        [ -n "$best_python" ] || return 1
+        printf '%s\n' "$best_python"
+    )
 }
 
 # Sets existing_python/existing_checkout to the interpreter and git checkout
@@ -128,8 +165,10 @@ select_python() {
 find_existing_checkout() {
     existing_python=''
     existing_checkout=''
-    for candidate in $python_candidates; do
-        is_supported_python "$candidate" || continue
+    candidates=$(python_paths | awk '!seen[$0]++')
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        is_supported_python "$candidate" >/dev/null || continue
         checkout=$(
             "$candidate" -c 'from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); print(next((str(root) for root in (package.parents[2], package.parents[3]) if (root/".git").exists() and (root/"skills").is_dir()), ""))' \
                 2>/dev/null | head -n 1
@@ -139,8 +178,28 @@ find_existing_checkout() {
             existing_checkout=$checkout
             return 0
         fi
-    done
+    done <<EOF
+$candidates
+EOF
     return 1
+}
+
+remove_previous_meow() {
+    distribution_query='import os, importlib.metadata as m; print(os.path.normcase(os.path.realpath(m.distribution("meow").locate_file(""))))'
+    candidates=$(python_paths | awk '!seen[$0]++')
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        if ! is_supported_python "$candidate" >/dev/null; then
+            printf 'Warning: cannot inspect or uninstall previous MEOW from broken Python: %s\n' "$candidate" >&2
+            continue
+        fi
+        candidate_distribution=$("$candidate" -c "$distribution_query" 2>/dev/null) || continue
+        if ! run_with_spinner "Removing previous MEOW from $candidate" "$candidate" -m pip uninstall -y meow; then
+            printf 'Warning: could not uninstall previous MEOW from %s\n' "$candidate" >&2
+        fi
+    done <<EOF
+$candidates
+EOF
 }
 
 # Prints how version $1 compares with $2: older, equal, newer, or unknown.
@@ -200,8 +259,10 @@ run_setup() {
 
 # Reinstalls the checkout in editable mode so the package matches its source.
 reinstall_existing_checkout() {
+    remove_previous_meow
     run_with_spinner 'Installing editable MEOW update' "$existing_python" -m pip install -e "$existing_checkout" \
         || die 'Editable MEOW update failed.'
+    installed_current=1
 }
 
 # Pulls the checkout, reinstalls it, then checks the result instead of trusting
@@ -255,9 +316,8 @@ use_existing_meow() {
 
     if [ -n "$existing_meow" ]; then
         existing_location=$existing_meow
-        installed_version=$(meow --version 2>/dev/null \
-            | sed -nE 's/^[^0-9]*([0-9]+(\.[0-9]+)+).*/\1/p' \
-            | head -n 1)
+        installed_version=''
+        [ -z "$existing_python" ] || installed_version=$(package_version)
     else
         existing_location=$existing_checkout
         installed_version=$(package_version)
@@ -305,14 +365,16 @@ use_existing_meow() {
 
     if [ -z "$existing_checkout" ]; then
         printf '%s\n' \
-            "Warning: could not locate the existing MEOW checkout; plugin registration and project onboarding were skipped." \
+            "Warning: could not locate the existing MEOW checkout. Installing a fresh checkout with the newest healthy Python." \
             >&2
-        printf '%s\n' 'To update MEOW manually, run:'
-        manual_python=$(select_python) || manual_python='<python>'
-        printf '  %s -m pip install --upgrade git+https://github.com/maya8237/MEOW.git\n' "$manual_python"
-        return 0
+        return 1
     fi
 
+    newest_python=$(select_python) \
+        || die 'No working Python 3.12+ interpreter with pip found. Install or repair Python and run this installer again.'
+    previous_python=$existing_python
+    existing_python=$newest_python
+    installed_current=0
     if [ "$comparison" = older ] || [ "$comparison" = unknown ]; then
         ask 'Update MEOW now? [y/N]: '
         case $reply in
@@ -349,6 +411,9 @@ use_existing_meow() {
         esac
     fi
 
+    if [ "$previous_python" != "$existing_python" ] && [ "$installed_current" -eq 0 ]; then
+        reinstall_existing_checkout
+    fi
     printf '%s\n' "Configuring Claude and onboarding projects using existing MEOW checkout: $existing_checkout"
     run_setup "$existing_python" "$existing_checkout"
     return 0
@@ -374,7 +439,7 @@ install_fresh_meow() {
 
     command -v git >/dev/null 2>&1 || die 'Git is required. Install Git and run this installer again.'
     python_command=$(select_python) \
-        || die 'MEOW requires system Python 3.12 or newer. Install it and run this installer again.'
+        || die 'No working Python 3.12+ interpreter with pip found. Install or repair Python and run this installer again.'
 
     if [ -e "$clone_path" ]; then
         [ -e "$clone_path/.git" ] || die "Refusing to overwrite existing non-MEOW directory: $clone_path"
@@ -385,6 +450,7 @@ install_fresh_meow() {
             || die 'HTTPS clone failed. Check your network connection and access to https://github.com/maya8237/MEOW.git'
     fi
 
+    remove_previous_meow
     run_with_spinner "Installing MEOW with $python_command -m pip install -e ..." "$python_command" -m pip install -e "$clone_path" \
         || die 'Editable MEOW installation failed.'
 

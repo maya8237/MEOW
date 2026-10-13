@@ -1,10 +1,12 @@
 """Opt-in Bun shared-store configuration and migration for onboarded projects."""
 
 import re
+import sys
 import tomllib
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from meow.infrastructure.background import detach_command
 from meow.infrastructure.node_dependencies import (
     node_projects,
     package_manager,
@@ -71,14 +73,31 @@ def _store_settings(text: str, *, prefix: str = "") -> str:
     return text
 
 
+def _warn_project_bunfig(
+    paths: Sequence[Path], warned: set[Path], output: Callable[[str], None]
+) -> None:
+    for config in paths:
+        if config.is_file() and config not in warned:
+            output(
+                f"Warning: {config} may override user Bun settings; "
+                "leaving project configuration unchanged."
+            )
+            warned.add(config)
+
+
 def migrate_bun_projects(
     projects: Sequence[Path], output: Callable[[str], None]
 ) -> None:
     for project in projects:
+        warned: set[Path] = set()
         try:
             for directory, data in node_projects(project):
                 if package_manager(directory, data)[0] == "bun":
-                    configure_bunfig(directory / "bunfig.toml")
+                    _warn_project_bunfig(
+                        [project / "bunfig.toml", directory / "bunfig.toml"],
+                        warned,
+                        output,
+                    )
                     argv = ["bun", "install", "--force", "--linker", "isolated"]
                     if (directory / "bun.lock").is_file() or (
                         directory / "bun.lockb"
@@ -89,12 +108,38 @@ def migrate_bun_projects(
                         "for the shared store"
                     )
                     run_node_install(directory, argv)
-                    output(
-                        f"{directory}: Bun shared store ready; commit bunfig.toml "
-                        "to carry these settings into worktrees."
-                    )
+                    output(f"{directory}: Bun dependency migration completed.")
         except (OSError, ValueError, RuntimeError) as exc:
             output(
                 f"{project}: Bun migration failed ({exc}). "
                 "Rerun bun install --force --linker isolated after resolving this."
             )
+
+
+def start_bun_migration(
+    projects: Sequence[Path], output: Callable[[str], None]
+) -> dict | None:
+    """Keep migration alive after the installer exits; retain all output in a log."""
+    if not projects:
+        return None
+    try:
+        job = detach_command(
+            working_dir=Path.home(),
+            argv=[
+                sys.executable,
+                "-u",
+                "-m",
+                "meow.installer",
+                "--migrate-bun",
+                *map(str, projects),
+            ],
+        )
+    except OSError as exc:
+        output(f"Could not start Bun migration: {exc}. Rerun the installer to retry.")
+        return None
+    output(
+        f"Bun repo migration is running in the background (PID {job['pid']}). "
+        f"Progress, warnings and failures: {job['log']}. "
+        "Installer completion does not mean migration has finished."
+    )
+    return job

@@ -9,7 +9,11 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from meow.installer._prompt import path_prompt
-from meow.installer.bun import configure_bunfig, migrate_bun_projects
+from meow.installer.bun import (
+    configure_bunfig,
+    migrate_bun_projects,
+    start_bun_migration,
+)
 from meow.project.claude_settings import path_key, register_checkout_plugin
 from meow.project.onboarding import onboard_project
 from meow.project.repos import _saved, remember
@@ -131,6 +135,7 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Only print the closing guidance (the scripts show it after Done!).",
     )
+    parser.add_argument("--migrate-bun", nargs="+", help=argparse.SUPPRESS)
     return parser
 
 
@@ -264,7 +269,7 @@ def _setup_bun(ask: Callable[[str], str], output: Callable[[str], None]) -> bool
         return False
     output(
         f"Configured {path}: isolated linker and globalStore. "
-        "Registered and newly onboarded Bun repos will be migrated automatically. "
+        "Registered and newly onboarded Bun repos will be migrated in the background. "
         "For other repos, "
         "run `bun install --force --linker isolated` in each repo "
         "(add --frozen-lockfile when it has a Bun lockfile). "
@@ -280,8 +285,18 @@ def _setup_projects() -> int:
         shared_bun = _setup_bun(input, print)
         _onboard_projects(input, print, path_prompt(), onboarded)
         if shared_bun:
-            migrate_bun_projects(
-                list(dict.fromkeys([*onboarded, *(Path(repo) for repo in _saved())])),
+            projects = list(
+                dict.fromkeys([*onboarded, *(Path(repo) for repo in _saved())])
+            )
+            start_bun_migration(
+                [
+                    repo
+                    for repo in projects
+                    if not any(
+                        repo != parent and repo.is_relative_to(parent)
+                        for parent in projects
+                    )
+                ],
                 print,
             )
     except KeyboardInterrupt:
@@ -290,10 +305,14 @@ def _setup_projects() -> int:
     return 0
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:  # ruff: ignore[too-many-return-statements]
     """Run the interactive portion shared by the PowerShell and POSIX scripts."""
     parser = _parser()
     args = parser.parse_args(argv)
+    if args.migrate_bun:
+        migrate_bun_projects([Path(repo) for repo in args.migrate_bun], print)
+        print("Bun migration finished. Check the messages above for any failures.")
+        return 0
     if args.next_steps:
         _print_next_steps(print)
         return 0

@@ -15,6 +15,7 @@
     $repositoryUrl = "https://github.com/maya8237/MEOW.git"
     $originPyprojectUrl = "https://raw.githubusercontent.com/maya8237/MEOW/main/pyproject.toml"
     $defaultParent = "C:/Projects"
+    $pythonProbeTimeoutMs = 10000
     # The interpreter and checkout for the post-install setup. The setup itself runs
     # at the top level below (not inside a function whose output is captured) so it
     # keeps direct access to the console for its prompts.
@@ -38,7 +39,30 @@
         )
 
         $animate = -not [Console]::IsOutputRedirected
-        $job = Start-Job -ScriptBlock $ScriptBlock
+        $job = Start-Job -ScriptBlock $ScriptBlock -InitializationScript {
+            function Invoke-NativeHidden {
+                param([string]$Executable, [string[]]$Arguments)
+                $process = New-Object System.Diagnostics.Process
+                try {
+                    $process.StartInfo.FileName = (Get-Command $Executable).Source
+                    $process.StartInfo.Arguments = (@($Arguments | ForEach-Object {
+                        '"' + ($_ -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"'
+                    }) -join ' ')
+                    $process.StartInfo.UseShellExecute = $false
+                    $process.StartInfo.CreateNoWindow = $true
+                    $process.StartInfo.RedirectStandardOutput = $true
+                    $process.StartInfo.RedirectStandardError = $true
+                    $process.StartInfo.RedirectStandardInput = $true
+                    $null = $process.Start()
+                    $process.StandardInput.Close()
+                    $stdout = $process.StandardOutput.ReadToEndAsync()
+                    $stderr = $process.StandardError.ReadToEndAsync()
+                    $process.WaitForExit()
+                    Write-Output $stdout.Result $stderr.Result
+                    $global:LASTEXITCODE = $process.ExitCode
+                } finally { $process.Dispose() }
+            }
+        }
         $spinner = @('|', '/', '-', '\')
         $index = 0
 
@@ -218,33 +242,78 @@
         if (-not (Get-Command $Executable -ErrorAction SilentlyContinue)) {
             return $false
         }
+        $process = New-Object System.Diagnostics.Process
         try {
-            & $Executable @Arguments -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)" 2>$null
+            $probeArguments = @($Arguments) + @("-c", '"import sys, runpy; sys.exit(2) if sys.version_info < (3, 12) else None; print(''%d.%d.%d'' % sys.version_info[:3], flush=True); sys.argv = [''pip'', ''--version'']; runpy.run_module(''pip'', run_name=''__main__'')"')
+            $process.StartInfo.FileName = (Get-Command $Executable).Source
+            $process.StartInfo.Arguments = $probeArguments -join " "
+            $process.StartInfo.UseShellExecute = $false
+            $process.StartInfo.CreateNoWindow = $true
+            $process.StartInfo.RedirectStandardOutput = $true
+            $process.StartInfo.RedirectStandardError = $true
+            $null = $process.Start()
+            $stdout = $process.StandardOutput.ReadToEndAsync()
+            $stderr = $process.StandardError.ReadToEndAsync()
+            if (-not $process.WaitForExit($pythonProbeTimeoutMs)) {
+                & taskkill /PID $process.Id /T /F *> $null
+                throw "health check timed out"
+            }
+            if ($process.ExitCode -ne 0) {
+                throw "health check exited with status $($process.ExitCode)"
+            }
+            return [Version]::Parse($stdout.Result.Split([char]10)[0].Trim())
         } catch {
+            Write-Warning "$Executable $($Arguments -join ' ') failed the Python health check ($($_.Exception.Message); Python 3.12+ and pip required). Trying another interpreter."
             return $false
+        } finally {
+            $process.Dispose()
         }
-        return $LASTEXITCODE -eq 0
     }
 
-    # Interpreters to try, newest preference first: the py launcher, then PATH names.
+    # Discover executable paths directly; do not use the py launcher.
     function Get-PythonCandidates {
-        $candidates = @(@{ Executable = "py"; Arguments = @("-3") })
-        foreach ($minor in @(15, 14, 13, 12)) {
-            $candidates += @{ Executable = "py"; Arguments = @("-3.$minor") }
+        $paths = & "$env:SystemRoot\System32\where.exe" 'python*.exe' 2>$null
+        foreach ($path in @($paths | Select-Object -Unique)) {
+            if ([IO.Path]::GetFileName($path) -match '^python(?:\d+(?:\.\d+)?t?)?\.exe$') {
+                @{ Executable = $path; Arguments = @() }
+            }
         }
-        foreach ($name in @("python3.15", "python3.14", "python3.13", "python3.12", "python3", "python")) {
-            $candidates += @{ Executable = $name; Arguments = @() }
-        }
-        return $candidates
     }
 
     function Select-Python {
+        $best = $null
         foreach ($candidate in Get-PythonCandidates) {
-            if (Test-Python312 -Executable $candidate.Executable -Arguments $candidate.Arguments) {
-                return $candidate
+            $version = Test-Python312 -Executable $candidate.Executable -Arguments $candidate.Arguments
+            if ($version -and (($null -eq $best) -or ($version -gt $best.Version))) {
+                $candidate.Version = $version
+                $best = $candidate
             }
         }
-        throw "MEOW requires system Python 3.12 or newer. Install it and run this installer again."
+        if ($null -ne $best) { return $best }
+        throw "No working Python 3.12+ interpreter with pip found. Install or repair Python and run this installer again."
+    }
+
+    function Remove-PreviousMeow {
+        $distributionQuery = "import os, importlib.metadata as m; print(os.path.normcase(os.path.realpath(m.distribution('meow').locate_file(''))))"
+        foreach ($candidate in Get-PythonCandidates) {
+            if (-not (Test-Python312 -Executable $candidate.Executable -Arguments $candidate.Arguments)) {
+                Write-Warning "Cannot inspect or uninstall previous MEOW from broken Python: $($candidate.Executable)"
+                continue
+            }
+            try {
+                $distribution = & $candidate.Executable @($candidate.Arguments) -c $distributionQuery 2>$null
+            } catch { continue }
+            if ($LASTEXITCODE -ne 0) { continue }
+            try {
+                Invoke-WithSpinner -Message "Removing previous MEOW from $($candidate.Executable)" -ScriptBlock {
+                    $old = $using:candidate
+                    Invoke-NativeHidden -Executable $old.Executable -Arguments (@($old.Arguments) + @('-m', 'pip', 'uninstall', '-y', 'meow'))
+                    if ($LASTEXITCODE -ne 0) { throw "Uninstall failed." }
+                }
+            } catch {
+                Write-Warning "Could not uninstall previous MEOW from $($candidate.Executable): $($_.Exception.Message)"
+            }
+        }
     }
 
     function Format-PythonCommand {
@@ -285,13 +354,15 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
     function Install-ExistingCheckout {
         param([Parameter(Mandatory = $true)][hashtable]$Setup)
 
+        Remove-PreviousMeow
         Invoke-WithSpinner -Message "Installing editable MEOW update" -ScriptBlock {
             $setup = $using:Setup
-            & $setup.Executable @($setup.Arguments) -m pip install -e $setup.Checkout
+            Invoke-NativeHidden -Executable $setup.Executable -Arguments (@($setup.Arguments) + @('-m', 'pip', 'install', '-e', $setup.Checkout))
             if ($LASTEXITCODE -ne 0) {
                 throw "Editable MEOW update failed."
             }
         }
+        $script:installedCurrent = $true
     }
 
     # Pulls the checkout, reinstalls it, then checks the result instead of trusting
@@ -308,7 +379,7 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         if ($LASTEXITCODE -ne 0) {
             Invoke-WithSpinner -Message "Switching the detached checkout to main" -ScriptBlock {
                 $setup = $using:Setup
-                & git -C $setup.Checkout checkout main
+                Invoke-NativeHidden -Executable git -Arguments @('-C', $setup.Checkout, 'checkout', 'main')
                 if ($LASTEXITCODE -ne 0) {
                     throw "Could not switch the MEOW checkout to main; commit or stash your changes, then run the installer again."
                 }
@@ -321,14 +392,14 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
             }
             Invoke-WithSpinner -Message "Fetching origin/main" -ScriptBlock {
                 $setup = $using:Setup
-                & git -C $setup.Checkout fetch origin main
+                Invoke-NativeHidden -Executable git -Arguments @('-C', $setup.Checkout, 'fetch', 'origin', 'main')
                 if ($LASTEXITCODE -ne 0) {
                     throw "MEOW source update failed."
                 }
             }
             Invoke-WithSpinner -Message "Resetting MEOW source to origin/main" -ScriptBlock {
                 $setup = $using:Setup
-                & git -C $setup.Checkout reset --hard FETCH_HEAD
+                Invoke-NativeHidden -Executable git -Arguments @('-C', $setup.Checkout, 'reset', '--hard', 'FETCH_HEAD')
                 if ($LASTEXITCODE -ne 0) {
                     throw "MEOW source update failed."
                 }
@@ -336,7 +407,7 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         } else {
             Invoke-WithSpinner -Message "Pulling MEOW source" -ScriptBlock {
                 $setup = $using:Setup
-                & git -C $setup.Checkout pull --ff-only origin main
+                Invoke-NativeHidden -Executable git -Arguments @('-C', $setup.Checkout, 'pull', '--ff-only', 'origin', 'main')
                 if ($LASTEXITCODE -ne 0) {
                     throw "MEOW source update failed."
                 }
@@ -375,8 +446,7 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
 
         if ($null -ne $existing) {
             $existingPath = if ($existing.Path) { $existing.Path } else { $existing.Name }
-            $versionOutput = & $existing.Name --version 2>$null
-            $installedVersion = Get-VersionFromText (($versionOutput | Select-Object -First 1) -as [string])
+            $installedVersion = if ($null -ne $existingSetup) { Get-PackageVersion -Python $existingSetup } else { $null }
         } else {
             $existingPath = $existingSetup.Checkout
             $installedVersion = Get-PackageVersion -Python $existingSetup
@@ -410,17 +480,15 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         }
 
         if ($null -eq $existingSetup) {
-            Write-Warning "Could not locate the existing MEOW checkout; plugin registration and project onboarding were skipped."
-            Write-Host "To update MEOW manually, run:"
-            try {
-                $manualPythonCommand = Format-PythonCommand -Python (Select-Python)
-            } catch {
-                $manualPythonCommand = "<python>"
-            }
-            Write-Host "  $manualPythonCommand -m pip install --upgrade git+https://github.com/maya8237/MEOW.git"
-            return $true
+            Write-Warning "Could not locate the existing MEOW checkout. Installing a fresh checkout with the newest healthy Python."
+            return $false
         }
 
+        $newestPython = Select-Python
+        $interpreterChanged = $newestPython.Executable -ne $existingSetup.Executable
+        $newestPython.Checkout = $existingSetup.Checkout
+        $existingSetup = $newestPython
+        $script:installedCurrent = $false
         if (($comparison -eq "older") -or ($comparison -eq "unknown")) {
             $updateCommand = (
                 'git -C "' + $existingSetup.Checkout +
@@ -453,6 +521,9 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
             }
         }
 
+        if ($interpreterChanged -and -not $script:installedCurrent) {
+            Install-ExistingCheckout -Setup $existingSetup
+        }
         Write-Host "Configuring Claude and onboarding projects using existing MEOW checkout: $($existingSetup.Checkout)"
         Set-PendingSetup -Python $existingSetup -Checkout $existingSetup.Checkout
         return $true
@@ -487,16 +558,17 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         } else {
             New-Item -ItemType Directory -Force -Path (Split-Path -Path $clonePath -Parent) | Out-Null
             Invoke-WithSpinner -Message "Cloning MEOW over HTTPS into $clonePath" -ScriptBlock {
-                & git clone $using:repositoryUrl $using:clonePath
+                Invoke-NativeHidden -Executable git -Arguments @('clone', $using:repositoryUrl, $using:clonePath)
                 if ($LASTEXITCODE -ne 0) {
                     throw "HTTPS clone failed. Check your network connection and access to https://github.com/maya8237/MEOW.git"
                 }
             }
         }
 
+        Remove-PreviousMeow
         Invoke-WithSpinner -Message "Installing MEOW with $(Format-PythonCommand -Python $python) -m pip install -e ..." -ScriptBlock {
             $selectedPython = $using:python
-            & $selectedPython.Executable @($selectedPython.Arguments) -m pip install -e $using:clonePath
+            Invoke-NativeHidden -Executable $selectedPython.Executable -Arguments (@($selectedPython.Arguments) + @('-m', 'pip', 'install', '-e', $using:clonePath))
             if ($LASTEXITCODE -ne 0) {
                 throw "Editable MEOW installation failed."
             }
