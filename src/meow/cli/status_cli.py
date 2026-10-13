@@ -16,7 +16,7 @@ from meow.infrastructure.quality import Concern, QualityStoreError, concerns_for
 from meow.infrastructure.usage import usage_totals
 
 # Sources `meow resume --continue` can drive; others are rerun from scratch.
-RESUMABLE_SOURCES = frozenset({"prompt", "jira", "native"})
+RESUMABLE_SOURCES = frozenset({"prompt", "jira", "native", "orchestrator"})
 
 
 def recovery_command(record: RunRecord) -> str:

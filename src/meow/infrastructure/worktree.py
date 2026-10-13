@@ -404,14 +404,33 @@ def _require_worktree_on_branch(worktree_dir: Path, branch_name: str) -> None:
     )
 
 
+def _new_branch_argv(
+    git: str, worktree_dir: Path, branch_name: str, start_point: str | None
+) -> list[str]:
+    argv = [git, "worktree", "add", "-b", branch_name, str(worktree_dir)]
+    if start_point:
+        if start_point.startswith("-"):
+            raise RuntimeError(f"Invalid start point '{start_point}'")
+        argv.append(start_point)
+    return argv
+
+
 def _ensure_branch_worktree(
-    working_dir: Path, feature_name: str, branch_name: str
+    working_dir: Path,
+    feature_name: str,
+    branch_name: str,
+    *,
+    start_point: str | None = None,
 ) -> Path:
     """Create (or reuse) a worktree checked out on a real, pushable branch.
 
     Unlike `_ensure_feature_worktree` (initially detached for `run`/`plan`),
     `meow run --jira` starts on a real branch to hand back
     to its caller, so it creates its own worktree on one instead.
+
+    A branch that does not exist yet is created at `start_point` (any commit-ish
+    git accepts; default: the repository's current HEAD). An existing branch is
+    checked out as it is and `start_point` is ignored.
     """
     _reject_reserved_name(feature_name)
     worktree_dir = working_dir / ".worktrees" / feature_name
@@ -437,7 +456,7 @@ def _ensure_branch_worktree(
     if branch_exists:
         argv = [git, "worktree", "add", str(worktree_dir), branch_name]
     else:
-        argv = [git, "worktree", "add", "-b", branch_name, str(worktree_dir)]
+        argv = _new_branch_argv(git, worktree_dir, branch_name, start_point)
     result = _run_git(argv, cwd=working_dir)
     if result.returncode != 0:
         raise RuntimeError(
