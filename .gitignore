@@ -19,6 +19,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!frontend/src/lib/
+!frontend/src/lib/**
 lib64/
 parts/
 sdist/
@@ -209,6 +211,7 @@ tempCodeRunnerFile.py
 
 # Ruff stuff:
 .ruff_cache/
+node_modules/
 # Keep project-shared MEOW configuration trackable while ignoring local config
 # and all runtime state/artifacts under the same directory.
 

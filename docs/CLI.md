@@ -75,7 +75,15 @@ plugin manifest and registers the plugin in Claude Code settings
 paths; `.claude/settings.local.json` for local; `~/.claude/settings.json` for
 user. Each workflow shows ready-to-copy
 commands: `meow run "<request>" --workflow NAME --name "<feature-name>"` and
-`/meow:run --workflow NAME "<request>"`. Press Ctrl+C to stop.
+`/meow:run --workflow NAME "<request>"`. Filter by name, description, or scope;
+Ctrl+K (Cmd+K on macOS) focuses search. Workflow details show the step sequence,
+and every definition has an expandable source view. "Make a copy" opens the
+creation dialog using the selected definition. The catalog refreshes every two
+seconds while the page is visible. Press Ctrl+C to stop the server.
+
+The React/Vite frontend is bundled with MEOW, so Node.js is not needed to run
+`meow ui`. For frontend development and build instructions, see
+[frontend/README.md](../frontend/README.md).
 
 Catalog commands accept `--work-dir PATH`. Eject defaults to project scope,
 also accepts local/user, and refuses to overwrite. `show` and workflow

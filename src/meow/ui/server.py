@@ -16,12 +16,17 @@ from meow.ui.create import CreateError, create_definition
 
 DEFAULT_PORT = 8765
 _UI_DIR = Path(__file__).resolve().parent
-_PAGE = _UI_DIR / "index.html"
+_STATIC_DIR = _UI_DIR / "static"
+_PAGE = _STATIC_DIR / "index.html"
 _LOGO = _UI_DIR / "logo.png"
 _FONT_DIR = _UI_DIR / "fonts"
 _FONTS = {
     f"/fonts/{name}": _FONT_DIR / name
     for name in ("JetBrainsMono-Regular.woff2", "JetBrainsMono-Bold.woff2")
+}
+_FILES = {
+    "/logo.png": (_LOGO, "image/png"),
+    **{name: (path, "font/woff2") for name, path in _FONTS.items()},
 }
 _CREATE_PATHS = {
     "/api/agents": "agents",
@@ -29,6 +34,22 @@ _CREATE_PATHS = {
     "/api/skills": "skills",
 }
 _MAX_BODY = 64 * 1024
+
+
+def _static_files() -> dict[str, tuple[Path, str]]:
+    return {
+        **_FILES,
+        **{
+            f"/assets/{path.name}": (
+                path,
+                "text/css; charset=utf-8"
+                if path.suffix == ".css"
+                else "text/javascript; charset=utf-8",
+            )
+            for path in (_STATIC_DIR / "assets").glob("*")
+            if path.suffix in {".js", ".css"}
+        },
+    }
 
 
 def _config_skill_folders(working_dir: Path) -> list[Path]:
@@ -74,15 +95,15 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._known_host():
             return
         path = self.path.split("?", 1)[0]
+        files = _static_files()
         if path == "/api/catalog":
             self._catalog()
         elif path == "/":
             self.server.forget_catalog()
             self._send(HTTPStatus.OK, _PAGE.read_bytes(), "text/html; charset=utf-8")
-        elif path == "/logo.png":
-            self._send(HTTPStatus.OK, _LOGO.read_bytes(), "image/png")
-        elif path in _FONTS:
-            self._send(HTTPStatus.OK, _FONTS[path].read_bytes(), "font/woff2")
+        elif path in files:
+            asset, content_type = files[path]
+            self._send(HTTPStatus.OK, asset.read_bytes(), content_type)
         else:
             self._send(HTTPStatus.NOT_FOUND, b"Not found.", "text/plain; charset=utf-8")
 

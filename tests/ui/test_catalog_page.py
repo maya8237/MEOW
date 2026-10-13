@@ -1,5 +1,6 @@
 import http.client
 import json
+import re
 import shutil
 import subprocess
 import threading
@@ -87,6 +88,40 @@ def test_server_serves_page_and_catalog(running):
 
     with urlopen(f"{base}/api/catalog") as response:
         assert b'"nightly"' in response.read()
+
+
+def test_server_serves_compiled_frontend_assets(running):
+    base = f"http://127.0.0.1:{running.server_port}"
+    page = urlopen(f"{base}/").read().decode()
+    assets = re.findall(r'(?:src|href)="(/assets/[^\"]+)"', page)
+    assert assets, "The catalog must load its bundled React frontend."
+    for asset in assets:
+        with urlopen(base + asset) as response:
+            expected = "text/css" if asset.endswith(".css") else "text/javascript"
+            assert response.headers["Content-Type"].startswith(expected)
+            assert response.read()
+
+
+def test_server_observes_new_assets_after_a_frontend_rebuild(
+    running, tmp_path, monkeypatch
+):
+    from meow.ui import server as server_module
+
+    monkeypatch.setattr(server_module, "_STATIC_DIR", tmp_path)
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "rebuilt.js").write_text("console.log('rebuilt');", encoding="utf-8")
+    with urlopen(
+        f"http://127.0.0.1:{running.server_port}/assets/rebuilt.js"
+    ) as response:
+        assert response.read() == b"console.log('rebuilt');"
+
+
+@pytest.mark.parametrize("path", ["/assets/../server.py", "/assets/missing.js"])
+def test_server_does_not_expose_files_outside_bundled_assets(running, path):
+    connection = http.client.HTTPConnection("127.0.0.1", running.server_port)
+    connection.request("GET", path)
+    assert connection.getresponse().status == HTTPStatus.NOT_FOUND
 
 
 def test_server_rejects_foreign_host_and_unknown_paths(running):
