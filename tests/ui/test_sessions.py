@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from uuid import UUID
 
@@ -101,7 +102,23 @@ def test_cli_recipe_uses_parser_to_reject_unknown_and_invalid_options(tmp_path):
 
     in_place = validate_recipe(
         tmp_path,
-        valid_payload(options={"no_worktree": True}),
+        valid_payload(options={"no_worktree": True, "unattended": False}),
+    )
+    argv = command_for(in_place)
+    assert "--no-worktree" in argv
+    assert "--unattended" not in argv
+
+
+def test_no_worktree_does_not_silently_disable_default_unattended(tmp_path):
+    with pytest.raises(RecipeError, match="--unattended requires an isolated worktree"):
+        validate_recipe(
+            tmp_path,
+            valid_payload(options={"no_worktree": True}),
+        )
+
+    in_place = validate_recipe(
+        tmp_path,
+        valid_payload(options={"no_worktree": True, "unattended": False}),
     )
     argv = command_for(in_place)
     assert "--no-worktree" in argv
@@ -153,7 +170,7 @@ def test_claude_recipe_defaults_to_prompting_denied_policy(tmp_path, monkeypatch
             "error": None,
         },
     )
-    recipe = validate_recipe(tmp_path, valid_payload(mode="claude"))
+    recipe = validate_recipe(tmp_path, valid_payload(mode="claude", command="prompt"))
 
     assert recipe.options["permission_policy"] == "default"
     argv = command_for(recipe)
@@ -180,12 +197,81 @@ def test_claude_bypass_requires_both_explicit_flags(tmp_path, monkeypatch):
     )
     recipe = validate_recipe(
         tmp_path,
-        valid_payload(mode="claude", options={"permission_policy": "bypass"}),
+        valid_payload(
+            mode="claude", command="prompt", options={"permission_policy": "bypass"}
+        ),
     )
 
     argv = command_for(recipe)
     assert "--allow-dangerously-skip-permissions" in argv
     assert "bypassPermissions" in argv
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"workflow": "meow-custom:quick"},
+        {"inputs": {"scope": "users"}},
+        {"arguments": ["--agent", "invented"]},
+    ],
+)
+def test_claude_recipe_rejects_ignored_cli_fields(tmp_path, overrides):
+    with pytest.raises(RecipeError):
+        validate_recipe(
+            tmp_path,
+            valid_payload(mode="claude", command="prompt", **overrides),
+        )
+
+
+def test_command_for_rejects_unsupported_claude_fields(tmp_path, monkeypatch):
+    recipe = validate_recipe(
+        tmp_path,
+        valid_payload(mode="claude", command="prompt"),
+    )
+    monkeypatch.setattr(sessions, "claude_path", lambda: "claude-test")
+
+    with pytest.raises(RecipeError, match="do not accept CLI"):
+        command_for(replace(recipe, workflow="ignored"))
+
+
+def test_claude_recipe_resolves_slash_skill_from_selected_repository(
+    tmp_path, monkeypatch
+):
+    skill_dir = tmp_path / ".meow" / "plugin" / "skills" / "api-check"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: api-check\ndescription: Check API behavior.\n---\n",
+        encoding="utf-8",
+    )
+    recipe = validate_recipe(
+        tmp_path,
+        valid_payload(mode="claude", command="/meow-custom:api-check"),
+    )
+
+    assert recipe.command == "/meow-custom:api-check"
+
+
+def test_claude_recipe_resolves_builtin_meow_skill(tmp_path):
+    recipe = validate_recipe(
+        tmp_path,
+        valid_payload(mode="claude", command="/meow:run"),
+    )
+
+    assert recipe.command == "/meow:run"
+
+
+def test_claude_recipe_rejects_unresolved_skill_or_arbitrary_command(tmp_path):
+    for command in (
+        "/meow-custom:missing",
+        "/other-plugin:skill",
+        "arbitrary",
+        "agent:invented",
+    ):
+        with pytest.raises(RecipeError, match="supported Claude command"):
+            validate_recipe(
+                tmp_path,
+                valid_payload(mode="claude", command=command),
+            )
 
 
 def test_missing_claude_partial_message_flag_is_reported(monkeypatch):
