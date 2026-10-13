@@ -184,6 +184,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     test: bool = False,
     record_root: Path | None = None,
     unattended: bool = False,
+    push: bool | None = None,
     worktree_preexisting: bool = False,
     required_session_roles: set[str] | None = None,
     workflow: str | None = None,
@@ -251,7 +252,10 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
         "prepared",
         worktree=str(active_dir),
         branch=branch,
-        delivery={"unattended": unattended or record.delivery.get("unattended", False)},
+        delivery={
+            "unattended": unattended or record.delivery.get("unattended", False),
+            "push": record.delivery.get("push", True) if push is None else push,
+        },
         results={"feature_name": effective_name} if effective_name else {},
     )
     manifest = sprint.config.get("worktree_setup", {"copy": [], "commands": []})

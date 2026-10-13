@@ -88,8 +88,63 @@ def test_run_records_planning_and_completion(tmp_path):
     deliver.assert_called_once()
     assert deliver.call_args.args[0].directory == RunStore(tmp_path).directory
     assert deliver.call_args.args[1] == record.id
-    assert deliver.call_args.kwargs == {"unattended": False}
+    assert deliver.call_args.kwargs == {"unattended": False, "push": True}
     assert "planning" in [item["phase"] for item in record.transitions]
+
+
+def test_run_sprint_persists_push_false_for_delivery(tmp_path):
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan", encoding="utf-8")
+    config = {
+        "max_rounds": 1,
+        "docs_dir": ".",
+        "lint": [],
+        "lint_timeout": 60,
+        "tester": {"tests": [], "dev_server": []},
+        "build": [],
+    }
+    sprint = Sprint(tmp_path, config, None, None)
+
+    async def passed(*args, **kwargs):  # ruff: ignore[unused-async]
+        store, run_id = sprint.config["_run_journal"]
+        store.transition(
+            run_id,
+            "reviewer_finished",
+            results={
+                "reviewer": "PASS",
+                "reviewer_revision": code_revision(tmp_path),
+            },
+        )
+        return "PASS", "STATUS: PASS"
+
+    with (
+        patch(
+            "meow.execution.sprint_runner._prepare_sprint",
+            return_value=(sprint, "x", tmp_path),
+        ),
+        patch("meow.execution.workflow.builtin_steps.PlannerAgent") as planner,
+        patch("meow.execution.workflow.builtin_steps.generate", new=AsyncMock()),
+        patch(
+            "meow.execution.workflow.builtin_steps._review_round", side_effect=passed
+        ),
+        patch("meow.execution.workflow.builtin_steps.deliver_verified_run") as deliver,
+    ):
+        planner.return_value.run = AsyncMock(return_value=plan)
+        asyncio.run(
+            run_sprint(
+                tmp_path,
+                "x",
+                "request",
+                use_worktree=False,
+                unattended=True,
+                push=False,
+            )
+        )
+    record = RunStore(tmp_path).latest()
+    assert record.delivery == {"unattended": True, "push": False}
+    assert deliver.call_args.kwargs == {"unattended": True, "push": False}
 
 
 def test_multitask_plan_uses_isolated_executor_then_final_review(tmp_path):

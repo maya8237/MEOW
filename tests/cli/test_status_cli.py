@@ -187,3 +187,18 @@ def test_status_does_not_suggest_resume_for_review_runs(tmp_path):
         source="prompt", request="r", repo=tmp_path, worktree=tmp_path, branch="b"
     )
     assert recovery_command(prompt).startswith(f"meow resume {prompt.id}")
+
+
+def test_orchestrator_child_runs_are_resumable(tmp_path):
+    from meow.cli.status_cli import RESUMABLE_SOURCES, recovery_command
+
+    record = RunStore(tmp_path).create(
+        source="orchestrator",
+        request="r",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="b",
+    )
+
+    assert "orchestrator" in RESUMABLE_SOURCES
+    assert recovery_command(record).startswith(f"meow resume {record.id}")

@@ -263,8 +263,13 @@ async def deliver(state):  # ruff: ignore[unused-async]
         raise RuntimeError("Required evidence failed or became stale")
     if state.store.load(state.run_id).phase != "checks_finished":
         state.journal("checks_finished")
-    requested = state.store.load(state.run_id).delivery.get("unattended", False)
-    deliver_verified_run(state.store, state.run_id, unattended=requested)
+    delivery = state.store.load(state.run_id).delivery
+    deliver_verified_run(
+        state.store,
+        state.run_id,
+        unattended=delivery.get("unattended", False),
+        push=delivery.get("push", True),
+    )
 
 
 async def run_builtin(state, step):

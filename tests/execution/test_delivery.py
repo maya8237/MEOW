@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from meow.execution.delivery import deliver_verified_run
+from meow.execution.delivery import commit_worktree, deliver_verified_run
 from meow.execution.run_state import RunStore
 
 MAX_HANG_SECONDS = 15
@@ -232,3 +232,108 @@ def test_delivery_does_not_hang_on_a_stuck_push(tmp_path, monkeypatch):
         deliver_verified_run(store, run_id)
     assert time.monotonic() - started < MAX_HANG_SECONDS
     assert store.load(run_id).phase == "delivery_failed"
+
+
+def test_push_false_commits_without_pushing(tmp_path):
+    repo, remote = repository(tmp_path)
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "-b", "task", str(active))
+    (active / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, active)
+
+    assert deliver_verified_run(store, run_id, unattended=True, push=False) is True
+
+    record = store.load(run_id)
+    assert record.phase == "committed"
+    assert record.branch == "task"
+    assert record.delivery["commit"] == git(active, "rev-parse", "HEAD")
+    assert record.delivery["committed"] is True
+    assert record.delivery["push"] is False
+    assert "pushed" not in record.delivery
+    assert git(remote, "for-each-ref") == ""
+    assert git(active, "status", "--porcelain") == ""
+
+
+def test_push_false_needs_no_origin(tmp_path):
+    repo, _remote = repository(tmp_path)
+    git(repo, "remote", "remove", "origin")
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "-b", "task", str(active))
+    (active / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, active)
+
+    assert deliver_verified_run(store, run_id, unattended=True, push=False) is True
+
+    record = store.load(run_id)
+    assert record.phase == "committed"
+    assert record.delivery["commit"] == git(active, "rev-parse", "HEAD")
+
+
+def test_push_false_on_detached_head_switches_to_run_branch(tmp_path):
+    repo, _remote = repository(tmp_path)
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "--detach", str(active))
+    (active / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, active)
+
+    deliver_verified_run(store, run_id, push=False)
+
+    assert git(active, "branch", "--show-current") == f"meow/{run_id}"
+    assert store.load(run_id).phase == "committed"
+
+
+def test_default_delivery_still_pushes(tmp_path):
+    repo, remote = repository(tmp_path)
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "-b", "task", str(active))
+    (active / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, active)
+
+    assert deliver_verified_run(store, run_id, unattended=True) is True
+
+    record = store.load(run_id)
+    assert record.phase == "delivered"
+    assert record.delivery["pushed"] is True
+    assert git(remote, "rev-parse", "refs/heads/task") == record.delivery["commit"]
+
+
+def test_commit_worktree_excludes_meow_runtime_files(tmp_path):
+    repo, _remote = repository(tmp_path)
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "--detach", str(active))
+    (active / ".meow" / "runs").mkdir(parents=True)
+    (active / ".meow" / "runs" / "x.json").write_text("{}", encoding="utf-8")
+    (active / ".meow" / "plans").mkdir()
+    (active / ".meow" / "plans" / "p.md").write_text("plan", encoding="utf-8")
+    (active / "src.py").write_text("x = 1\n", encoding="utf-8")
+
+    commit = commit_worktree(active, ["-m", "Add src"])
+
+    assert commit == git(active, "rev-parse", "HEAD")
+    changed = git(active, "show", "--name-only", "--format=", "HEAD")
+    assert changed.split() == ["src.py"]
+
+
+def test_commit_worktree_keeps_shared_config_and_drops_secrets(tmp_path):
+    repo, _remote = repository(tmp_path)
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "--detach", str(active))
+    (active / ".meow").mkdir()
+    (active / ".meow" / "config.toml").write_text("max_rounds = 4\n", encoding="utf-8")
+    (active / ".env").write_text("TOKEN=abc\n", encoding="utf-8")
+    (active / "src.py").write_text("x = 1\n", encoding="utf-8")
+
+    commit_worktree(active, ["-m", "Add src"])
+
+    changed = git(active, "show", "--name-only", "--format=", "HEAD").split()
+    assert sorted(changed) == [".meow/config.toml", "src.py"]
+
+
+def test_commit_worktree_without_changes_returns_head(tmp_path):
+    repo, _remote = repository(tmp_path)
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "--detach", str(active))
+    before = git(active, "rev-parse", "HEAD")
+
+    assert commit_worktree(active, ["-m", "Nothing"]) == before
+    assert git(active, "rev-parse", "HEAD") == before
