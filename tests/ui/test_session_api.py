@@ -15,6 +15,7 @@ from meow.execution.run_state import RunStore
 from meow.infrastructure import ui_sessions
 from meow.project import repos as repos_module
 from meow.project.custom.sources import builtin_dir
+from meow.ui import session_api
 from meow.ui.server import _Server
 from meow.ui.sessions import Recipe, SessionStore
 
@@ -243,6 +244,36 @@ def test_session_serializers_use_exact_public_fields(running, project):
     assert detail["attempts"][0]["error"] == "failed at [path] and [path]"
     assert "private-token" not in json.dumps(detail)
     assert status == HTTPStatus.OK
+
+
+@pytest.mark.parametrize("method", ["get", "post"])
+def test_filesystem_error_responses_redact_server_paths(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+    running, project, tmp_path, monkeypatch, method
+):
+    private_path = tmp_path / "server-secret" / "meow.db"
+    failure = OSError(f"permission denied: {private_path}")
+    if method == "get":
+        monkeypatch.setattr(
+            session_api, "get", lambda *_args: (_ for _ in ()).throw(failure)
+        )
+        status, _, _, body = get(running.server_port, "/api/sessions")
+    else:
+        monkeypatch.setattr(
+            session_api,
+            "post",
+            lambda *_args: (_ for _ in ()).throw(failure),
+        )
+        status, body = post(
+            running.server_port,
+            "/api/sessions",
+            {"repo": str(project.resolve()), "recipe": recipe(project)},
+        )
+        body = json.dumps(body).encode("utf-8")
+
+    message = json.loads(body)["error"]
+    assert status == HTTPStatus.BAD_REQUEST
+    assert str(private_path) not in message
+    assert "permission denied" in message
 
 
 def test_output_cursor_clamps_and_resets_after_truncation(running, project):

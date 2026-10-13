@@ -43,3 +43,15 @@
 - No Claude agent execution or authentication probe was run. Agent resolution
   uses local Markdown frontmatter plus a read-only help check for `--agent`.
 - The repository-wide suite is deferred to Task 6 as requested.
+
+## Review fix round 1
+
+- Finding: GET and mutation API exception handlers returned raw exception text,
+  which could include server-owned filesystem paths.
+- Change: centralized API error text redaction and applied it to GET, POST, PUT,
+  and catalog error responses. The message keeps useful context such as
+  `permission denied` while replacing absolute paths with `[path]`.
+- RED: `$env:PYTHONPATH='src'; rtk proxy C:/Users/m/Documents/MEOW/.venv/Scripts/python.exe -m pytest tests/ui/test_session_api.py::test_filesystem_error_responses_redact_server_paths -q` — 2 failed; GET and POST responses included the private path.
+- GREEN: same command after the fix — 2 passed in 2.04s.
+- `rtk ruff format` on the three changed Python files — all formatted.
+- `rtk ruff check` on the three changed Python files — passed with `[]`.
