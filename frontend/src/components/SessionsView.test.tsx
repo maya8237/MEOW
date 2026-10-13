@@ -81,6 +81,41 @@ function fixture(state = "draft", archived = false) {
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), { status });
 
+test("shows aggregate loading feedback while its first request is pending", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => new Promise<Response>(() => {})),
+  );
+  render(<SessionsView repo="" catalog={catalog} onRunRecipe={vi.fn()} />);
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "Loading sessions…",
+  );
+  expect(screen.queryByRole("heading", { name: "No sessions yet" })).toBeNull();
+});
+
+test("shows session detail loading feedback after selecting a record", async () => {
+  const user = userEvent.setup();
+  const data = fixture();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/sessions?") || url === "/api/sessions")
+        return Promise.resolve(json({ sessions: [data.summary] }));
+      if (url.startsWith("/api/runs"))
+        return Promise.resolve(json({ runs: [] }));
+      if (url.startsWith(`/api/sessions/${data.id}?`))
+        return new Promise<Response>(() => {});
+      throw new Error(`Unexpected ${url}`);
+    }),
+  );
+  render(<SessionsView repo={repo} catalog={catalog} onRunRecipe={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: /Search work/ }));
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "Loading session details…",
+  );
+});
+
 test("edit, rerun, duplicate, archive, and unarchive use distinct actions", async () => {
   const user = userEvent.setup();
   const data = fixture();

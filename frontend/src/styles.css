@@ -762,6 +762,15 @@ h3 svg {
   }
 }
 @media (max-width: 620px) {
+  .navigation nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+  }
+  .nav-item {
+    min-width: 0;
+    padding: 10px 8px;
+  }
   .navigation {
     padding: 16px;
   }

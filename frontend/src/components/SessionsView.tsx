@@ -66,6 +66,7 @@ export default function SessionsView({
   const [detail, setDetail] = useState<SessionRecord | null>(null);
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -83,13 +84,16 @@ export default function SessionsView({
         setSessions(sessionResult.sessions);
         setRuns(runResult.runs);
         setError("");
+        setLoading(false);
       } catch (reason) {
-        if (!signal?.aborted)
+        if (!signal?.aborted) {
+          setLoading(false);
           setError(
             reason instanceof Error
               ? reason.message
               : "Could not load sessions.",
           );
+        }
       }
     },
     [repo],
@@ -97,6 +101,7 @@ export default function SessionsView({
   useEffect(() => {
     const controller = new AbortController();
     let pending = false;
+    setLoading(true);
     const tick = () => {
       if (pending || document.visibilityState === "hidden") return;
       pending = true;
@@ -346,18 +351,25 @@ export default function SessionsView({
           </div>
         )}
         {!entries.length ? (
-          <div className="sessions-empty">
-            <h2>{query ? "No matches" : "No sessions yet"}</h2>
-            <p>
-              {query
-                ? "Try another name, command, or request."
-                : "Launch a MEOW command to keep its recipe, attempts, and output together."}
-            </p>
-            <Button variant="outline" onClick={() => onRunRecipe()}>
-              <Plus />
-              New session
-            </Button>
-          </div>
+          loading ? (
+            <div className="sessions-empty" role="status">
+              <h2>Loading sessions…</h2>
+              <p>Checking saved sessions and MEOW run history.</p>
+            </div>
+          ) : (
+            <div className="sessions-empty">
+              <h2>{query ? "No matches" : "No sessions yet"}</h2>
+              <p>
+                {query
+                  ? "Try another name, command, or request."
+                  : "Launch a MEOW command to keep its recipe, attempts, and output together."}
+              </p>
+              <Button variant="outline" onClick={() => onRunRecipe()}>
+                <Plus />
+                New session
+              </Button>
+            </div>
+          )
         ) : (
           <ul className="sessions-items">
             {entries.map((entry) => {
@@ -423,6 +435,7 @@ export default function SessionsView({
           repo={selectedSession?.repo || selectedRun?.repo || repo}
           session={visibleDetail}
           importedRun={selectedRun}
+          loadingSession={!!selectedSession && !visibleDetail}
           linkedRuns={linkedRuns}
           repos={catalog.repos}
           onEdit={() =>
