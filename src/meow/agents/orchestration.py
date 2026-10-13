@@ -23,6 +23,8 @@ from meow.project.prompts import (
     decomposer_query,
     integrator_prompt,
     integrator_query,
+    triage_prompt,
+    triage_query,
 )
 
 
@@ -62,6 +64,34 @@ class DecomposerAgent(Agent):
         )
         if not output_file.is_file():
             raise RuntimeError(f"Decomposer did not write {output_file}")
+        return output_file
+
+
+class TriageAgent(Agent):
+    """Reads a failed attempt's evidence and writes a recovery decision file."""
+
+    async def run(  # ruff: ignore[too-many-arguments]
+        self,
+        task_request: str,
+        cause: str,
+        evidence: list[str],
+        output_file: Path,
+        *,
+        cycles: int,
+        max_cycles: int,
+    ) -> Path:
+        agent = self.definition("triage")
+        options = self.definition_options(
+            agent, system_prompt=triage_prompt(output_file, agent=agent)
+        )
+        restrict_writes(options, output_file, self.context.active_working_dir())
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        prepare_output_file(output_file)
+        await self.run_query(
+            triage_query(task_request, cause, evidence, cycles, max_cycles),
+            options,
+            "Triage",
+        )
         return output_file
 
 
@@ -107,7 +137,7 @@ class OrchestratorAgents:
     """
 
     decomposer: Callable[..., DecomposerAgent] = DecomposerAgent
-    triage: Callable[..., Any] | None = None
+    triage: Callable[..., Any] | None = TriageAgent
     integrator: Callable[..., Any] | None = IntegratorAgent
     reviewer: Callable[..., ReviewerAgent] = ReviewerAgent
     fixer: Callable[..., ReviewFixAgent] = ReviewFixAgent

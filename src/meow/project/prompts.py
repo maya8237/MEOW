@@ -224,6 +224,52 @@ def decomposer_query(objective: str, *, correction: str | None = None) -> str:
     return query
 
 
+def decision_format() -> str:
+    """The triage decision contract `execution.orchestration.triage` parses."""
+    return (
+        "Write your decision as one JSON object, and nothing else, to the "
+        'output file. Keys: "action" (required): one of "retry", '
+        '"resume", "rescope", "reintegrate", "blocked". '
+        '"rationale" (required): one or two sentences naming the evidence '
+        'behind the choice. "notes": for "resume" and "reintegrate", '
+        "concrete findings appended to the plan for the next attempt. "
+        '"request": for "rescope", the corrected full task request. '
+        '"subtasks": for "rescope", a list of objects with "id", '
+        '"request", "depends_on", and "expected_paths" that replace '
+        'the task. "prerequisite": for "rescope", one such object for a '
+        'task that must be merged before this one. "needed": for '
+        '"blocked", exactly what a human must provide or decide. A '
+        '"rescope" gives exactly one of "request", "subtasks", '
+        "\"prerequisite\". Task ids use letters, digits, '-' and '_' (at "
+        "most 64 characters, starting with a letter or digit) and must not "
+        "repeat an existing task id."
+    )
+
+
+def triage_prompt(output_file: Path, *, agent: CustomAgent | None = None) -> str:
+    """Instructions for deciding how a failed orchestrator task recovers."""
+    return render_agent(
+        _agent(agent, "triage"),
+        {"output_file": output_file, "decision_format": decision_format()},
+    )
+
+
+def triage_query(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- pure builder
+    task_request: str,
+    cause: str,
+    evidence: list[str],
+    cycles: int,
+    max_cycles: int,
+) -> str:
+    """The task message for one triage decision."""
+    listed = "\n".join(f"- {path}" for path in evidence) or "(none)"
+    return (
+        f"A task attempt failed.\n\nTask request:\n{task_request}\n\n"
+        f"Failure cause: {cause}\nRecovery cycles used: {cycles} of {max_cycles}"
+        f"\n\nEvidence files to read before deciding:\n{listed}"
+    )
+
+
 def integrator_prompt(
     active_dir: Path, conflicted_paths: list[str], *, agent: CustomAgent | None = None
 ) -> str:

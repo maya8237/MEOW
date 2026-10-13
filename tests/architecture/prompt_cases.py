@@ -18,6 +18,7 @@ LINT = [LintCommand("ruff check"), LintCommand("fallow", gate=False)]
 EVIDENCE = {"files": ["src/a.py"], "notes": "x"}
 INTEGRATION_WORKTREE = Path("/repo/.worktrees/orch-0123456789ab")
 CONFLICTS = ["src/a.py", "docs/b.md"]
+DECISION_FILE = Path("/repo/.meow/orchestrators/0123456789ab/decision-api-1.json")
 TASKS_FILE = Path("/repo/.meow/orchestrators/0123456789ab/tasks.json")
 TASK_DRAFTS = "Task PROJ-1 (PROJ-1):\nResolve Jira issue PROJ-1: Fix login\n\nSteps"
 
@@ -40,6 +41,7 @@ def cases() -> list[tuple[str, str, tuple, dict]]:
             {"max_tasks": 32, "task_drafts": TASK_DRAFTS},
         ),
         ("integrator", "integrator_prompt", (INTEGRATION_WORKTREE, CONFLICTS), {}),
+        ("triage", "triage_prompt", (DECISION_FILE,), {}),
     ]
     for shape, evidence, bug in product((None, SHAPE), (None, EVIDENCE), (False, True)):
         found.append((
