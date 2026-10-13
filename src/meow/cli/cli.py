@@ -8,6 +8,8 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+from claude_agent_sdk import ProcessError
+
 from meow.cli.catalog_cli import catalog_command
 from meow.cli.dispatch import _dispatch
 from meow.cli.ipython_cli import start_ipython
@@ -67,6 +69,7 @@ logger = get_logger(__name__)
 # OSError), failed git/subprocess calls, and groups from parallel workflow
 # branches. Programming errors (TypeError, KeyError, ...) keep their traceback.
 _EXPECTED_FAILURES = (
+    ProcessError,
     ValueError,
     RuntimeError,
     OSError,

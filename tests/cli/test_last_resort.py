@@ -4,6 +4,7 @@ import subprocess
 from unittest.mock import patch
 
 import pytest
+from claude_agent_sdk import ProcessError
 
 from meow.cli import cli
 
@@ -17,6 +18,7 @@ class _Quit(RuntimeError):
     [
         (TimeoutError("step timed out"), "step timed out"),
         (PermissionError("denied"), "denied"),
+        (ProcessError("CLI startup failed", exit_code=-11), "CLI startup failed"),
         (
             subprocess.CalledProcessError(
                 128, ["git", "worktree", "add"], stderr="boom"
