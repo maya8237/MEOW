@@ -9,6 +9,7 @@ from collections.abc import Callable
 _COMMANDS = (
     "review",
     "plan",
+    "orchestrate",
     "status",
     "cancel",
     "worktree",
