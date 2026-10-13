@@ -366,23 +366,42 @@ def test_registration_timeout_persists_failed_attempt(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("failure", ["popen", "registration"])
-def test_resume_launch_failure_finishes_attempt_with_error(  # ruff: ignore[too-many-statements]
+def test_resume_launch_failure_finishes_attempt_with_error(  # ruff: ignore[complex-structure, too-many-statements]
     tmp_path, monkeypatch, failure
 ):
+    import subprocess
+
+    from meow.execution.run_state import RunStore
     from meow.infrastructure import ui_sessions
     from meow.ui.sessions import SessionError, SessionStore
 
+    subprocess.run(
+        ["git", "init", "--quiet", "--initial-branch=main", str(tmp_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    run = RunStore(tmp_path).create(
+        source="prompt",
+        request="implement the feature",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="main",
+    )
     store = SessionStore(tmp_path)
     recipe = valid_recipe(tmp_path)
     store.save_recipe(recipe)
     original = store.create_attempt(recipe.id, recipe, worker_token="original")
-    store.update_attempt(recipe.id, original.id, run_ids=["a" * 32])
+    store.update_attempt(recipe.id, original.id, run_ids=[run.id])
     store.finish_attempt(recipe.id, original.id, "interrupted", None)
     monkeypatch.setattr(ui_sessions, "_REGISTER_SECONDS", 0)
+    real_popen = subprocess.Popen
 
     if failure == "popen":
 
-        def fail_popen(*_args, **_kwargs):
+        def fail_popen(*args, **kwargs):
+            if args and args[0][0] == "git":
+                return real_popen(*args, **kwargs)
             raise OSError("worker executable missing")
 
         monkeypatch.setattr(ui_sessions.subprocess, "Popen", fail_popen)
@@ -396,9 +415,12 @@ def test_resume_launch_failure_finishes_attempt_with_error(  # ruff: ignore[too-
             def poll():
                 return 1
 
-        monkeypatch.setattr(
-            ui_sessions.subprocess, "Popen", lambda *_args, **_kwargs: ExitedWorker()
-        )
+        def exited_worker(*args, **kwargs):
+            if args and args[0][0] == "git":
+                return real_popen(*args, **kwargs)
+            return ExitedWorker()
+
+        monkeypatch.setattr(ui_sessions.subprocess, "Popen", exited_worker)
         expected = "Worker registration timed out"
 
     with pytest.raises(SessionError):
