@@ -2,6 +2,7 @@
 
 import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 
@@ -12,7 +13,8 @@ MAX_TASKS = 16
 _TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 
 
-def _path(value: str) -> str:
+def project_path(value: str) -> str:
+    """Normalize a project-relative path (casefolded); reject anything else."""
     normalized = value.replace("\\", "/")
     path = PurePosixPath(normalized)
     if (
@@ -35,6 +37,59 @@ def normalize_path(value: str) -> str:
     return "/".join(PurePosixPath(value.replace("\\", "/")).parts).casefold()
 
 
+def check_task_ids(ids: Sequence[str]) -> None:
+    """Reject task IDs that are unsafe as file, worktree, or branch names."""
+    for task_id in ids:
+        if not _TASK_ID.fullmatch(task_id):
+            raise ValueError(
+                f"task ID {task_id!r} is invalid: use 1-64 letters, digits, "
+                "'-' or '_', starting with a letter or digit (e.g. task-1)"
+            )
+    # Task IDs become file and worktree names; compare them the way a
+    # case-insensitive filesystem would, and refuse Windows device names.
+    if len({task_id.casefold() for task_id in ids}) != len(ids):
+        raise ValueError("duplicate task ID")
+    for task_id in ids:
+        _reject_reserved_name(task_id)
+
+
+def _check_dependency_lists(depends_on: Mapping[str, Sequence[str]]) -> None:
+    for task_id, dependencies in depends_on.items():
+        if any(dependency not in depends_on for dependency in dependencies):
+            raise ValueError(f"task {task_id} has unknown dependency")
+        if len(set(dependencies)) != len(dependencies):
+            raise ValueError(f"task {task_id} has duplicate dependencies")
+
+
+def dependency_ancestors(
+    depends_on: Mapping[str, Sequence[str]],
+) -> dict[str, set[str]]:
+    """Map every task to all tasks it transitively depends on.
+
+    Raises ValueError for an unknown or duplicated dependency or a cycle.
+    """
+    _check_dependency_lists(depends_on)
+    visiting: set[str] = set()
+    cache: dict[str, set[str]] = {}
+
+    def ancestors(task_id: str) -> set[str]:
+        if task_id in visiting:
+            raise ValueError("task dependency cycle")
+        if task_id in cache:
+            return cache[task_id]
+        visiting.add(task_id)
+        result = set(depends_on[task_id])
+        for dependency in depends_on[task_id]:
+            result.update(ancestors(dependency))
+        visiting.remove(task_id)
+        cache[task_id] = result
+        return result
+
+    for task_id in depends_on:
+        ancestors(task_id)
+    return cache
+
+
 def _overlap(left: str, right: str) -> bool:
     return owns(left, right) or owns(right, left)
 
@@ -51,61 +106,24 @@ class TaskSpec:
 class TaskGraph:
     tasks: tuple[TaskSpec, ...]
 
-    def validate(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+    def validate(  # ruff: ignore[complex-structure, too-many-branches]
         self,
     ) -> None:
         if not 1 <= len(self.tasks) <= MAX_TASKS:
             raise ValueError(f"task graph needs 1 to {MAX_TASKS} tasks")
-        ids = [task.id for task in self.tasks]
-        for task_id in ids:
-            if not _TASK_ID.fullmatch(task_id):
-                raise ValueError(
-                    f"task ID {task_id!r} is invalid: use 1-64 letters, digits, "
-                    "'-' or '_', starting with a letter or digit (e.g. task-1)"
-                )
-        # Task IDs become file and worktree names; compare them the way a
-        # case-insensitive filesystem would, and refuse Windows device names.
-        if len({task_id.casefold() for task_id in ids}) != len(ids):
-            raise ValueError("duplicate task ID")
-        for task_id in ids:
-            _reject_reserved_name(task_id)
-        by_id = {task.id: task for task in self.tasks}
+        check_task_ids([task.id for task in self.tasks])
         for task in self.tasks:
             if not task.owned_paths:
                 raise ValueError(f"task {task.id} needs owned paths")
-            if any(dep not in by_id for dep in task.depends_on):
-                raise ValueError(f"task {task.id} has unknown dependency")
-            if len(set(task.depends_on)) != len(task.depends_on):
-                raise ValueError(f"task {task.id} has duplicate dependencies")
             for path in task.owned_paths:
-                _path(path)
-
-        visiting: set[str] = set()
-        visited: set[str] = set()
-
-        def ancestors(task_id: str) -> set[str]:
-            if task_id in visiting:
-                raise ValueError("task dependency cycle")
-            if task_id in visited:
-                return cache[task_id]
-            visiting.add(task_id)
-            result = set(by_id[task_id].depends_on)
-            for dependency in by_id[task_id].depends_on:
-                result.update(ancestors(dependency))
-            visiting.remove(task_id)
-            visited.add(task_id)
-            cache[task_id] = result
-            return result
-
-        cache: dict[str, set[str]] = {}
-        for task_id in ids:
-            ancestors(task_id)
+                project_path(path)
+        cache = dependency_ancestors({task.id: task.depends_on for task in self.tasks})
         for position, left in enumerate(self.tasks):
             for right in self.tasks[position + 1 :]:
                 if left.id in cache[right.id] or right.id in cache[left.id]:
                     continue
                 if any(
-                    _overlap(_path(a), _path(b))
+                    _overlap(project_path(a), project_path(b))
                     for a in left.owned_paths
                     for b in right.owned_paths
                 ):

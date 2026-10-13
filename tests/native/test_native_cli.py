@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from meow.cli import cli
+from meow.execution.orchestration.store import OrchestratorStore
 from meow.native import native
 from tests.native.test_native import TOML, git, make_repo
 
@@ -389,3 +390,91 @@ class BranchReviewNativeCliTests(unittest.TestCase):
             self.assertIn("'feature/x'", data["system_prompt"])
             self.assertEqual(bad_code, 1)
             self.assertIn("--target", err)
+
+
+ORCHESTRATOR_ID = "0123456789ab"
+ORCHESTRATE_FORMS = (
+    ("init", "--objective", "Add login", "--from", "dev", "--max-parallel", "2"),
+    ("init", "--tasks", "tasks.toml", "--test", "--no-pr"),
+    ("tasks", ORCHESTRATOR_ID, "--file", "tasks.json"),
+    ("tick", ORCHESTRATOR_ID),
+    ("wait", ORCHESTRATOR_ID, "--timeout", "5"),
+    ("merge-done", ORCHESTRATOR_ID, "--task", "api"),
+    ("merge-abort", ORCHESTRATOR_ID, "--task", "api"),
+    ("triage", ORCHESTRATOR_ID, "--task", "api", "--file", "decision.json"),
+    ("review", ORCHESTRATOR_ID),
+    ("review-result", ORCHESTRATOR_ID, "--file", "review.md"),
+    ("deliver", ORCHESTRATOR_ID),
+    ("pr", ORCHESTRATOR_ID, "--url", "https://example.test/pr/1"),
+    ("pr", ORCHESTRATOR_ID, "--error", "provider refused"),
+    ("status",),
+    ("status", ORCHESTRATOR_ID),
+    ("cancel", ORCHESTRATOR_ID),
+    ("release", ORCHESTRATOR_ID),
+    ("resume", ORCHESTRATOR_ID, "--task", "api", "--request", "Do it"),
+)
+
+
+class NativeOrchestrateCliTests(unittest.TestCase):
+    def test_orchestrate_group_registered(self):
+        parser = cli._build_arg_parser()
+
+        args = parser.parse_args(["native", "orchestrate", "tick", ORCHESTRATOR_ID])
+
+        self.assertEqual(args.native_command, "orchestrate")
+        self.assertEqual(args.orchestrate_command, "tick")
+        self.assertEqual(args.orch_id, ORCHESTRATOR_ID)
+
+    def test_every_documented_form_parses(self):
+        parser = cli._build_arg_parser()
+
+        for form in ORCHESTRATE_FORMS:
+            with self.subTest(form=form):
+                args = parser.parse_args(["native", "orchestrate", *form])
+
+                self.assertEqual(args.orchestrate_command, form[0])
+
+    def test_pr_needs_exactly_one_outcome(self):
+        parser = cli._build_arg_parser()
+
+        for extra in ((), ("--url", "u", "--error", "e")):
+            with (
+                self.subTest(extra=extra),
+                contextlib.redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit),
+            ):
+                parser.parse_args([
+                    "native",
+                    "orchestrate",
+                    "pr",
+                    ORCHESTRATOR_ID,
+                    *extra,
+                ])
+
+    def test_status_prints_one_json_document(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            record = OrchestratorStore(Path(tmp)).create(
+                objective="Add login",
+                source="objective",
+                base_branch="main",
+                mode="native",
+                max_parallel=3,
+                options={"test": False, "pr": True},
+            )
+
+            code, out, _err = run_native(
+                "orchestrate", "status", record.id, "--work-dir", tmp
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["id"], record.id)
+
+    def test_failures_exit_one_with_a_message_on_stderr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out, err = run_native(
+                "orchestrate", "status", ORCHESTRATOR_ID, "--work-dir", tmp
+            )
+
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "")
+        self.assertIn("meow native orchestrate", err)

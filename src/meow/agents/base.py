@@ -122,6 +122,30 @@ def restrict_writes(
     )
 
 
+def allow_only_tools(
+    options: ClaudeAgentOptions, permitted: Callable[[str], bool], reason: str
+) -> None:
+    """Deny every tool call `permitted` rejects, before any earlier callback.
+
+    `guard_tools` only gates the tools it names and lets the rest through,
+    which does not help when tool names differ per MCP server. Here the
+    default is deny: wildcard `allowed_tools` entries (which the SDK
+    auto-approves without calling `can_use_tool`) are dropped so the callback
+    sees every call.
+    """
+    options.allowed_tools = [t for t in options.allowed_tools if "*" not in t]
+    previous = options.can_use_tool
+
+    async def can_use_tool(tool: str, tool_input: dict[str, Any], context: object):
+        if not permitted(tool):
+            return PermissionResultDeny(message=reason)
+        if previous is not None:
+            return await previous(tool, tool_input, context)
+        return PermissionResultAllow()
+
+    options.can_use_tool = can_use_tool
+
+
 def prepare_output_file(output_file: Path) -> None:
     """Remove a prior output so a later existence check cannot accept stale data."""
     output_file.unlink(missing_ok=True)

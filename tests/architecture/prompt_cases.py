@@ -15,7 +15,13 @@ PLAN = Path("/repo/.meow/plans/feature.md")
 REVIEW = Path("/repo/.meow/plans/feature-review.md")
 SHAPE = ShapeContext("docs/shape.json", "bounded adapter", ("legacy API remains",))
 LINT = [LintCommand("ruff check"), LintCommand("fallow", gate=False)]
+OBJECTIVE = "Add login\n\nTasks:\n- api: Build the login endpoint\n- ui: Build the form"
 EVIDENCE = {"files": ["src/a.py"], "notes": "x"}
+INTEGRATION_WORKTREE = Path("/repo/.worktrees/orch-0123456789ab")
+CONFLICTS = ["src/a.py", "docs/b.md"]
+DECISION_FILE = Path("/repo/.meow/orchestrators/0123456789ab/decision-api-1.json")
+TASKS_FILE = Path("/repo/.meow/orchestrators/0123456789ab/tasks.json")
+TASK_DRAFTS = "Task PROJ-1 (PROJ-1):\nResolve Jira issue PROJ-1: Fix login\n\nSteps"
 
 
 def cases() -> list[tuple[str, str, tuple, dict]]:
@@ -28,6 +34,15 @@ def cases() -> list[tuple[str, str, tuple, dict]]:
         ("review_fixer", "review_fixer_prompt", (), {}),
         ("lint_fixer", "lint_fixer_prompt", (), {}),
         ("ci_review", "ci_review_prompt", ("s1", "t2", "m3"), {}),
+        ("decomposer-objective", "decomposer_prompt", (TASKS_FILE,), {"max_tasks": 32}),
+        (
+            "decomposer-jira",
+            "decomposer_prompt",
+            (TASKS_FILE,),
+            {"max_tasks": 32, "task_drafts": TASK_DRAFTS},
+        ),
+        ("integrator", "integrator_prompt", (INTEGRATION_WORKTREE, CONFLICTS), {}),
+        ("triage", "triage_prompt", (DECISION_FILE,), {}),
     ]
     for shape, evidence, bug in product((None, SHAPE), (None, EVIDENCE), (False, True)):
         found.append((
@@ -75,4 +90,10 @@ def cases() -> list[tuple[str, str, tuple, dict]]:
             ("main", "feature/x", REVIEW, lint),
             {"check_worktree_hygiene": hygiene, "shape_context": shape},
         ))
+    found.append((
+        "branch_review-objective",
+        "branch_review_prompt",
+        ("main", "orchestrator/0123456789ab", REVIEW, LINT),
+        {"check_worktree_hygiene": True, "objective": OBJECTIVE},
+    ))
     return found

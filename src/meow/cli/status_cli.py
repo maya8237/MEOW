@@ -5,6 +5,11 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
+from meow.execution.orchestration.model import (
+    TERMINAL_PHASES as ORCHESTRATOR_TERMINAL_PHASES,
+)
+from meow.execution.orchestration.report import rollup_line
+from meow.execution.orchestration.store import OrchestratorStore
 from meow.execution.run_state import (
     TERMINAL_PHASES,
     RunRecord,
@@ -16,7 +21,7 @@ from meow.infrastructure.quality import Concern, QualityStoreError, concerns_for
 from meow.infrastructure.usage import usage_totals
 
 # Sources `meow resume --continue` can drive; others are rerun from scratch.
-RESUMABLE_SOURCES = frozenset({"prompt", "jira", "native"})
+RESUMABLE_SOURCES = frozenset({"prompt", "jira", "native", "orchestrator"})
 
 
 def recovery_command(record: RunRecord) -> str:
@@ -183,14 +188,30 @@ def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-bra
     return "\n".join(lines)
 
 
+def active_orchestrator_lines(working_dir: Path) -> list[str]:
+    """One rollup line per orchestrator that is still driving work."""
+    store = OrchestratorStore(working_dir)
+    if not store.directory.is_dir():
+        return []
+    return [
+        rollup_line(record)
+        for record in store.records()
+        if record.phase not in ORCHESTRATOR_TERMINAL_PHASES
+    ]
+
+
 def status(working_dir: Path, run_id: str | None = None, verbose: bool = False) -> int:
     store = RunStore(working_dir)
+    rollups = active_orchestrator_lines(working_dir)
     try:
         record = store.load(run_id) if run_id else store.latest()
         if record.background:
             reconcile_worker(store, record.id)
             record = store.load(record.id)
     except RunStateError as exc:
+        if rollups and run_id is None:
+            print("\n".join(rollups))
+            return 0
         print(str(exc), file=sys.stderr)
         return 1
     try:
@@ -203,4 +224,6 @@ def status(working_dir: Path, run_id: str | None = None, verbose: bool = False) 
         concerns = ()
         print(f"Quality concerns unavailable: {exc}", file=sys.stderr)
     print(render(record, verbose=verbose, concerns=concerns))
+    if rollups:
+        print("\n".join(rollups))
     return 0

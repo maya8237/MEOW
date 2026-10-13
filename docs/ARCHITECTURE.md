@@ -6,19 +6,26 @@ top-level alias or compatibility modules.
 
 - `agents/`: Claude Agent SDK roles: exploration, planning, generation,
   review, testing, fixing, documentation, and Jira/GitLab/GitHub fetching.
+  `agents/orchestration.py` holds the orchestrator's decomposer, triage,
+  integrator, and pull-request roles.
 - `cli/`: the public command surface and dispatch for `run`, `plan`, `review`
   (`review_cli.py`), status/recovery, queues, hooks, IPython, and hidden
-  maintenance commands. `catalog_cli.py` owns workflow/agent inspection and ejection.
+  maintenance commands. `catalog_cli.py` owns workflow/agent inspection and ejection;
+  `orchestrate_cli.py` owns `meow orchestrate`.
 - `execution/`: sprint orchestration, delivery, plan approval, queue/run
   policy, and the durable run journal. `execution/workflow/` owns the expanded
   step engine, built-in operation adapters, and loop session pools.
+  `execution/orchestration/` owns the orchestrator: its journal and driver
+  lock, task scheduling and child processes, merges into the integration
+  branch, triage, the shared supervisor `tick()`, the whole-objective review,
+  delivery, and the CLI driver (`runner.py`).
 - `evaluation/`: read-only evaluation reports over run journals.
 - `infrastructure/`: lint/test execution, checks, logging, cancellation,
   background workers, usage accounting, and worktree lifecycle/setup.
 - `integrations/`: Jira issue solving, GitLab/GitHub/CI review, documentation
   updates, and knowledge documents.
 - `native/`: deterministic helpers behind `meow native ...` for in-session
-  skills.
+  skills, including `native_orchestrate.py` for `/meow:orchestrate`.
 - `project/`: config models/schema, custom skill and agent discovery
   (`project/custom/`), onboarding, permissions, plan files/state, pre-plan
   shaping, prompts, and command policy. `project/custom/` owns scoped agent

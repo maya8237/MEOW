@@ -1,5 +1,6 @@
 """Local detached workers for unattended feature runs."""
 
+import argparse
 import asyncio
 import ctypes
 import hashlib
@@ -12,6 +13,7 @@ import tomllib
 from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from meow.execution.run_state import TERMINAL_PHASES, RunRecord, RunStore
 from meow.project.config import _merge_config, config_paths
@@ -25,7 +27,18 @@ class BackgroundError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class RunSeed:
+    """What the orchestrator knows about a child run before its worker starts."""
+
+    source: str
+    request: str
+    worktree: Path
+    branch: str
+
+
+@dataclass(frozen=True)
 class WorkerState:
+    state: str
     state: str
     pid: int | None
     log: str | None
@@ -116,32 +129,71 @@ def reconcile_worker(store: RunStore, run_id: str) -> WorkerState:
     return state
 
 
-def launch_background(  # ruff: ignore[too-many-statements]
-    repo: Path, argv: list[str]
-) -> str:
-    """Checkpoint an unattended invocation and start one detached worker."""
-    from meow.cli.parser import _build_arg_parser
-
-    args = _build_arg_parser().parse_args(argv)
+def _invocation_kind(
+    args: argparse.Namespace,
+) -> Literal["run", "orchestrator-task"]:
+    """Classify a background invocation; reject anything else."""
+    if args.command == "_orchestrator-task":
+        return "orchestrator-task"
     if args.command != "run" or not args.unattended or not args.background:
         raise BackgroundError(
             "Background execution requires run --unattended --background"
         )
     if args.lint_fix or args.manually_approve_plan:
         raise BackgroundError("Background execution cannot prompt or run lint-fix")
-    repo = repo.resolve()
-    store = RunStore(repo)
-    record = store.create(
+    return "run"
+
+
+def _create_run(
+    store: RunStore,
+    repo: Path,
+    args: argparse.Namespace,
+    seed: RunSeed | None,
+) -> RunRecord:
+    if _invocation_kind(args) == "orchestrator-task":
+        if seed is None:
+            raise BackgroundError("An orchestrator task launch requires a run seed")
+        return store.create(
+            source=seed.source,
+            request=seed.request,
+            repo=repo,
+            worktree=seed.worktree,
+            branch=seed.branch,
+        )
+    if seed is not None:
+        raise BackgroundError("A run launch does not take a run seed")
+    return store.create(
         source="jira" if args.jira is not None else "prompt",
         request=args.request or args.jira or "latest Jira issue",
         repo=repo,
         worktree=repo,
         branch="preparing",
     )
+
+
+def launch_background(
+    repo: Path, argv: list[str], *, seed: RunSeed | None = None
+) -> str:
+    """Checkpoint an unattended invocation and start one detached worker.
+
+    `run --unattended --background` creates its own run record. The internal
+    `_orchestrator-task` invocation needs a `seed` describing the run record.
+    """
+    from meow.cli.parser import _build_arg_parser
+
+    args = _build_arg_parser().parse_args(argv)
+    repo = repo.resolve()
+    store = RunStore(repo)
+    record = _create_run(store, repo, args, seed)
+    _spawn_worker(store, repo, record.id, argv)
+    return record.id
+
+
+def _spawn_worker(store: RunStore, repo: Path, run_id: str, argv: list[str]) -> None:
     nonce = secrets.token_hex(16)
-    log_path = store.directory / f"{record.id}.log"
+    log_path = store.directory / f"{run_id}.log"
     store.update_background(
-        record.id,
+        run_id,
         argv=argv,
         nonce=nonce,
         log=str(log_path),
@@ -157,7 +209,7 @@ def launch_background(  # ruff: ignore[too-many-statements]
         "-c",
         "from meow.cli.cli import cli_main; cli_main()",
         "_worker",
-        record.id,
+        run_id,
         "--work-dir",
         str(repo),
         "--nonce",
@@ -176,15 +228,14 @@ def launch_background(  # ruff: ignore[too-many-statements]
                 creationflags=creationflags,
                 close_fds=True,
             )
-        store.update_background(record.id, launcher_pid=process.pid, state="starting")
+        store.update_background(run_id, launcher_pid=process.pid, state="starting")
     except (OSError, BackgroundError) as exc:
         if process is not None and process.poll() is None:
             process.terminate()
         store.transition(
-            record.id, "failed", last_failure=f"Background launch failed: {exc}"
+            run_id, "failed", last_failure=f"Background launch failed: {exc}"
         )
         raise BackgroundError(f"Background launch failed: {exc}") from exc
-    return record.id
 
 
 def detach_command(
@@ -306,9 +357,15 @@ def worker_main(  # ruff: ignore[too-many-statements]
     try:
         record = _wait_for_registration(store, run_id, nonce)
         args = _build_arg_parser().parse_args(record.background["argv"])
-        if args.command != "run" or not args.unattended or not args.background:
-            raise BackgroundError("Saved worker invocation is invalid")
-        if args.jira is not None:
+        try:
+            kind = _invocation_kind(args)
+        except BackgroundError as exc:
+            raise BackgroundError("Saved worker invocation is invalid") from exc
+        if kind == "orchestrator-task":
+            from meow.execution.orchestration.task_worker import run_task_attempt
+
+            asyncio.run(run_task_attempt(repo, run_id, args))
+        elif args.jira is not None:
             asyncio.run(
                 run_issue_solver(
                     repo,

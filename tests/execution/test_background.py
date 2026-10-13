@@ -223,3 +223,156 @@ def test_background_cli_launches_from_the_argv_it_was_given(tmp_path, monkeypatc
     )
     cli_core.cli_main(argv)
     assert launched == [argv]
+
+
+ORCHESTRATOR_ID = "0123456789ab"
+
+
+def test_orchestrator_task_launch_uses_seed(tmp_path, monkeypatch):
+    worker_pid = 7
+    spawned = []
+
+    def fake_popen(argv, **kwargs):
+        spawned.append(argv)
+        return SimpleNamespace(pid=worker_pid)
+
+    monkeypatch.setattr(background.subprocess, "Popen", fake_popen)
+    seed = background.RunSeed(
+        "orchestrator", "do it", tmp_path / "wt", "orchestrator/abc-t1"
+    )
+    argv = ["_orchestrator-task", ORCHESTRATOR_ID, "t1", "--resume-at", "review"]
+
+    run_id = background.launch_background(tmp_path, argv, seed=seed)
+
+    record = RunStore(tmp_path).load(run_id)
+    assert record.source == "orchestrator"
+    assert record.request == "do it"
+    assert record.branch == "orchestrator/abc-t1"
+    assert record.worktree == str((tmp_path / "wt").resolve())
+    assert record.background["argv"] == argv
+    assert record.background["launcher_pid"] == worker_pid
+    assert spawned[0][3:5] == ["_worker", run_id]
+
+
+def test_orchestrator_task_launch_without_seed_is_rejected(tmp_path):
+    with pytest.raises(background.BackgroundError, match="requires a run seed"):
+        background.launch_background(
+            tmp_path, ["_orchestrator-task", ORCHESTRATOR_ID, "t1"]
+        )
+    assert not RunStore(tmp_path).directory.exists()
+
+
+def test_run_launch_with_a_seed_is_rejected(tmp_path):
+    seed = background.RunSeed("orchestrator", "x", tmp_path, "b")
+    argv = ["run", "feature", "--name", "x", "--unattended", "--background"]
+    with pytest.raises(background.BackgroundError, match="does not take a run seed"):
+        background.launch_background(tmp_path, argv, seed=seed)
+
+
+def test_run_without_unattended_is_still_rejected(tmp_path):
+    with pytest.raises(
+        background.BackgroundError, match="run --unattended --background"
+    ):
+        background.launch_background(
+            tmp_path, ["run", "x", "--name", "y", "--background"]
+        )
+
+
+def test_invocation_kind_classifies_saved_argv():
+    from meow.cli.parser import _build_arg_parser
+
+    parser = _build_arg_parser()
+    run_args = parser.parse_args([
+        "run",
+        "feature",
+        "--name",
+        "x",
+        "--unattended",
+        "--background",
+    ])
+    task_args = parser.parse_args(["_orchestrator-task", ORCHESTRATOR_ID, "t1"])
+    status_args = parser.parse_args(["status"])
+
+    assert background._invocation_kind(run_args) == "run"
+    assert background._invocation_kind(task_args) == "orchestrator-task"
+    with pytest.raises(background.BackgroundError):
+        background._invocation_kind(status_args)
+
+
+def test_orchestrator_task_parser_options():
+    from meow.cli.parser import _build_arg_parser
+
+    parser = _build_arg_parser()
+    defaults = parser.parse_args(["_orchestrator-task", ORCHESTRATOR_ID, "t1"])
+    assert (defaults.orchestrator_id, defaults.task_id) == (ORCHESTRATOR_ID, "t1")
+    assert defaults.resume_at == "generate"
+    assert defaults.plan is None
+    assert defaults.test is False
+    assert defaults.preexisting is False
+
+    full = parser.parse_args([
+        "_orchestrator-task",
+        ORCHESTRATOR_ID,
+        "t1",
+        "--resume-at",
+        "review",
+        "--plan",
+        "plan.md",
+        "--test",
+        "--preexisting",
+    ])
+    assert full.resume_at == "review"
+    assert full.plan == "plan.md"
+    assert full.test is True
+    assert full.preexisting is True
+
+
+def test_worker_dispatches_orchestrator_task(tmp_path, monkeypatch):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="orchestrator",
+        request="do it",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="orchestrator/abc-t1",
+    )
+    store.update_background(
+        record.id,
+        launcher_pid=os.getpid(),
+        nonce="n",
+        argv=["_orchestrator-task", ORCHESTRATOR_ID, "t1", "--resume-at", "review"],
+    )
+    seen = {}
+
+    async def fake_run_task_attempt(repo, run_id, args):  # ruff: ignore[unused-async]
+        seen.update(repo=repo, run_id=run_id, resume_at=args.resume_at)
+        store.transition(run_id, "complete")
+
+    monkeypatch.setattr(
+        "meow.execution.orchestration.task_worker.run_task_attempt",
+        fake_run_task_attempt,
+    )
+
+    assert background.worker_main(tmp_path, record.id, "n") == 0
+
+    assert seen == {"repo": tmp_path, "run_id": record.id, "resume_at": "review"}
+    assert store.load(record.id).phase == "complete"
+
+
+def test_worker_rejects_an_unknown_saved_invocation(tmp_path):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt",
+        request="x",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="dev",
+    )
+    store.update_background(
+        record.id, launcher_pid=os.getpid(), nonce="n", argv=["status"]
+    )
+
+    with pytest.raises(background.BackgroundError, match="Saved worker invocation"):
+        background.worker_main(tmp_path, record.id, "n")
+
+    assert store.load(record.id).phase == "failed"

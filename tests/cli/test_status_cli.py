@@ -4,6 +4,8 @@ import sys
 
 from meow.cli.cli import cli_main
 from meow.cli.status_cli import status
+from meow.execution.orchestration.model import OrchestratorTask
+from meow.execution.orchestration.store import OrchestratorStore
 from meow.execution.run_state import RunStore
 from meow.infrastructure.quality import record_concerns
 
@@ -187,3 +189,98 @@ def test_status_does_not_suggest_resume_for_review_runs(tmp_path):
         source="prompt", request="r", repo=tmp_path, worktree=tmp_path, branch="b"
     )
     assert recovery_command(prompt).startswith(f"meow resume {prompt.id}")
+
+
+def test_orchestrator_child_runs_are_resumable(tmp_path):
+    from meow.cli.status_cli import RESUMABLE_SOURCES, recovery_command
+
+    record = RunStore(tmp_path).create(
+        source="orchestrator",
+        request="r",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="b",
+    )
+
+    assert "orchestrator" in RESUMABLE_SOURCES
+    assert recovery_command(record).startswith(f"meow resume {record.id}")
+
+
+def make_orchestrator(repo, phase, merged, total):
+    store = OrchestratorStore(repo)
+    created = store.create(
+        objective="Add login",
+        source="objective",
+        base_branch="main",
+        mode="cli",
+        max_parallel=3,
+        options={"test": False, "pr": True},
+    )
+
+    def mutate(record):
+        record.phase = phase
+        record.tasks = [
+            OrchestratorTask(
+                f"t{number}",
+                "request",
+                status="merged" if number < merged else "pending",
+            )
+            for number in range(total)
+        ]
+
+    return store.update(created.id, mutate)
+
+
+def test_status_lists_active_orchestrator_rollup(tmp_path, capsys):
+    RunStore(tmp_path).create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    orchestrator = make_orchestrator(tmp_path, "running", merged=1, total=2)
+
+    assert status(tmp_path) == 0
+
+    output = capsys.readouterr().out
+    assert f"orchestrator {orchestrator.id} running 1/2 merged" in output
+
+
+def test_status_with_run_id_also_lists_the_rollup(tmp_path, capsys):
+    run = RunStore(tmp_path).create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    orchestrator = make_orchestrator(tmp_path, "reviewing", merged=2, total=2)
+
+    assert status(tmp_path, run.id) == 0
+
+    output = capsys.readouterr().out
+    assert run.id in output
+    assert f"orchestrator {orchestrator.id} reviewing 2/2 merged" in output
+
+
+def test_status_hides_finished_orchestrators(tmp_path, capsys):
+    RunStore(tmp_path).create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    for phase in ("delivered", "failed", "cancelled"):
+        make_orchestrator(tmp_path, phase, merged=1, total=1)
+
+    assert status(tmp_path) == 0
+
+    assert "orchestrator " not in capsys.readouterr().out
+
+
+def test_status_without_runs_still_shows_active_orchestrators(tmp_path, capsys):
+    orchestrator = make_orchestrator(tmp_path, "blocked", merged=0, total=3)
+
+    assert status(tmp_path) == 0
+
+    assert (
+        f"orchestrator {orchestrator.id} blocked 0/3 merged" in capsys.readouterr().out
+    )
+
+
+def test_status_of_unknown_run_still_fails_with_orchestrators_present(tmp_path, capsys):
+    make_orchestrator(tmp_path, "running", merged=0, total=1)
+
+    assert status(tmp_path, "unknown") != 0
+
+    assert "meow status" in capsys.readouterr().err

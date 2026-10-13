@@ -17,6 +17,7 @@ from meow.project.config_files import (
 )
 from meow.project.config_schema import (
     _normalize_lint_commands,
+    _normalize_orchestrator_config,
     _normalize_tester_config,
     _validate_max_rounds,
 )
@@ -51,6 +52,10 @@ DEFAULT_CONFIG = {
         "lint_fixer": None,
         "review_fixer": None,
         "tester": None,
+        "decomposer": None,
+        "triage": None,
+        "integrator": None,
+        "pull_request": None,
     },
     "delivery": {"target_branch": "dev"},
     "workflow": {"default": "default"},
@@ -176,6 +181,7 @@ def load_config(working_dir: Path) -> dict:
         )
     config["delivery"] = {"target_branch": target}
     config["workflow"] = _workflow_config(user_config)
+    config["orchestrator"] = _normalize_orchestrator_config(user_config)
     for table_name, commands in (
         ("[[tester.tests]]", config["tester"]["tests"]),
         ("[[tester.dev_server]]", config["tester"]["dev_server"]),
