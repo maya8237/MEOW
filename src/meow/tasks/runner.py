@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import shlex
 from pathlib import Path
 
 from meow.agents.generator import Generator
@@ -17,14 +18,25 @@ from .executor import execute_in_worktrees
 from .model import TaskGraph, TaskSpec
 from .scheduler import PermanentTaskError, TaskOutcome
 
-_SHELL_OPERATORS = ("&&", "||", "|", ";", ">", "<")
+_SHELL_PUNCTUATION = "&|;<>"
 
 
 def _verification_argv(command: str) -> list[str]:
     """Plain commands run directly; shell syntax runs in a shell that keeps the
     failing exit status (a pipeline must not report only its last stage)."""
-    if any(op in command for op in _SHELL_OPERATORS):
+    lexer = shlex.shlex(command, posix=False, punctuation_chars=_SHELL_PUNCTUATION)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    operators = [
+        token for token in lexer if all(char in _SHELL_PUNCTUATION for char in token)
+    ]
+    if operators:
         if os.name == "nt":
+            if any("|" in token and token != "||" for token in operators):
+                raise PermanentTaskError(
+                    "task verification cannot check every pipeline exit code on "
+                    "Windows; declare separate verification commands instead"
+                )
             return ["cmd", "/c", command]
         return ["bash", "-o", "pipefail", "-c", command]
     return _argv(command, ())
@@ -40,11 +52,15 @@ async def verify_task(  # ruff: ignore[complex-structure, too-many-statements]
         if not argv:
             raise ValueError(f"task {spec.id} has an empty verification command")
         try:
-            process = await asyncio.create_subprocess_exec(
-                *argv,
-                cwd=worktree,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
+            options = {
+                "cwd": worktree,
+                "stdout": asyncio.subprocess.PIPE,
+                "stderr": asyncio.subprocess.STDOUT,
+            }
+            process = await (
+                asyncio.create_subprocess_shell(command, **options)
+                if os.name == "nt" and argv[:2] == ["cmd", "/c"]
+                else asyncio.create_subprocess_exec(*argv, **options)
             )
             try:
                 output, _ = await asyncio.wait_for(process.communicate(), 300)
