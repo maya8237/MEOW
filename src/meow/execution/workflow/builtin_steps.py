@@ -20,6 +20,7 @@ from meow.execution.orchestrator import (
     _stage_baseline,
     _tester_results,
 )
+from meow.infrastructure.cancellation import RunCancelled
 from meow.infrastructure.checks import (
     adopt_stage_artifacts,
     completion_ready,
@@ -117,15 +118,33 @@ async def approve_plan(state):  # ruff: ignore[unused-async]
     )
 
 
+async def _repair_task_graph(state, reason):
+    logger.warning("task_graph_repair_started", reason=reason)
+    state.store.update_results(state.run_id, task_graph_repair_reason=reason)
+    try:
+        await PlannerAgent(state.sprint).repair_task_graph(state.plan_file, reason)
+        graph = load_task_graph(state.plan_file)
+        if graph is None:
+            raise ValueError("Planner removed the task graph during repair")
+    except RunCancelled:
+        raise
+    except (ValueError, RuntimeError, OSError) as repair_error:
+        # Keep the plan usable even when its parallel breakdown cannot be repaired.
+        logger.warning("task_graph_ignored", reason=str(repair_error))
+        state.store.update_results(state.run_id, task_graph_error=str(repair_error))
+        return None
+    logger.info("task_graph_repaired")
+    state.store.update_results(
+        state.run_id, task_graph_repaired=True, task_graph_error=None
+    )
+    return graph
+
+
 async def tasks(state):
     try:
         graph = load_task_graph(state.plan_file) if state.plan_file else None
     except ValueError as exc:
-        # An invalid planner graph must not stop an unattended run: the plan
-        # itself is still valid, so implement it sequentially.
-        logger.warning("task_graph_ignored", reason=str(exc))
-        state.store.update_results(state.run_id, task_graph_error=str(exc))
-        return
+        graph = await _repair_task_graph(state, str(exc))
     if graph is not None and len(graph.tasks) > 1:
         problem = preflight(state.sprint.active_working_dir())
         if problem is not None:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from meow.agents.base import Agent
 from meow.project.plan_files import planned_plan_file
-from meow.project.prompts import planner_prompt
+from meow.project.prompts import planner_prompt, task_graph_repair_prompt
 from meow.project.shaping import ShapeContext
 
 
@@ -23,6 +23,14 @@ def require_plan_file(plan_file: Path) -> Path:
 
 class PlannerAgent(Agent):
     """Generate a sprint plan through the configured planning model."""
+
+    async def repair_task_graph(self, plan_file: Path, reason: str) -> None:
+        """Ask the configured planner to repair the existing graph once."""
+        agent = self.definition("planner")
+        options = self.definition_options(
+            agent, system_prompt=task_graph_repair_prompt(plan_file, agent=agent)
+        )
+        await self.run_definition_query(agent, reason, options, "Planner")
 
     async def run(
         self,

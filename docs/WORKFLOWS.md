@@ -19,6 +19,16 @@ code first, fixes failures in later rounds, and runs checks; it has no automatic
 delivery. `--test` also works without a plan in that workflow: the tester uses
 the review request as its basis. Existing plan-based testing is unchanged.
 
+Before executing a planner task graph, MEOW validates its dependencies and
+file ownership. If the graph is invalid (for example, independent tasks own
+overlapping files), MEOW sends the validation error to the configured planner
+for one repair attempt and validates the revised graph. Repair changes only
+the graph, preserving the plan and Sprint Contract. If repair fails or the
+graph remains invalid, MEOW records the reason in the run journal and uses
+the normal sequential generator flow. Plans without a task graph need no
+repair. Planner definitions may customize repair instructions with the
+`task_graph_repair` fragment; otherwise the shipped instructions apply.
+
 Without `--workflow`, config chooses the workflow:
 
 ```toml

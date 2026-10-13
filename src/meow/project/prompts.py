@@ -199,6 +199,25 @@ def planner_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mirrorin
     )
 
 
+def task_graph_repair_prompt(
+    plan_file: Path, *, agent: CustomAgent | None = None
+) -> str:
+    """Render repair instructions, using an optional planner fragment override."""
+    planner = _agent(agent, "planner")
+    name = "task_graph_repair"
+    fragments = (
+        planner.fragments
+        if name in planner.fragments
+        else builtin_agent("planner").fragments
+    )
+    return render(
+        "{{> " + name + "}}",
+        {"plan_file": plan_file},
+        fragments=fragments,
+        where=str(planner.file),
+    )
+
+
 def tasks_format() -> str:
     """The tasks-document contract `model.parse_tasks_document` parses."""
     return (
