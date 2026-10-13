@@ -141,7 +141,7 @@ def _register_plugin(repo_dir: Path, output: Callable[[str], None]) -> bool:
         return False
     output(
         f"Registered MEOW as a user-wide Claude plugin: {repo_dir}\n"
-        "Restart Claude Code to load /meow:* skills (including /meow:migration)."
+        "Restart Claude Code to load /meow:* skills (including /meow:run)."
     )
     return True
 
