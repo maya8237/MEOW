@@ -172,3 +172,172 @@ test("preview errors preserve entered recipe fields", async () => {
   expect(screen.getByLabelText("Session name")).toHaveValue("Keep this");
   expect(screen.getByLabelText("Request")).toHaveValue("Keep this request");
 });
+
+test("editing keeps the saved repository as the update owner", async () => {
+  const user = userEvent.setup();
+  const ownerRepo = "C:/saved/project";
+  const selectedRepo = "D:/currently-selected/project";
+  const id = "a".repeat(32);
+  const session = {
+    id,
+    name: "Saved session",
+    repo: ownerRepo,
+    state: "draft",
+    mode: "cli",
+    command: "run",
+    created_at: "now",
+    updated_at: "now",
+    archived: false,
+    active_attempt_id: null,
+    attempt_count: 0,
+    last_attempt: null,
+    recipe: {},
+    attempts: [],
+  };
+  const calls: [string, RequestInit | undefined][] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      calls.push([url, options]);
+      if (url === "/api/sessions/preview")
+        return new Response(
+          JSON.stringify({
+            valid: true,
+            argv: ["python", "-m", "meow"],
+            display: "meow run",
+            warnings: [],
+            capabilities: {
+              cli: { available: true },
+              claude: {
+                available: false,
+                missing: [],
+                version: null,
+                permission_policy: "unsupported",
+                bypass_supported: false,
+                error: "Claude unavailable",
+              },
+            },
+          }),
+        );
+      if (options?.method === "PUT")
+        return new Response(JSON.stringify({ session }));
+      throw new Error(`Unexpected ${options?.method || "GET"} ${url}`);
+    }),
+  );
+
+  render(
+    <SessionLauncher
+      {...props()}
+      catalog={{ ...catalog, repos: [ownerRepo, selectedRepo] }}
+      repo={selectedRepo}
+      initialRecipe={{
+        name: "Saved session",
+        repo: ownerRepo,
+        mode: "cli",
+        command: "run",
+        request: "Keep working",
+        workflow: null,
+        inputs: {},
+        arguments: [],
+        options: { unattended: true, no_worktree: false },
+      }}
+      sessionId={id}
+      editOnly
+    />,
+  );
+  const repository = screen.getByLabelText("Repository");
+  expect(repository).toHaveValue(ownerRepo);
+  expect(repository).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Preview command" }));
+  await screen.findByText("meow run");
+  await user.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() =>
+    expect(
+      calls.some(
+        ([url, options]) =>
+          url === `/api/sessions/${id}?repo=${encodeURIComponent(ownerRepo)}` &&
+          options?.method === "PUT" &&
+          JSON.parse(String(options.body)).repo === ownerRepo,
+      ),
+    ).toBe(true),
+  );
+  expect(
+    calls.some(([url]) => url.includes(encodeURIComponent(selectedRepo))),
+  ).toBe(false);
+});
+
+test("imported recipe can be saved as an editable draft with unknown flags called out", async () => {
+  const user = userEvent.setup();
+  const id = "b".repeat(32);
+  const session = {
+    id,
+    name: "Imported recipe",
+    repo: "/repo",
+    state: "draft",
+    mode: "cli",
+    command: "run",
+    created_at: "now",
+    updated_at: "now",
+    archived: false,
+    active_attempt_id: null,
+    attempt_count: 0,
+    last_attempt: null,
+    recipe: {},
+    attempts: [],
+  };
+  const calls: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      calls.push(`${options?.method || "GET"} ${url}`);
+      if (url === "/api/sessions" && options?.method === "POST")
+        return new Response(JSON.stringify({ session }), { status: 201 });
+      throw new Error(`Unexpected ${options?.method || "GET"} ${url}`);
+    }),
+  );
+  const onSaved = vi.fn();
+  render(
+    <SessionLauncher
+      {...props()}
+      catalog={{
+        ...catalog,
+        workflows: [
+          {
+            name: "quick",
+            description: "",
+            scope: "project",
+            repo: "/repo",
+            text: "",
+          },
+        ],
+      }}
+      unknownFlags
+      initialRecipe={{
+        name: "Imported recipe",
+        repo: "/repo",
+        mode: "cli",
+        command: "run",
+        request: "Recorded request",
+        workflow: "quick",
+        inputs: { area: "ui" },
+        arguments: [],
+        options: { unattended: true, no_worktree: false },
+      }}
+      onSaved={onSaved}
+    />,
+  );
+
+  expect(
+    screen.getByText(
+      /Historical run facts do not include the original command flags/i,
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Session name")).toHaveValue("Imported recipe");
+  expect(screen.getByLabelText("Workflow")).toHaveValue("quick");
+  await user.click(screen.getByRole("button", { name: "Save as draft" }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(id));
+  expect(calls).toContain("POST /api/sessions");
+  expect(calls.some((call) => call.endsWith("/launch"))).toBe(false);
+});

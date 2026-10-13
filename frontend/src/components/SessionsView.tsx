@@ -8,7 +8,6 @@ import {
   Recipe,
   SessionDetail as SessionRecord,
   SessionSummary,
-  createSession,
   importedRunAction,
   listRuns,
   listSessions,
@@ -295,27 +294,9 @@ export default function SessionsView({
       setBusy(false);
     }
   }
-  async function duplicateRun() {
+  function duplicateRun() {
     if (!selectedRun) return;
-    const recipe = recipeFromRun(selectedRun);
-    setBusy(true);
-    setError("");
-    try {
-      const result = await createSession(selectedRun.repo, recipe);
-      setRevision((value) => value + 1);
-      setSelection({
-        key: `session:${result.session.repo}:${result.session.id}`,
-        session: result.session,
-      });
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "Could not create a draft from this run.",
-      );
-    } finally {
-      setBusy(false);
-    }
+    onRunRecipe(recipeFromRun(selectedRun), undefined, undefined, true);
   }
   function rerunImported() {
     if (!selectedRun) return;
@@ -472,7 +453,7 @@ export default function SessionsView({
         />
         {selectedRun && (
           <div className="imported-actions">
-            <Button variant="outline" onClick={() => void duplicateRun()}>
+            <Button variant="outline" onClick={duplicateRun}>
               <Plus />
               Duplicate as draft
             </Button>
