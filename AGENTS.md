@@ -40,7 +40,7 @@ docs stay in `docs/`.
 ## Plugin skills
 
 `skills/*/SKILL.md`: `/meow:run` (CLI by default), `/meow:plan`,
-`/meow:review`, `/meow:lint`, and `/meow:orchestrate` (native by default;
+`/meow:review`, `/meow:lint`, `/meow:schedule` (OS scheduling through CLI), and `/meow:orchestrate` (native by default;
 its task sprints still run as detached CLI workers); `/meow:onboard`
 (add-ons; projects are onboarded automatically on first use),
 `/meow:migration` (legacy layouts), and `/meow:customize`. Keep each skill's

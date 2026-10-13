@@ -22,6 +22,8 @@ top-level alias or compatibility modules.
 - `evaluation/`: read-only evaluation reports over run journals.
 - `infrastructure/`: lint/test execution, checks, logging, cancellation,
   background workers, usage accounting, and worktree lifecycle/setup.
+  `scheduling.py` owns durable one-shot schedules and execution claims;
+  `scheduled_tasks.py` registers Windows Task Scheduler and Linux systemd triggers.
 - `integrations/`: Jira issue solving, GitLab/GitHub/CI review, documentation
   updates, and knowledge documents.
 - `native/`: deterministic helpers behind `meow native ...` for in-session

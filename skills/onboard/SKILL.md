@@ -149,7 +149,9 @@ Offer optional features as concise yes/no choices. Applicable choices include
 Jira, GitLab, GitHub, Unattended scheduled Jira runs, worktree setup, additional design
 docs, testing infrastructure, Tester mode, Claude hooks, and another feature
 the user explicitly named. Scheduled runs use Windows Task Scheduler on
-Windows, or cron/systemd on Linux. Tester mode is optional and should only be
+Windows, or systemd user timers on Linux, through `/meow:schedule` and
+`meow schedule add`. External cron/systemd jobs remain an option for recurring
+runs. Tester mode is optional and should only be
 enabled after its commands are verified.
 
 When an optional feature is accepted, use the matching documented path:

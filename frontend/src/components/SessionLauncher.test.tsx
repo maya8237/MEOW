@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { Catalog } from "@/lib/catalog";
@@ -21,6 +21,62 @@ const props = (mode: "cli" | "claude" = "cli") => ({
     mode === "claude"
       ? { mode, command: "prompt", request: "Review this change" }
       : undefined,
+});
+
+test("scheduling sends a timestamp and never launches immediately", async () => {
+  const user = userEvent.setup();
+  const id = "a".repeat(32);
+  const calls: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith("/preview"))
+        return new Response(
+          JSON.stringify({
+            valid: true,
+            argv: [],
+            display: "meow run task",
+            warnings: [],
+            capabilities: {
+              cli: { available: true },
+              claude: { available: false },
+            },
+          }),
+        );
+      if (url === "/api/sessions")
+        return new Response(JSON.stringify({ session: { id } }));
+      if (url.endsWith("/schedule")) {
+        expect(JSON.parse(String(options?.body)).at).toBe(
+          "2099-10-14T19:30:00.000Z",
+        );
+        return new Response(
+          JSON.stringify({ session: { id }, schedule: { id: "b".repeat(32) } }),
+        );
+      }
+      throw new Error(`Unexpected ${url}`);
+    }),
+  );
+  const onSaved = vi.fn();
+  render(<SessionLauncher {...props()} onSaved={onSaved} />);
+  await user.type(screen.getByLabelText("Session name"), "Search");
+  await user.type(screen.getByLabelText("Request"), "Fix search");
+  await user.selectOptions(screen.getByLabelText("Start"), "later");
+  // datetime-local is interpreted in the browser's timezone.
+  const local = new Date("2099-10-14T19:30:00.000Z");
+  const value = new Date(local.getTime() - local.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+  fireEvent.change(screen.getByLabelText("Run at"), { target: { value } });
+  expect(
+    screen.getByRole("button", { name: "Schedule session" }),
+  ).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Preview command" }));
+  await screen.findByText("meow run task");
+  await user.click(screen.getByRole("button", { name: "Schedule session" }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(id));
+  expect(calls.some((url) => url.endsWith("/launch"))).toBe(false);
 });
 
 test("CLI draft defaults to unattended and cannot launch before its preview", async () => {

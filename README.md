@@ -40,6 +40,12 @@ meow run "Add CSV export" --name csv-export
 Projects are set up automatically on first use. Use `/meow:onboard` to configure
 integrations and optional features.
 
+To run later, ask `/meow:schedule` to run your request at a future time, use
+`meow schedule add --at "09:00" -- run "Add CSV export" --name csv-export`,
+or choose **Schedule for later** in `meow ui`. Scheduling uses Windows Task
+Scheduler or Linux systemd user timers; see the [CLI guide](docs/CLI.md#scheduling-a-run)
+for timezones, platform requirements, and cancellation.
+
 ## Common commands
 
 | Need | Command |

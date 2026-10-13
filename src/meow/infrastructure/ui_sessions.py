@@ -119,13 +119,15 @@ def _worker_argv(repo: Path, session_id: str, attempt_id: str, token: str) -> li
     ]
 
 
-def launch_attempt(repo: Path, session_id: str) -> Attempt:
+def launch_attempt(
+    repo: Path, session_id: str, *, recipe: Recipe | None = None
+) -> Attempt:
     store = SessionStore(repo)
     with store.claim(session_id, "launch"):
         session = store.load(session_id)
         if session.archived:
             raise SessionError("Unarchive this session before launching it")
-        recipe = _recipe(session.recipe)
+        recipe = recipe or _recipe(session.recipe)
         argv = command_for(recipe)
         token = secrets.token_hex(16)
         attempt = store.create_attempt(session_id, recipe, worker_token=token)

@@ -116,6 +116,18 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         return
     working_dir = Path(args.working_dir).resolve()
     log_working_directory(working_dir)
+    if args.command in {"schedule", "_scheduled"}:
+        from meow.cli.schedule_cli import schedule_command
+        from meow.infrastructure.scheduling import execute_schedule
+
+        try:
+            if args.command == "_scheduled":
+                raise SystemExit(execute_schedule(working_dir, args.schedule_id))
+            schedule_command(args, working_dir)
+        except (ValueError, OSError, RuntimeError) as exc:
+            print(f"Schedule failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        return
     if args.command in {"workflows", "agents"}:
         try:
             catalog_command(args, working_dir)

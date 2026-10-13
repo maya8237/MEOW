@@ -32,6 +32,12 @@ export interface SessionSummary {
   active_attempt_id: string | null;
   attempt_count: number;
   last_attempt: AttemptSummary | null;
+  schedules?: {
+    id: string;
+    at: string;
+    state: string;
+    error?: string | null;
+  }[];
 }
 export interface Attempt {
   id: string;
@@ -146,7 +152,15 @@ export const updateSession = (repo: string, id: string, recipe: Recipe) =>
 export const sessionAction = (
   repo: string,
   id: string,
-  action: "launch" | "resume" | "stop" | "duplicate" | "archive" | "unarchive",
+  action:
+    | "launch"
+    | "resume"
+    | "stop"
+    | "duplicate"
+    | "archive"
+    | "unarchive"
+    | "schedule"
+    | "cancel-schedule",
   values: object = {},
 ) =>
   request<{ session: SessionDetail; attempt?: Attempt }>(

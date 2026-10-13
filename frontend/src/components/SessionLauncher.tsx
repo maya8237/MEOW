@@ -83,6 +83,8 @@ export default function SessionLauncher({
   const [currentSessionId, setCurrentSessionId] = useState(sessionId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [start, setStart] = useState("now");
+  const [runAt, setRunAt] = useState("");
   const unknownFlags = hasUnknownFlags;
   const [bypassAcknowledged, setBypassAcknowledged] = useState(false);
   const [inputRows, setInputRows] = useState<[string, string][]>(
@@ -95,7 +97,12 @@ export default function SessionLauncher({
   );
   const [claudeCapabilities, setClaudeCapabilities] =
     useState<Capabilities | null>(null);
-  const serialized = JSON.stringify(draft);
+  const serialized = JSON.stringify({ draft, start, runAt });
+  const scheduleTime = runAt ? new Date(runAt) : null;
+  const validTime =
+    !!scheduleTime &&
+    Number.isFinite(scheduleTime.getTime()) &&
+    scheduleTime.getTime() > Date.now();
   const itemCanRun =
     catalogItem?.kind !== "agent" || catalogItem.item.claude_resolvable;
   const modeError =
@@ -116,6 +123,10 @@ export default function SessionLauncher({
     setError("");
   }
   async function review() {
+    if (start === "later" && !validTime) {
+      setError("Choose a future date and time.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -150,7 +161,8 @@ export default function SessionLauncher({
         const result = await sessionAction(
           draft.repo,
           saved.session.id,
-          "launch",
+          start === "later" ? "schedule" : "launch",
+          start === "later" ? { at: scheduleTime!.toISOString() } : {},
         );
         onSaved(result.session.id);
       }
@@ -248,6 +260,45 @@ export default function SessionLauncher({
           }}
         >
           <div className="launcher-grid">
+            {!editOnly && (
+              <>
+                <label className="session-field">
+                  Start
+                  <select
+                    aria-label="Start"
+                    value={start}
+                    onChange={(event) => {
+                      setStart(event.target.value);
+                      setPreview(null);
+                      setReviewed("");
+                    }}
+                  >
+                    <option value="now">Run now</option>
+                    <option value="later">Schedule for later</option>
+                  </select>
+                </label>
+                {start === "later" && (
+                  <label className="session-field">
+                    Run at
+                    <Input
+                      type="datetime-local"
+                      aria-label="Run at"
+                      value={runAt}
+                      onChange={(event) => {
+                        setRunAt(event.target.value);
+                        setPreview(null);
+                        setReviewed("");
+                      }}
+                    />
+                    <small>
+                      Your local time (
+                      {Intl.DateTimeFormat().resolvedOptions().timeZone}). The
+                      computer must be available to run.
+                    </small>
+                  </label>
+                )}
+              </>
+            )}
             <label className="session-field">
               Repository
               <select
@@ -577,6 +628,9 @@ export default function SessionLauncher({
                 <strong>Command preview</strong>
               </div>
               <pre>{preview.display}</pre>
+              {start === "later" && scheduleTime && (
+                <p>Scheduled for {scheduleTime.toLocaleString()}.</p>
+              )}
               {preview.warnings.map((warning) => (
                 <p key={warning}>{warning}</p>
               ))}
@@ -615,6 +669,7 @@ export default function SessionLauncher({
               disabled={
                 !previewMatches ||
                 busy ||
+                (start === "later" && !validTime) ||
                 (draft.options.permission_policy === "bypass" &&
                   !bypassAcknowledged) ||
                 (draft.mode === "claude" && !itemCanRun)
@@ -624,9 +679,11 @@ export default function SessionLauncher({
               <Play />
               {editOnly
                 ? "Save changes"
-                : currentSessionId
-                  ? "Save and launch"
-                  : "Launch session"}
+                : start === "later"
+                  ? "Schedule session"
+                  : currentSessionId
+                    ? "Save and launch"
+                    : "Launch session"}
             </Button>
           </footer>
         </form>

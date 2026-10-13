@@ -9,6 +9,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from meow.infrastructure import ui_sessions
+from meow.infrastructure.scheduling import (
+    cancel_schedule,
+    list_schedules,
+    schedule_session,
+)
 from meow.project.repos import repo_choices
 from meow.ui.sessions import (
     Recipe,
@@ -149,6 +154,9 @@ def _summary(store: SessionStore, session: Session) -> dict:
         (attempt.id for attempt in reversed(attempts) if attempt.state in _ACTIVE), None
     )
     recipe = session.recipe
+    schedules = _session_schedules(store.repo, session.id)
+    if any(job["state"] == "scheduled" for job in schedules) and not active:
+        state = "scheduled"
     return {
         "id": session.id,
         "name": recipe["name"],
@@ -162,7 +170,16 @@ def _summary(store: SessionStore, session: Session) -> dict:
         "active_attempt_id": active,
         "attempt_count": len(attempts),
         "last_attempt": _attempt_summary(last),
+        "schedules": schedules,
     }
+
+
+def _session_schedules(repo: Path, session_id: str) -> list[dict]:
+    return [
+        {key: job.get(key) for key in ("id", "at", "state", "error", "attempt_id")}
+        for job in list_schedules(repo)
+        if job.get("session_id") == session_id
+    ]
 
 
 def _detail(store: SessionStore, session: Session) -> dict:
@@ -343,6 +360,26 @@ def post(server, url: str, payload: dict):  # ruff: ignore[complex-structure, to
         session_id = _id(parts[3])
         action = parts[4]
         store, session = _load_session(repo, session_id)
+        if action == "schedule":
+            if session.archived:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "Unarchive before scheduling.")
+            with store.claim(session_id, "schedule"):
+                saved_recipe = Recipe(**store.load(session_id).recipe)
+            # Freeze under the session claim, but release it before enabling
+            # a trigger that may immediately launch its own session attempt.
+            job = schedule_session(repo, payload.get("at"), saved_recipe)
+            return HTTPStatus.CREATED, {
+                "session": _detail(store, store.load(session_id)),
+                "schedule": {key: job[key] for key in ("id", "at", "state")},
+            }
+        if action == "cancel-schedule":
+            schedule_id = _id(payload.get("schedule_id", ""))
+            if not any(
+                job["id"] == schedule_id for job in _session_schedules(repo, session_id)
+            ):
+                raise ApiError(HTTPStatus.NOT_FOUND, "Schedule not found.")
+            cancel_schedule(repo, schedule_id)
+            return HTTPStatus.OK, {"session": _detail(store, store.load(session_id))}
         if action == "launch":
             attempt = ui_sessions.launch_attempt(repo, session_id)
             session = store.load(session_id)
