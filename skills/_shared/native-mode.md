@@ -54,6 +54,7 @@ guess at a venv path. Flags shared by every command:
 | `onboard-status` | Report whether the project is onboarded (shared config plus a correct ignore boundary) and which optional add-ons (Jira, GitLab, GitHub, MCP, tester, hooks, worktree setup, and so on) are not configured yet |
 | `shape-assess` / `shape-create` / `shape-reflect` | Assess, create, or reflect on requirements shaping artifacts |
 | `hook NAME` | Run a Claude Code hook handler (`lint_after_edit`, `shaping_ripple`, `capture_completed_plan`, `validate_plan_stop`) on the hook event JSON from stdin; installed by `meow hooks install claude` |
+| `orchestrate COMMAND ...` | The helpers behind `/meow:orchestrate`; every command and its JSON is listed under "The orchestrate helpers" below |
 
 `capture_completed_plan` runs on PostToolUse with the `Write|Edit` matcher;
 `validate_plan_stop` runs on Stop.
@@ -67,6 +68,38 @@ test directories, and architecture document availability. `ready_unchecked`
 means the local launcher exists; it does not prove that tests pass or a remote
 connection works. Secret environment values are never included. Missing
 architecture files are optional context.
+
+## The orchestrate helpers
+
+`meow native orchestrate COMMAND` supervises one orchestrator (see the
+`orchestrate` skill): a graph of tasks, each an unattended `meow run` sprint in
+its own detached child process, merged into the branch `orchestrator/ID` and
+delivered as one pull request. The helpers call the same functions as
+`meow orchestrate`, print one JSON document, and start no agents; the session
+plays the judgement roles. Every command takes `--work-dir`. Commands that
+change state hold the **native driver lock**: each call refreshes its heartbeat,
+another native call may take it over, a lock without a heartbeat for 10 minutes
+is reclaimable, and a live CLI driver makes them fail with a "driven by a live
+cli driver" message. `status` never takes the lock. `ID` is the 12-character
+orchestrator ID.
+
+| Command | Purpose and JSON |
+|---|---|
+| `init (--objective TEXT \| --tasks FILE) [--from B] [--max-parallel N] [--test] [--no-pr]` | Needs a clean checkout. Creates the orchestrator and its integration worktree and takes the lock. Returns `id`, `integration_worktree`, `state_file`, `tasks_file`, and `decomposer` (`system_prompt`, `query`, `output_file`; `null` when a plain tasks file already defines the tasks, which makes the phase `running`). A tasks file whose every entry has a `source_ref` (a Jira key) is a Jira set and still gets a decomposer, which may only add `depends_on` and `expected_paths` |
+| `tasks ID --file F` | Validate and save the decomposer's output: `{ok: true, tasks}` or `{ok: false, error, retry_allowed}`. One corrective retry; the second rejection fails the orchestrator |
+| `tick ID` | One supervisor step: poll children, commit and merge passed tasks, launch ready ones. Returns `state` (`waiting`, `conflicts`, `failures`, `all_merged`, `blocked`, `cancelled`), `launched`, `merged`, `running`, `conflicts` (`task`, `paths`, `prompt` with `system_prompt` and `query`) and `failures` (`task`, `cause`, `evidence`, `prompt` with `system_prompt`, `query`, `output_file`). Releases the lock on `blocked` and `cancelled` |
+| `wait ID [--timeout S]` | Blocks until a running child's run journal or the cancel marker changes, or `S` seconds (default 300) pass: `{changed, elapsed}`. Run it as a background command instead of polling |
+| `merge-done ID --task T` | Finish a conflicted merge after the files were resolved: `{task, status, commit, paths}` with `status` `merged`, `noop`, `conflict` (conflict markers remain in `paths`), or `checks_failed` (rolled back; the task returns under `failures`) |
+| `merge-abort ID --task T` | Roll the merge back and send the task to triage as an `integration` failure: `{task, status: "aborted"}` |
+| `triage ID --task T --file F` | Validate and apply a triage decision file: `{task, action, status, pending, phase}`. An invalid decision blocks the orchestrator (`action: "invalid"`) |
+| `review ID` | Objective review round: runs the required checks in the integration worktree (committing earlier review fixes first) and returns `round`, `max_rounds`, `checks_passed`, `check_failures`, `system_prompt`, `query`, `review_file`, `model`, `tools` for a fresh reviewer subagent |
+| `review-result ID --file F` | Record the verdict file (parsed like every other verdict; a missing file or failing required checks mean FAIL): `{verdict, round, rounds_left, phase}`. PASS moves to `delivering`; the last FAIL blocks with cause `objective-review` |
+| `deliver ID` | Push the integration branch (idempotent): `{branch, base, title, body, provider, manual_link, open_pr, skip_reason}` for the session to open the PR or MR |
+| `pr ID (--url U \| --error E)` | Record the PR outcome and finish as `delivered`: `{phase, exit_code, report}`. Exit codes: 0 delivered with a PR (or PR disabled), 3 delivered without one, 1 failed, 2 blocked, 130 cancelled |
+| `status [ID]` | The whole journal plus a `summary` (the latest orchestrator when `ID` is omitted) |
+| `cancel ID` | Cancel the live children and the orchestrator |
+| `release ID` | Drop the native driver lock |
+| `resume ID [--task T] [--request TEXT]` | Prepare a stopped orchestrator to be driven again, without driving it: rolls back a half-finished merge, resets a blocked task (cycles to 0, optional new request), returns `failed` orchestrators to the phase that failed, and retries a failed PR. Returns `id`, `phase`, `reset_merge`, `decomposer` |
 
 ## Resolved workflow and agent definitions
 
