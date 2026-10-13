@@ -42,6 +42,20 @@ speculative refactoring before the cause is established.
 '''
 
 [fragments]
+task_graph_repair = '''
+Repair the existing task graph at {{plan_file}}.tasks.json using the validation
+error in the task message. Read {{plan_file}} and its graph first. Edit only
+the graph; preserve the plan, Sprint Contract, scope, and verification intent.
+Do not implement tasks, edit source files, delete the graph, or drop work.
+Keep independent work parallel where ownership is disjoint. For overlapping
+ownership, add justified dependencies, adjust ownership, or combine tasks.
+Write a JSON object with only a tasks array. Each task has exactly id (a unique
+1-64 character identifier starting with a letter or digit and containing only
+letters, digits, '-' or '_'), depends_on, owned_paths, and verification.
+The last three fields are arrays of strings. Use project-relative owned_paths
+and shell commands for verification. Dependencies must name existing tasks
+and must not form cycles. Independent tasks must not own overlapping paths.
+'''
 shape = '''{{#if shape}}Accepted shaping context: artifact path
 {{shape.artifact_path}}; chosen approach {{shape.chosen_approach}};
 assumptions: {{shape.assumptions}}. Treat assumptions as Sprint Contract
