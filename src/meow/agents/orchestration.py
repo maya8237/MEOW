@@ -6,13 +6,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from meow.agents.base import Agent, prepare_output_file, restrict_writes
+from meow.agents.base import (
+    Agent,
+    guard_tools,
+    prepare_output_file,
+    restrict_writes,
+    tool_input_path,
+)
 from meow.agents.fixers import ReviewFixAgent
 from meow.agents.mcp_fetcher import IssueFetcherAgent
 from meow.agents.reviewer import ReviewerAgent
 from meow.agents.tester import VerificationAgent
 from meow.execution.orchestration.model import MAX_ORCHESTRATOR_TASKS
-from meow.project.prompts import decomposer_prompt, decomposer_query
+from meow.project.prompts import (
+    decomposer_prompt,
+    decomposer_query,
+    integrator_prompt,
+    integrator_query,
+)
 
 
 class DecomposerAgent(Agent):
@@ -54,6 +65,39 @@ class DecomposerAgent(Agent):
         return output_file
 
 
+class IntegratorAgent(Agent):
+    """Resolves the conflicts of one merge inside the integration worktree."""
+
+    async def resolve(
+        self,
+        conflicted_paths: list[str],
+        task_request: str,
+        merged_requests: list[str],
+    ) -> None:
+        active = self.context.active_working_dir()
+        allowed = {(active / path).resolve() for path in conflicted_paths}
+        agent = self.definition("integrator")
+        options = self.definition_options(
+            agent,
+            system_prompt=integrator_prompt(active, conflicted_paths, agent=agent),
+        )
+        guard_tools(
+            options,
+            {"Write", "Edit"},
+            lambda tool_input: (
+                None
+                if tool_input_path(tool_input, active) in allowed
+                else "The integrator may edit only the conflicted files: "
+                + ", ".join(conflicted_paths)
+            ),
+        )
+        await self.run_query(
+            integrator_query(conflicted_paths, task_request, merged_requests),
+            options,
+            "Integrator",
+        )
+
+
 @dataclass
 class OrchestratorAgents:
     """Builds each role from an `AgentContext`; swap a field to stub a role.
@@ -64,7 +108,7 @@ class OrchestratorAgents:
 
     decomposer: Callable[..., DecomposerAgent] = DecomposerAgent
     triage: Callable[..., Any] | None = None
-    integrator: Callable[..., Any] | None = None
+    integrator: Callable[..., Any] | None = IntegratorAgent
     reviewer: Callable[..., ReviewerAgent] = ReviewerAgent
     fixer: Callable[..., ReviewFixAgent] = ReviewFixAgent
     tester: Callable[..., VerificationAgent] = VerificationAgent
