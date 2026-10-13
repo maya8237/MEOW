@@ -15,6 +15,7 @@ PLAN = Path("/repo/.meow/plans/feature.md")
 REVIEW = Path("/repo/.meow/plans/feature-review.md")
 SHAPE = ShapeContext("docs/shape.json", "bounded adapter", ("legacy API remains",))
 LINT = [LintCommand("ruff check"), LintCommand("fallow", gate=False)]
+OBJECTIVE = "Add login\n\nTasks:\n- api: Build the login endpoint\n- ui: Build the form"
 EVIDENCE = {"files": ["src/a.py"], "notes": "x"}
 INTEGRATION_WORKTREE = Path("/repo/.worktrees/orch-0123456789ab")
 CONFLICTS = ["src/a.py", "docs/b.md"]
@@ -89,4 +90,10 @@ def cases() -> list[tuple[str, str, tuple, dict]]:
             ("main", "feature/x", REVIEW, lint),
             {"check_worktree_hygiene": hygiene, "shape_context": shape},
         ))
+    found.append((
+        "branch_review-objective",
+        "branch_review_prompt",
+        ("main", "orchestrator/0123456789ab", REVIEW, LINT),
+        {"check_worktree_hygiene": True, "objective": OBJECTIVE},
+    ))
     return found

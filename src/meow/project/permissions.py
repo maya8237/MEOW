@@ -19,6 +19,7 @@ _ROLES = frozenset({
     "issue_fetcher",
     "gitlab_fetcher",
     "github_fetcher",
+    "pull_request",
     "docs_updater",
     "setup",
     "explorer",

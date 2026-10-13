@@ -277,6 +277,8 @@ def branch_review_query(target: str, branch: str, diff: str, lint_report: str) -
 class ReviewerAgent(Agent):
     """Review plans and working trees through a generic project context."""
 
+    last_review_file: Path | None = None  # the verdict file of the latest branch review
+
     async def review_ci_branch(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches] -- stream validates each SDK message type
         self, context: "CiReviewContext"
     ) -> tuple[str, str]:
@@ -426,8 +428,15 @@ class ReviewerAgent(Agent):
         verdict_text = _read_review_file(review_file)
         return _verdict_status(verdict_text), verdict_text
 
-    async def review_branch(self, target: str, branch: str) -> tuple[str, str]:
+    async def review_branch(
+        self, target: str, branch: str, *, objective: str | None = None
+    ) -> tuple[str, str]:
         """Grade a local branch's diff against a target branch, PASS/FAIL.
+
+        `objective`, when given, is what the whole branch is meant to
+        achieve (the orchestrator's objective and task list); the reviewer
+        grades the branch against it. The verdict file is left in
+        `last_review_file`.
 
         Unlike `review_remote_change` (a remote diff, no local checkout),
         `branch` is actually checked out in the active working directory,
@@ -438,6 +447,7 @@ class ReviewerAgent(Agent):
         review_dir.mkdir(parents=True, exist_ok=True)
         review_file = review_dir / new_review_filename("branch")
         _prepare_review_file(review_file)
+        self.last_review_file = review_file
         diff_text = _branch_diff(self.context.active_working_dir(), target, branch)
         lint_evidence = await self._lint_evidence()
         agent = self.definition("reviewer")
@@ -449,6 +459,7 @@ class ReviewerAgent(Agent):
                 review_file,
                 self.context.lint_commands(),
                 check_worktree_hygiene=self.context.use_worktree,
+                objective=objective,
                 agent=agent,
             ),
         )

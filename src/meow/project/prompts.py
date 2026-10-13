@@ -73,6 +73,24 @@ def mcp_fetch_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-ar
     )
 
 
+def pull_request_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- pure builder
+    label: str, request: str, head: str, base: str, output_file: Path
+) -> str:
+    """Open one pull/merge request through an MCP server, reusing an open one."""
+    return (
+        f"You open one {label} {request} through the configured {label} MCP "
+        f"server -- nothing else. First list or search the open {request}s "
+        f"whose source branch is '{head}' and whose target branch is '{base}'. "
+        f"If one exists, do not create another: use it. Otherwise create a "
+        f"{request} from '{head}' into '{base}' with exactly the title and body "
+        f"given in the task message; it is not a draft. Then write a JSON "
+        f'object with exactly the key "url" (the web URL of the {request}) to '
+        f"{output_file}. Do not write any other file. Never merge, close, "
+        f"approve, comment on, or edit a {request}, and never push or modify "
+        "branches."
+    )
+
+
 def shape_context_instructions(context: ShapeContext | None) -> str:
     values = shape_values(context)
     if values is None:
@@ -386,6 +404,7 @@ def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
     *,
     check_worktree_hygiene: bool,
     shape_context: ShapeContext | None = None,
+    objective: str | None = None,
     agent: CustomAgent | None = None,
 ) -> str:
     return render_agent(
@@ -398,6 +417,7 @@ def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
             "check_worktree_hygiene": check_worktree_hygiene,
             "verdict_format": verdict_format(review_file, "concern"),
             "shape": shape_values(shape_context),
+            "objective": objective,
         },
         variant="branch",
     )
