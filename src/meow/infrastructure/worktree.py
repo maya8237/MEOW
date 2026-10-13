@@ -348,22 +348,35 @@ def _add_detached_worktree(  # ruff: ignore[too-many-arguments]
 _GIT_TIMEOUT = 600
 
 
-def _run_git(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess:
-    try:
-        return subprocess.run(
-            argv,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            check=False,
-            encoding="utf-8",
-            timeout=_GIT_TIMEOUT,
-            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-        )
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(
-            f"{' '.join(argv)} timed out after {_GIT_TIMEOUT}s in {cwd}"
-        ) from None
+def _run_git(
+    argv: list[str], *, cwd: Path, timeout: float | None = None
+) -> subprocess.CompletedProcess:
+    from meow.infrastructure.checks import kill_process_tree
+
+    timeout = _GIT_TIMEOUT if timeout is None else timeout
+    with subprocess.Popen(
+        argv,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        start_new_session=os.name != "nt",
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            kill_process_tree(process)
+            process.communicate(timeout=5)
+            raise RuntimeError(
+                f"{' '.join(argv)} timed out after {timeout}s in {cwd}"
+            ) from None
+        except BaseException:
+            kill_process_tree(process)
+            raise
+        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
 
 
 def _prune_worktrees(git: str, working_dir: Path) -> None:

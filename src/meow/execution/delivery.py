@@ -1,13 +1,12 @@
 """Commit and push a verified run from an eligible checkout."""
 
-import os
 import re
 import subprocess
 from pathlib import Path
 
 from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled, check_cancel, delivery_lock
-from meow.infrastructure.worktree import _is_linked_worktree
+from meow.infrastructure.worktree import _is_linked_worktree, _run_git
 from meow.infrastructure.worktree_setup import is_secret_like
 
 # An unattended run must fail a stuck push (credential prompt, hook, network)
@@ -22,20 +21,7 @@ _NO_IDENTITY = re.compile(
 def _git(
     directory: Path, *args: str, check: bool = True
 ) -> subprocess.CompletedProcess:
-    try:
-        result = subprocess.run(
-            ["git", *args],
-            cwd=directory,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=_GIT_TIMEOUT,
-            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-        )
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(
-            f"git {' '.join(args)} timed out after {_GIT_TIMEOUT}s"
-        ) from None
+    result = _run_git(["git", *args], cwd=directory, timeout=_GIT_TIMEOUT)
     if check and result.returncode:
         detail = result.stderr.strip() or result.stdout.strip()
         raise RuntimeError(f"git {' '.join(args)} failed: {detail}")
