@@ -269,6 +269,82 @@ def _add_shape(sub) -> None:
     parser.add_argument("path")
 
 
+def _orchestrate_leaf(
+    commands, name: str, text: str, id_nargs: str | None = None
+) -> argparse.ArgumentParser:
+    parser = commands.add_parser(name, help=text)
+    _add_dirs(parser)
+    parser.add_argument(
+        "orch_id", nargs=id_nargs, metavar="ID", help="Orchestrator ID."
+    )
+    return parser
+
+
+def _add_orchestrate_init(commands) -> None:
+    parser = commands.add_parser(
+        "init", help="Create an orchestrator and its worktree; take the driver lock."
+    )
+    _add_dirs(parser)
+    parser.add_argument("--objective", default=None, help="Free-text objective.")
+    parser.add_argument("--tasks", dest="tasks_file", default=None, help="Tasks file.")
+    parser.add_argument("--from", dest="base", default=None, help="Base branch.")
+    parser.add_argument("--max-parallel", dest="max_parallel", type=int, default=None)
+    parser.add_argument("--test", action="store_true", help="Run tests in each task.")
+    parser.add_argument("--no-pr", dest="no_pr", action="store_true")
+
+
+def _add_orchestrate_simple(commands) -> None:
+    for name, text in (
+        ("tick", "Poll children, merge, launch; report what needs the session."),
+        ("review", "Run checks and print the objective-review prompt for a round."),
+        ("deliver", "Push the integration branch; print the PR title and body."),
+        ("cancel", "Cancel the orchestrator and its live children."),
+        ("release", "Drop the native driver lock."),
+    ):
+        _orchestrate_leaf(commands, name, text)
+    _orchestrate_leaf(commands, "status", "Roll-up of an orchestrator.", "?")
+    _orchestrate_leaf(
+        commands, "wait", "Block until a child journal changes."
+    ).add_argument(
+        "--timeout", type=float, default=300.0, help="Seconds to wait (default: 300)."
+    )
+
+
+def _add_orchestrate_options(commands) -> None:
+    for name, text in (
+        ("tasks", "Validate and save the decomposer output."),
+        ("review-result", "Record an objective-review verdict file."),
+    ):
+        _orchestrate_leaf(commands, name, text).add_argument("--file", required=True)
+    for name, text in (
+        ("merge-done", "Finish a merge after conflict resolution."),
+        ("merge-abort", "Roll a conflicted merge back."),
+    ):
+        _orchestrate_leaf(commands, name, text).add_argument(
+            "--task", dest="task_id", required=True
+        )
+    triage = _orchestrate_leaf(commands, "triage", "Apply a triage decision file.")
+    triage.add_argument("--task", dest="task_id", required=True)
+    triage.add_argument("--file", required=True)
+    outcome = _orchestrate_leaf(commands, "pr", "Record the PR outcome.")
+    group = outcome.add_mutually_exclusive_group(required=True)
+    group.add_argument("--url", default=None)
+    group.add_argument("--error", default=None)
+    resume = _orchestrate_leaf(commands, "resume", "Prepare a stopped orchestrator.")
+    resume.add_argument("--task", dest="task_id", default=None)
+    resume.add_argument("--request", default=None)
+
+
+def _add_orchestrate(sub) -> None:
+    group = sub.add_parser(
+        "orchestrate", help="Helpers behind /meow:orchestrate (JSON out)."
+    )
+    commands = group.add_subparsers(dest="orchestrate_command", required=True)
+    _add_orchestrate_init(commands)
+    _add_orchestrate_simple(commands)
+    _add_orchestrate_options(commands)
+
+
 def add_native_parser(
     subparsers: argparse._SubParsersAction,
     *,
@@ -301,6 +377,7 @@ def add_native_parser(
     _add_dirs(workflow)
     _add_hook(sub)
     _add_shape(sub)
+    _add_orchestrate(sub)
 
 
 def _resolve(path: str | None, base: Path) -> Path | None:
@@ -370,6 +447,56 @@ def _prompt(args, working_dir: Path, active: Path) -> dict:
     )
 
 
+_ORCHESTRATE_HANDLERS = {
+    "init": lambda mod, args, wd, active: mod.init(
+        wd,
+        objective=args.objective,
+        tasks_file=_resolve(args.tasks_file, active),
+        base=args.base,
+        max_parallel=args.max_parallel,
+        test=args.test,
+        no_pr=args.no_pr,
+    ),
+    "tasks": lambda mod, args, wd, active: mod.save_tasks(
+        wd, args.orch_id, _resolve(args.file, active)
+    ),
+    "tick": lambda mod, args, wd, active: mod.tick(wd, args.orch_id),
+    "wait": lambda mod, args, wd, active: mod.wait(wd, args.orch_id, args.timeout),
+    "merge-done": lambda mod, args, wd, active: mod.merge_done(
+        wd, args.orch_id, args.task_id
+    ),
+    "merge-abort": lambda mod, args, wd, active: mod.merge_abort(
+        wd, args.orch_id, args.task_id
+    ),
+    "triage": lambda mod, args, wd, active: mod.triage(
+        wd, args.orch_id, args.task_id, _resolve(args.file, active)
+    ),
+    "review": lambda mod, args, wd, active: mod.review(wd, args.orch_id),
+    "review-result": lambda mod, args, wd, active: mod.review_result(
+        wd, args.orch_id, _resolve(args.file, active)
+    ),
+    "deliver": lambda mod, args, wd, active: mod.deliver(wd, args.orch_id),
+    "pr": lambda mod, args, wd, active: mod.record_pr(
+        wd, args.orch_id, url=args.url, error=args.error
+    ),
+    "status": lambda mod, args, wd, active: mod.status(wd, args.orch_id),
+    "cancel": lambda mod, args, wd, active: mod.cancel(wd, args.orch_id),
+    "release": lambda mod, args, wd, active: mod.release(wd, args.orch_id),
+    "resume": lambda mod, args, wd, active: mod.resume(
+        wd, args.orch_id, task_id=args.task_id, request=args.request
+    ),
+}
+
+
+def _orchestrate(args, working_dir: Path, active: Path) -> dict:
+    # Imported here so every other `meow native` command starts without the
+    # orchestrator's heavier imports.
+    from meow.native import native_orchestrate
+
+    handler = _ORCHESTRATE_HANDLERS[args.orchestrate_command]
+    return handler(native_orchestrate, args, working_dir, active)
+
+
 _HANDLERS = {
     "workflow": lambda args, wd, active: native.workflow(wd, active, args.name),
     "prepare": _prepare,
@@ -402,6 +529,7 @@ _HANDLERS = {
         _resolve(args.path, active)
     ),
     "hook": lambda args, wd, active: HANDLERS[args.name](json.load(sys.stdin)),
+    "orchestrate": _orchestrate,
 }
 
 

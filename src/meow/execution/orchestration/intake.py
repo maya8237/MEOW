@@ -179,7 +179,8 @@ def save_decomposed(
     return tasks
 
 
-def _drafts_text(drafts: Sequence[OrchestratorTask]) -> str:
+def drafts_text(drafts: Sequence[OrchestratorTask]) -> str:
+    """The Jira drafts as the decomposer sees them (shared by CLI and native)."""
     return "\n\n".join(
         f"Task {draft.id} ({draft.source_ref}):\n{draft.request}" for draft in drafts
     )
@@ -236,7 +237,7 @@ async def decompose(  # ruff: ignore[too-many-arguments]
         await decomposer.run(
             objective,
             output_file,
-            task_drafts=_drafts_text(drafts) if drafts else None,
+            task_drafts=drafts_text(drafts) if drafts else None,
             correction=correction,
         )
         try:
