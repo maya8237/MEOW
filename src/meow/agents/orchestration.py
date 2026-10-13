@@ -3,18 +3,21 @@ role the orchestrator drives (so tests and native mode can substitute stubs)."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from meow.agents.base import (
     Agent,
+    AgentContext,
+    allow_only_tools,
     guard_tools,
     prepare_output_file,
     restrict_writes,
     tool_input_path,
 )
 from meow.agents.fixers import ReviewFixAgent
-from meow.agents.mcp_fetcher import IssueFetcherAgent
+from meow.agents.mcp_fetcher import IssueFetcherAgent, McpFetcherAgent, _parse_record
 from meow.agents.reviewer import ReviewerAgent
 from meow.agents.tester import VerificationAgent
 from meow.execution.orchestration.model import MAX_ORCHESTRATOR_TASKS
@@ -23,6 +26,7 @@ from meow.project.prompts import (
     decomposer_query,
     integrator_prompt,
     integrator_query,
+    pull_request_prompt,
     triage_prompt,
     triage_query,
 )
@@ -128,6 +132,80 @@ class IntegratorAgent(Agent):
         )
 
 
+# MCP tool names differ per server, so match by the verbs a PR needs.
+_PULL_REQUEST_TOOLS = (
+    "*create_pull_request*",
+    "*create_merge_request*",
+    "*list_pull_requests*",
+    "*list_merge_requests*",
+    "*search_pull_requests*",
+)
+_PROVIDERS = {
+    "github": ("GitHub", "pull request"),
+    "gitlab": ("GitLab", "merge request"),
+}
+
+
+class PullRequestAgent(McpFetcherAgent):
+    """Opens the pull/merge request for the integration branch.
+
+    It may use only the provider's create/list/search tools and write only its
+    own output file, so a confused model cannot merge or close anything.
+    """
+
+    role = "pull_request"
+
+    def __init__(
+        self,
+        context: AgentContext,
+        mcp_config: dict,
+        provider: Literal["github", "gitlab"],
+    ):
+        self.server = provider
+        self.label, self.request = _PROVIDERS[provider]
+        super().__init__(context, mcp_config)
+
+    def _permitted(self, tool: str) -> bool:
+        return tool == "Write" or any(
+            fnmatchcase(tool, f"mcp__{self.server}__{pattern}")
+            for pattern in _PULL_REQUEST_TOOLS
+        )
+
+    async def open(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- one value per PR field
+        self, title: str, body: str, head: str, base: str, output_file: Path
+    ) -> str:
+        """Open (or find) the PR/MR for `head` into `base`; return its URL."""
+        options = self._options(
+            system_prompt=pull_request_prompt(
+                self.label, self.request, head, base, output_file
+            ),
+            allowed_tools=[*self._tools, "Write"],
+        )
+        allow_only_tools(
+            options,
+            self._permitted,
+            f"Only {self.label} {self.request} tools and the output file may be used",
+        )
+        restrict_writes(options, output_file, self.context.active_working_dir())
+        prepare_output_file(output_file)
+        await self.run_query(
+            f"Open the {self.request}.\n\nTitle: {title}\n\nBody:\n{body}",
+            options,
+            self.role,
+        )
+        if not output_file.is_file():
+            raise RuntimeError(
+                f"{self.role} did not write {output_file} -- the {self.label} MCP "
+                f"may not have created the {self.request}."
+            )
+        url = _parse_record(self.role, output_file.read_text(encoding="utf-8")).get(
+            "url"
+        )
+        if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+            raise RuntimeError(f"{self.role} output has no valid 'url': {url!r}")
+        return url
+
+
 @dataclass
 class OrchestratorAgents:
     """Builds each role from an `AgentContext`; swap a field to stub a role.
@@ -142,5 +220,5 @@ class OrchestratorAgents:
     reviewer: Callable[..., ReviewerAgent] = ReviewerAgent
     fixer: Callable[..., ReviewFixAgent] = ReviewFixAgent
     tester: Callable[..., VerificationAgent] = VerificationAgent
-    pull_request: Callable[..., Any] | None = None
+    pull_request: Callable[..., Any] | None = PullRequestAgent
     issue_fetcher: Callable[..., IssueFetcherAgent] = IssueFetcherAgent

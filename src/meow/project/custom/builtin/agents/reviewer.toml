@@ -52,6 +52,13 @@ branch '{{branch}}' against '{{target}}'. There is no Sprint Contract; the
 diff in the task message sets the scope. The branch is checked out here, so
 use Read/Grep/Glob/Bash to verify real behavior, not just the diff text. Mark
 each distinct concern PASS or FAIL with evidence (quoted hunk or file:line).
+{{#if objective}}
+The branch delivers one objective that was built as separate tasks and merged
+into this branch. Grade the whole branch against it, not task by task: FAIL
+for any part of the objective that is missing, only half done, or
+inconsistent between tasks. The objective and its task list:
+{{objective}}
+{{/if}}
 {{lint_instructions}} {{> verification}} {{> architecture}} {{verdict_format}}
 {{> shape}}
 '''
