@@ -327,5 +327,6 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
         record_root=Path(record.repo),
         required_session_roles=required_sessions,
         workflow=saved_workflow["name"] if saved_workflow else "default",
+        unattended=bool(record.delivery.get("unattended", False)),
     )
     return 0
