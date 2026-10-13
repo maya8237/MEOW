@@ -494,6 +494,7 @@ def _cli_argv(recipe: Recipe) -> list[str]:
         recipe.command,
         *generated,
         *recipe.arguments,
+        *(["--"] if recipe.request.startswith("-") else []),
         recipe.request,
     ]
 

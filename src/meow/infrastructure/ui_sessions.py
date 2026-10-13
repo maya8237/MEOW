@@ -11,7 +11,8 @@ import subprocess
 import sys
 import threading
 import time
-from contextlib import suppress
+from contextlib import nullcontext, suppress
+from datetime import UTC, datetime
 from pathlib import Path
 
 from meow.common.process import process_identity
@@ -27,6 +28,7 @@ from meow.ui.sessions import (
 _REGISTER_SECONDS = 8
 _STOP_GRACE_SECONDS = 2
 _UTF8_CONTINUATION = 0x80
+_UI_WORKER_STARTUP_GRACE_SECONDS = 8
 
 
 def _worker_env() -> dict[str, str]:
@@ -48,15 +50,61 @@ def reconcile_attempt(repo: Path, session_id: str, attempt_id: str) -> Attempt:
     if attempt.state in {"starting", "running", "stopping"}:
         pid = attempt.worker.get("pid")
         identity = attempt.worker.get("identity")
-        if (
-            not isinstance(pid, int)
-            or not isinstance(identity, str)
-            or process_identity(pid) != identity
-        ):
+        alive = (
+            isinstance(pid, int)
+            and isinstance(identity, str)
+            and process_identity(pid) == identity
+        )
+        if not alive and not _attempt_is_starting(repo, session_id, attempt):
             return store.finish_attempt(
                 session_id, attempt_id, "interrupted", attempt.exit_code
             )
     return attempt
+
+
+def _attempt_is_starting(repo: Path, session_id: str, attempt: Attempt) -> bool:
+    if attempt.worker.get("pid"):
+        return False
+    try:
+        created = datetime.fromisoformat(attempt.created_at)
+        age = (datetime.now(UTC) - created).total_seconds()
+        if 0 <= age <= _UI_WORKER_STARTUP_GRACE_SECONDS:
+            return True
+        claim = json.loads(
+            (SessionStore(repo)._directory(session_id) / "claim.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        return (
+            claim.get("action") in {"launch", "resume"}
+            and isinstance(claim.get("pid"), int)
+            and isinstance(claim.get("identity"), str)
+            and process_identity(claim["pid"]) == claim["identity"]
+        )
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def _run_resume_claim(repo: Path, run_id: str):
+    """Serialize resumes of one run until the detached UI worker registers."""
+    return SessionStore(repo).claim(run_id, "run-resume")
+
+
+def _has_active_ui_run(repo: Path, run_id: str) -> bool:
+    store = SessionStore(repo)
+    for session in store.list():
+        for attempt_id in session.attempts:
+            attempt = store._read_attempt(session.id, attempt_id)
+            if run_id not in attempt.run_ids or attempt.state not in {
+                "starting",
+                "running",
+                "stopping",
+            }:
+                continue
+            attempt = reconcile_attempt(repo, session.id, attempt_id)
+            if attempt.state in {"starting", "running", "stopping"}:
+                return True
+    return False
 
 
 def _worker_argv(repo: Path, session_id: str, attempt_id: str, token: str) -> list[str]:
@@ -75,6 +123,8 @@ def launch_attempt(repo: Path, session_id: str) -> Attempt:
     store = SessionStore(repo)
     with store.claim(session_id, "launch"):
         session = store.load(session_id)
+        if session.archived:
+            raise SessionError("Unarchive this session before launching it")
         recipe = _recipe(session.recipe)
         argv = command_for(recipe)
         token = secrets.token_hex(16)
@@ -173,11 +223,60 @@ def _resume_supported(repo: Path, record) -> bool:
     )
 
 
+def attempt_resume_status(repo: Path, attempt: Attempt) -> dict[str, bool | str]:
+    """Expose resumability from the authoritative MEOW run or Claude session."""
+    if attempt.state in {"starting", "running", "stopping"}:
+        return {
+            "resume_supported": False,
+            "resume_needs_request": False,
+            "state": attempt.state,
+        }
+    if attempt.run_ids:
+        from meow.execution.run_state import RunStore
+
+        record = RunStore(repo).load(attempt.run_ids[-1])
+        needs_request = record.phase == "needs_user_decision"
+        return {
+            "resume_supported": _resume_supported(repo, record),
+            "resume_needs_request": needs_request,
+            "state": "needs_decision" if needs_request else attempt.state,
+        }
+    supported = False
+    if attempt.claude_session_id and attempt.state in {
+        "stopped",
+        "interrupted",
+        "needs_decision",
+    }:
+        try:
+            from meow.ui.sessions import detect_capabilities
+
+            supported = bool(detect_capabilities(Path(repo))["available"])
+        except Exception:
+            supported = False
+    return {
+        "resume_supported": supported,
+        "resume_needs_request": False,
+        "state": attempt.state,
+    }
+
+
+def reconcile_session(repo: Path, session_id: str) -> Session:
+    """Reconcile saved attempt ownership before exposing session state."""
+    store = SessionStore(repo)
+    session = store.load(session_id)
+    for attempt_id in session.attempts:
+        reconcile_attempt(repo, session_id, attempt_id)
+    return store.load(session_id)
+
+
 def serialize_imported_run(repo: Path, run_id: str) -> dict:
     from meow.execution.run_state import TERMINAL_PHASES, RunStore
     from meow.infrastructure.background import inspect_worker
 
     store = RunStore(repo)
+    from meow.infrastructure.background import reconcile_worker
+
+    reconcile_worker(store, run_id)
     record = store.load(run_id)
     saved_workflow = record.results.get("workflow")
     workflow = None
@@ -214,6 +313,7 @@ def serialize_imported_run(repo: Path, run_id: str) -> dict:
         "ui_session_id": record.ui_session_id,
         "ui_attempt_id": record.ui_attempt_id,
         "resume_supported": _resume_supported(repo, record),
+        "resume_needs_request": record.phase == "needs_user_decision",
         "cancel_supported": record.phase not in TERMINAL_PHASES
         and worker.state in {"running", "starting"},
     }
@@ -319,22 +419,26 @@ def resume_imported_run(
     from meow.ui.sessions import new_id
 
     repo = Path(repo).resolve()
-    record = _validate_imported_resume(repo, run_id, request, repair)
+    with _run_resume_claim(repo, run_id):
+        if _has_active_ui_run(repo, run_id):
+            from meow.ui.sessions import SessionBusy
 
-    session_id = new_id()
-    sessions = SessionStore(repo)
-    recipe = _imported_resume_recipe(repo, record, session_id, request)
-    session = sessions.save_recipe(recipe)
-    with sessions.claim(session.id, "resume"):
-        attempt = sessions.create_attempt(session.id, recipe, secrets.token_hex(16))
-        attempt = sessions.update_attempt(
-            session.id,
-            attempt.id,
-            argv=_imported_resume_argv(record, repo, request, repair),
-            run_ids=[record.id],
-        )
-        attempt = _launch_owned_attempt(sessions, attempt)
-    return session, attempt
+            raise SessionBusy("This MEOW run already has an active UI resume")
+        record = _validate_imported_resume(repo, run_id, request, repair)
+        session_id = new_id()
+        sessions = SessionStore(repo)
+        recipe = _imported_resume_recipe(repo, record, session_id, request)
+        session = sessions.save_recipe(recipe)
+        with sessions.claim(session.id, "resume"):
+            attempt = sessions.create_attempt(session.id, recipe, secrets.token_hex(16))
+            attempt = sessions.update_attempt(
+                session.id,
+                attempt.id,
+                argv=_imported_resume_argv(record, repo, request, repair),
+                run_ids=[record.id],
+            )
+            attempt = _launch_owned_attempt(sessions, attempt)
+        return session, attempt
 
 
 def cancel_imported_run(repo: Path, run_id: str):
@@ -447,7 +551,7 @@ def resume_argv(
     raise SessionError("Attempt has no resumable MEOW run or Claude session")
 
 
-def resume_attempt(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+def resume_attempt(  # ruff: ignore[complex-structure, too-many-arguments, too-many-positional-arguments, too-many-statements]
     repo: Path,
     session_id: str,
     attempt_id: str,
@@ -455,14 +559,38 @@ def resume_attempt(  # ruff: ignore[too-many-arguments, too-many-positional-argu
     repair: bool = False,
 ) -> Attempt:
     store = SessionStore(repo)
-    with store.claim(session_id, "resume"):
-        old = store._read_attempt(session_id, attempt_id)
-        argv = resume_argv(old, request, repair)
-        recipe = _recipe(old.effective_recipe)
-        attempt = store.create_attempt(session_id, recipe, secrets.token_hex(16))
-        store.update_attempt(session_id, attempt.id, argv=argv)
-        # Resume argv is server-owned and stored on the new attempt.
-        return _launch_owned_attempt(store, attempt)
+    old = store._read_attempt(session_id, attempt_id)
+    run_id = old.run_ids[-1] if old.run_ids else None
+    claim = _run_resume_claim(Path(repo).resolve(), run_id) if run_id else nullcontext()
+    with claim:
+        if run_id and _has_active_ui_run(repo, run_id):
+            from meow.ui.sessions import SessionBusy
+
+            raise SessionBusy("This MEOW run already has an active UI resume")
+        with store.claim(session_id, "resume"):
+            old = store._read_attempt(session_id, attempt_id)
+            if old.run_ids and old.run_ids[-1] != run_id:
+                raise SessionError("Linked MEOW run changed while preparing resume")
+            session = store.load(session_id)
+            if session.archived:
+                raise SessionError("Unarchive this session before resuming it")
+            if run_id:
+                _validate_imported_resume(Path(repo).resolve(), run_id, request, repair)
+            else:
+                if not old.claude_session_id:
+                    raise SessionError(
+                        "Attempt has no resumable MEOW run or Claude session"
+                    )
+                if old.state not in {"stopped", "interrupted", "needs_decision"}:
+                    raise SessionError("Attempt is not resumable")
+            argv = resume_argv(old, request, repair)
+            recipe = _recipe(old.effective_recipe)
+            attempt = store.create_attempt(session_id, recipe, secrets.token_hex(16))
+            attempt = store.update_attempt(
+                session_id, attempt.id, argv=argv, run_ids=list(old.run_ids)
+            )
+            # Resume argv is server-owned and stored on the new attempt.
+            return _launch_owned_attempt(store, attempt)
 
 
 def _start_owned_worker(store: SessionStore, attempt: Attempt) -> subprocess.Popen:

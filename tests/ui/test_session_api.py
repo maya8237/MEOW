@@ -19,6 +19,8 @@ from meow.ui import session_api
 from meow.ui.server import _Server
 from meow.ui.sessions import Recipe, SessionStore
 
+LAUNCH_PID = 123
+
 
 @pytest.fixture
 def project(tmp_path):
@@ -117,6 +119,106 @@ def test_create_list_detail_and_update_session(running, project):
     )
     assert status == HTTPStatus.OK
     assert body["session"]["recipe"]["request"] == "edited"
+
+
+def test_session_detail_read_reconciles_a_dead_saved_worker(
+    running, project, monkeypatch
+):
+    store = SessionStore(project)
+    saved = store.save_recipe(
+        Recipe(
+            "a" * 32,
+            "stale",
+            str(project.resolve()),
+            "cli",
+            "run",
+            "task",
+            None,
+            {},
+            [],
+            {},
+        )
+    )
+    attempt = store.create_attempt(saved.id, Recipe(**saved.recipe), "token")
+    store.update_attempt(
+        saved.id,
+        attempt.id,
+        state="running",
+        worker={"pid": 43210, "identity": "dead-worker", "token": "token"},
+    )
+    monkeypatch.setattr(ui_sessions, "process_identity", lambda _pid: None)
+
+    status, body = session_api.get(
+        running,
+        f"/api/sessions/{saved.id}?repo={project.resolve()}",
+    )
+
+    assert status == HTTPStatus.OK
+    assert body["session"]["attempts"][0]["state"] == "interrupted"
+
+    fresh = store.save_recipe(
+        Recipe(
+            "c" * 32,
+            "starting",
+            str(project.resolve()),
+            "cli",
+            "run",
+            "task",
+            None,
+            {},
+            [],
+            {},
+        )
+    )
+    startup = store.create_attempt(fresh.id, Recipe(**fresh.recipe), "token")
+    attempt_path = store._directory(fresh.id) / f"{startup.id}.json"
+    attempt_data = json.loads(attempt_path.read_text(encoding="utf-8"))
+    attempt_data["created_at"] = "2000-01-01T00:00:00+00:00"
+    attempt_path.write_text(json.dumps(attempt_data), encoding="utf-8")
+    claim_path = store._directory(fresh.id) / "claim.json"
+    claim_path.write_text(
+        json.dumps({"action": "launch", "pid": LAUNCH_PID, "identity": "launch-owner"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ui_sessions,
+        "process_identity",
+        lambda pid: "launch-owner" if pid == LAUNCH_PID else None,
+    )
+    status, body = session_api.get(
+        running,
+        f"/api/sessions/{fresh.id}?repo={project.resolve()}",
+    )
+    assert status == HTTPStatus.OK
+    assert body["session"]["attempts"][0]["state"] == "starting"
+
+
+def test_archived_session_launch_is_rejected_by_api(running, project):
+    store = SessionStore(project)
+    saved = store.save_recipe(
+        Recipe(
+            "b" * 32,
+            "archived",
+            str(project.resolve()),
+            "cli",
+            "run",
+            "task",
+            None,
+            {},
+            [],
+            {},
+        )
+    )
+    store.archive(saved.id, True)
+
+    status, body = post(
+        running.server_port,
+        f"/api/sessions/{saved.id}/launch",
+        {"repo": str(project.resolve())},
+    )
+
+    assert status == HTTPStatus.CONFLICT
+    assert "Unarchive" in body["error"]
 
 
 def _put(port, path, payload):
@@ -240,6 +342,8 @@ def test_session_serializers_use_exact_public_fields(running, project):
         "run_ids",
         "error",
         "worker_alive",
+        "resume_supported",
+        "resume_needs_request",
     }
     assert detail["attempts"][0]["error"] == "failed at [path] and [path]"
     assert "private-token" not in json.dumps(detail)

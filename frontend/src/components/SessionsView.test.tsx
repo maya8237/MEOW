@@ -73,6 +73,12 @@ function fixture(state = "draft", archived = false) {
               run_ids: ["c".repeat(32)],
               error: null,
               worker_alive: ["running", "starting"].includes(state),
+              resume_supported: [
+                "stopped",
+                "interrupted",
+                "needs_decision",
+              ].includes(state),
+              resume_needs_request: state === "needs_decision",
             },
           ],
   };
@@ -114,6 +120,91 @@ test("shows session detail loading feedback after selecting a record", async () 
   expect(await screen.findByRole("status")).toHaveTextContent(
     "Loading session details…",
   );
+});
+
+test("detail load failure clears loading and offers a retry", async () => {
+  const user = userEvent.setup();
+  const data = fixture();
+  let fail = true;
+  let detailRequests = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/sessions?") || url === "/api/sessions")
+        return Promise.resolve(json({ sessions: [data.summary] }));
+      if (url.startsWith("/api/runs"))
+        return Promise.resolve(json({ runs: [] }));
+      if (url.startsWith(`/api/sessions/${data.id}?`)) {
+        detailRequests += 1;
+        return fail
+          ? Promise.reject(new Error("Session detail unavailable"))
+          : Promise.resolve(json({ session: data.detail }));
+      }
+      throw new Error(`Unexpected ${url}`);
+    }),
+  );
+  render(<SessionsView repo={repo} catalog={catalog} onRunRecipe={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: /Search work/ }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Session detail unavailable",
+  );
+  expect(screen.queryByText("Loading session details…")).toBeNull();
+  fail = false;
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  await screen.findByRole("heading", { name: "Search work" });
+  expect(detailRequests).toBeGreaterThanOrEqual(2);
+});
+
+test("archived sessions offer unarchive without rerun or resume", async () => {
+  const user = userEvent.setup();
+  const data = fixture("needs_decision", true);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/sessions?") || url === "/api/sessions")
+        return Promise.resolve(json({ sessions: [data.summary] }));
+      if (url.startsWith("/api/runs"))
+        return Promise.resolve(json({ runs: [] }));
+      if (url.startsWith(`/api/sessions/${data.id}?`))
+        return Promise.resolve(json({ session: data.detail }));
+      throw new Error(`Unexpected ${url}`);
+    }),
+  );
+  render(<SessionsView repo={repo} catalog={catalog} onRunRecipe={vi.fn()} />);
+  await user.click(
+    screen.getByRole("checkbox", { name: "Show archived sessions" }),
+  );
+  await user.click(await screen.findByRole("button", { name: /Search work/ }));
+  await screen.findByRole("heading", { name: "Search work" });
+  expect(screen.getByRole("button", { name: "Unarchive" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Rerun" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
+});
+
+test("non-resumable owned attempts offer rerun without resume", async () => {
+  const user = userEvent.setup();
+  const data = fixture("stopped");
+  data.detail.attempts[0].resume_supported = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/sessions?") || url === "/api/sessions")
+        return Promise.resolve(json({ sessions: [data.summary] }));
+      if (url.startsWith("/api/runs"))
+        return Promise.resolve(json({ runs: [] }));
+      if (url.startsWith(`/api/sessions/${data.id}?`))
+        return Promise.resolve(json({ session: data.detail }));
+      throw new Error(`Unexpected ${url}`);
+    }),
+  );
+  render(<SessionsView repo={repo} catalog={catalog} onRunRecipe={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: /Search work/ }));
+  await screen.findByRole("heading", { name: "Search work" });
+  expect(screen.getByRole("button", { name: "Rerun" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
 });
 
 test("edit, rerun, duplicate, archive, and unarchive use distinct actions", async () => {
@@ -285,6 +376,7 @@ test("imported runs explain missing history and open editable recipes with unkno
     ui_session_id: null,
     ui_attempt_id: null,
     resume_supported: false,
+    resume_needs_request: false,
     cancel_supported: false,
   };
   let draftSummary: SessionSummary | null = null;

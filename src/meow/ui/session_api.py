@@ -108,9 +108,10 @@ def _attempt_summary(attempt) -> dict | None:
     }
 
 
-def _attempt_detail(attempt) -> dict:
+def _attempt_detail(attempt, repo: Path) -> dict:
     from meow.common.process import process_identity
 
+    resume = ui_sessions.attempt_resume_status(repo, attempt)
     pid = attempt.worker.get("pid")
     identity = attempt.worker.get("identity")
     alive = (
@@ -120,7 +121,7 @@ def _attempt_detail(attempt) -> dict:
     )
     return {
         "id": attempt.id,
-        "state": attempt.state,
+        "state": resume["state"],
         "created_at": attempt.created_at,
         "started_at": attempt.started_at,
         "finished_at": attempt.finished_at,
@@ -131,12 +132,19 @@ def _attempt_detail(attempt) -> dict:
         "run_ids": list(attempt.run_ids),
         "error": _public_error(attempt.error),
         "worker_alive": alive,
+        "resume_supported": resume["resume_supported"],
+        "resume_needs_request": resume["resume_needs_request"],
     }
 
 
 def _summary(store: SessionStore, session: Session) -> dict:
     attempts = [store._read_attempt(session.id, item) for item in session.attempts]
     last = attempts[-1] if attempts else None
+    state = (
+        ui_sessions.attempt_resume_status(store.repo, last)["state"]
+        if last
+        else session.state
+    )
     active = next(
         (attempt.id for attempt in reversed(attempts) if attempt.state in _ACTIVE), None
     )
@@ -145,7 +153,7 @@ def _summary(store: SessionStore, session: Session) -> dict:
         "id": session.id,
         "name": recipe["name"],
         "repo": str(store.repo),
-        "state": session.state,
+        "state": state,
         "mode": recipe["mode"],
         "command": recipe["command"],
         "created_at": session.created_at,
@@ -162,7 +170,7 @@ def _detail(store: SessionStore, session: Session) -> dict:
         **_summary(store, session),
         "recipe": session.recipe,
         "attempts": [
-            _attempt_detail(store._read_attempt(session.id, item))
+            _attempt_detail(store._read_attempt(session.id, item), store.repo)
             for item in session.attempts
         ],
     }
@@ -205,6 +213,7 @@ def get(server, url: str):  # ruff: ignore[complex-structure, too-many-return-st
         for repo in repos:
             store = SessionStore(repo)
             for session in store.list():
+                session = ui_sessions.reconcile_session(repo, session.id)
                 sessions.append(_summary(store, session))
         sessions.sort(key=lambda item: item["updated_at"], reverse=True)
         return HTTPStatus.OK, {"sessions": sessions}
@@ -215,6 +224,7 @@ def get(server, url: str):  # ruff: ignore[complex-structure, too-many-return-st
     ):
         repo = _repo(server, query.get("repo"))
         store, session = _load_session(repo, parts[3])
+        session = ui_sessions.reconcile_session(repo, session.id)
         return HTTPStatus.OK, {"session": _detail(store, session)}
     if parts == ["", "api", "runs"]:
         selected = _repo(server, query.get("repo"), required=False)
@@ -241,6 +251,8 @@ def get(server, url: str):  # ruff: ignore[complex-structure, too-many-return-st
             attempt = store._read_attempt(parts[3], attempt_id)
         except SessionError as exc:
             raise ApiError(HTTPStatus.NOT_FOUND, "Attempt not found.") from exc
+        ui_sessions.reconcile_attempt(repo, parts[3], attempt_id)
+        attempt = store._read_attempt(parts[3], attempt_id)
         if parts[4] == "output":
             return HTTPStatus.OK, store.read_output(
                 parts[3],
@@ -336,7 +348,7 @@ def post(server, url: str, payload: dict):  # ruff: ignore[complex-structure, to
             session = store.load(session_id)
             return HTTPStatus.OK, {
                 "session": _detail(store, session),
-                "attempt": _attempt_detail(attempt),
+                "attempt": _attempt_detail(attempt, repo),
             }
         if action == "resume":
             attempt_id = _id(payload.get("attempt_id", ""))
@@ -356,13 +368,18 @@ def post(server, url: str, payload: dict):  # ruff: ignore[complex-structure, to
                     HTTPStatus.BAD_REQUEST,
                     "repair is supported only for MEOW run attempts.",
                 )
+            if session.archived:
+                raise ApiError(
+                    HTTPStatus.BAD_REQUEST,
+                    "Unarchive this session before resuming it.",
+                )
             attempt = ui_sessions.resume_attempt(
                 repo, session_id, attempt_id, request, repair
             )
             session = store.load(session_id)
             return HTTPStatus.ACCEPTED, {
                 "session": _detail(store, session),
-                "attempt": _attempt_detail(attempt),
+                "attempt": _attempt_detail(attempt, repo),
             }
         if action == "stop":
             attempt_id = session.attempts[-1] if session.attempts else ""
@@ -370,7 +387,7 @@ def post(server, url: str, payload: dict):  # ruff: ignore[complex-structure, to
             session = store.load(session_id)
             return HTTPStatus.OK, {
                 "session": _detail(store, session),
-                "attempt": _attempt_detail(attempt),
+                "attempt": _attempt_detail(attempt, repo),
             }
         if action == "duplicate":
             recipe = Recipe(**session.recipe)
@@ -403,7 +420,7 @@ def post(server, url: str, payload: dict):  # ruff: ignore[complex-structure, to
             session = store.load(session.id)
             return HTTPStatus.ACCEPTED, {
                 "session": _detail(store, session),
-                "attempt": _attempt_detail(attempt),
+                "attempt": _attempt_detail(attempt, repo),
             }
         if action == "cancel":
             record = ui_sessions.cancel_imported_run(repo, run_id)

@@ -60,6 +60,18 @@ def test_feature_recipe_builds_unattended_isolated_cli_argv(tmp_path):
     ]
 
 
+def test_leading_hyphen_request_is_separated_in_generated_argv(tmp_path):
+    recipe = validate_recipe(
+        tmp_path,
+        valid_payload(request="--please keep this as the request"),
+    )
+
+    argv = command_for(recipe)
+    separator = argv.index("--")
+    assert argv[separator + 1] == "--please keep this as the request"
+    assert argv[-1] == "--please keep this as the request"
+
+
 @pytest.mark.parametrize("command", ["ui", "ipython", "_worker", "detach"])
 def test_recipe_rejects_interactive_or_internal_commands(tmp_path, command):
     with pytest.raises(RecipeError):
