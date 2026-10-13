@@ -23,19 +23,6 @@ irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | i
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 ```
 
-Installation offers Bun shared dependency storage (default **Yes**) and
-automatically migrates registered and selected Bun projects in the background,
-printing a log path. Only user Bun settings are changed; existing project
-`bunfig.toml` files generate warnings. MEOW prepares
-missing Node dependencies in SDK and native worktrees with or without this
-option. See [worktree setup and Bun storage](docs/INTEGRATIONS.md#new-worktree-setup).
-
-Installation uses the newest working Python 3.12+ on PATH, after checking
-Python and pip with a timeout. Windows discovery uses `where.exe`, without the
-`py` launcher. Upgrades uninstall previous MEOW packages before installing the
-replacement; broken interpreters produce a warning when their old installation
-cannot be removed. Background commands run without opening extra windows.
-
 ## Run
 
 Claude Code:
@@ -50,9 +37,8 @@ Terminal or CI:
 meow run "Add CSV export" --name csv-export
 ```
 
-Projects are set up automatically on first use when a config-dependent command
-runs. Use `/meow:onboard` for integrations and optional features, or
-`/meow:migration` for a legacy MEOW layout.
+Projects are set up automatically on first use. Use `/meow:onboard` to configure
+integrations and optional features.
 
 ## Common commands
 
@@ -66,21 +52,6 @@ runs. Use `/meow:onboard` for integrations and optional features, or
 | Queue work | `meow queue "..."` |
 | Check or continue | `meow status` or `meow resume RUN_ID` |
 | Browse definitions or manage command sessions | `meow ui` |
-
-`meow ui` opens a local, bundled app for workflows, agents, skills, and saved
-command sessions. Sessions can run through the MEOW CLI or Claude Code. Feature
-runs default to unattended execution in an isolated worktree; successful,
-verified unattended runs retain MEOW's existing commit-and-push delivery
-policy. Local hosting does not disable delivery. Claude permission checks stay
-enabled by default, with permission bypass available only as an explicit,
-labeled opt-in.
-
-Recipes and each attempt's output are saved under the selected repository's
-`.meow/ui/sessions/`. Edit changes the next attempt, rerun starts fresh, duplicate
-creates a draft, and resume continues a stopped resumable execution. Existing
-MEOW runs also appear when their repositories are registered; historical output
-is available only when a background log was recorded. See the [CLI guide](docs/CLI.md#selecting-and-editing-workflows)
-for permission, archive, import, and resume details.
 
 `meow orchestrate "Add SSO login and an admin audit log"` splits an objective
 into tasks, runs them in parallel, merges them into one branch, reviews it as
