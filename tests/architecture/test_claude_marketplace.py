@@ -23,6 +23,7 @@ def test_marketplace_catalog_exposes_every_meow_skill():
         "lint",
         "migration",
         "onboard",
+        "orchestrate",
         "plan",
         "review",
         "run",
