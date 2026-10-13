@@ -39,6 +39,7 @@ def test_store_round_trips_recipe_and_distinct_attempt_logs(tmp_path):
     assert store.load(recipe.id).attempts == [first.id, second.id]
     assert store.read_output(recipe.id, first.id, 0, 20)["text"] == "first\n"
     assert store.read_output(recipe.id, second.id, 0, 20)["text"] == "second\n"
+    assert store.directory == tmp_path.resolve() / ".meow" / "ui" / "sessions"
 
 
 def test_claim_prevents_two_active_attempts_for_same_session(tmp_path):
@@ -168,6 +169,51 @@ def test_registration_timeout_persists_failed_attempt(tmp_path, monkeypatch):
     failed = store._read_attempt(recipe.id, saved.attempts[0])
     assert failed.state == "failed"
     assert failed.error == "Worker registration timed out"
+
+
+@pytest.mark.parametrize("failure", ["popen", "registration"])
+def test_resume_launch_failure_finishes_attempt_with_error(  # ruff: ignore[too-many-statements]
+    tmp_path, monkeypatch, failure
+):
+    from meow.infrastructure import ui_sessions
+    from meow.ui.sessions import SessionError, SessionStore
+
+    store = SessionStore(tmp_path)
+    recipe = valid_recipe(tmp_path)
+    store.save_recipe(recipe)
+    original = store.create_attempt(recipe.id, recipe, worker_token="original")
+    store.update_attempt(recipe.id, original.id, run_ids=["a" * 32])
+    store.finish_attempt(recipe.id, original.id, "interrupted", None)
+    monkeypatch.setattr(ui_sessions, "_REGISTER_SECONDS", 0)
+
+    if failure == "popen":
+        def fail_popen(*_args, **_kwargs):
+            raise OSError("worker executable missing")
+
+        monkeypatch.setattr(ui_sessions.subprocess, "Popen", fail_popen)
+        expected = "Worker launch failed: worker executable missing"
+    else:
+        class ExitedWorker:
+            pid = 123
+
+            @staticmethod
+            def poll():
+                return 1
+
+        monkeypatch.setattr(
+            ui_sessions.subprocess, "Popen", lambda *_args, **_kwargs: ExitedWorker()
+        )
+        expected = "Worker registration timed out"
+
+    with pytest.raises(SessionError):
+        ui_sessions.resume_attempt(tmp_path, recipe.id, original.id)
+
+    session = store.load(recipe.id)
+    resumed = store._read_attempt(recipe.id, session.attempts[-1])
+    assert resumed.state == "failed"
+    assert resumed.error == expected
+    with store.claim(recipe.id, "launch"):
+        pass
 
 
 def test_stop_terminates_deterministic_child_after_cooperative_request(
