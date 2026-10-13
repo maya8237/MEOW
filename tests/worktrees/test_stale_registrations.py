@@ -16,6 +16,7 @@ from meow.infrastructure.worktree import (
 )
 
 MAX_HANG_SECONDS = 15
+MAX_BACKGROUND_HOOK_WAIT = 5
 
 
 def git(cwd, *args):
@@ -69,6 +70,19 @@ def test_push_does_not_hang_on_a_stuck_remote(repo, tmp_path_factory, monkeypatc
     with pytest.raises(RuntimeError, match="timed out"):
         _push_branch(repo, "master")
     assert time.monotonic() - started < MAX_HANG_SECONDS
+
+
+def test_failed_push_does_not_wait_for_background_hook(repo, tmp_path_factory):
+    remote = tmp_path_factory.mktemp("background-hook-remote")
+    git(remote, "init", "-q", "--bare")
+    git(repo, "remote", "add", "origin", str(remote))
+    hook = repo / ".git" / "hooks" / "pre-push"
+    hook.write_text("#!/bin/sh\nsleep 10 &\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    started = time.monotonic()
+    with pytest.raises(RuntimeError):
+        _push_branch(repo, "master")
+    assert time.monotonic() - started < MAX_BACKGROUND_HOOK_WAIT
 
 
 def test_interrupted_push_stops_its_process(  # ruff: ignore[too-many-statements] -- real process setup and guaranteed cleanup
