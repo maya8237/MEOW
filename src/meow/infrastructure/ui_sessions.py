@@ -69,9 +69,7 @@ def _worker_argv(repo: Path, session_id: str, attempt_id: str, token: str) -> li
     ]
 
 
-def launch_attempt(  # ruff: ignore[complex-structure, too-many-statements]
-    repo: Path, session_id: str
-) -> Attempt:
+def launch_attempt(repo: Path, session_id: str) -> Attempt:
     store = SessionStore(repo)
     with store.claim(session_id, "launch"):
         session = store.load(session_id)
@@ -80,46 +78,7 @@ def launch_attempt(  # ruff: ignore[complex-structure, too-many-statements]
         token = secrets.token_hex(16)
         attempt = store.create_attempt(session_id, recipe, worker_token=token)
         store.update_attempt(session_id, attempt.id, argv=argv)
-        creationflags = 0
-        if sys.platform == "win32":
-            creationflags = (
-                subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-            )
-        try:
-            process = subprocess.Popen(
-                _worker_argv(store.repo, session_id, attempt.id, token),
-                cwd=store.repo,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=_worker_env(),
-                start_new_session=sys.platform != "win32",
-                creationflags=creationflags,
-                close_fds=True,
-            )
-        except OSError as exc:
-            store.finish_attempt(session_id, attempt.id, "failed", None)
-            store.update_attempt(
-                session_id, attempt.id, error=f"Worker launch failed: {exc}"
-            )
-            raise SessionError(f"Could not launch session worker: {exc}") from exc
-        deadline = time.monotonic() + _REGISTER_SECONDS
-        while time.monotonic() < deadline:
-            registered = store._read_attempt(session_id, attempt.id)
-            if registered.worker.get("pid"):
-                return registered
-            if process.poll() is not None:
-                break
-            time.sleep(0.05)
-        if process.poll() is None:
-            identity = process_identity(process.pid)
-            if identity:
-                _signal_owned_tree(process.pid, identity)
-        store.finish_attempt(session_id, attempt.id, "failed", None)
-        store.update_attempt(
-            session_id, attempt.id, error="Worker registration timed out"
-        )
-        raise SessionError("Session worker did not register before timeout")
+        return _launch_owned_attempt(store, attempt)
 
 
 def _linked_run_ids(repo: Path, session_id: str, attempt_id: str) -> list[str]:
@@ -249,28 +208,40 @@ def resume_attempt(  # ruff: ignore[too-many-arguments, too-many-positional-argu
         recipe = _recipe(old.effective_recipe)
         attempt = store.create_attempt(session_id, recipe, secrets.token_hex(16))
         store.update_attempt(session_id, attempt.id, argv=argv)
-    # Run the prepared attempt directly because its resume argv is server-owned.
-    return _launch_owned_attempt(store, attempt)
+        # Resume argv is server-owned and stored on the new attempt.
+        return _launch_owned_attempt(store, attempt)
 
 
-def _launch_owned_attempt(store: SessionStore, attempt: Attempt) -> Attempt:
+def _start_owned_worker(store: SessionStore, attempt: Attempt) -> subprocess.Popen:
     token = attempt.worker["token"]
     creationflags = (
         subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
         if sys.platform == "win32"
         else 0
     )
-    process = subprocess.Popen(
-        _worker_argv(store.repo, attempt.session_id, attempt.id, token),
-        cwd=store.repo,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env=_worker_env(),
-        start_new_session=sys.platform != "win32",
-        creationflags=creationflags,
-        close_fds=True,
-    )
+    try:
+        process = subprocess.Popen(
+            _worker_argv(store.repo, attempt.session_id, attempt.id, token),
+            cwd=store.repo,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=_worker_env(),
+            start_new_session=sys.platform != "win32",
+            creationflags=creationflags,
+            close_fds=True,
+        )
+    except OSError as exc:
+        error = f"Worker launch failed: {exc}"
+        store.finish_attempt(attempt.session_id, attempt.id, "failed", None)
+        store.update_attempt(attempt.session_id, attempt.id, error=error)
+        raise SessionError(f"Could not launch session worker: {exc}") from exc
+    return process
+
+
+def _wait_for_worker_registration(
+    store: SessionStore, attempt: Attempt, process: subprocess.Popen
+) -> Attempt:
     deadline = time.monotonic() + _REGISTER_SECONDS
     while time.monotonic() < deadline:
         current = store._read_attempt(attempt.session_id, attempt.id)
@@ -283,7 +254,16 @@ def _launch_owned_attempt(store: SessionStore, attempt: Attempt) -> Attempt:
         identity = process_identity(process.pid)
         if identity:
             _signal_owned_tree(process.pid, identity)
-    return store.finish_attempt(attempt.session_id, attempt.id, "failed", None)
+    store.finish_attempt(attempt.session_id, attempt.id, "failed", None)
+    store.update_attempt(
+        attempt.session_id, attempt.id, error="Worker registration timed out"
+    )
+    raise SessionError("Session worker did not register before timeout")
+
+
+def _launch_owned_attempt(store: SessionStore, attempt: Attempt) -> Attempt:
+    process = _start_owned_worker(store, attempt)
+    return _wait_for_worker_registration(store, attempt, process)
 
 
 def _render_claude_line(  # ruff: ignore[complex-structure, too-many-arguments, too-many-positional-arguments, too-many-branches, too-many-statements]

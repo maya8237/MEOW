@@ -654,13 +654,13 @@ class SessionStore:  # ruff: ignore[too-many-public-methods]
 
     def __init__(self, repo: Path):
         self.repo = Path(repo).resolve()
-        self.directory = self.repo / ".meow" / "ui-sessions"
+        self.directory = self.repo / ".meow" / "ui" / "sessions"
 
     @staticmethod
     def _session_dir_for(repo: Path, session_id: str) -> Path:
         if not _SESSION_ID.fullmatch(session_id):
             raise SessionError("Invalid session id")
-        return Path(repo).resolve() / ".meow" / "ui-sessions" / session_id
+        return Path(repo).resolve() / ".meow" / "ui" / "sessions" / session_id
 
     def _directory(self, session_id: str) -> Path:
         return self._session_dir_for(self.repo, session_id)
