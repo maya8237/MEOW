@@ -84,16 +84,24 @@ def test_conflict_preserves_worker_commits_and_aborts_cherry_pick(tmp_path):
 
 
 def test_integration_works_where_git_has_no_identity(tmp_path, monkeypatch):
+    # Isolate config before creating files so core.autocrlf stays consistent.
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "none"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for name in (
+        "GIT_AUTHOR_NAME",
+        "GIT_AUTHOR_EMAIL",
+        "GIT_COMMITTER_NAME",
+        "GIT_COMMITTER_EMAIL",
+        "EMAIL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
     repo, base = _repo(tmp_path)
     a = _task_commit(repo, base, "api", "api.txt", "api")
     _git(repo, "checkout", "-b", "integration", base)
     _git(repo, "config", "--unset", "user.name")
     _git(repo, "config", "--unset", "user.email")
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "none"))
-    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-    for name in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "EMAIL"):
-        monkeypatch.delenv(name, raising=False)
 
     result = integrate_results(
         repo, base, (TaskOutcome("api", "complete", str(repo), a),)
