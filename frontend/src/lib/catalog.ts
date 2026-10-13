@@ -16,6 +16,7 @@ export interface CatalogItem {
   skills?: string[];
   qualified_name?: string;
   delegate?: boolean;
+  claude_resolvable?: boolean;
 }
 export interface Catalog {
   workflows: CatalogItem[];

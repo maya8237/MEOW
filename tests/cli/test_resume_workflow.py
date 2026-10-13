@@ -80,6 +80,20 @@ def test_legacy_record_uses_default_despite_new_config_default(tmp_path):
     assert run.await_args.kwargs["resume_at"] == "review"
 
 
+def test_resume_propagates_saved_unattended_policy(tmp_path):
+    store, record, _, _ = setup_workflow(tmp_path)
+    store.transition(record.id, "failed", delivery={"unattended": True})
+    captured = {}
+
+    fake_run_sprint = AsyncMock(
+        side_effect=lambda *args, **kwargs: captured.update(kwargs)
+    )
+    with patch("meow.cli.resume_cli.run_sprint", new=fake_run_sprint):
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+
+    assert captured["unattended"] is True
+
+
 def test_interrupted_custom_loop_resumes_review_first_without_plan(tmp_path):
     store, record, metadata, path = setup_workflow(tmp_path)
     path.write_text(

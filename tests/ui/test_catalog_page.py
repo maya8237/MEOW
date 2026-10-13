@@ -50,6 +50,7 @@ def test_catalog_lists_custom_and_builtin_definitions(project):
 
     agents = {item["name"]: item for item in catalog["agents"]}
     assert agents["triage"]["scope"] == "project"
+    assert agents["triage"]["claude_resolvable"] is False
     assert "explorer" in agents
 
     skills = {item["name"]: item for item in catalog["skills"]}

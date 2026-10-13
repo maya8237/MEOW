@@ -149,6 +149,8 @@ class RunRecord:
     usage: object = "unavailable"
     delivery: dict = field(default_factory=dict)
     background: dict = field(default_factory=dict)
+    ui_session_id: str | None = None
+    ui_attempt_id: str | None = None
 
 
 class RunStore:
@@ -196,18 +198,48 @@ class RunStore:
         repo: Path,
         worktree: Path,
         branch: str,
+        ui_session_id: str | None = None,
+        ui_attempt_id: str | None = None,
     ) -> RunRecord:
+        repo = Path(repo).resolve()
+        if (ui_session_id is None) != (ui_attempt_id is None):
+            raise RunStateError("UI session and attempt IDs must be supplied together")
+        if ui_session_id is None:
+            context = {
+                "session": os.environ.get("MEOW_UI_SESSION_ID"),
+                "attempt": os.environ.get("MEOW_UI_ATTEMPT_ID"),
+                "repo": os.environ.get("MEOW_UI_REPO"),
+            }
+            if any(value is not None for value in context.values()):
+                if (
+                    any(value is None for value in context.values())
+                    or not _ID.fullmatch(context["session"] or "")
+                    or not _ID.fullmatch(context["attempt"] or "")
+                    or Path(context["repo"] or "").resolve() != repo
+                ):
+                    raise RunStateError("Invalid UI worker run association context")
+                ui_session_id = context["session"]
+                ui_attempt_id = context["attempt"]
+        if ui_session_id is not None and (
+            not isinstance(ui_session_id, str)
+            or not isinstance(ui_attempt_id, str)
+            or not _ID.fullmatch(ui_session_id)
+            or not _ID.fullmatch(ui_attempt_id)
+        ):
+            raise RunStateError("Invalid UI session or attempt ID")
         now = _now()
         record = RunRecord(
             uuid4().hex,
             source,
             request,
-            str(Path(repo).resolve()),
+            str(repo),
             str(Path(worktree).resolve()),
             branch,
             now,
             now,
             transitions=[{"phase": "created", "at": now}],
+            ui_session_id=ui_session_id,
+            ui_attempt_id=ui_attempt_id,
         )
         self._write(record)
         return self.load(record.id)
@@ -239,6 +271,14 @@ class RunStore:
             fields = (record.phase, record.repo, record.worktree, record.branch)
             if record.id != run_id:
                 raise ValueError("invalid record")
+            if (record.ui_session_id is None) != (record.ui_attempt_id is None) or (
+                record.ui_session_id is not None
+                and (
+                    not _ID.fullmatch(record.ui_session_id)
+                    or not _ID.fullmatch(record.ui_attempt_id or "")
+                )
+            ):
+                raise ValueError("invalid UI association")
             if not isinstance(record.transitions, list):
                 raise ValueError("invalid transitions")
             if not isinstance(record.results, dict):
