@@ -22,7 +22,7 @@ These are the commands meant for normal project work:
 | `meow queue` | Enqueue tasks or run queued tasks serially in the current repository. |
 | `meow workflows` | List, show, validate, or eject workflow definitions. |
 | `meow agents` | List, show, eject, or diff agent definitions. |
-| `meow ui` | Open a local page listing workflows, agents, and skills, including custom ones, and add new ones. |
+| `meow ui` | Open the local catalog and manage command sessions for registered repositories. |
 | `meow hooks` | Manage optional host hooks after reviewing what they install. |
 | `meow ipython` | Open the interactive MEOW IPython session. |
 
@@ -59,31 +59,60 @@ meow agents diff reviewer
 meow ui [--port 8765] [--no-browser]
 ```
 
-`meow ui` serves the catalog page on 127.0.0.1 only and rebuilds the catalog
-when configuration or definition files change. It lists workflows, agents, and
-skills from every scope, with their source text, merged across the current
-repo and every repo remembered in `~/.meow/repos.toml` (repos are remembered
-when onboarded or saved into); a repo picker narrows the view. The
-"+ New" button adds a workflow, agent, or skill by copying an existing one under
-a new name (or adds a blank skill). Each item can be saved at project scope
-(`.meow/`), local scope (`.meow/local/`, uncommitted), or user scope (`~/.meow/`).
-Skills go in that scope's MEOW plugin: `.meow/plugin/skills/` (project),
-`.meow/local/plugin/skills/` (local), or `~/.meow/plugin/skills/` (user). No
-`[custom]` table is needed. The first skill saved at a scope also writes a
-plugin manifest and registers the plugin in Claude Code settings
-(`CLAUDE_CODE_PLUGIN_DIRS`): `.claude/settings.json` for project, relative
-paths; `.claude/settings.local.json` for local; `~/.claude/settings.json` for
-user. Each workflow shows ready-to-copy
-commands: `meow run "<request>" --workflow NAME --name "<feature-name>"` and
-`/meow:run --workflow NAME "<request>"`. Filter by name, description, or scope;
-Ctrl+K (Cmd+K on macOS) focuses search. Workflow details show the step sequence,
-and every definition has an expandable source view. "Make a copy" opens the
-creation dialog using the selected definition. The catalog refreshes every two
-seconds while the page is visible. Press Ctrl+C to stop the server.
+`meow ui` serves the bundled app on 127.0.0.1 only. It shows workflows, agents,
+and skills from every scope across the current repository and repositories
+remembered in `~/.meow/repos.toml`; the repository picker narrows the catalog.
+The `+ New` button adds a workflow, agent, or skill by copying an existing one
+under a new name (or creates a blank skill). Definitions can be saved at project
+scope (`.meow/`), local scope (`.meow/local/`, uncommitted), or user scope
+(`~/.meow/`). Skills are stored under `.meow/plugin/skills/`,
+`.meow/local/plugin/skills/`, or `~/.meow/plugin/skills/` for those scopes.
+Saving the first skill at a scope also writes its plugin manifest and registers
+it in Claude Code settings (`.claude/settings.json` for project scope,
+`.claude/settings.local.json` for local scope, or `~/.claude/settings.json` for
+user scope). Workflow details show the step sequence and expandable source, and
+each workflow has ready-to-copy CLI and `/meow:run` commands. Search covers name,
+description, and scope; Ctrl+K (Cmd+K on macOS) focuses search. The catalog
+refreshes every two seconds while the page is visible.
 
-The React/Vite frontend is bundled with MEOW, so Node.js is not needed to run
-`meow ui`. For frontend development and build instructions, see
-[frontend/README.md](../frontend/README.md).
+The **Sessions** page launches MEOW commands directly through the CLI or through
+Claude Code and keeps their output and attempts together. Select a registered
+repository, then choose a command or start from a workflow, skill, or supported
+Claude agent. The launcher previews the exact command and validates its flags;
+CLI commands use argument arrays and run headlessly without interactive stdin.
+Feature runs default to unattended execution in an isolated worktree. Existing
+verified unattended delivery policy still applies: a successful run can commit
+and push its worktree branch. Running the UI locally does not turn that delivery
+behavior off. Commands that do not accept `--unattended` still run headlessly,
+without receiving that unsupported flag.
+
+Claude sessions use the installed Claude executable and a noninteractive
+permission policy that denies operations requiring an unanswered prompt. The
+launcher reports when Claude is missing, unauthenticated, too old for the
+required capabilities, or cannot resolve the selected MEOW plugin or agent.
+Permission bypass is an explicit opt-in: enable the labeled bypass option to
+send both `--allow-dangerously-skip-permissions` and
+`--permission-mode bypassPermissions`. It is off by default.
+
+Session recipes, attempt records, and separate output logs are saved in the
+selected repository under `.meow/ui/sessions/`. Editing changes the recipe for
+the next attempt; it does not rewrite a running attempt or saved output. Rerun
+starts a fresh attempt (and a fresh worktree for feature runs); duplicate copies
+the recipe into a new draft without starting it. Resume continues a stopped
+resumable execution (`meow resume RUN_ID --continue` for CLI runs or
+`claude --resume SESSION_ID` for Claude). A product-decision pause can receive a
+clarified request, and resume repair remains an explicit choice. Completed runs
+offer rerun instead. Archive hides an inactive session and can be reversed; it
+does not delete output, transcripts, or worktrees. Stop preserves output and
+resume identity.
+
+The page also imports existing MEOW runs from registered repositories. Their
+run facts and supported actions remain available; historical live output is
+shown only when a background log exists. A rerun or duplicate from an imported
+run opens an editable recipe from recorded facts and cannot recover flags that
+were never recorded. The React/Vite frontend is bundled with MEOW, so Node.js is
+not needed to run `meow ui`. Press Ctrl+C to stop the server. For frontend
+development and build instructions, see [frontend/README.md](../frontend/README.md).
 
 Catalog commands accept `--work-dir PATH`. Eject defaults to project scope,
 also accepts local/user, and refuses to overwrite. `show` and workflow

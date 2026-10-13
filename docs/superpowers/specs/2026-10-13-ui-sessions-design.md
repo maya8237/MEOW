@@ -1,7 +1,7 @@
 # MEOW UI command execution and sessions
 
 Date: 2026-10-13
-Status: design approved in chat; written spec awaiting review
+Status: approved
 
 ## Purpose
 
