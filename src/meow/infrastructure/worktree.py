@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -354,19 +355,25 @@ def _run_git(
     from meow.infrastructure.checks import kill_process_tree
 
     timeout = _GIT_TIMEOUT if timeout is None else timeout
-    with subprocess.Popen(
-        argv,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-        start_new_session=os.name != "nt",
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
-    ) as process:
+    # A hook can exit after spawning a child that retains its output handles.
+    # Regular files let us capture diagnostics without waiting for pipe EOF.
+    with (
+        tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stdout_file,
+        tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_file,
+        subprocess.Popen(
+            argv,
+            cwd=cwd,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+            encoding="utf-8",
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+            start_new_session=os.name != "nt",
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        ) as process,
+    ):
         try:
-            stdout, stderr = process.communicate(timeout=timeout)
+            process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             kill_process_tree(process)
             process.communicate(timeout=5)
@@ -376,7 +383,11 @@ def _run_git(
         except BaseException:
             kill_process_tree(process)
             raise
-        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        return subprocess.CompletedProcess(
+            argv, process.returncode, stdout_file.read(), stderr_file.read()
+        )
 
 
 def _prune_worktrees(git: str, working_dir: Path) -> None:
