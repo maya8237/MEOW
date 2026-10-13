@@ -173,26 +173,30 @@ def _parse_arguments(command: str, final_options: list[str], request: str):
 
 
 def _validate_semantics(command: str, repo: Path, parser, parsed) -> None:
+    errors = io.StringIO()
     try:
-        if command == "review":
-            _validate_ci_flags(parser, parsed)
-            _validate_review_flags(
-                parsed.request,
-                parsed.jira,
-                parsed.gitlab,
-                parsed.branch,
-                parsed.target,
-                Path(parsed.plan) if parsed.plan else None,
-                Path(parsed.review_file) if parsed.review_file else None,
-                github_link=parsed.github,
-                test=parsed.test,
-            )
-        if command in {"run", "plan"}:
-            _validate_feature_name_requirement(parser, parsed, repo)
-        if command == "run":
-            _validate_run_flags(parser, parsed)
+        with contextlib.redirect_stderr(errors):
+            if command == "review":
+                _validate_ci_flags(parser, parsed)
+                _validate_review_flags(
+                    parsed.request,
+                    parsed.jira,
+                    parsed.gitlab,
+                    parsed.branch,
+                    parsed.target,
+                    Path(parsed.plan) if parsed.plan else None,
+                    Path(parsed.review_file) if parsed.review_file else None,
+                    github_link=parsed.github,
+                    test=parsed.test,
+                )
+            if command in {"run", "plan"}:
+                _validate_feature_name_requirement(parser, parsed, repo)
+            if command == "run":
+                _validate_run_flags(parser, parsed)
     except SystemExit as exc:
-        raise RecipeError("Invalid MEOW command arguments") from exc
+        details = [line for line in errors.getvalue().splitlines() if line.strip()]
+        message = details[-1] if details else "Invalid MEOW command arguments"
+        raise RecipeError(message) from exc
     except ValueError as exc:
         raise RecipeError(str(exc)) from exc
 
@@ -288,6 +292,61 @@ def _validate_mode_command(mode: object, command: str) -> None:
         raise RecipeError(f"Unsupported headless MEOW command: {command}")
 
 
+def _builtin_skill_names() -> set[str]:
+    skill_root = Path(__file__).resolve().parents[3] / "skills"
+    if not skill_root.is_dir():
+        return set()
+    return {
+        directory.name
+        for directory in skill_root.iterdir()
+        if directory.is_dir() and (directory / "SKILL.md").is_file()
+    }
+
+
+def _custom_skill_names(repo: Path) -> set[str]:
+    from meow.project.config import load_config
+
+    return {
+        skill.qualified_name for skill in load_config(repo)["customizations"].skills
+    }
+
+
+def _supported_slash_skills(repo: Path) -> set[str]:
+    try:
+        builtin = {f"/meow:{name}" for name in _builtin_skill_names()}
+        custom = {f"/{name}" for name in _custom_skill_names(repo)}
+    except (OSError, ValueError) as exc:
+        raise RecipeError(
+            f"Could not resolve the selected repository skill catalog: {exc}"
+        ) from exc
+    return builtin | custom
+
+
+def _validate_claude_command(repo: Path, command: str) -> None:
+    if command == "prompt":
+        return
+    if command.startswith("/") and command in _supported_slash_skills(repo):
+        return
+    raise RecipeError(
+        "supported Claude command is 'prompt' or a resolvable slash skill"
+    )
+
+
+def _validate_mode_recipe(recipe: Recipe) -> None:
+    if recipe.mode == "cli":
+        command_for(recipe)
+        return
+    _validate_claude_recipe(recipe)
+
+
+def _validate_claude_recipe(recipe: Recipe) -> None:
+    if recipe.workflow is not None or recipe.inputs or recipe.arguments:
+        raise RecipeError(
+            "Claude recipes do not accept CLI workflow, input, or argument fields"
+        )
+    _validate_claude_command(Path(recipe.repo), recipe.command)
+
+
 def validate_recipe(repo: Path, payload: object) -> Recipe:
     if not isinstance(payload, dict):
         raise RecipeError("recipe must be an object")
@@ -321,8 +380,7 @@ def validate_recipe(repo: Path, payload: object) -> Recipe:
         arguments=_validated_arguments(payload),
         options=_validated_options(mode, command, payload.get("options", {})),
     )
-    if mode == "cli":
-        command_for(recipe)
+    _validate_mode_recipe(recipe)
     return recipe
 
 
@@ -349,8 +407,7 @@ def _run_cli_options(recipe: Recipe) -> list[str]:
         for key, value in recipe.inputs.items()
         for token in ("--input", f"{key}={value}")
     ]
-    no_worktree = bool(recipe.options.get("no_worktree", False))
-    if recipe.options.get("unattended", not no_worktree):
+    if recipe.options.get("unattended", True):
         options.append("--unattended")
     return options
 
@@ -467,8 +524,11 @@ def command_for(recipe: Recipe, python: str = sys.executable) -> list[str]:
     executable = claude_path()
     if not executable:
         raise RecipeError("Claude Code is not installed or is not available on PATH")
-    capabilities = detect_capabilities(Path(recipe.repo))
+    _validate_claude_recipe(recipe)
     policy = recipe.options.get("permission_policy", "default")
+    if policy not in {"default", "bypass"}:
+        raise RecipeError("permission_policy must be 'default' or 'bypass'")
+    capabilities = detect_capabilities(Path(recipe.repo))
     if policy == "bypass" and not capabilities["bypass_supported"]:
         raise RecipeError(
             "Installed Claude Code does not support the paired bypass flags"

@@ -59,3 +59,35 @@ The controller reported the existing full-suite baseline as 1,236 passed,
 
 No parser source changes were needed. CLI semantic checks are reused from
 `meow.cli.validation` and `meow.cli.review_cli`.
+
+## Review round 1 fixes
+
+Added regression tests before the fixes. The first focused run reproduced all
+three findings:
+
+```text
+rtk proxy powershell -NoProfile -Command '$env:PYTHONPATH="src"; & "C:/Users/m/Documents/MEOW/.venv/Scripts/python.exe" -m pytest tests/ui/test_sessions.py -q'
+5 failed, 21 passed in 2.95s
+```
+
+The failures covered `no_worktree` silently disabling the default unattended
+flag, Claude accepting unused CLI fields, and unresolved or arbitrary Claude
+commands. The fixes keep unattended enabled by default regardless of
+`no_worktree` (the parser now rejects the incompatible pair); permit an
+in-place run only when `unattended: false` is explicit; reject workflow,
+inputs, and arguments for Claude recipes; and accept only the explicit
+`prompt` command or resolved `/meow:<builtin>` and
+`/meow-custom:<selected-repository-skill>` slash commands. Arbitrary agent
+names are rejected; Task 1 does not map MEOW TOML agent definitions to Claude
+`--agent` identifiers.
+
+Final focused checks:
+
+```text
+rtk proxy powershell -NoProfile -Command '$env:PYTHONPATH="src"; & "C:/Users/m/Documents/MEOW/.venv/Scripts/python.exe" -m pytest tests/ui/test_sessions.py -q'
+28 passed in 2.96s
+rtk ruff check src/meow/ui/sessions.py tests/ui/test_sessions.py
+passed
+rtk ruff format --check src/meow/ui/sessions.py tests/ui/test_sessions.py
+2 files already formatted
+```
