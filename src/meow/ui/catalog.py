@@ -17,7 +17,7 @@ def _workflow(item) -> dict:
     }
 
 
-def _agent(item, delegates: set[str]) -> dict:
+def _agent(item, delegates: set[str], claude_agents: set[str]) -> dict:
     return {
         "name": item.name,
         "role": item.role,
@@ -26,6 +26,7 @@ def _agent(item, delegates: set[str]) -> dict:
         "file": str(item.file),
         "ejected": item.ejected_from is not None,
         "delegate": item.name in delegates,
+        "claude_resolvable": item.file.suffix == ".md" and item.name in claude_agents,
         "tools": None if item.tools is None else list(item.tools),
         "model": item.model,
         "skills": list(item.skills),
@@ -89,13 +90,17 @@ def build_catalog(working_dir: Path) -> dict:
             "notes": [],
         }
     delegates = {agent.name for agent in custom.agents}
+    from meow.ui.sessions import claude_agent_names
+
+    claude_agents = claude_agent_names(Path(working_dir))
     return {
         "error": None,
         "workflows": [
             _workflow(item) for item in sorted(custom.workflows, key=_by_name)
         ],
         "agents": [
-            _agent(item, delegates) for item in sorted(custom.catalog, key=_by_name)
+            _agent(item, delegates, claude_agents)
+            for item in sorted(custom.catalog, key=_by_name)
         ],
         "skills": [_skill(item) for item in sorted(custom.skills, key=_by_name)],
         "notes": [*custom.overrides, *custom.skipped],
