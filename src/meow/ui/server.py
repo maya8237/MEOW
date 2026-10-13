@@ -111,11 +111,11 @@ class _Handler(BaseHTTPRequestHandler):
         except (session_api.ApiError, CreateError, RecipeError, SessionError) as exc:
             self._json(
                 HTTPStatus(getattr(exc, "status", HTTPStatus.BAD_REQUEST)),
-                {"error": str(exc)},
+                {"error": session_api.public_error(exc)},
             )
             return
         except (OSError, ValueError) as exc:
-            self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            self._json(HTTPStatus.BAD_REQUEST, {"error": session_api.public_error(exc)})
             return
         if path == "/api/catalog":
             self._catalog()
@@ -129,11 +129,13 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.NOT_FOUND, b"Not found.", "text/plain; charset=utf-8")
 
     def _catalog(self):
+        from meow.ui import session_api
+
         repo = parse_qs(urlsplit(self.path).query).get("repo", [""])[0]
         try:
             body = self.server.catalog_bytes(repo or None)
         except CreateError as exc:
-            self._json(HTTPStatus(exc.status), {"error": str(exc)})
+            self._json(HTTPStatus(exc.status), {"error": session_api.public_error(exc)})
         else:
             self._send(HTTPStatus.OK, body, "application/json")
 
@@ -167,12 +169,12 @@ class _Handler(BaseHTTPRequestHandler):
                         else HTTPStatus.CONFLICT,
                     )
                 ),
-                {"error": str(exc)},
+                {"error": session_api.public_error(exc)},
             )
         except SessionError as exc:
-            self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+            self._json(HTTPStatus.CONFLICT, {"error": session_api.public_error(exc)})
         except (OSError, ValueError) as exc:
-            self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            self._json(HTTPStatus.BAD_REQUEST, {"error": session_api.public_error(exc)})
         else:
             self._json(HTTPStatus.CREATED, created)
 
@@ -194,12 +196,12 @@ class _Handler(BaseHTTPRequestHandler):
         except (session_api.ApiError, CreateError, RecipeError) as exc:
             self._json(
                 HTTPStatus(getattr(exc, "status", HTTPStatus.BAD_REQUEST)),
-                {"error": str(exc)},
+                {"error": session_api.public_error(exc)},
             )
         except (SessionBusy, SessionError) as exc:
-            self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+            self._json(HTTPStatus.CONFLICT, {"error": session_api.public_error(exc)})
         except (OSError, ValueError) as exc:
-            self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            self._json(HTTPStatus.BAD_REQUEST, {"error": session_api.public_error(exc)})
 
     def _payload(self) -> dict:
         content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()

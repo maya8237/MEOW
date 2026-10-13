@@ -54,6 +54,11 @@ def _public_error(value: str | None) -> str | None:
     return _POSIX_PATH.sub("[path]", value)
 
 
+def public_error(error: BaseException | str) -> str:
+    """Keep useful failure text while removing absolute server-side paths."""
+    return _public_error(str(error)) or "Request failed."
+
+
 def _capabilities(repo: Path) -> dict:
     try:
         return detect_capabilities(repo)
