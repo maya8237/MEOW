@@ -16,6 +16,8 @@ REVIEW = Path("/repo/.meow/plans/feature-review.md")
 SHAPE = ShapeContext("docs/shape.json", "bounded adapter", ("legacy API remains",))
 LINT = [LintCommand("ruff check"), LintCommand("fallow", gate=False)]
 EVIDENCE = {"files": ["src/a.py"], "notes": "x"}
+INTEGRATION_WORKTREE = Path("/repo/.worktrees/orch-0123456789ab")
+CONFLICTS = ["src/a.py", "docs/b.md"]
 TASKS_FILE = Path("/repo/.meow/orchestrators/0123456789ab/tasks.json")
 TASK_DRAFTS = "Task PROJ-1 (PROJ-1):\nResolve Jira issue PROJ-1: Fix login\n\nSteps"
 
@@ -37,6 +39,7 @@ def cases() -> list[tuple[str, str, tuple, dict]]:
             (TASKS_FILE,),
             {"max_tasks": 32, "task_drafts": TASK_DRAFTS},
         ),
+        ("integrator", "integrator_prompt", (INTEGRATION_WORKTREE, CONFLICTS), {}),
     ]
     for shape, evidence, bug in product((None, SHAPE), (None, EVIDENCE), (False, True)):
         found.append((

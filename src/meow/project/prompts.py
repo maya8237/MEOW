@@ -224,6 +224,32 @@ def decomposer_query(objective: str, *, correction: str | None = None) -> str:
     return query
 
 
+def integrator_prompt(
+    active_dir: Path, conflicted_paths: list[str], *, agent: CustomAgent | None = None
+) -> str:
+    """Instructions for resolving the conflicts of one orchestrator merge."""
+    return render_agent(
+        _agent(agent, "integrator"),
+        {
+            "active_dir": active_dir,
+            "conflicted_paths": "\n".join(f"- {path}" for path in conflicted_paths),
+        },
+    )
+
+
+def integrator_query(
+    conflicted_paths: list[str], task_request: str, merged_requests: list[str]
+) -> str:
+    """The task message for one conflict resolution."""
+    merged = "\n".join(f"- {request}" for request in merged_requests) or "(none)"
+    return (
+        "Resolve the merge conflicts in: "
+        + ", ".join(conflicted_paths)
+        + f"\n\nTask being merged:\n{task_request}"
+        + f"\n\nTasks already merged:\n{merged}"
+    )
+
+
 def generator_prompt(plan_file: Path, *, agent: CustomAgent | None = None) -> str:
     return render_agent(_agent(agent, "generator"), {"plan_file": plan_file})
 
