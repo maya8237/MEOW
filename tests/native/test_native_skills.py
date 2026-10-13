@@ -18,6 +18,7 @@ CLI_FALLBACKS = {
     "plan": "meow plan",
     "review": "meow review",
     "lint": "meow run --lint-fix --report-only",
+    "orchestrate": "meow orchestrate",
 }
 
 
@@ -101,6 +102,66 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
 
     def test_shared_protocol_exists(self):
         self.assertTrue(SHARED.is_file())
+
+    def test_orchestrate_skill_documents_the_native_loop(self):
+        text = (SKILLS_DIR / "orchestrate" / "SKILL.md").read_text(encoding="utf-8")
+
+        for needle in (
+            "meow native orchestrate init",
+            "meow native orchestrate tasks",
+            "meow native orchestrate tick",
+            "meow native orchestrate wait",
+            "meow native orchestrate merge-done",
+            "meow native orchestrate merge-abort",
+            "meow native orchestrate triage",
+            "meow native orchestrate review-result",
+            "meow native orchestrate deliver",
+            "meow native orchestrate pr",
+            "meow native orchestrate release",
+            "meow native orchestrate resume",
+            "/meow:orchestrate resume",
+            "fresh subagent",
+            "run_in_background",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, text)
+
+    def test_orchestrate_skill_runs_tasks_only_as_cli_children(self):
+        text = (SKILLS_DIR / "orchestrate" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("Native mode is the default", text)
+        self.assertIn("Never run a task sprint yourself", text)
+        self.assertIn("nothing pushed", text.lower())
+
+    def test_every_orchestrate_helper_is_in_the_skill_and_the_protocol(self):
+        parser = argparse.ArgumentParser(prog="meow")
+        add_native_parser(parser.add_subparsers(dest="command"))
+        top = next(
+            action
+            for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)
+        )
+        group = top.choices["native"]._actions
+        native = next(a for a in group if isinstance(a, argparse._SubParsersAction))
+        inner = next(
+            a
+            for a in native.choices["orchestrate"]._actions
+            if isinstance(a, argparse._SubParsersAction)
+        )
+        skill = (SKILLS_DIR / "orchestrate" / "SKILL.md").read_text(encoding="utf-8")
+        shared = SHARED.read_text(encoding="utf-8")
+
+        for command in inner.choices:
+            with self.subTest(command=command):
+                self.assertIn(f"`{command}", shared)
+                self.assertIn(f"meow native orchestrate {command}", skill)
+
+    def test_shared_protocol_lists_the_orchestrator_roles(self):
+        text = SHARED.read_text(encoding="utf-8")
+
+        for role in ("Decomposer", "Triage", "Integrator", "Objective reviewer"):
+            with self.subTest(role=role):
+                self.assertIn(role, text)
 
     def test_shared_protocol_covers_cli_skills_and_every_native_prompt_role(self):
         text = SHARED.read_text(encoding="utf-8")

@@ -1,10 +1,12 @@
 # Native mode: shared protocol
 
-The workflow skills `plan`, `review`, and `lint` use **native mode** by
-default when invoked inside Claude Code: *you* (this session) do the planning,
-generation, or fixes, and you dispatch reviewer/explorer work to Task
-subagents. No separate Agent SDK process is started. The `run` skill uses CLI
-mode by default and opts into this protocol only when the user asks for native
+The workflow skills `plan`, `review`, `lint`, and `orchestrate` use **native
+mode** by default when invoked inside Claude Code: *you* (this session) do the
+planning, generation, fixes, or supervision, and you dispatch reviewer/explorer
+work to Task subagents. No separate Agent SDK process is started. (The
+`orchestrate` skill still runs every task sprint as a detached CLI child
+process; only its judgement roles are native.) The `run` skill uses CLI mode by
+default and opts into this protocol only when the user asks for native
 execution. **CLI mode** is the `meow <command>` path documented in each
 workflow skill. The `onboard`, `migration`, and `customize` skills are
 guidance/configuration flows, not alternate execution engines.
@@ -131,6 +133,10 @@ only with an explicit plan file and rejects other sources and `--review-file`.
 | Explorer | Optional read-only subagent (Agent tool, `Explore` or `general-purpose`) for research whose raw output you do not need in full. Use `meow native prompt explorer` as its instructions and `models.explorer` as its model. |
 | Review fixer | The shipped CLI definition has an empty skills list; overrides may add skills. It uses a scoped fixer prompt and a post-edit lint hook. In native review fix flows, run `meow native prompt review-fixer`, verify findings before editing, make the smallest in-scope correction, and run per-file lint after edits. |
 | Lint fixer | The shipped CLI definition has an empty skills list; overrides may add skills. It uses a lint-specific prompt and a post-edit lint hook. In the native lint skill, run `meow native prompt lint-fixer` and run per-file lint after edits. Do not start a second agent. |
+| Decomposer | You, in `/meow:orchestrate`. `meow native orchestrate init` returns the exact decomposer `system_prompt` and `query` (the same text the CLI role gets); follow them with read-only tools and write only the `output_file` it names. For a Jira set keep every issue as its own task. |
+| Triage | You, in `/meow:orchestrate`. Each `failures` entry from `tick` carries the triage `system_prompt`, `query`, and `output_file`. Read the evidence files, write the decision JSON, and change no code. |
+| Integrator | **A fresh subagent per merge conflict** (Agent tool, `general-purpose`), briefed with the `conflicts` entry's `prompt`. It may use only Read, Grep, Glob, Edit, and Write, edit only the conflicted `paths` in the integration worktree, and never run git. |
+| Objective reviewer | **A fresh subagent every round** (Agent tool, `general-purpose`), briefed with the `system_prompt`, `query`, and `tools` from `meow native orchestrate review`; it writes the verdict to the `review_file`. The session then acts as the review fixer in the integration worktree. |
 | Jira issue fetcher | CLI mode reads through the configured Jira MCP server. Native run/review skills use the already-connected Jira MCP tools directly and pass the issue text to the planner or reviewer. |
 | GitLab merge-request fetcher | CLI mode reads through the configured GitLab MCP server. Native review uses the already-connected GitLab MCP tools directly to fetch the title, description, and diff, then dispatches `reviewer-mr`. |
 | GitHub pull-request fetcher | CLI mode reads through the configured GitHub MCP server. Native review uses the already-connected GitHub MCP tools directly to fetch the title, description, and diff, then dispatches `reviewer-mr --provider github`. |
