@@ -1,8 +1,5 @@
 # MEOW
 
-[![CI](https://github.com/maya8237/MEOW/actions/workflows/ci.yml/badge.svg)](https://github.com/maya8237/MEOW/actions/workflows/ci.yml)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB.svg)](https://www.python.org/downloads/)
-
 <p align="center">
   <img src="logo.png" width="160" alt="MEOW pixel cat logo" />
 </p>
