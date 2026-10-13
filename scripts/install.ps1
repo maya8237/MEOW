@@ -2,7 +2,7 @@
 # irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
 #
 # With an existing `meow` on PATH it offers to update that checkout and re-runs
-# the post-install setup; otherwise it clones MEOW over SSH, installs it
+# the post-install setup; otherwise it clones MEOW over HTTPS, installs it
 # editable, and runs the post-install setup.
 #
 # Everything runs inside one script block so that, under `| iex`, the helper
@@ -12,7 +12,7 @@
     $ErrorActionPreference = "Stop"
     Set-StrictMode -Version Latest
 
-    $repositoryUrl = "git@github.com:maya8237/MEOW.git"
+    $repositoryUrl = "https://github.com/maya8237/MEOW.git"
     $originPyprojectUrl = "https://raw.githubusercontent.com/maya8237/MEOW/main/pyproject.toml"
     $defaultParent = "C:/Projects"
     # The interpreter and checkout for the post-install setup. The setup itself runs
@@ -486,10 +486,10 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
             Write-Host "Using existing MEOW checkout: $clonePath"
         } else {
             New-Item -ItemType Directory -Force -Path (Split-Path -Path $clonePath -Parent) | Out-Null
-            Invoke-WithSpinner -Message "Cloning MEOW over SSH into $clonePath" -ScriptBlock {
+            Invoke-WithSpinner -Message "Cloning MEOW over HTTPS into $clonePath" -ScriptBlock {
                 & git clone $using:repositoryUrl $using:clonePath
                 if ($LASTEXITCODE -ne 0) {
-                    throw "SSH clone failed. Check that GitHub SSH authentication works with: ssh -T git@github.com"
+                    throw "HTTPS clone failed. Check your network connection and access to https://github.com/maya8237/MEOW.git"
                 }
             }
         }

@@ -106,12 +106,14 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments, too-many-statement
     return result, log.read_text(encoding="utf-8") if log.exists() else ""
 
 
-def test_bootstrap_scripts_use_ssh_clone_and_installed_runtime():
+def test_bootstrap_scripts_use_https_clone_and_installed_runtime():
     powershell = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
     posix = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
 
     for script in (powershell, posix):
-        assert "git@github.com:maya8237/MEOW.git" in script
+        assert "https://github.com/maya8237/MEOW.git" in script
+        assert "SSH" not in script
+        assert "git@github.com" not in script
         assert "pip install -e" in script
         assert "meow.installer" in script
 

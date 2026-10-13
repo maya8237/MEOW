@@ -3,12 +3,12 @@
 # curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 #
 # With an existing `meow` on PATH it offers to update that checkout and re-runs
-# the post-install setup; otherwise it clones MEOW over SSH, installs it
+# the post-install setup; otherwise it clones MEOW over HTTPS, installs it
 # editable, and runs the post-install setup.
 
 set -eu
 
-repository_url='git@github.com:maya8237/MEOW.git'
+repository_url='https://github.com/maya8237/MEOW.git'
 origin_pyproject_url='https://raw.githubusercontent.com/maya8237/MEOW/main/pyproject.toml'
 default_parent=${HOME:-"$(pwd)"}
 python_candidates='python3.15 python3.14 python3.13 python3.12 python3 python'
@@ -377,8 +377,8 @@ install_fresh_meow() {
         printf 'Using existing MEOW checkout: %s\n' "$clone_path"
     else
         mkdir -p "$(dirname -- "$clone_path")"
-        run_with_spinner "Cloning MEOW over SSH into $clone_path" git clone "$repository_url" "$clone_path" \
-            || die 'SSH clone failed. Check that GitHub SSH authentication works with: ssh -T git@github.com'
+        run_with_spinner "Cloning MEOW over HTTPS into $clone_path" git clone "$repository_url" "$clone_path" \
+            || die 'HTTPS clone failed. Check your network connection and access to https://github.com/maya8237/MEOW.git'
     fi
 
     run_with_spinner "Installing MEOW with $python_command -m pip install -e ..." "$python_command" -m pip install -e "$clone_path" \
