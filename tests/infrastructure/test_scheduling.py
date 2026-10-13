@@ -47,7 +47,7 @@ def test_time_accepts_offset_and_next_local_clock():
 def test_register_list_cancel_preserves_request(  # ruff: ignore[too-many-statements]
     tmp_path, monkeypatch, backend, platform
 ):
-    monkeypatch.setattr(scheduling.sys, "platform", platform)
+    monkeypatch.setattr(scheduling, "platform", platform)
     request = 'Fix "search"; $(touch surprise) % & café\nsecond line'
     job = scheduling.schedule_run(
         tmp_path, future(), ["run", request, "--name", "search"]
@@ -96,7 +96,7 @@ def test_invalid_run_never_registers(tmp_path, backend, argv):
 
 
 def test_registration_failure_is_saved_and_reported(tmp_path, monkeypatch, backend):
-    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    monkeypatch.setattr(scheduling, "platform", "linux")
     backend.side_effect = scheduling.subprocess.CalledProcessError(
         1, ["systemctl"], stderr="No user bus"
     )
@@ -107,7 +107,7 @@ def test_registration_failure_is_saved_and_reported(tmp_path, monkeypatch, backe
 
 
 def test_worker_runs_once_and_records_exit(tmp_path, monkeypatch, backend):
-    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    monkeypatch.setattr(scheduling, "platform", "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     make_due(tmp_path, job)
     backend.reset_mock()
@@ -127,7 +127,7 @@ def test_imminent_worker_waits_through_registration(tmp_path, monkeypatch, backe
     import time
     from concurrent.futures import ThreadPoolExecutor
 
-    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    monkeypatch.setattr(scheduling, "platform", "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     make_due(tmp_path, job)
     lock = scheduling._path(tmp_path, job["id"]).with_suffix(".lock")
@@ -152,7 +152,7 @@ def test_ui_execution_uses_frozen_recipe_after_edit(tmp_path, monkeypatch, backe
     from meow.infrastructure import ui_sessions
     from meow.ui.sessions import Recipe, SessionStore
 
-    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    monkeypatch.setattr(scheduling, "platform", "linux")
     monkeypatch.setattr("meow.ui.sessions.process_identity", lambda _pid: "test-owner")
     frozen = Recipe(
         id="a" * 32,
@@ -181,7 +181,7 @@ def test_ui_execution_uses_frozen_recipe_after_edit(tmp_path, monkeypatch, backe
 def test_cli_schedule_does_not_run_now(tmp_path, monkeypatch, backend, capsys):
     from meow.cli.cli import cli_main
 
-    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    monkeypatch.setattr(scheduling, "platform", "linux")
     cli_main([
         "schedule",
         "add",
@@ -204,7 +204,7 @@ def test_cli_schedule_does_not_run_now(tmp_path, monkeypatch, backend, capsys):
 def test_edit_time_preserves_identity_and_command(  # ruff: ignore[too-many-statements]
     tmp_path, monkeypatch, backend, platform
 ):
-    monkeypatch.setattr(scheduling.sys, "platform", platform)
+    monkeypatch.setattr(scheduling, "platform", platform)
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     at = "2099-12-01T15:30:00+03:00"
     updated = scheduling.edit_schedule(tmp_path, job["id"], at)
@@ -229,7 +229,7 @@ def test_edit_time_preserves_identity_and_command(  # ruff: ignore[too-many-stat
 
 
 def test_edit_rejects_invalid_time_and_started_schedule(tmp_path, monkeypatch, backend):
-    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    monkeypatch.setattr(scheduling, "platform", "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     backend.reset_mock()
     with pytest.raises(ValueError):
@@ -245,7 +245,7 @@ def test_edit_rejects_invalid_time_and_started_schedule(tmp_path, monkeypatch, b
 
 
 def test_edit_failure_restores_original_trigger(tmp_path, monkeypatch, backend):
-    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    monkeypatch.setattr(scheduling, "platform", "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     backend.side_effect = [
         Mock(stdout=""),
@@ -263,7 +263,7 @@ def test_edit_failure_restores_original_trigger(tmp_path, monkeypatch, backend):
 def test_cli_edit_changes_time(tmp_path, monkeypatch, backend, capsys):
     from meow.cli.cli import cli_main
 
-    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    monkeypatch.setattr(scheduling, "platform", "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     cli_main([
         "schedule",

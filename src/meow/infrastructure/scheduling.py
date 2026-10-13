@@ -9,6 +9,7 @@ import sys
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from sys import platform
 from typing import override
 from uuid import uuid4
 
@@ -121,7 +122,7 @@ def schedule_session(repo: Path, at: str, recipe: Recipe) -> dict:
 
 def _register(repo: Path, at: str, payload: dict) -> dict:
     when = parse_at(at)
-    if sys.platform not in {"win32", "linux"}:
+    if platform not in {"win32", "linux"}:
         raise ValueError("Scheduling supports Windows Task Scheduler and Linux systemd")
     schedule_id = uuid4().hex
     path = _path(repo, schedule_id)
@@ -129,7 +130,7 @@ def _register(repo: Path, at: str, payload: dict) -> dict:
         "id": schedule_id,
         "repo": str(repo),
         "at": when.isoformat(),
-        "backend": "windows" if sys.platform == "win32" else "systemd",
+        "backend": "windows" if platform == "win32" else "systemd",
         "state": "registering",
         "created_at": datetime.now(UTC).isoformat(),
         "path": os.environ.get("PATH", ""),
