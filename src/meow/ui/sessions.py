@@ -5,13 +5,19 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import json
+import os
 import re
 import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 import uuid
-from dataclasses import asdict, dataclass
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, TypedDict
 
@@ -22,6 +28,7 @@ from meow.cli.validation import (
     _validate_feature_name_requirement,
     _validate_run_flags,
 )
+from meow.common.process import process_identity
 
 
 class RecipeError(ValueError):
@@ -560,3 +567,391 @@ def display_command(argv: list[str]) -> str:
     return (
         subprocess.list2cmdline(argv) if sys.platform == "win32" else shlex.join(argv)
     )
+
+
+_SESSION_ID = re.compile(r"[0-9a-f]{32}\Z")
+_ATTEMPT_STATES = {
+    "starting",
+    "running",
+    "stopping",
+    "succeeded",
+    "failed",
+    "stopped",
+    "interrupted",
+    "needs_decision",
+}
+_ACTIVE_STATES = {"starting", "running", "stopping"}
+_IMMUTABLE_ATTEMPT_FIELDS = {
+    "id",
+    "session_id",
+    "created_at",
+    "effective_recipe",
+    "output_file",
+}
+_OUTPUT_LIMIT = 64 * 1024
+_OUTPUT_TAIL = 16 * 1024
+_UTF8_CONTINUATION = 0x80
+
+
+class SessionBusy(RuntimeError):
+    """Another process owns a session operation."""
+
+
+class SessionError(ValueError):
+    """Session data is missing or invalid."""
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+@dataclass
+class Attempt:
+    id: str
+    state: str
+    created_at: str
+    started_at: str | None
+    finished_at: str | None
+    argv: list[str]
+    effective_recipe: dict
+    worker: dict
+    exit_code: int | None
+    output_file: str
+    claude_session_id: str | None
+    run_ids: list[str]
+    error: str | None
+    session_id: str
+    output_size: int = 0
+
+
+@dataclass
+class Session:
+    id: str
+    recipe: dict
+    created_at: str
+    updated_at: str
+    state: str
+    attempts: list[str]
+    archived: bool = False
+
+
+def _atomic_json(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(value, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(name, path)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+class SessionStore:  # ruff: ignore[too-many-public-methods]
+    """Atomic session records and per-attempt append-only output."""
+
+    def __init__(self, repo: Path):
+        self.repo = Path(repo).resolve()
+        self.directory = self.repo / ".meow" / "ui-sessions"
+
+    @staticmethod
+    def _session_dir_for(repo: Path, session_id: str) -> Path:
+        if not _SESSION_ID.fullmatch(session_id):
+            raise SessionError("Invalid session id")
+        return Path(repo).resolve() / ".meow" / "ui-sessions" / session_id
+
+    def _directory(self, session_id: str) -> Path:
+        return self._session_dir_for(self.repo, session_id)
+
+    @staticmethod
+    def _attempt_from_json(data: dict) -> Attempt:
+        return Attempt(**data)
+
+    def _read_session(self, session_id: str) -> Session:
+        path = self._directory(session_id) / "session.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data.get("id") != session_id:
+                raise SessionError("Session id does not match its file")
+            session = Session(**data)
+            if (
+                not isinstance(session.recipe, dict)
+                or session.recipe.get("id") != session_id
+                or Path(session.recipe.get("repo", "")).resolve() != self.repo
+                or not isinstance(session.attempts, list)
+                or any(not _SESSION_ID.fullmatch(item) for item in session.attempts)
+            ):
+                raise SessionError("Session data is invalid")
+            return session
+        except (OSError, ValueError, TypeError) as exc:
+            if isinstance(exc, SessionError):
+                raise
+            raise SessionError(f"Could not load session {session_id}") from exc
+
+    def list(self) -> list[Session]:
+        sessions = []
+        if self.directory.is_dir():
+            for path in self.directory.glob("*/session.json"):
+                try:
+                    sessions.append(self._read_session(path.parent.name))
+                except SessionError:
+                    continue
+        return sorted(sessions, key=lambda item: item.updated_at, reverse=True)
+
+    def load(self, session_id: str) -> Session:
+        return self._read_session(session_id)
+
+    def _save_session(self, session: Session) -> None:
+        session.updated_at = _now()
+        _atomic_json(self._directory(session.id) / "session.json", asdict(session))
+
+    def save_recipe(self, recipe: Recipe) -> Session:
+        if (
+            not _SESSION_ID.fullmatch(recipe.id)
+            or Path(recipe.repo).resolve() != self.repo
+        ):
+            raise SessionError("Recipe id or repository is invalid")
+        directory = self._directory(recipe.id)
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / "session.json"
+        if path.exists():
+            raise SessionError("Session already exists")
+        session = Session(recipe.id, recipe_json(recipe), _now(), _now(), "draft", [])
+        _atomic_json(path, asdict(session))
+        return session
+
+    def update_recipe(self, session_id: str, recipe: Recipe) -> Session:
+        if Path(recipe.repo).resolve() != self.repo:
+            raise SessionError("Recipe repository does not match this session")
+        session = self._read_session(session_id)
+        session.recipe = recipe_json(replace(recipe, id=session_id))
+        session.state = "draft"
+        self._save_session(session)
+        return session
+
+    def _read_attempt(self, session_id: str, attempt_id: str) -> Attempt:
+        if not _SESSION_ID.fullmatch(attempt_id):
+            raise SessionError("Invalid attempt id")
+        path = self._directory(session_id) / f"{attempt_id}.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            attempt = self._attempt_from_json(data)
+            if attempt.id != attempt_id or attempt.session_id != session_id:
+                raise SessionError("Attempt identity does not match its file")
+            if (
+                attempt.output_file != f"{attempt_id}.output"
+                or attempt.state not in _ATTEMPT_STATES
+                or not isinstance(attempt.worker, dict)
+            ):
+                raise SessionError("Attempt data is invalid")
+            return attempt
+        except (OSError, ValueError, TypeError) as exc:
+            if isinstance(exc, SessionError):
+                raise
+            raise SessionError(f"Could not load attempt {attempt_id}") from exc
+
+    @contextmanager
+    def claim(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+        self, session_id: str, action: str
+    ):
+        """Acquire a recoverable, birth-identity-checked session operation lock."""
+        directory = self._directory(session_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        lock = directory / "claim.json"
+        token = new_id()
+        identity = process_identity(os.getpid())
+        if not identity:
+            raise SessionError("Could not identify session lock owner")
+        data = {
+            "token": token,
+            "pid": os.getpid(),
+            "identity": identity,
+            "created_at": time.time(),
+            "action": action,
+        }
+        for _ in range(2):
+            try:
+                descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                try:
+                    lock_stat = lock.stat()
+                    old = json.loads(lock.read_text(encoding="utf-8"))
+                    expected = old.get("identity")
+                    alive = bool(expected) and process_identity(old["pid"]) == expected
+                except (OSError, ValueError, KeyError, TypeError):
+                    lock_stat = None
+                    alive = False
+                if alive:
+                    raise SessionBusy(
+                        "Session operation is already in progress"
+                    ) from None
+                try:
+                    current_stat = lock.stat()
+                    if lock_stat and (current_stat.st_dev, current_stat.st_ino) == (
+                        lock_stat.st_dev,
+                        lock_stat.st_ino,
+                    ):
+                        lock.unlink()
+                except FileNotFoundError:
+                    pass
+                continue
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                json.dump(data, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                yield token
+            finally:
+                try:
+                    current = json.loads(lock.read_text(encoding="utf-8"))
+                    if current.get("token") == token:
+                        lock.unlink(missing_ok=True)
+                except (OSError, ValueError):
+                    pass
+            return
+        raise SessionBusy("Could not acquire session operation lock")
+
+    def create_attempt(
+        self, session_id: str, effective_recipe: Recipe, worker_token: str
+    ) -> Attempt:
+        session = self._read_session(session_id)
+        if any(
+            self._read_attempt(session_id, item).state in _ACTIVE_STATES
+            for item in session.attempts
+        ):
+            raise SessionBusy("Session already has an active attempt")
+        attempt_id = new_id()
+        attempt = Attempt(
+            attempt_id,
+            "starting",
+            _now(),
+            None,
+            None,
+            [],
+            recipe_json(effective_recipe),
+            {"pid": None, "identity": None, "token": worker_token},
+            None,
+            f"{attempt_id}.output",
+            None,
+            [],
+            None,
+            session_id,
+        )
+        _atomic_json(
+            self._directory(session_id) / f"{attempt_id}.json", asdict(attempt)
+        )
+        session.attempts.append(attempt_id)
+        session.state = "starting"
+        self._save_session(session)
+        return attempt
+
+    def update_attempt(self, session_id: str, attempt_id: str, **changes) -> Attempt:
+        attempt = self._read_attempt(session_id, attempt_id)
+        for key, value in changes.items():
+            if key in _IMMUTABLE_ATTEMPT_FIELDS:
+                raise SessionError(f"Attempt field cannot be changed: {key}")
+            if not hasattr(attempt, key):
+                raise SessionError(f"Unsupported attempt field: {key}")
+            setattr(attempt, key, value)
+        _atomic_json(
+            self._directory(session_id) / f"{attempt_id}.json", asdict(attempt)
+        )
+        session = self._read_session(session_id)
+        if attempt.state in _ATTEMPT_STATES:
+            session.state = attempt.state
+        self._save_session(session)
+        return attempt
+
+    def finish_attempt(
+        self, session_id: str, attempt_id: str, state: str, exit_code: int | None
+    ) -> Attempt:
+        if state not in _ATTEMPT_STATES - _ACTIVE_STATES:
+            raise SessionError("Invalid terminal attempt state")
+        return self.update_attempt(
+            session_id, attempt_id, state=state, exit_code=exit_code, finished_at=_now()
+        )
+
+    def append_output(self, session_id: str, attempt_id: str, data: bytes) -> None:
+        self._read_attempt(session_id, attempt_id)
+        path = self._directory(session_id) / f"{attempt_id}.output"
+        with path.open("ab") as stream:
+            stream.write(data)
+            stream.flush()
+        self.update_attempt(session_id, attempt_id, output_size=path.stat().st_size)
+
+    def append_raw(self, session_id: str, attempt_id: str, data: bytes) -> None:
+        self._read_attempt(session_id, attempt_id)
+        with (self._directory(session_id) / f"{attempt_id}.raw").open("ab") as stream:
+            stream.write(data)
+            stream.flush()
+
+    def read_output(  # ruff: ignore[too-many-statements]
+        self, session_id: str, attempt_id: str, cursor: int, limit: int
+    ) -> dict:
+        self._read_attempt(session_id, attempt_id)
+        path = self._directory(session_id) / f"{attempt_id}.output"
+        path.touch(exist_ok=True)
+        stat = path.stat()
+        saved = self._read_attempt(session_id, attempt_id)
+        marker = saved.worker.get("output_identity")
+        identity = f"{stat.st_dev}:{stat.st_ino}"
+        reset = bool(
+            marker
+            and (
+                marker != identity or stat.st_size < saved.worker.get("output_size", 0)
+            )
+        )
+        cursor = max(0, int(cursor))
+        if reset:
+            cursor = max(0, stat.st_size - _OUTPUT_TAIL)
+        cursor = min(cursor, stat.st_size)
+        limit = min(max(int(limit), 1), _OUTPUT_LIMIT)
+        with path.open("rb") as stream:
+            while cursor and cursor < stat.st_size:
+                stream.seek(cursor)
+                if stream.read(1)[0] & 0xC0 != _UTF8_CONTINUATION:
+                    break
+                cursor -= 1
+            stream.seek(cursor)
+            data = stream.read(min(limit + 4, stat.st_size - cursor))
+        data = data[:limit]
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            if exc.reason == "unexpected end of data":
+                data = data[: exc.start]
+            text = data.decode("utf-8", errors="replace")
+        next_cursor = cursor + len(data)
+        self.update_attempt(
+            session_id,
+            attempt_id,
+            worker={
+                **saved.worker,
+                "output_identity": identity,
+                "output_size": stat.st_size,
+            },
+            output_size=stat.st_size,
+        )
+        return {
+            "text": text,
+            "next_cursor": next_cursor,
+            "size": stat.st_size,
+            "truncated": next_cursor < stat.st_size,
+            "reset": reset,
+        }
+
+    def archive(self, session_id: str, archived: bool) -> Session:
+        session = self._read_session(session_id)
+        if any(
+            self._read_attempt(session_id, item).state in _ACTIVE_STATES
+            for item in session.attempts
+        ):
+            raise SessionBusy("Cannot archive a session with an active attempt")
+        session.archived = bool(archived)
+        return self._save_and_return(session)
+
+    def _save_and_return(self, session: Session) -> Session:
+        self._save_session(session)
+        return session
