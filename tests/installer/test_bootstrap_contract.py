@@ -100,6 +100,9 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments, too-many-statement
         "function python3.15 {",
         '  printf \'python %s\\n\' "$*" >> "$MEOW_TEST_LOG"',
         '  case "$*" in',
+        "    *'runpy.run_module'*) printf '3.15.0\\n' ;;",
+        "    *'import importlib.metadata'*) "
+        "printf '%s\\n' \"$MEOW_PACKAGE_VERSION\" ;;",
         "    *'import meow'*) printf '%s\\n' \"$MEOW_EXISTING_CHECKOUT\" ;;",
         "    *'-m pip install -e'*) printf 'FAKE_PIP\\n' >&2 ;;",
         "    *'-m meow.installer'*) printf 'FAKE_SETUP\\n' >&2; "
@@ -126,6 +129,7 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments, too-many-statement
         f"export MEOW_TEST_LOG='{_git_bash_path(log)}'",
         f"export MEOW_EXISTING_CHECKOUT='{existing_checkout_value}'",
         f"export MEOW_SETUP_EXIT='{setup_exit_code}'",
+        f"export MEOW_PACKAGE_VERSION='{meow_version or ''}'",
         f"printf '%s' \"$MEOW_TEST_INPUT\" | source '{install_script}'",
     ])
     wrapper.write_text("\n".join(functions) + "\n", encoding="utf-8")
@@ -188,7 +192,7 @@ def test_powershell_existing_install_reports_up_to_date_and_forwards_setup_outpu
     assert "Set-PendingSetup -Python $existingSetup" in powershell
     assert "meow.installer" in powershell
     assert 'Write-Host "  py -3 -m pip install --upgrade' not in powershell
-    assert 'Write-Host "  $manualPythonCommand -m pip install --upgrade' in powershell
+    assert "newest healthy Python" in powershell
 
 
 def test_bootstrap_scripts_include_dependency_free_pretty_progress():
@@ -242,9 +246,9 @@ def test_posix_bootstrap_warns_when_existing_checkout_cannot_be_located(tmp_path
 
     assert result.returncode == 0, result.stderr
     assert "checkout" in result.stderr.lower()
-    assert "FAKE_PIP" not in result.stderr
-    assert "FAKE_SETUP" not in result.stderr
-    assert "-m meow.installer" not in log
+    assert "FAKE_PIP" in result.stderr
+    assert "FAKE_SETUP" in result.stderr
+    assert "-m meow.installer" in log
 
 
 def test_posix_bootstrap_updates_existing_meow_when_approved(tmp_path):
@@ -263,6 +267,7 @@ def test_posix_bootstrap_updates_existing_meow_when_approved(tmp_path):
     assert "pull --ff-only origin main" in log
     assert "FAKE_PIP" in result.stderr
     assert "-m pip install -e" in log
+    assert log.index("-m pip uninstall -y meow") < log.index("-m pip install -e")
     assert "FAKE_SETUP" in result.stderr
 
 
@@ -412,7 +417,9 @@ def test_windows_install_script_runs_from_ci_checkout_without_cloning(  # ruff: 
     assert str(checkout) in output
     # 9.9.9 is newer than any released origin/main, so there is nothing to update.
     assert "MEOW 9.9.9 is newer than origin/main" in output
-    assert "does not match the checkout" not in output
+    # Package metadata is checked through the healthy interpreter, rather than
+    # trusting the fake meow.cmd's version string.
+    assert "does not match the checkout" in output
     assert "Update MEOW now?" not in output
     assert "Switch to the origin/main version" in output
     assert "Get started:" in output

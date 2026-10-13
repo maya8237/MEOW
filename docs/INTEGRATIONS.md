@@ -126,12 +126,15 @@ The installer offers a default-yes Bun shared-store option. It preserves other
 user settings while setting `linker = "isolated"` and `globalStore = true` in
 `~/.bunfig.toml`; Bun's default cache determines the shared store location.
 `globalDir` controls global CLI packages and is not needed for this feature.
-Previously registered and newly onboarded Bun repos are migrated automatically:
-project `bunfig.toml` is updated
-and `bun install --force --linker isolated` rebuilds existing dependencies
-(`--frozen-lockfile` is added when a Bun lockfile exists). Commit the project
-settings so checked-out branches inherit them. Migration failures are reported
-with a retry command. No package-manager switch is performed for npm/pnpm/Yarn.
+Previously registered and newly onboarded Bun repos are migrated automatically
+in a detached background process, including nested apps such as `frontend/`.
+The installer prints the migration PID and log path; migration may continue
+after the installer prints Done. `bun install --force --linker isolated` rebuilds
+existing dependencies (`--frozen-lockfile` is added when a Bun lockfile exists).
+Configuration is user-only: project `bunfig.toml` files are never created or
+edited. Existing project configurations produce a warning in the migration log
+because they can override user settings. Migration failures include a retry
+command. No package-manager switch is performed for npm/pnpm/Yarn.
 Use a Bun release supporting `install.globalStore`; project settings and
 environment variables can override the user configuration.
 
