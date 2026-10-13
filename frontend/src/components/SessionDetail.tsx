@@ -38,6 +38,7 @@ type Props = {
   repo: string;
   session: SessionRecord | null;
   importedRun?: ImportedRun | null;
+  loadingSession?: boolean;
   linkedRuns?: ImportedRun[];
   repos: string[];
   onEdit: () => void;
@@ -55,6 +56,7 @@ export default function SessionDetail({
   repo,
   session,
   importedRun,
+  loadingSession = false,
   linkedRuns = [],
   repos,
   onEdit,
@@ -218,8 +220,15 @@ export default function SessionDetail({
 
   if (!session && !importedRun)
     return (
-      <div className="session-empty-detail">
-        <p>Select a session or run to inspect its history and output.</p>
+      <div
+        className="session-empty-detail"
+        role={loadingSession ? "status" : undefined}
+      >
+        <p>
+          {loadingSession
+            ? "Loading session details…"
+            : "Select a session or run to inspect its history and output."}
+        </p>
       </div>
     );
   const title =
