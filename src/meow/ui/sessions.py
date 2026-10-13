@@ -649,6 +649,55 @@ def _atomic_json(path: Path, value: dict) -> None:
         Path(name).unlink(missing_ok=True)
 
 
+@contextmanager
+def _file_transaction(  # ruff: ignore[complex-structure, too-many-statements]
+    path: Path, resource: str
+):
+    """Use a kernel-released advisory lock for a short metadata transaction."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as stream:
+        if os.name == "nt":
+            import msvcrt
+
+            stream.seek(0, os.SEEK_END)
+            if stream.tell() == 0:
+                stream.write(b"\0")
+                stream.flush()
+
+            def lock():
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+
+            def unlock():
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+
+        else:
+            import fcntl
+
+            def lock():
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+            def unlock():
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                stream.seek(0)
+                lock()
+                break
+            except OSError as exc:
+                if time.monotonic() >= deadline:
+                    raise SessionBusy(
+                        f"Timed out waiting for {resource} data to become available"
+                    ) from exc
+                time.sleep(0.01)
+        try:
+            yield
+        finally:
+            stream.seek(0)
+            unlock()
+
+
 class SessionStore:  # ruff: ignore[too-many-public-methods]
     """Atomic session records and per-attempt append-only output."""
 
@@ -670,6 +719,10 @@ class SessionStore:  # ruff: ignore[too-many-public-methods]
         return Attempt(**data)
 
     def _read_session(self, session_id: str) -> Session:
+        with self._session_transaction(session_id):
+            return self._read_session_unlocked(session_id)
+
+    def _read_session_unlocked(self, session_id: str) -> Session:
         path = self._directory(session_id) / "session.json"
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -716,22 +769,34 @@ class SessionStore:  # ruff: ignore[too-many-public-methods]
         directory = self._directory(recipe.id)
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / "session.json"
-        if path.exists():
-            raise SessionError("Session already exists")
-        session = Session(recipe.id, recipe_json(recipe), _now(), _now(), "draft", [])
-        _atomic_json(path, asdict(session))
-        return session
+        with self._session_transaction(recipe.id):
+            if path.exists():
+                raise SessionError("Session already exists")
+            session = Session(
+                recipe.id, recipe_json(recipe), _now(), _now(), "draft", []
+            )
+            _atomic_json(path, asdict(session))
+            return session
 
     def update_recipe(self, session_id: str, recipe: Recipe) -> Session:
         if Path(recipe.repo).resolve() != self.repo:
             raise SessionError("Recipe repository does not match this session")
-        session = self._read_session(session_id)
-        session.recipe = recipe_json(replace(recipe, id=session_id))
-        session.state = "draft"
-        self._save_session(session)
-        return session
+        with self._session_transaction(session_id):
+            session = self._read_session_unlocked(session_id)
+            session.recipe = recipe_json(replace(recipe, id=session_id))
+            if not any(
+                self._read_attempt(session_id, item).state in _ACTIVE_STATES
+                for item in session.attempts
+            ):
+                session.state = "draft"
+            self._save_session(session)
+            return session
 
     def _read_attempt(self, session_id: str, attempt_id: str) -> Attempt:
+        with self._attempt_transaction(session_id, attempt_id):
+            return self._read_attempt_unlocked(session_id, attempt_id)
+
+    def _read_attempt_unlocked(self, session_id: str, attempt_id: str) -> Attempt:
         if not _SESSION_ID.fullmatch(attempt_id):
             raise SessionError("Invalid attempt id")
         path = self._directory(session_id) / f"{attempt_id}.json"
@@ -751,6 +816,22 @@ class SessionStore:  # ruff: ignore[too-many-public-methods]
             if isinstance(exc, SessionError):
                 raise
             raise SessionError(f"Could not load attempt {attempt_id}") from exc
+
+    @contextmanager
+    def _attempt_transaction(self, session_id: str, attempt_id: str):
+        """Serialize attempt reads and read-modify-write updates across processes."""
+        if not _SESSION_ID.fullmatch(attempt_id):
+            raise SessionError("Invalid attempt id")
+        lock_path = self._directory(session_id) / f".{attempt_id}.transaction"
+        with _file_transaction(lock_path, "attempt"):
+            yield
+
+    @contextmanager
+    def _session_transaction(self, session_id: str):
+        """Serialize session-record read-modify-write transactions across processes."""
+        lock_path = self._directory(session_id) / ".session.transaction"
+        with _file_transaction(lock_path, "session"):
+            yield
 
     @contextmanager
     def claim(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
@@ -816,39 +897,53 @@ class SessionStore:  # ruff: ignore[too-many-public-methods]
     def create_attempt(
         self, session_id: str, effective_recipe: Recipe, worker_token: str
     ) -> Attempt:
-        session = self._read_session(session_id)
-        if any(
-            self._read_attempt(session_id, item).state in _ACTIVE_STATES
-            for item in session.attempts
-        ):
-            raise SessionBusy("Session already has an active attempt")
-        attempt_id = new_id()
-        attempt = Attempt(
-            attempt_id,
-            "starting",
-            _now(),
-            None,
-            None,
-            [],
-            recipe_json(effective_recipe),
-            {"pid": None, "identity": None, "token": worker_token},
-            None,
-            f"{attempt_id}.output",
-            None,
-            [],
-            None,
-            session_id,
-        )
-        _atomic_json(
-            self._directory(session_id) / f"{attempt_id}.json", asdict(attempt)
-        )
-        session.attempts.append(attempt_id)
-        session.state = "starting"
-        self._save_session(session)
-        return attempt
+        with self._session_transaction(session_id):
+            session = self._read_session_unlocked(session_id)
+            if any(
+                self._read_attempt(session_id, item).state in _ACTIVE_STATES
+                for item in session.attempts
+            ):
+                raise SessionBusy("Session already has an active attempt")
+            attempt_id = new_id()
+            attempt = Attempt(
+                attempt_id,
+                "starting",
+                _now(),
+                None,
+                None,
+                [],
+                recipe_json(effective_recipe),
+                {"pid": None, "identity": None, "token": worker_token},
+                None,
+                f"{attempt_id}.output",
+                None,
+                [],
+                None,
+                session_id,
+            )
+            _atomic_json(
+                self._directory(session_id) / f"{attempt_id}.json", asdict(attempt)
+            )
+            session.attempts.append(attempt_id)
+            session.state = "starting"
+            self._save_session(session)
+            return attempt
 
     def update_attempt(self, session_id: str, attempt_id: str, **changes) -> Attempt:
-        attempt = self._read_attempt(session_id, attempt_id)
+        with self._attempt_transaction(session_id, attempt_id):
+            attempt = self._update_attempt_unlocked(session_id, attempt_id, **changes)
+        with self._session_transaction(session_id):
+            session = self._read_session_unlocked(session_id)
+            with self._attempt_transaction(session_id, attempt_id):
+                current = self._read_attempt_unlocked(session_id, attempt_id)
+            session.state = current.state
+            self._save_session(session)
+        return attempt
+
+    def _update_attempt_unlocked(
+        self, session_id: str, attempt_id: str, **changes
+    ) -> Attempt:
+        attempt = self._read_attempt_unlocked(session_id, attempt_id)
         for key, value in changes.items():
             if key in _IMMUTABLE_ATTEMPT_FIELDS:
                 raise SessionError(f"Attempt field cannot be changed: {key}")
@@ -858,10 +953,6 @@ class SessionStore:  # ruff: ignore[too-many-public-methods]
         _atomic_json(
             self._directory(session_id) / f"{attempt_id}.json", asdict(attempt)
         )
-        session = self._read_session(session_id)
-        if attempt.state in _ATTEMPT_STATES:
-            session.state = attempt.state
-        self._save_session(session)
         return attempt
 
     def finish_attempt(
@@ -890,67 +981,70 @@ class SessionStore:  # ruff: ignore[too-many-public-methods]
     def read_output(  # ruff: ignore[too-many-statements]
         self, session_id: str, attempt_id: str, cursor: int, limit: int
     ) -> dict:
-        self._read_attempt(session_id, attempt_id)
-        path = self._directory(session_id) / f"{attempt_id}.output"
-        path.touch(exist_ok=True)
-        stat = path.stat()
-        saved = self._read_attempt(session_id, attempt_id)
-        marker = saved.worker.get("output_identity")
-        identity = f"{stat.st_dev}:{stat.st_ino}"
-        reset = bool(
-            marker
-            and (
-                marker != identity or stat.st_size < saved.worker.get("output_size", 0)
+        with self._attempt_transaction(session_id, attempt_id):
+            self._read_attempt_unlocked(session_id, attempt_id)
+            path = self._directory(session_id) / f"{attempt_id}.output"
+            path.touch(exist_ok=True)
+            stat = path.stat()
+            saved = self._read_attempt_unlocked(session_id, attempt_id)
+            marker = saved.worker.get("output_identity")
+            identity = f"{stat.st_dev}:{stat.st_ino}"
+            reset = bool(
+                marker
+                and (
+                    marker != identity
+                    or stat.st_size < saved.worker.get("output_size", 0)
+                )
             )
-        )
-        cursor = max(0, int(cursor))
-        if reset:
-            cursor = max(0, stat.st_size - _OUTPUT_TAIL)
-        cursor = min(cursor, stat.st_size)
-        limit = min(max(int(limit), 1), _OUTPUT_LIMIT)
-        with path.open("rb") as stream:
-            while cursor and cursor < stat.st_size:
+            cursor = max(0, int(cursor))
+            if reset:
+                cursor = max(0, stat.st_size - _OUTPUT_TAIL)
+            cursor = min(cursor, stat.st_size)
+            limit = min(max(int(limit), 1), _OUTPUT_LIMIT)
+            with path.open("rb") as stream:
+                while cursor and cursor < stat.st_size:
+                    stream.seek(cursor)
+                    if stream.read(1)[0] & 0xC0 != _UTF8_CONTINUATION:
+                        break
+                    cursor -= 1
                 stream.seek(cursor)
-                if stream.read(1)[0] & 0xC0 != _UTF8_CONTINUATION:
-                    break
-                cursor -= 1
-            stream.seek(cursor)
-            data = stream.read(min(limit + 4, stat.st_size - cursor))
-        data = data[:limit]
-        try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            if exc.reason == "unexpected end of data":
-                data = data[: exc.start]
-            text = data.decode("utf-8", errors="replace")
-        next_cursor = cursor + len(data)
-        self.update_attempt(
-            session_id,
-            attempt_id,
-            worker={
-                **saved.worker,
-                "output_identity": identity,
-                "output_size": stat.st_size,
-            },
-            output_size=stat.st_size,
-        )
-        return {
-            "text": text,
-            "next_cursor": next_cursor,
-            "size": stat.st_size,
-            "truncated": next_cursor < stat.st_size,
-            "reset": reset,
-        }
+                data = stream.read(min(limit + 4, stat.st_size - cursor))
+            data = data[:limit]
+            try:
+                text = data.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                if exc.reason == "unexpected end of data":
+                    data = data[: exc.start]
+                text = data.decode("utf-8", errors="replace")
+            next_cursor = cursor + len(data)
+            self._update_attempt_unlocked(
+                session_id,
+                attempt_id,
+                worker={
+                    **saved.worker,
+                    "output_identity": identity,
+                    "output_size": stat.st_size,
+                },
+                output_size=stat.st_size,
+            )
+            return {
+                "text": text,
+                "next_cursor": next_cursor,
+                "size": stat.st_size,
+                "truncated": next_cursor < stat.st_size,
+                "reset": reset,
+            }
 
     def archive(self, session_id: str, archived: bool) -> Session:
-        session = self._read_session(session_id)
-        if any(
-            self._read_attempt(session_id, item).state in _ACTIVE_STATES
-            for item in session.attempts
-        ):
-            raise SessionBusy("Cannot archive a session with an active attempt")
-        session.archived = bool(archived)
-        return self._save_and_return(session)
+        with self._session_transaction(session_id):
+            session = self._read_session_unlocked(session_id)
+            if any(
+                self._read_attempt(session_id, item).state in _ACTIVE_STATES
+                for item in session.attempts
+            ):
+                raise SessionBusy("Cannot archive a session with an active attempt")
+            session.archived = bool(archived)
+            return self._save_and_return(session)
 
     def _save_and_return(self, session: Session) -> Session:
         self._save_session(session)

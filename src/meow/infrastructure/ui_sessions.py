@@ -623,8 +623,12 @@ def worker_main(  # ruff: ignore[complex-structure, too-many-branches, too-many-
 
         def read_child() -> None:
             assert child is not None and child.stdout is not None
-            for output_line in iter(child.stdout.readline, b""):
-                chunks.put(output_line)
+            if claude:
+                for output_line in iter(child.stdout.readline, b""):
+                    chunks.put(output_line)
+            else:
+                while output_chunk := child.stdout.read1(4096):
+                    chunks.put(output_chunk)
             chunks.put(None)
 
         threading.Thread(target=read_child, daemon=True).start()

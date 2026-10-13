@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -93,7 +94,9 @@ def test_active_attempt_cannot_be_archived_and_keeps_recipe_snapshot(tmp_path):
     with pytest.raises(SessionBusy):
         store.create_attempt(recipe.id, recipe, worker_token="another")
     store.update_recipe(recipe.id, replace(recipe, request="edit"))
-    assert store.load(recipe.id).recipe["request"] == "edit"
+    session = store.load(recipe.id)
+    assert session.recipe["request"] == "edit"
+    assert session.state == "running"
     assert (
         store._read_attempt(recipe.id, attempt.id).effective_recipe["request"]
         == "print a result"
@@ -144,6 +147,133 @@ def test_output_rotation_and_truncation_reset_cursor(tmp_path):
     assert result["text"] == "rotated"
 
 
+def test_concurrent_attempt_updates_preserve_disjoint_fields(  # ruff: ignore[complex-structure, too-many-statements]
+    tmp_path, monkeypatch
+):
+    from meow.ui import sessions
+    from meow.ui.sessions import SessionStore
+
+    store = SessionStore(tmp_path)
+    recipe = valid_recipe(tmp_path)
+    store.save_recipe(recipe)
+    attempt = store.create_attempt(recipe.id, recipe, worker_token="token")
+    first_write_started = threading.Event()
+    release_first_write = threading.Event()
+    second_write_started = threading.Event()
+    errors = []
+    original_atomic_json = sessions._atomic_json
+
+    def controlled_atomic_json(path, value):
+        if path.name == f"{attempt.id}.json":
+            if threading.current_thread().name == "first-writer":
+                first_write_started.set()
+                if not release_first_write.wait(5):
+                    raise TimeoutError("first write was not released")
+            elif threading.current_thread().name == "second-writer":
+                second_write_started.set()
+        original_atomic_json(path, value)
+
+    monkeypatch.setattr(sessions, "_atomic_json", controlled_atomic_json)
+
+    def update(**changes):
+        try:
+            store.update_attempt(recipe.id, attempt.id, **changes)
+        except BaseException as exc:  # surface worker-thread failures in the test
+            errors.append(exc)
+
+    first = threading.Thread(
+        target=update, name="first-writer", kwargs={"error": "first"}
+    )
+    second = threading.Thread(
+        target=update,
+        name="second-writer",
+        kwargs={"claude_session_id": "second"},
+    )
+    first.start()
+    assert first_write_started.wait(5)
+    second.start()
+    try:
+        assert not second_write_started.wait(0.1)
+    finally:
+        release_first_write.set()
+    first.join(5)
+    second.join(5)
+
+    assert not first.is_alive() and not second.is_alive()
+    assert errors == []
+    saved = store._read_attempt(recipe.id, attempt.id)
+    assert saved.error == "first"
+    assert saved.claude_session_id == "second"
+
+
+def test_concurrent_recipe_edit_and_attempt_creation_preserve_both(  # ruff: ignore[complex-structure, too-many-statements]
+    tmp_path, monkeypatch
+):
+    from dataclasses import replace
+
+    from meow.ui import sessions
+    from meow.ui.sessions import SessionStore
+
+    store = SessionStore(tmp_path)
+    recipe = valid_recipe(tmp_path)
+    store.save_recipe(recipe)
+    original = store.create_attempt(recipe.id, recipe, worker_token="first")
+    store.finish_attempt(recipe.id, original.id, "succeeded", 0)
+    edited = replace(recipe, request="edited while the next attempt starts")
+    edit_write_started = threading.Event()
+    release_edit_write = threading.Event()
+    launch_write_started = threading.Event()
+    errors = []
+    original_atomic_json = sessions._atomic_json
+
+    def controlled_atomic_json(path, value):
+        if path.name == "session.json":
+            if threading.current_thread().name == "recipe-editor":
+                edit_write_started.set()
+                if not release_edit_write.wait(5):
+                    raise TimeoutError("recipe edit was not released")
+            elif threading.current_thread().name == "attempt-launcher":
+                launch_write_started.set()
+        original_atomic_json(path, value)
+
+    monkeypatch.setattr(sessions, "_atomic_json", controlled_atomic_json)
+
+    def edit():
+        try:
+            store.update_recipe(recipe.id, edited)
+        except BaseException as exc:
+            errors.append(exc)
+
+    def launch():
+        try:
+            store.create_attempt(recipe.id, edited, worker_token="second")
+        except BaseException as exc:
+            errors.append(exc)
+
+    editor = threading.Thread(target=edit, name="recipe-editor")
+    launcher = threading.Thread(target=launch, name="attempt-launcher")
+    editor.start()
+    assert edit_write_started.wait(5)
+    launcher.start()
+    try:
+        assert not launch_write_started.wait(0.1)
+    finally:
+        release_edit_write.set()
+    editor.join(5)
+    launcher.join(5)
+
+    assert not editor.is_alive() and not launcher.is_alive()
+    assert errors == []
+    saved = store.load(recipe.id)
+    assert saved.recipe["request"] == edited.request
+    assert saved.attempts[0] == original.id
+    assert saved.attempts[-1] != original.id
+    assert (
+        store._read_attempt(recipe.id, saved.attempts[-1]).effective_recipe["request"]
+        == edited.request
+    )
+
+
 def test_registration_timeout_persists_failed_attempt(tmp_path, monkeypatch):
     from meow.infrastructure import ui_sessions
     from meow.ui.sessions import SessionStore
@@ -187,12 +317,14 @@ def test_resume_launch_failure_finishes_attempt_with_error(  # ruff: ignore[too-
     monkeypatch.setattr(ui_sessions, "_REGISTER_SECONDS", 0)
 
     if failure == "popen":
+
         def fail_popen(*_args, **_kwargs):
             raise OSError("worker executable missing")
 
         monkeypatch.setattr(ui_sessions.subprocess, "Popen", fail_popen)
         expected = "Worker launch failed: worker executable missing"
     else:
+
         class ExitedWorker:
             pid = 123
 
@@ -299,6 +431,40 @@ def test_launch_attempt_runs_deterministic_python_child(tmp_path, monkeypatch):
         store.read_output(recipe.id, attempt.id, 0, 100)["text"].replace("\r\n", "\n")
         == "worker-output\n"
     )
+
+
+def test_cli_output_streams_flushed_partial_text_before_child_exit(
+    tmp_path, monkeypatch
+):
+    from meow.infrastructure import ui_sessions
+    from meow.ui.sessions import SessionStore
+
+    store = SessionStore(tmp_path)
+    recipe = valid_recipe(tmp_path)
+    store.save_recipe(recipe)
+    monkeypatch.setattr(
+        ui_sessions,
+        "command_for",
+        lambda _recipe: [
+            sys.executable,
+            "-c",
+            "import sys,time; print('partial',end='',flush=True); time.sleep(6)",
+        ],
+    )
+
+    attempt = ui_sessions.launch_attempt(tmp_path, recipe.id)
+    deadline = time.monotonic() + 2
+    try:
+        while time.monotonic() < deadline:
+            latest = store._read_attempt(recipe.id, attempt.id)
+            output = store.read_output(recipe.id, attempt.id, 0, 100)["text"]
+            if output:
+                break
+            time.sleep(0.05)
+        assert output == "partial"
+        assert latest.state == "running"
+    finally:
+        ui_sessions.stop_attempt(tmp_path, recipe.id, attempt.id)
 
 
 def test_stop_refuses_to_signal_a_reused_worker_pid(tmp_path, monkeypatch):

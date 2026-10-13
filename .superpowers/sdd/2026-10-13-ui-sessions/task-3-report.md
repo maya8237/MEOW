@@ -51,14 +51,31 @@ GREEN output:
 21 passed in 6.65s
 ```
 
+## Worker output and storage race follow-up
+
+- Added a CLI-only chunk reader so flushed text without a newline reaches the session log before the child exits. Claude Code JSON output retains newline framing. The deterministic child test prints `partial` without a newline, stays alive for six seconds, and verifies the text is visible while the attempt is still running; cleanup requests stop and reaps the child.
+- During the focused lifecycle suite, the stop test once recorded `Worker failed: [WinError 5] Access is denied` at `os.replace(temp, <pytest tmp repo>/.meow/ui/sessions/<session-id>/<attempt-id>.json)`. The worker stores exception text rather than traceback. This test uses an isolated `tmp_path` repository, not the MEOW checkout.
+- Root cause: `update_attempt` performed an unlocked read-modify-replace while the worker appended output and updated `output_size`, the API stop call changed state, and `read_output` polling updated worker output metadata. Those simultaneous writers could replace the same attempt JSON and lose disjoint fields. A second race existed between `update_recipe` and `create_attempt`, which could lose the newly appended attempt list. Unlocked readers could also hold attempt JSON open during replacement on Windows.
+- Added bounded, per-session and per-attempt OS advisory transaction locks. Windows uses `msvcrt.locking`; POSIX uses `flock`. Kernel ownership releases locks when a process exits, so recovery does not depend on lock age or a PID-only check. Attempt reads, updates, and output polling metadata use the attempt lock. Session index reads and read-modify-write operations use the session lock. When both are required, order is session then attempt; `update_attempt` releases the attempt lock before syncing session state and then re-reads the current attempt under that order. The future recipe remains editable while an attempt is active.
+- Added deterministic barrier tests for concurrent disjoint attempt field updates and an edit racing with attempt creation. Existing lifecycle coverage exercises output polling during stop.
+- Recipe edits preserve an active attempt's session state; edits after the attempt is terminal return the recipe to draft. The active-edit test asserts the attempt remains `running`.
+
+Follow-up focused command and output:
+
+```text
+$env:PYTHONPATH='src'; rtk run 'C:/Users/m/Documents/MEOW/.venv/Scripts/python.exe -m pytest -q tests/infrastructure/test_ui_sessions.py tests/ui/test_session_runs.py tests/cli/test_resume_workflow.py'
+......................................... [100%]
+41 passed in 19.56s
+```
+
 Ruff and whitespace checks:
 
 ```text
-rtk run 'C:/Users/m/Documents/MEOW/.venv/Scripts/python.exe -m ruff check src/meow/execution/run_state.py src/meow/infrastructure/ui_sessions.py src/meow/cli/resume_cli.py tests/ui/test_session_runs.py tests/cli/test_resume_workflow.py'
+rtk run 'C:/Users/m/Documents/MEOW/.venv/Scripts/python.exe -m ruff check src/meow/ui/sessions.py src/meow/execution/run_state.py src/meow/infrastructure/ui_sessions.py src/meow/cli/resume_cli.py tests/infrastructure/test_ui_sessions.py tests/ui/test_session_runs.py tests/cli/test_resume_workflow.py'
 All checks passed!
 
-rtk run 'C:/Users/m/Documents/MEOW/.venv/Scripts/python.exe -m ruff format --check src/meow/execution/run_state.py src/meow/infrastructure/ui_sessions.py src/meow/cli/resume_cli.py tests/ui/test_session_runs.py tests/cli/test_resume_workflow.py'
-5 files already formatted
+rtk run 'C:/Users/m/Documents/MEOW/.venv/Scripts/python.exe -m ruff format --check src/meow/ui/sessions.py src/meow/execution/run_state.py src/meow/infrastructure/ui_sessions.py src/meow/cli/resume_cli.py tests/infrastructure/test_ui_sessions.py tests/ui/test_session_runs.py tests/cli/test_resume_workflow.py'
+7 files already formatted
 
 rtk git diff --check
 ```
@@ -69,13 +86,17 @@ rtk git diff --check
 - Confirmed run output reads a server-selected log path after validating the run ID; it ignores the journal's `background.log` value and blocks symlink output paths.
 - Confirmed imported resume creates an attempt before launching the existing detached worker and stores the existing run ID on that attempt. The test replaces only the worker launch boundary, so no agents run.
 - Confirmed stop handling includes the seeded run ID, so imported resumes can request cooperative cancellation.
-- Confirmed the targeted resume suite and Ruff checks pass. No unresolved concerns.
+- Confirmed CLI partial output appears while its child is still alive, and stop returns with the child tree reaped.
+- Confirmed attempt and session metadata read-modify-write paths share bounded OS locks; deterministic overlapping updates preserve both changes and attempt history.
+- Confirmed the targeted tests and Ruff checks pass. No paid launches are performed by the tests.
 
 ## Files changed
 
 - `src/meow/execution/run_state.py`
+- `src/meow/ui/sessions.py`
 - `src/meow/infrastructure/ui_sessions.py`
 - `src/meow/cli/resume_cli.py`
+- `tests/infrastructure/test_ui_sessions.py`
 - `tests/ui/test_session_runs.py`
 - `tests/cli/test_resume_workflow.py`
 - `.superpowers/sdd/2026-10-13-ui-sessions/task-3-report.md`
