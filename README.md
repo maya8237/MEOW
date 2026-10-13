@@ -57,7 +57,22 @@ runs. Use `/meow:onboard` for integrations and optional features, or
 | Fix lint | `/meow:lint` |
 | Queue work | `meow queue "..."` |
 | Check or continue | `meow status` or `meow resume RUN_ID` |
-| Browse or create workflows, agents, and skills | `meow ui` |
+| Browse definitions or manage command sessions | `meow ui` |
+
+`meow ui` opens a local, bundled app for workflows, agents, skills, and saved
+command sessions. Sessions can run through the MEOW CLI or Claude Code. Feature
+runs default to unattended execution in an isolated worktree; successful,
+verified unattended runs retain MEOW's existing commit-and-push delivery
+policy. Local hosting does not disable delivery. Claude permission checks stay
+enabled by default, with permission bypass available only as an explicit,
+labeled opt-in.
+
+Recipes and each attempt's output are saved under the selected repository's
+`.meow/ui/sessions/`. Edit changes the next attempt, rerun starts fresh, duplicate
+creates a draft, and resume continues a stopped resumable execution. Existing
+MEOW runs also appear when their repositories are registered; historical output
+is available only when a background log was recorded. See the [CLI guide](docs/CLI.md#selecting-and-editing-workflows)
+for permission, archive, import, and resume details.
 
 `meow orchestrate "Add SSO login and an admin audit log"` splits an objective
 into tasks, runs them in parallel, merges them into one branch, reviews it as
