@@ -30,6 +30,7 @@ const stateLabel: Record<string, string> = {
   failed: "Failed",
   stopped: "Stopped",
   draft: "Draft",
+  scheduled: "Scheduled",
   starting: "Starting",
   running: "Running",
   stopping: "Stopping",
@@ -52,6 +53,7 @@ type Props = {
   onUnarchive: () => void;
   onImportedResume: (request: string, repair: boolean) => void;
   onImportedCancel: () => void;
+  onCancelSchedule?: (scheduleId: string) => void;
 };
 
 export default function SessionDetail({
@@ -72,6 +74,7 @@ export default function SessionDetail({
   onUnarchive,
   onImportedResume,
   onImportedCancel,
+  onCancelSchedule,
 }: Props) {
   const [attemptId, setAttemptId] = useState("");
   const [output, setOutput] = useState("");
@@ -352,6 +355,25 @@ export default function SessionDetail({
           {picked.error}
         </div>
       )}
+      {session?.schedules?.map((job) => (
+        <div className="session-facts" key={job.id}>
+          <span>
+            {job.state === "scheduled"
+              ? "Scheduled for"
+              : `Schedule ${job.state}:`}{" "}
+            {new Date(job.at).toLocaleString()}
+          </span>
+          {job.error && <span role="status">{job.error}</span>}
+          {job.state === "scheduled" && (
+            <Button
+              variant="outline"
+              onClick={() => onCancelSchedule?.(job.id)}
+            >
+              Cancel schedule
+            </Button>
+          )}
+        </div>
+      ))}
       {picked?.run_ids.map((id) => (
         <p className="linked-run" key={id}>
           Linked MEOW run <code>{id}</code>

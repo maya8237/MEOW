@@ -4,6 +4,11 @@ All notable changes to MEOW will be documented here.
 
 ## Unreleased
 
+- One-shot scheduling through `meow schedule`, `/meow:schedule`, and the UI's
+  **Schedule for later** option, using Windows Task Scheduler or Linux systemd
+  user timers. Schedules preserve reviewed arguments, support cancellation,
+  and record execution results without keeping the current session open.
+
 - `meow orchestrate` and `/meow:orchestrate`: split an objective, Jira issues,
   a JQL query, or a task file into a graph of tasks, run each as its own
   unattended sprint in parallel, recover failures through triage, merge every

@@ -86,6 +86,75 @@ def recipe(repo, **changes):
     return {**value, **changes}
 
 
+def test_schedule_session_freezes_recipe_lists_and_cancels(  # ruff: ignore[too-many-statements]
+    running, project, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+    from unittest.mock import Mock
+
+    from meow.infrastructure import scheduling
+
+    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    monkeypatch.setattr("meow.ui.sessions.process_identity", lambda _pid: "test-owner")
+    monkeypatch.setattr(scheduling, "_unit_dir", lambda: project / "units")
+    monkeypatch.setattr(
+        scheduling.subprocess, "run", Mock(return_value=Mock(stdout=""))
+    )
+    status, body = post(
+        running.server_port,
+        "/api/sessions",
+        {"repo": str(project), "recipe": recipe(project)},
+    )
+    assert status == HTTPStatus.CREATED, body
+    session_id = body["session"]["id"]
+
+    def scheduler_command(argv, **_kwargs):
+        if argv[:3] == ["systemctl", "--user", "enable"]:
+            # An imminent trigger must be able to acquire its session claim.
+            with SessionStore(project).claim(session_id, "launch"):
+                pass
+        return Mock(stdout="")
+
+    monkeypatch.setattr(scheduling.subprocess, "run", scheduler_command)
+    at = (datetime.now(UTC) + timedelta(days=2)).isoformat()
+    status, body = post(
+        running.server_port,
+        f"/api/sessions/{session_id}/schedule",
+        {"repo": str(project), "at": at},
+    )
+    assert status == HTTPStatus.CREATED, body
+    assert body["session"]["state"] == "scheduled"
+    schedule_id = body["schedule"]["id"]
+    frozen = scheduling.list_schedules(project)[0]["recipe"]
+    assert frozen["request"] == "do the task"
+    assert body["session"]["schedules"][0]["id"] == schedule_id
+    assert body["session"]["attempts"] == []
+    status, body = post(
+        running.server_port,
+        f"/api/sessions/{session_id}/cancel-schedule",
+        {"repo": str(project), "schedule_id": schedule_id},
+    )
+    assert status == HTTPStatus.OK
+    assert body["session"]["schedules"][0]["state"] == "cancelled"
+
+
+def test_schedule_rejects_invalid_time_and_foreign_repo(running, project):
+    status, body = post(
+        running.server_port,
+        "/api/sessions",
+        {"repo": str(project), "recipe": recipe(project)},
+    )
+    session_id = body["session"]["id"]
+    for payload in (
+        {"repo": str(project), "at": "yesterday"},
+        {"repo": "/unknown", "at": "20:30"},
+    ):
+        status, _ = post(
+            running.server_port, f"/api/sessions/{session_id}/schedule", payload
+        )
+        assert status == HTTPStatus.BAD_REQUEST
+
+
 def test_create_list_detail_and_update_session(running, project):
     status, body = post(
         running.server_port,
@@ -299,6 +368,7 @@ def test_session_serializers_use_exact_public_fields(running, project):
         "active_attempt_id",
         "attempt_count",
         "last_attempt",
+        "schedules",
     }
     assert set(body["session"]) == summary_fields | {"recipe", "attempts"}
     assert set(body["session"]["recipe"]) == {

@@ -24,6 +24,7 @@ These are the commands meant for normal project work:
 | `meow workflows` | List, show, validate, or eject workflow definitions. |
 | `meow agents` | List, show, eject, or diff agent definitions. |
 | `meow ui` | Open the local catalog and manage command sessions for registered repositories. |
+| `meow schedule` | Schedule an unattended run for later, list schedules, or cancel a trigger. |
 | `meow hooks` | Manage optional host hooks after reviewing what they install. |
 | `meow ipython` | Open the interactive MEOW IPython session. |
 
@@ -38,6 +39,39 @@ top-level MEOW commands are available as bare commands, for example
 `meow run "Add CSV export" --name csv-export`.
 The explicit `%meow ...` magic and regular `!meow ...` shell form are also
 available.
+
+### Scheduling a run
+
+```bash
+meow schedule add --at "2026-12-01T09:00:00+02:00" -- run "Add CSV export" --name csv-export
+meow schedule add --at "09:00" --work-dir /path/to/project -- run --jira PROJ-123
+meow schedule list --work-dir /path/to/project
+meow schedule cancel <schedule-id> --work-dir /path/to/project
+```
+
+`--at` accepts an ISO date and time (with an optional timezone offset), or
+`HH:MM` for the next occurrence in the machine's local timezone. Full timestamps
+must be in the future. Each trigger runs once, through Windows Task Scheduler
+or a Linux systemd user timer, even after the CLI or UI closes. Windows requires
+the user to be logged in; Linux requires a working systemd user manager, with
+lingering enabled separately for execution while logged out.
+
+The command after `--` must be `run`. MEOW adds `--unattended` and the selected
+project directory, validates the run flags, and rejects manual approval,
+`--no-worktree`, `--lint-fix`, `--background`, and `--from`. Requests and arguments
+are saved as data under `.meow/schedules/`, with the run's output in the matching
+`.log` file. The JSON response includes the identifier, UTC execution time, and
+state. Cancellation removes the OS trigger; an already running job uses the
+normal run or session stop controls. Keep MEOW's Python installation and project
+at their registered paths. Credentials must be available to the scheduler user.
+
+In plugin sessions, `/meow:schedule` resolves requests such as "run this tomorrow
+at 9" and registers the same CLI schedule. `/meow:run` routes future-time requests
+to that skill before beginning work. In the UI session launcher, select
+**Schedule for later**, choose **Run at**, preview the command, and select
+**Schedule session**. The reviewed recipe is frozen for that execution; session
+details show the time and a cancellation control. UI times use the browser's
+local timezone and are stored as UTC.
 
 ### Selecting and editing workflows
 
@@ -576,6 +610,10 @@ them into each role's SDK session, and native skills read them with
 
 These commands are hidden from `meow --help` because they are not the normal
 user surface.
+
+`meow _scheduled ID --work-dir PATH` is the OS scheduler's worker entry point.
+It atomically claims the saved schedule, runs it at most once, and records its
+result. Use `meow schedule` to create, inspect, or cancel schedules.
 
 `meow docs-update` is for maintainers updating MEOW's own prose docs on a
 clean checkout of `[delivery].target_branch` (default `dev`). Run

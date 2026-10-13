@@ -392,94 +392,59 @@ with the GitHub or GitLab tools already connected to the session.
 
 ---
 
-## Running `meow run --jira` on a schedule
+## Scheduling unattended runs
 
-`meow run --jira [ISSUE-KEY]` fetches a Jira issue (or the most recently
-created one in `[jira].project_key` if you omit the key), solves it through
-the same plan/implement/review loop as a plain `meow run`, inside its own
-worktree on branch `<branch_prefix><ISSUE-KEY>` (default
-`issue/<ISSUE-KEY>`), then pushes that branch to `origin`. On success it
-prints one JSON line to stdout — `{"issue": "PROJ-123", "branch":
-"issue/PROJ-123"}` — and exits 0; any failure (no active Jira MCP, no
-matching issue, the sprint not passing within `max_rounds`, or the push
-failing) raises before that line is printed, and the process exits non-zero.
+MEOW registers one-shot runs with Windows Task Scheduler or Linux systemd user
+timers. The CLI, `/meow:schedule` skill, and UI use the same scheduling helper:
 
-**Never pass `--manually-approve-plan`/`-m` on a scheduled run** — it prompts
-on stdin for approval before the generator starts, and a scheduled task has no
-console attached to answer it, so the run just hangs instead of completing or
-failing cleanly.
-
-**Prerequisites**: `[jira]`/`[jira.mcp]` set in `.meow/config.toml` (above), a
-Jira MCP server reachable with those settings (this repo assumes
-[`mcp-atlassian`](https://github.com/sooperset/mcp-atlassian), installable
-with `uvx` so no separate install step is needed), its credentials in the
-environment, and an `origin` remote the scheduled task's account can push to
-(e.g. an SSH key or stored credential, not an interactive prompt).
-
-**Persistent logs**: a scheduled task has no attached console, so set
-`MEOW_LOG_FILE` to a path before running — every run appends its key=value log
-lines there instead of only writing to stderr (`MEOW_LOG_LEVEL` also works the
-same way `meow run` uses it, e.g. `DEBUG` for more detail).
-
-MEOW does not include its own operating-system scheduler. Use the scheduler
-that fits the machine or CI environment that will run the command.
-
-**Windows Task Scheduler** — from an elevated PowerShell prompt, using
-`schtasks` (adjust the venv path, working directory, issue key or omit it for
-"latest", and schedule):
-
-```powershell
-schtasks /Create /TN "meow-run-jira" /SC DAILY /ST 09:00 /RL LIMITED /TR (
-    '"C:\path\to\meow\.venv\Scripts\meow.exe" run --jira' +
-    ' --work-dir "C:\path\to\target-project"'
-)
+```bash
+meow schedule add --at "09:00" --work-dir /path/to/project -- run --jira PROJ-123
+meow schedule add --at "2026-12-01T09:00:00+02:00" -- run "Add CSV export" --name csv-export
+meow schedule list --work-dir /path/to/project
+meow schedule cancel <schedule-id> --work-dir /path/to/project
 ```
 
-`schtasks /TR` runs with a minimal environment, so set `MEOW_LOG_FILE` and the
-Jira credentials as that account's persistent user/system environment
-variables (`setx`) rather than relying on variables set in your interactive
-shell. Verify the task once with `schtasks /Run /TN "meow-run-jira"`, then
-`Get-Content <MEOW_LOG_FILE> -Tail 50` to confirm it ran and to read its
-result.
+`HH:MM` means the next occurrence in the machine's local timezone; ISO
+timestamps can specify an explicit offset. Each schedule runs once. Scheduling
+adds `--unattended`, validates the arguments, and rejects interactive approval,
+lint-fix, background mode, source-branch selection, and disabling worktree
+isolation. The normal plan, implementation, verification, review, and delivery
+policy applies when the run starts. See [CLI.md](CLI.md#scheduling-a-run).
 
-**Linux cron** — add a crontab entry for the account that has Jira credentials
-and push access. Use absolute paths because cron starts with a minimal
-environment:
+In a plugin conversation, ask MEOW to run a request or Jira issue at a future
+time, or invoke `/meow:schedule`. In the UI, select **Schedule for later** in
+the session launcher, choose a local date/time, preview, and schedule. UI
+schedules save the reviewed recipe, so later edits do not change that run.
+The session details show its scheduled time and cancellation control.
 
-```cron
-MEOW_LOG_FILE=/var/log/meow-run-jira.log
-JIRA_URL=https://jira.example.com
-JIRA_USERNAME=automation@example.com
-JIRA_API_TOKEN=...
+**Windows:** tasks run as the current logged-in user with least privilege.
+No administrator privileges or password storage are needed. Keep that user
+logged in for execution. **Linux:** `systemctl --user` must connect to a working
+systemd user manager; enable lingering separately if execution must work while
+logged out. Persistent timers and Windows's StartWhenAvailable setting allow
+missed times to run when the scheduler becomes available. The machine must be
+available, and the registered project and Python environment must stay in place.
 
-0 9 * * * /path/to/meow/.venv/bin/meow run --jira --work-dir /path/to/target-project
-```
+Schedule metadata and CLI output logs live under `.meow/schedules/`; normal run
+journals still live under `.meow/runs/`. UI execution creates a session attempt
+whose output and result appear in the UI. Cancellation removes the trigger;
+use the normal run/session stop controls if execution has already started.
+Registration failures are reported immediately and saved with state `failed`.
+Repeated invocation of a consumed trigger does not rerun its request.
 
-**Linux systemd timer** — prefer this when you want journal logs, explicit
-environment files, or easier enable/disable controls:
+**Jira prerequisites:** configure `[jira]`/`[jira.mcp]`, provide a reachable
+Jira MCP server, and make its credentials available to the scheduler's user.
+`run --jira` without an issue key selects the latest configured project issue
+when the run executes. The scheduler must also have noninteractive Claude and
+Git credentials where required by the selected workflow and delivery policy.
+MEOW preserves the registration-time executable search path; shell-only secret
+environment variables are not copied into schedule files. Set credentials in
+the account's persistent environment or the integration's supported credential
+configuration. `MEOW_LOG_FILE` can provide an additional persistent log.
 
-```ini
-# /etc/systemd/system/meow-run-jira.service
-[Service]
-Type=oneshot
-Environment=MEOW_LOG_FILE=/var/log/meow-run-jira.log
-EnvironmentFile=/etc/meow/jira.env
-ExecStart=/path/to/meow/.venv/bin/meow run --jira --work-dir /path/to/target-project
-```
-
-```ini
-# /etc/systemd/system/meow-run-jira.timer
-[Timer]
-OnCalendar=*-*-* 09:00:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-Enable and test it with `systemctl enable --now meow-run-jira.timer`, then
-`systemctl start meow-run-jira.service` and inspect
-`journalctl -u meow-run-jira.service`.
+For recurring jobs, an external recurring Task Scheduler, cron, systemd, or CI
+configuration can invoke `meow run --unattended` with absolute executable and
+project paths. MEOW's built-in schedules are one-shot.
 
 ---
 

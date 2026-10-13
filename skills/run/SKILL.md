@@ -5,6 +5,11 @@ description: Run a full meow sprint for a feature request in the current project
 
 # run
 
+If the user asks to run at a future time, follow
+[`../schedule/SKILL.md`](../schedule/SKILL.md) before either execution mode.
+Register the scheduled unattended run now and report the returned schedule;
+do not begin the sprint or hold this session open until the time arrives.
+
 Plan -> implement -> review, in a loop, for one feature request -- either
 typed directly, or fetched from a Jira issue. CLI mode is the default: `meow
 run` performs knowledge gathering, shaping, optional breadboarding, planning,

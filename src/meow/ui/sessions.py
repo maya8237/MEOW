@@ -711,7 +711,7 @@ def _atomic_json(path: Path, value: dict) -> None:
 
 @contextmanager
 def _file_transaction(  # ruff: ignore[complex-structure, too-many-statements]
-    path: Path, resource: str
+    path: Path, resource: str, *, timeout: float = 5
 ):
     """Use a kernel-released advisory lock for a short metadata transaction."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -739,7 +739,7 @@ def _file_transaction(  # ruff: ignore[complex-structure, too-many-statements]
             def unlock():
                 fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + timeout
         while True:
             try:
                 stream.seek(0)

@@ -51,6 +51,7 @@ const stateText = (state: string) =>
     stopping: "Stopping",
     stopped: "Stopped",
     draft: "Draft",
+    scheduled: "Scheduled",
   })[state] || state.replaceAll("_", " ");
 
 export default function SessionsView({
@@ -207,7 +208,9 @@ export default function SessionsView({
   );
 
   async function action(
-    actionName: "stop" | "archive" | "unarchive" | "duplicate",
+    actionName:
+      "stop" | "archive" | "unarchive" | "duplicate" | "cancel-schedule",
+    values: object = {},
   ) {
     if (!selectedSession) return;
     setBusy(true);
@@ -217,6 +220,7 @@ export default function SessionsView({
         selectedSession.repo,
         selectedSession.id,
         actionName,
+        values,
       );
       if (actionName === "duplicate")
         setSelection({
@@ -465,6 +469,9 @@ export default function SessionsView({
             void resume(attemptId, requestText, repair)
           }
           onStop={() => void action("stop")}
+          onCancelSchedule={(scheduleId) =>
+            void action("cancel-schedule", { schedule_id: scheduleId })
+          }
           onArchive={() => void action("archive")}
           onUnarchive={() => void action("unarchive")}
           onImportedResume={(requestText, repair) =>

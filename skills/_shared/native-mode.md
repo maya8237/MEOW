@@ -11,6 +11,13 @@ execution. **CLI mode** is the `meow <command>` path documented in each
 workflow skill. The `onboard`, `migration`, and `customize` skills are
 guidance/configuration flows, not alternate execution engines.
 
+Future-time requests use `/meow:schedule` in either mode. Register them with
+`meow schedule add --at TIME -- run REQUEST --name NAME` before starting any
+work. The OS trigger starts an unattended CLI run later; this session does not
+wait or execute a native sprint immediately. Inspect and cancel through
+`meow schedule list` and `meow schedule cancel ID`. See
+[`../schedule/SKILL.md`](../schedule/SKILL.md) for timezone and platform details.
+
 Both modes read the same active MEOW configuration and write the same files, so a run
 started in one can be continued in the other (`meow review --fix`,
 `meow run --resume-at review`, `/meow:review`, ...).
