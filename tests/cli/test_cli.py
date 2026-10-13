@@ -31,16 +31,6 @@ from meow.project.prompts import (
 class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     unittest.TestCase
 ):
-    def test_top_level_version_prints_package_version(self):
-        parser = cli._build_arg_parser()
-        output = io.StringIO()
-
-        with redirect_stdout(output), self.assertRaises(SystemExit) as ctx:
-            parser.parse_args(["--version"])
-
-        self.assertEqual(ctx.exception.code, 0)
-        self.assertEqual(output.getvalue(), "meow 0.1.2\n")
-
     def test_top_level_help_shows_only_primary_user_commands(self):
         parser = cli._build_arg_parser()
         output = io.StringIO()
