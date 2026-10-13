@@ -14,6 +14,7 @@ These are the commands meant for normal project work:
 | `meow run` | Plan, implement, verify, review, and optionally deliver a feature request. |
 | `meow review` | Review existing code, and optionally fix findings with `--fix`. |
 | `meow plan` | Write the sprint plan only, without implementing it. |
+| `meow orchestrate` | Split an objective, Jira issues, or a task file into tasks, run them in parallel, merge them into one branch, review it, and open a pull request. |
 | `meow status` | Inspect a saved or background run. |
 | `meow cancel` | Ask a running sprint to stop cooperatively. |
 | `meow worktree` | Inspect or safely clean MEOW-owned run worktrees. |
@@ -27,7 +28,7 @@ These are the commands meant for normal project work:
 | `meow ipython` | Open the interactive MEOW IPython session. |
 
 `mw` is a shorter alias for the `meow` binary, and each command has a
-single-letter shortcut: `r` run, `p` plan, `rv` review, `l` lint (`run
+single-letter shortcut: `r` run, `p` plan, `o` orchestrate, `rv` review, `l` lint (`run
 --lint-fix`), `s` status, `x` cancel, `c` resume, `q` queue, `w` worktree,
 `h` hooks, `i` ipython. For example, `mw r "Add CSV export" --name csv-export`.
 
@@ -327,6 +328,132 @@ selected directory in place and requires a clean working tree.
 It is intended for the `/meow:lint` skill, which performs fixes in the
 calling session.
 
+## Orchestrate
+
+`meow orchestrate` turns one objective into one reviewed branch and one pull
+request. It splits the work into a graph of tasks, runs every task as its own
+unattended `meow run` sprint in a detached worker and worktree (up to
+`--max-parallel` at a time), merges each passing task into the integration
+branch `orchestrator/ID`, recovers failed tasks through triage, reviews the
+combined branch against the objective, pushes it, and opens a pull or merge
+request. When a task cannot be recovered or the final review keeps failing, it
+stops with nothing pushed and a report that names the blocker.
+
+```bash
+meow orchestrate "Add SSO login and an admin audit log"
+meow orchestrate --jira PROJ-1 PROJ-2
+meow orchestrate --jql "project = PROJ AND sprint in openSprints()"
+meow orchestrate --tasks tasks.toml
+meow orchestrate "Add SSO login" --dry-run
+meow orchestrate status [ID]
+meow orchestrate resume ID [--task T --request "New request text"]
+meow orchestrate cancel ID
+```
+
+Give exactly one input: the objective text, `--jira KEY [KEY ...]`,
+`--jql QUERY`, or `--tasks FILE`. A first word of `status`, `resume`, or
+`cancel` selects that action instead, so quote an objective that begins with one
+of them. Like `meow run`, a start refuses a checkout with uncommitted changes
+(other than `.gitignore` and `.meow/`).
+
+| Option | Meaning |
+| --- | --- |
+| `--jira KEY [KEY ...]` | One task per Jira issue, with the request text `Resolve Jira issue KEY: SUMMARY` followed by the description. Read-only: nothing is written back to Jira. Needs `[jira]` and `[jira.mcp]`. |
+| `--jql QUERY` | One task per issue the query matches (same rules as `--jira`). |
+| `--tasks FILE` | Run the tasks in a TOML or JSON file (below); no decomposition. |
+| `--from BRANCH` | Base branch for the integration branch. The default is the current branch; a detached `HEAD` needs `--from`. |
+| `--max-parallel N` | Tasks running at once. The default is `[orchestrator].max_parallel` (3). |
+| `--dry-run` | Decompose, print the task graph, and stop before anything runs. `meow orchestrate resume ID` continues it. |
+| `--test` | Run the configured tests and exploratory testing in every task. |
+| `--no-pr` | Push the integration branch but do not open a pull request. |
+| `--task T`, `--request TEXT` | `resume` only: reset the blocked task `T` (default: the task the blocker names) and optionally replace its request text. |
+
+An objective or a Jira set is decomposed by a read-only agent into at most 32
+tasks with `depends_on` edges and the paths each is expected to touch. Jira
+issues each stay their own task: the agent may only add dependencies and
+paths. The graph is saved as `.meow/orchestrators/ID/tasks.json`. Invalid
+output gets one corrective retry, then the orchestrator fails. More than 32
+tasks fails immediately: narrow the objective or the JQL query.
+
+A tasks file holds the same entries, as TOML:
+
+```toml
+[[tasks]]
+id = "schema"
+request = "Add the audit_log table and its migration"
+
+[[tasks]]
+id = "endpoint"
+request = "Add GET /audit that reads the new table"
+depends_on = ["schema"]
+expected_paths = ["src/api/audit.py"]
+```
+
+or as JSON (`{"tasks": [{"id": "schema", "request": "..."}]}`). `id` is 1-64
+letters, digits, `-`, or `_`, starting with a letter or digit, and unique
+ignoring case. `depends_on` lists other task ids. `expected_paths` are optional
+project-relative hints; they may overlap.
+
+A task starts when every dependency is merged, most-depended-on first. Its
+branch is `orchestrator/ID-TASK` in `.worktrees/orch-ID-TASK`, created from the
+integration branch tip when the attempt starts (`orchestrator/ID` lives in
+`.worktrees/orch-ID`). A passing task is committed on its branch and merged with
+`--no-ff` at once. A conflict goes to an integrator agent that may edit only the
+conflicted files, the configured lint and checks run after every merge, and a
+merge that fails them is rolled back and sent to triage. A failed attempt goes to
+a triage agent that chooses `retry`, `resume`, `rescope`, `reintegrate`, or
+`blocked`; every task gets at most `[orchestrator].max_recovery_cycles` (3)
+recovery cycles, and a lineage split from a task shares its counter.
+
+When every task is merged, a reviewer checks `base...orchestrator/ID` against
+the objective, with fix rounds up to `[orchestrator].review_rounds` (3). Then the
+branch is pushed and a pull request (GitHub) or merge request (GitLab) is
+opened, titled `Orchestrator: FIRST LINE OF THE OBJECTIVE` (Jira sources list
+the keys) with the report as its body. Nothing is pushed before this point. If
+no provider is configured or the request fails, the pushed branch stays, the
+orchestrator still ends `delivered`, and the command returns exit code 3 and
+prints `PR not opened: REASON` with a manual link on stderr.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Delivered with a pull request (or `--no-pr`). |
+| 3 | Delivered without a pull request. |
+| 1 | Failed (configuration, git, or an unrecoverable error). |
+| 2 | Blocked: nothing was pushed; the report names the blocker. |
+| 130 | Cancelled. |
+
+On delivery it prints one JSON line,
+`{"orchestrator": "ID", "branch": "orchestrator/ID", "pr": "URL or null", "tasks": N}`.
+Blocked and failed runs print the report, blocker first, with the exact resume
+commands. No dollar budget is enforced; usage is recorded per child run and
+summarized in the report.
+
+State lives in `.meow/orchestrators/ID/`: `state.json` (written atomically after
+every transition), `tasks.json`, `report.md`, a `cancel` marker, and
+`driver.lock`. `meow orchestrate status [ID]` prints the phase, each task's
+status, cycles, branch and run, the blocker, and the pull request. `meow status`
+adds one roll-up line (`orchestrator ID PHASE merged/total merged`) per active
+orchestrator and lists each task's sprint as a run with source `orchestrator`
+(continue one by hand with `meow resume`).
+
+`meow orchestrate resume ID` continues after a crash, a block, a failed push, or
+`--dry-run`. Merged tasks never rerun, live children are re-attached, a
+half-finished merge is rolled back to its recorded commit, and a delivered
+orchestrator whose pull request failed retries only the pull request. A blocked
+orchestrator needs its blocker resolved first; `--task`/`--request` reset a
+blocked task and may replace its request. `meow orchestrate cancel ID` cancels
+the live children and records `cancelled`; nothing is pushed. One driver owns an
+orchestrator at a time, either a terminal (`meow orchestrate`) or a Claude Code
+session (`/meow:orchestrate`); a second driver is refused while the first is
+alive, and a session that has not heartbeat for 10 minutes can be taken over.
+Either can resume the other's orchestrator.
+
+Worktrees and task branches are kept until you clean them.
+`meow worktree clean ID` (the 12-character orchestrator ID, not a run ID)
+removes the task and integration worktrees of a delivered orchestrator when
+every worktree is clean, every task branch is merged into the integration
+branch, and `origin` holds the delivered commit. Branches are never deleted.
+
 ## Review
 
 ```bash
@@ -376,9 +503,12 @@ See [INTEGRATIONS.md](INTEGRATIONS.md).
 
 ## Native and CLI skill modes
 
-The workflow skills `/meow:plan`, `/meow:review`, and `/meow:lint` use native
-mode by default: the calling session plans or fixes, while a fresh subagent
-reviews each round where applicable. `/meow:run` uses CLI mode by default;
+The workflow skills `/meow:plan`, `/meow:review`, `/meow:lint`, and
+`/meow:orchestrate` use native mode by default: the calling session plans,
+fixes, or supervises, while a fresh subagent reviews each round where
+applicable. (`/meow:orchestrate` still runs every task's sprint as a detached
+CLI worker; only its decomposing, triage, conflict, and review roles are
+native.) `/meow:run` uses CLI mode by default;
 native run is an explicit opt-in. Jira, GitLab, and GitHub access in native
 mode comes from MCP tools connected to that session. Ask for "CLI mode" (or
 headless mode) when a native-default skill should run the `meow` CLI instead.
@@ -427,6 +557,10 @@ project work.
 `meow run --unattended --background` to start the detached local worker. Humans
 should not invoke it directly; use `meow status`, `meow cancel`, and
 `meow resume` to interact with background runs.
+
+`meow _orchestrator-task` is the same kind of private detail: `meow orchestrate`
+uses it to run one task's sprint in a detached worker. To follow those tasks,
+use `meow orchestrate status` and `meow status`.
 
 ## GitLab CI review
 

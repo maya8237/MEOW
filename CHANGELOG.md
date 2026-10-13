@@ -4,6 +4,14 @@ All notable changes to MEOW will be documented here.
 
 ## Unreleased
 
+- `meow orchestrate` and `/meow:orchestrate`: split an objective, Jira issues,
+  a JQL query, or a task file into a graph of tasks, run each as its own
+  unattended sprint in parallel, recover failures through triage, merge every
+  passing task into one `orchestrator/<id>` branch, review it against the
+  objective, push it, and open a pull or merge request. A new `[orchestrator]`
+  config table sets the limits; `meow worktree clean <id>` removes a delivered
+  orchestrator's worktrees.
+
 - Windows: every child process (git, linters, tests) and tester dev servers
   start with `CREATE_NO_WINDOW`, so no stray `git.exe` or `bun.exe` console
   windows appear.

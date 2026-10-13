@@ -49,6 +49,7 @@ runs. Use `/meow:onboard` for integrations and optional features, or
 | Need | Command |
 | --- | --- |
 | Plan only | `/meow:plan ...` or `meow plan ...` |
+| Several related changes at once | `/meow:orchestrate ...` or `meow orchestrate "..."` |
 | Review | `/meow:review ...` or `meow review ...` |
 | Integrate CI review | `/meow:integrate-ci-review` |
 | Fix lint | `/meow:lint` |
@@ -56,8 +57,12 @@ runs. Use `/meow:onboard` for integrations and optional features, or
 | Check or continue | `meow status` or `meow resume RUN_ID` |
 | Browse or create workflows, agents, and skills | `meow ui` |
 
-See the [CLI guide](docs/CLI.md) for worktrees, background runs, recovery, and
-advanced options.
+`meow orchestrate "Add SSO login and an admin audit log"` splits an objective
+into tasks, runs them in parallel, merges them into one branch, reviews it as
+a whole, and opens a single pull request.
+
+See the [CLI guide](docs/CLI.md) for worktrees, background runs, recovery,
+orchestration, and advanced options.
 
 ## Configuration and integrations
 
