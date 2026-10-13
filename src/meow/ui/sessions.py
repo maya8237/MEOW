@@ -934,9 +934,11 @@ class SessionStore:  # ruff: ignore[too-many-public-methods]
             attempt = self._update_attempt_unlocked(session_id, attempt_id, **changes)
         with self._session_transaction(session_id):
             session = self._read_session_unlocked(session_id)
-            with self._attempt_transaction(session_id, attempt_id):
-                current = self._read_attempt_unlocked(session_id, attempt_id)
-            session.state = current.state
+            if session.attempts:
+                latest_attempt_id = session.attempts[-1]
+                with self._attempt_transaction(session_id, latest_attempt_id):
+                    latest = self._read_attempt_unlocked(session_id, latest_attempt_id)
+                session.state = latest.state
             self._save_session(session)
         return attempt
 

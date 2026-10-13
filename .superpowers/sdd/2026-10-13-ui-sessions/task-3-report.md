@@ -60,6 +60,31 @@ GREEN output:
 - Added deterministic barrier tests for concurrent disjoint attempt field updates and an edit racing with attempt creation. Existing lifecycle coverage exercises output polling during stop.
 - Recipe edits preserve an active attempt's session state; edits after the attempt is terminal return the recipe to draft. The active-edit test asserts the attempt remains `running`.
 
+## Review fix: stale completion state
+
+A deterministic regression pauses the previous attempt's terminal-state sync after its attempt JSON has been updated but before it acquires the session lock. It then creates the next attempt and lets the old sync continue.
+
+RED command and output:
+
+```text
+$env:PYTHONPATH='src'; rtk run 'C:/Users/m/Documents/MEOW/.venv/Scripts/python.exe -m pytest -q tests/infrastructure/test_ui_sessions.py::test_finishing_previous_attempt_cannot_overwrite_next_starting_state'
+F                                                                        [100%]
+E       AssertionError: assert 'succeeded' == 'starting'
+1 failed in 1.62s
+```
+
+The session sync now derives lifecycle state from the latest attempt in the session index while holding the session lock and then the latest attempt lock. A delayed completion for an older attempt can no longer overwrite a newer attempt's `starting` state.
+
+GREEN command and output:
+
+```text
+$env:PYTHONPATH='src'; rtk run 'C:/Users/m/Documents/MEOW/.venv/Scripts/python.exe -m pytest -q tests/infrastructure/test_ui_sessions.py tests/ui/test_session_runs.py tests/cli/test_resume_workflow.py'
+.......................................... [100%]
+42 passed in 19.23s
+```
+
+Ruff check passed, format check passed (`7 files already formatted`), and `rtk git diff --check` was clean.
+
 Follow-up focused command and output:
 
 ```text
