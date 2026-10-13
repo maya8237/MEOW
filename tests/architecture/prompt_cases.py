@@ -16,6 +16,8 @@ REVIEW = Path("/repo/.meow/plans/feature-review.md")
 SHAPE = ShapeContext("docs/shape.json", "bounded adapter", ("legacy API remains",))
 LINT = [LintCommand("ruff check"), LintCommand("fallow", gate=False)]
 EVIDENCE = {"files": ["src/a.py"], "notes": "x"}
+TASKS_FILE = Path("/repo/.meow/orchestrators/0123456789ab/tasks.json")
+TASK_DRAFTS = "Task PROJ-1 (PROJ-1):\nResolve Jira issue PROJ-1: Fix login\n\nSteps"
 
 
 def cases() -> list[tuple[str, str, tuple, dict]]:
@@ -28,6 +30,13 @@ def cases() -> list[tuple[str, str, tuple, dict]]:
         ("review_fixer", "review_fixer_prompt", (), {}),
         ("lint_fixer", "lint_fixer_prompt", (), {}),
         ("ci_review", "ci_review_prompt", ("s1", "t2", "m3"), {}),
+        ("decomposer-objective", "decomposer_prompt", (TASKS_FILE,), {"max_tasks": 32}),
+        (
+            "decomposer-jira",
+            "decomposer_prompt",
+            (TASKS_FILE,),
+            {"max_tasks": 32, "task_drafts": TASK_DRAFTS},
+        ),
     ]
     for shape, evidence, bug in product((None, SHAPE), (None, EVIDENCE), (False, True)):
         found.append((
