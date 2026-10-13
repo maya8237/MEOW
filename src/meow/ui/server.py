@@ -91,11 +91,32 @@ def _fingerprint(repos: list[str]) -> tuple:
 class _Handler(BaseHTTPRequestHandler):
     server: "_Server"
 
-    def do_GET(self):
+    def do_GET(self):  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
         if not self._known_host():
             return
-        path = self.path.split("?", 1)[0]
+        from meow.ui import session_api
+        from meow.ui.sessions import RecipeError, SessionError
+
+        path = urlsplit(self.path).path
         files = _static_files()
+        try:
+            result = session_api.get(self.server, self.path)
+            if result is not None:
+                status, body = result
+                if isinstance(body, dict) and "download" in body:
+                    self._download(status, body["download"], body["filename"])
+                else:
+                    self._json(status, body)
+                return
+        except (session_api.ApiError, CreateError, RecipeError, SessionError) as exc:
+            self._json(
+                HTTPStatus(getattr(exc, "status", HTTPStatus.BAD_REQUEST)),
+                {"error": str(exc)},
+            )
+            return
+        except (OSError, ValueError) as exc:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
         if path == "/api/catalog":
             self._catalog()
         elif path == "/":
@@ -116,19 +137,69 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self._send(HTTPStatus.OK, body, "application/json")
 
-    def do_POST(self):
+    def do_POST(self):  # ruff: ignore[complex-structure, too-many-statements]
         if not self._known_host() or not self._same_origin():
             return
-        kind = _CREATE_PATHS.get(self.path.split("?", 1)[0])
-        if kind is None:
-            self._send(HTTPStatus.NOT_FOUND, b"Not found.", "text/plain; charset=utf-8")
-            return
+        from meow.ui import session_api
+        from meow.ui.sessions import RecipeError, SessionBusy, SessionError
+
         try:
-            created = create_definition(self.server.working_dir, kind, self._payload())
-        except CreateError as exc:
-            self._json(HTTPStatus(exc.status), {"error": str(exc)})
+            payload = self._payload()
+            result = session_api.post(self.server, self.path, payload)
+            if result is not None:
+                self._json(*result)
+                return
+            kind = _CREATE_PATHS.get(urlsplit(self.path).path)
+            if kind is None:
+                self._send(
+                    HTTPStatus.NOT_FOUND, b"Not found.", "text/plain; charset=utf-8"
+                )
+                return
+            created = create_definition(self.server.working_dir, kind, payload)
+        except (session_api.ApiError, CreateError, RecipeError, SessionBusy) as exc:
+            self._json(
+                HTTPStatus(
+                    getattr(
+                        exc,
+                        "status",
+                        HTTPStatus.BAD_REQUEST
+                        if not isinstance(exc, SessionBusy)
+                        else HTTPStatus.CONFLICT,
+                    )
+                ),
+                {"error": str(exc)},
+            )
+        except SessionError as exc:
+            self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+        except (OSError, ValueError) as exc:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
         else:
             self._json(HTTPStatus.CREATED, created)
+
+    def do_PUT(self):
+        if not self._known_host() or not self._same_origin():
+            return
+        from meow.ui import session_api
+        from meow.ui.sessions import RecipeError, SessionBusy, SessionError
+
+        try:
+            payload = self._payload()
+            result = session_api.put(self.server, self.path, payload)
+            if result is None:
+                self._send(
+                    HTTPStatus.NOT_FOUND, b"Not found.", "text/plain; charset=utf-8"
+                )
+            else:
+                self._json(*result)
+        except (session_api.ApiError, CreateError, RecipeError) as exc:
+            self._json(
+                HTTPStatus(getattr(exc, "status", HTTPStatus.BAD_REQUEST)),
+                {"error": str(exc)},
+            )
+        except (SessionBusy, SessionError) as exc:
+            self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+        except (OSError, ValueError) as exc:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
 
     def _payload(self) -> dict:
         content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
@@ -163,6 +234,23 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _json(self, status: HTTPStatus, body: dict) -> None:
         self._send(status, json.dumps(body).encode("utf-8"), "application/json")
+
+    def _download(self, status: HTTPStatus, path: Path, filename: str) -> None:
+        try:
+            size = path.stat().st_size
+            self.send_response(status)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header(
+                "Content-Disposition", f'attachment; filename="{filename}"'
+            )
+            self.send_header("Content-Length", str(size))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            with path.open("rb") as stream:
+                while chunk := stream.read(64 * 1024):
+                    self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
 
     def _send(self, status: HTTPStatus, body: bytes, content_type: str) -> None:
         self.send_response(status)

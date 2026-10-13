@@ -259,11 +259,14 @@ def _validated_arguments(payload: dict) -> list[str]:
 
 
 def _validated_claude_options(options: dict) -> dict[str, bool | str]:
-    if set(options) - {"permission_policy"}:
+    if set(options) - {"permission_policy", "agent"}:
         raise RecipeError("Unsupported Claude options: " + ", ".join(sorted(options)))
     policy = options.get("permission_policy", "default")
     if policy not in {"default", "bypass"}:
         raise RecipeError("permission_policy must be 'default' or 'bypass'")
+    agent = options.get("agent")
+    if agent is not None and (not isinstance(agent, str) or not agent.strip()):
+        raise RecipeError("agent must be a non-empty Claude agent name")
     options["permission_policy"] = policy
     return options
 
@@ -339,6 +342,57 @@ def _validate_claude_command(repo: Path, command: str) -> None:
     )
 
 
+def claude_agent_names(repo: Path) -> set[str]:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+    """Return only Markdown agents with a verified name in Claude's help scope."""
+    try:
+        help_text = claude_help()
+    except RecipeError:
+        return set()
+    if not re.search(r"(?<![\w-])--agent(?![\w-])", help_text):
+        return set()
+
+    from meow.project.config import user_config_path
+    from meow.project.custom.frontmatter import parse
+
+    roots = [
+        Path(repo) / ".claude" / "agents",
+        user_config_path().parent.parent / ".claude" / "agents",
+    ]
+    candidates = []
+    for root in roots:
+        if root.is_dir():
+            candidates.extend(root.glob("*.md"))
+    for root in (Path(repo) / ".claude" / "plugins",):
+        if not root.is_dir():
+            continue
+        for plugin_dir in root.iterdir():
+            agent_dir = plugin_dir / "agents"
+            if agent_dir.is_dir():
+                candidates.extend(agent_dir.glob("*.md"))
+
+    names = set()
+    for path in candidates:
+        try:
+            metadata, _ = parse(path)
+        except (OSError, ValueError):
+            continue
+        name = metadata.get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        names.add(name.strip())
+        plugin_root = path.parent.parent
+        manifest = plugin_root / ".claude-plugin" / "plugin.json"
+        try:
+            import json
+
+            plugin_name = json.loads(manifest.read_text(encoding="utf-8")).get("name")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(plugin_name, str) and plugin_name.strip():
+            names.add(f"{plugin_name.strip()}:{name.strip()}")
+    return names
+
+
 def _validate_mode_recipe(recipe: Recipe) -> None:
     if recipe.mode == "cli":
         command_for(recipe)
@@ -352,6 +406,9 @@ def _validate_claude_recipe(recipe: Recipe) -> None:
             "Claude recipes do not accept CLI workflow, input, or argument fields"
         )
     _validate_claude_command(Path(recipe.repo), recipe.command)
+    agent = recipe.options.get("agent")
+    if agent is not None and agent not in claude_agent_names(Path(recipe.repo)):
+        raise RecipeError("agent must name a resolvable Claude Markdown agent")
 
 
 def validate_recipe(repo: Path, payload: object) -> Recipe:
@@ -523,7 +580,7 @@ def detect_capabilities(repo: Path) -> Capabilities:
     }
 
 
-def command_for(recipe: Recipe, python: str = sys.executable) -> list[str]:
+def command_for(recipe: Recipe, python: str = sys.executable) -> list[str]:  # ruff: ignore[complex-structure, too-many-statements]
     if recipe.mode == "cli":
         argv = _cli_argv(recipe)
         argv[0] = python
@@ -554,6 +611,8 @@ def command_for(recipe: Recipe, python: str = sys.executable) -> list[str]:
         argv.extend(["--permission-prompts", "none"])
     else:
         argv.append("--allow-dangerously-skip-permissions")
+    if agent := recipe.options.get("agent"):
+        argv.extend(["--agent", str(agent)])
     prompt = (
         f"{recipe.command}\n\n{recipe.request}"
         if recipe.command.startswith("/")
