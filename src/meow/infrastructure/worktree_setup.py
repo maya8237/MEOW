@@ -24,6 +24,42 @@ class WorktreeSetupError(RuntimeError):
     """Configured setup failed while retaining the new worktree."""
 
 
+def setup_command_decision(config: dict, argv: list[str]) -> str | None:
+    policy = config.get("permissions")
+    return (
+        policy.for_role("setup").decision("WorktreeSetup", {"argv": argv})
+        if policy
+        else None
+    )
+
+
+def prepare_environment(
+    repo: Path, active: Path, config: dict, *, new: bool
+) -> list[dict[str, object]]:
+    """Set up a new worktree, retry an incomplete setup, or repair missing modules."""
+    from meow.infrastructure.node_dependencies import ensure_node_dependencies
+
+    actions: list[dict[str, object]] = []
+
+    def decision(argv: list[str]) -> str | None:
+        return setup_command_decision(config, argv)
+
+    pending = active / ".meow" / "worktree-setup.pending"
+    if active != repo and (new or pending.exists()):
+        run_setup(
+            repo,
+            active,
+            config.get("worktree_setup", {"copy": [], "commands": []}),
+            command_decision=decision,
+            record_action=actions.append,
+        )
+    else:
+        ensure_node_dependencies(
+            active, command_decision=decision, record_action=actions.append
+        )
+    return actions
+
+
 def _relative(value: object) -> Path:
     if not isinstance(value, str) or not value or value.startswith("-"):
         raise ValueError("worktree setup file paths must be non-empty relative paths")
@@ -88,6 +124,10 @@ def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-
     command_decision: Callable[[list[str]], str | None] | None = None,
 ) -> None:
     """Apply pre-approved setup; report each completed action to the journal."""
+    pending = _no_symlinks(worktree, Path(".meow/worktree-setup.pending"))
+    if any(manifest.values()):
+        pending.parent.mkdir(parents=True, exist_ok=True)
+        pending.touch()
     for relative_text in manifest["copy"]:
         relative = _relative(relative_text)
         source = _no_symlinks(repo, relative)
@@ -129,3 +169,9 @@ def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-
             raise WorktreeSetupError(
                 f"setup command failed: {argv[0]} (exit {exit_code})"
             )
+    from meow.infrastructure.node_dependencies import ensure_node_dependencies
+
+    ensure_node_dependencies(
+        worktree, command_decision=command_decision, record_action=record_action
+    )
+    pending.unlink(missing_ok=True)

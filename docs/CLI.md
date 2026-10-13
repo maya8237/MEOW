@@ -298,7 +298,12 @@ Onboarding can configure `[worktree_setup]` with selected regular files and
 literal command argument arrays. Setup runs once for a newly created feature
 worktree before planning; each completed action is recorded in the run
 checkpoint. Paths containing `..`, links, and secret-like file names are
-rejected. Failed setup retains the worktree for inspection.
+rejected. Failed setup retains the worktree for inspection and retries on the
+next preparation. Native `prepare`, SDK runs, plan-only runs, branch reviews,
+and task worktrees apply setup before agents run. Missing Node dependencies are
+installed with the project's package manager, including on reused worktrees and
+in-place runs; installation commands obey the `setup` permission role. See
+[worktree setup and Bun shared storage](INTEGRATIONS.md#new-worktree-setup).
 Each configured command is approved as an exact argument array during
 onboarding. A `[permissions]` rule for the `setup` role and `WorktreeSetup`
 tool can further deny it or require approval; unattended runs stop in either

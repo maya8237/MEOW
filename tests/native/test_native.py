@@ -69,6 +69,70 @@ class PrepareModelTests(unittest.TestCase):
             self.assertEqual(native.prepare(root, options)["models"]["explorer"], "x")
 
 
+class WorktreeSetupTests(unittest.TestCase):
+    def test_native_retries_failed_setup_and_enforces_setup_policy(self):  # ruff: ignore[too-many-statements]
+        import sys
+
+        from meow.infrastructure.worktree_setup import WorktreeSetupError
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            command = [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; assert Path('ready').exists(); "
+                "Path('done').touch()",
+            ]
+            config = (
+                TOML + "\n[worktree_setup]\ncommands = [" + json.dumps(command) + "]\n"
+            )
+            config_path = root / ".meow" / "config.toml"
+            config_path.write_text(config)
+            options = native.PrepareOptions(name="feat", require_clean=False)
+            with self.assertRaises(WorktreeSetupError):
+                native.prepare(root, options)
+            active = root / ".worktrees" / "feat"
+            self.assertTrue((active / ".meow" / "worktree-setup.pending").exists())
+            (active / "ready").touch()
+            config_path.write_text(
+                config + '\n[[permissions.rule]]\nrole="setup"\n'
+                'tool="WorktreeSetup"\naction="deny"\n'
+            )
+            with self.assertRaisesRegex(WorktreeSetupError, "denied"):
+                native.prepare(root, options)
+            self.assertFalse((active / "done").exists())
+            config_path.write_text(config)
+            native.prepare(root, options)
+            self.assertTrue((active / "done").exists())
+            self.assertFalse((active / ".meow" / "worktree-setup.pending").exists())
+
+    def test_new_worktree_runs_setup_and_reuse_does_not_repeat_it(self):
+        import sys
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            (root / "local.cfg").write_text("local", encoding="utf-8")
+            command = [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; p=Path('setup-count'); "
+                "p.write_text(p.read_text()+'x' if p.exists() else 'x')",
+            ]
+            (root / ".meow" / "config.toml").write_text(
+                TOML
+                + '\n[worktree_setup]\ncopy = ["local.cfg"]\ncommands = ['
+                + json.dumps(command)
+                + "]\n",
+                encoding="utf-8",
+            )
+            options = native.PrepareOptions(name="feat", require_clean=False)
+            active = Path(native.prepare(root, options)["active_dir"])
+            self.assertEqual((active / "local.cfg").read_text(), "local")
+            self.assertEqual((active / "setup-count").read_text(), "x")
+            native.prepare(root, options)
+            self.assertEqual((active / "setup-count").read_text(), "x")
+
+
 class PrepareTests(unittest.TestCase):
     def test_creates_feature_worktree_and_reports_paths(self):
         with tempfile.TemporaryDirectory() as tmp:

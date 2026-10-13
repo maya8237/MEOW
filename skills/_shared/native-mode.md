@@ -105,6 +105,15 @@ orchestrator ID.
 
 ## Resolved workflow and agent definitions
 
+`prepare` applies configured worktree setup before returning a newly created
+worktree, including branch and existing-branch worktrees. Failed setup retains
+the worktree and is retried on preparation. Ordinary reuse does not repeat
+successful setup commands. Missing Node dependencies are installed with the
+project's package manager on new/reused worktrees and `--no-worktree` runs;
+commands obey the `setup` permission role. The returned `setup` array reports
+completed setup and dependency actions. An error stops preparation, so do not
+dispatch agents after a failed `prepare` or clean up its retained worktree.
+
 `meow native workflow NAME` inspects a named workflow; execute its steps with
 `meow run --workflow NAME`. Native helpers do not drive custom workflow trees.
 Run `meow native prompt ROLE` for current resolved instructions and effective

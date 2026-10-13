@@ -26,6 +26,7 @@ from meow.infrastructure.worktree import (
     current_branch,
     sanitize_name,
 )
+from meow.infrastructure.worktree_setup import prepare_environment
 from meow.integrations.github_reviewer import _fetch_pull_request, _load_github_config
 from meow.integrations.gitlab_reviewer import _fetch_merge_request, _load_gitlab_config
 from meow.integrations.issue_solver import _fetch_issue, _load_jira_config
@@ -196,10 +197,15 @@ async def _branch_review(  # ruff: ignore[too-many-arguments] -- mirrors the CLI
 ) -> None:
     if use_worktree:
         feature_name = f"branch-review-{sanitize_name(branch)}"
+        preexisting = (working_dir / ".worktrees" / feature_name).exists()
         active_dir = _ensure_existing_branch_worktree(working_dir, feature_name, branch)
     else:
         active_dir = working_dir
         _require_branch_checked_out(active_dir, branch)
+
+    prepare_environment(
+        working_dir, active_dir, config, new=use_worktree and not preexisting
+    )
 
     journal = config.get("_run_journal")
     if journal:

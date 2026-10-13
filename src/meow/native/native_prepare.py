@@ -13,6 +13,7 @@ from meow.infrastructure.worktree import (
     _require_branch_checked_out,
     _resolve_working_dir,
 )
+from meow.infrastructure.worktree_setup import prepare_environment
 from meow.project.config import config_root, load_config
 from meow.project.config_models import LintCommand
 from meow.project.custom.rendering import effective_models
@@ -125,7 +126,11 @@ def prepare(working_dir: Path, options: PrepareOptions) -> dict:
         _ensure_clean_tree(working_dir)
     _boot_repo(working_dir, include_gitignore=worktree_wanted)
 
+    existing = {path.resolve() for path in (working_dir / ".worktrees").glob("*")}
     active_dir, is_worktree, name = _resolve_active_dir(working_dir, options)
+    setup_actions = prepare_environment(
+        working_dir, active_dir, config, new=active_dir.resolve() not in existing
+    )
     onboarding, config = _onboard(working_dir, active_dir, options, config)
     docs_dir = active_dir / config["docs_dir"]
     plan_file, review_file = _plan_paths(docs_dir, name)
@@ -152,6 +157,7 @@ def prepare(working_dir: Path, options: PrepareOptions) -> dict:
         "models": effective_models(config),
         "lint": _lint_plan(config["lint"]),
         "onboarding": onboarding,
+        "setup": setup_actions,
     }
 
 

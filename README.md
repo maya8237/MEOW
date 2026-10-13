@@ -23,6 +23,11 @@ irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | i
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 ```
 
+Installation offers Bun shared dependency storage (default **Yes**) and
+automatically migrates registered and selected Bun projects. MEOW prepares
+missing Node dependencies in SDK and native worktrees with or without this
+option. See [worktree setup and Bun storage](docs/INTEGRATIONS.md#new-worktree-setup).
+
 ## Run
 
 Claude Code:
