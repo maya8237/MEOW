@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -479,7 +480,7 @@ def test_worktree_clean_dispatches_orchestrator_ids(repo, capsys, monkeypatch):
 
     assert json.loads(capsys.readouterr().out) == {
         "orchestrator": "0123456789ab",
-        "removed": ["/tmp/one"],
+        "removed": [r"\tmp\one" if os.name == "nt" else "/tmp/one"],
     }
 
 
