@@ -69,3 +69,34 @@ def test_push_does_not_hang_on_a_stuck_remote(repo, tmp_path_factory, monkeypatc
     with pytest.raises(RuntimeError, match="timed out"):
         _push_branch(repo, "master")
     assert time.monotonic() - started < MAX_HANG_SECONDS
+
+
+def test_interrupted_push_stops_its_process(  # ruff: ignore[too-many-statements] -- real process setup and guaranteed cleanup
+    repo, tmp_path_factory, monkeypatch
+):
+    from meow.infrastructure.checks import kill_process_tree
+
+    remote = tmp_path_factory.mktemp("interrupted-remote")
+    git(remote, "init", "-q", "--bare")
+    git(repo, "remote", "add", "origin", str(remote))
+    hook = repo / ".git" / "hooks" / "pre-push"
+    hook.write_text("#!/bin/sh\nexec sleep 30\n", encoding="utf-8")
+    hook.chmod(0o755)
+    communicate = subprocess.Popen.communicate
+    interrupted = []
+
+    def interrupt_push(process, *args, **kwargs):
+        if "push" in process.args:
+            interrupted.append(process)
+            raise KeyboardInterrupt
+        return communicate(process, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", interrupt_push)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            _push_branch(repo, "master")
+        assert interrupted[0].poll() is not None
+    finally:
+        for process in interrupted:
+            kill_process_tree(process)
+            process.wait(timeout=5)
