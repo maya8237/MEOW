@@ -46,6 +46,8 @@ export interface Attempt {
   run_ids: string[];
   error: string | null;
   worker_alive: boolean;
+  resume_supported: boolean;
+  resume_needs_request: boolean;
 }
 export interface SessionDetail extends SessionSummary {
   recipe: Recipe;
@@ -79,6 +81,7 @@ export interface ImportedRun {
   ui_session_id: string | null;
   ui_attempt_id: string | null;
   resume_supported: boolean;
+  resume_needs_request: boolean;
   cancel_supported: boolean;
 }
 export interface Capabilities {

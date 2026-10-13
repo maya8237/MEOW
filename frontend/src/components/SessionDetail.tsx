@@ -39,6 +39,8 @@ type Props = {
   session: SessionRecord | null;
   importedRun?: ImportedRun | null;
   loadingSession?: boolean;
+  detailError?: string;
+  onRetryDetails?: () => void;
   linkedRuns?: ImportedRun[];
   repos: string[];
   onEdit: () => void;
@@ -57,6 +59,8 @@ export default function SessionDetail({
   session,
   importedRun,
   loadingSession = false,
+  detailError = "",
+  onRetryDetails,
   linkedRuns = [],
   repos,
   onEdit,
@@ -224,11 +228,18 @@ export default function SessionDetail({
         className="session-empty-detail"
         role={loadingSession ? "status" : undefined}
       >
-        <p>
-          {loadingSession
-            ? "Loading session details…"
-            : "Select a session or run to inspect its history and output."}
-        </p>
+        {loadingSession ? (
+          <p>Loading session details…</p>
+        ) : detailError ? (
+          <div className="session-error" role="alert">
+            <p>{detailError}</p>
+            <Button variant="outline" onClick={onRetryDetails}>
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <p>Select a session or run to inspect its history and output.</p>
+        )}
       </div>
     );
   const title =
@@ -236,7 +247,7 @@ export default function SessionDetail({
     importedRun?.feature_name ||
     `Run ${importedRun?.id.slice(0, 8)}`;
   const canResume = picked
-    ? ["stopped", "interrupted", "needs_decision"].includes(picked.state)
+    ? picked.resume_supported
     : !!importedRun?.resume_supported;
 
   return (
@@ -258,10 +269,12 @@ export default function SessionDetail({
                 <Pencil />
                 Edit
               </Button>
-              <Button variant="outline" onClick={onRerun}>
-                <RotateCcw />
-                Rerun
-              </Button>
+              {!session.archived && (
+                <Button variant="outline" onClick={onRerun}>
+                  <RotateCcw />
+                  Rerun
+                </Button>
+              )}
               <Button variant="outline" onClick={onDuplicate}>
                 Duplicate
               </Button>
@@ -291,6 +304,7 @@ export default function SessionDetail({
               </Button>
             ))}
           {canResume &&
+            !session?.archived &&
             (session ? (
               <Button
                 onClick={() => onResume(picked?.id, resumeRequest, repair)}
@@ -380,19 +394,17 @@ export default function SessionDetail({
                   </a>
                 </p>
               )}
-              {importedRun &&
-                (run.phase === "needs_decision" ||
-                  run.phase === "needs decision") && (
-                  <label className="session-field">
-                    Clarified request for resume
-                    <textarea
-                      rows={3}
-                      value={resumeRequest}
-                      onChange={(event) => setResumeRequest(event.target.value)}
-                      placeholder="Clarify the decision for the next attempt."
-                    />
-                  </label>
-                )}
+              {importedRun && run.resume_needs_request && (
+                <label className="session-field">
+                  Clarified request for resume
+                  <textarea
+                    rows={3}
+                    value={resumeRequest}
+                    onChange={(event) => setResumeRequest(event.target.value)}
+                    placeholder="Clarify the decision for the next attempt."
+                  />
+                </label>
+              )}
               {importedRun && run.resume_supported && (
                 <label className="inline-check">
                   <input
@@ -407,7 +419,7 @@ export default function SessionDetail({
           ))}
         </aside>
       )}
-      {picked && canResume && picked.state === "needs_decision" && (
+      {picked && canResume && picked.resume_needs_request && (
         <label className="session-field resume-field">
           Clarified request for resume
           <textarea

@@ -64,6 +64,7 @@ export default function SessionsView({
   const [runs, setRuns] = useState<ImportedRun[]>([]);
   const [selection, setSelection] = useState<Selection>(null);
   const [detail, setDetail] = useState<SessionRecord | null>(null);
+  const [detailError, setDetailError] = useState("");
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -119,9 +120,11 @@ export default function SessionsView({
   useEffect(() => {
     if (!selectedSessionId || !selectedSessionRepo) {
       setDetail(null);
+      setDetailError("");
       return;
     }
     setDetail(null);
+    setDetailError("");
     const controller = new AbortController();
     let pending = false;
     const tick = async () => {
@@ -136,7 +139,7 @@ export default function SessionsView({
         if (!controller.signal.aborted) setDetail(result.session);
       } catch (reason) {
         if (!controller.signal.aborted)
-          setError(
+          setDetailError(
             reason instanceof Error
               ? reason.message
               : "Could not load the selected session.",
@@ -435,7 +438,12 @@ export default function SessionsView({
           repo={selectedSession?.repo || selectedRun?.repo || repo}
           session={visibleDetail}
           importedRun={selectedRun}
-          loadingSession={!!selectedSession && !visibleDetail}
+          loadingSession={!!selectedSession && !visibleDetail && !detailError}
+          detailError={detailError}
+          onRetryDetails={() => {
+            setDetailError("");
+            setRevision((value) => value + 1);
+          }}
           linkedRuns={linkedRuns}
           repos={catalog.repos}
           onEdit={() =>

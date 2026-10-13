@@ -49,6 +49,8 @@ function session(id: string, attemptId: string, name: string): SessionRecord {
         run_ids: [],
         error: null,
         worker_alive: false,
+        resume_supported: true,
+        resume_needs_request: false,
       },
     ],
   };
