@@ -12,6 +12,7 @@ _VISIBLE_COMMANDS = (
     "run",
     "review",
     "plan",
+    "orchestrate",
     "status",
     "cancel",
     "worktree",
@@ -29,6 +30,7 @@ _VISIBLE_COMMANDS = (
 _SHORTCUTS = {
     "r": ("run",),
     "p": ("plan",),
+    "o": ("orchestrate",),
     "rv": ("review",),
     "l": ("run", "--lint-fix"),
     "s": ("status",),
@@ -205,6 +207,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     _add_common_args(orchestrator_task_parser)
     _add_review_parser(subparsers)
     _add_plan_parser(subparsers)
+    _add_orchestrate_parser(subparsers)
     status_parser = subparsers.add_parser("status", help="Inspect a saved run.")
     status_parser.add_argument("run_id", nargs="?")
     status_parser.add_argument("--verbose", "-v", action="store_true")
@@ -537,3 +540,99 @@ def _add_plan_parser(subparsers: argparse._SubParsersAction) -> None:
     plan_parser.add_argument("request", help="Feature request text.")
     _add_common_args(plan_parser)
     _add_feature_args(plan_parser)
+
+
+def _positive_int(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError:
+        number = 0
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be an integer >= 1")
+    return number
+
+
+def _add_orchestrate_parser(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "orchestrate",
+        help=(
+            "Split an objective into tasks, run them in parallel, merge them "
+            "into one branch, review it, and open a pull request."
+        ),
+    )
+    parser.add_argument(
+        "words",
+        nargs="*",
+        metavar="WORDS",
+        help=(
+            "The objective text, or an action: 'status [ID]', 'resume ID', "
+            "'cancel ID'. Give exactly one of the objective, --jira, --jql, "
+            "or --tasks to start."
+        ),
+    )
+    parser.add_argument(
+        "--jira",
+        nargs="+",
+        default=None,
+        metavar="KEY",
+        help="Resolve these Jira issues (read-only; needs [jira] and [jira.mcp]).",
+    )
+    parser.add_argument(
+        "--jql",
+        default=None,
+        metavar="QUERY",
+        help="Resolve every Jira issue matching this JQL query.",
+    )
+    parser.add_argument(
+        "--tasks",
+        dest="tasks_file",
+        default=None,
+        metavar="FILE",
+        help="Run the tasks listed in this TOML or JSON file; no decomposition.",
+    )
+    parser.add_argument(
+        "--from",
+        dest="source_branch",
+        default=None,
+        metavar="BRANCH",
+        help="Base branch for the integration branch (default: the current branch).",
+    )
+    parser.add_argument(
+        "--max-parallel",
+        dest="max_parallel",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help="Tasks to run at once (default: [orchestrator].max_parallel).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="Stop after decomposition and print the task graph.",
+    )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Run configured tests and exploratory testing in every task.",
+    )
+    parser.add_argument(
+        "--no-pr",
+        dest="no_pr",
+        action="store_true",
+        help="Push the integration branch but do not open a pull request.",
+    )
+    parser.add_argument(
+        "--task",
+        dest="task_id",
+        default=None,
+        metavar="TASK",
+        help="resume only: the blocked task to reset (default: the blocker's task).",
+    )
+    parser.add_argument(
+        "--request",
+        default=None,
+        metavar="TEXT",
+        help="resume only: replacement request text for that task.",
+    )
+    _add_common_args(parser)

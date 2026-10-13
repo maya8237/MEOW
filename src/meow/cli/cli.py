@@ -11,6 +11,7 @@ from pathlib import Path
 from meow.cli.catalog_cli import catalog_command
 from meow.cli.dispatch import _dispatch
 from meow.cli.ipython_cli import start_ipython
+from meow.cli.orchestrate_cli import orchestrate_command
 from meow.cli.parser import _build_arg_parser
 from meow.cli.resume_cli import resume
 from meow.cli.status_cli import status
@@ -22,6 +23,9 @@ from meow.cli.validation import (
     validate_workflow_args,
 )
 from meow.evaluation import evaluate_run
+from meow.execution.orchestration.cleanup import clean_orchestrator
+from meow.execution.orchestration.model import is_orchestrator_id
+from meow.execution.orchestration.store import OrchestratorStateError
 from meow.execution.orchestrator import log_working_directory
 from meow.execution.run_policy import (
     _creates_a_worktree,
@@ -154,6 +158,14 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
                     print(f"{item.run_id} {item.phase} {item.path}")
                 if not inspections:
                     print("No saved run worktrees.")
+            elif args.worktree_command == "clean" and is_orchestrator_id(args.run_id):
+                removed = clean_orchestrator(working_dir, args.run_id)
+                print(
+                    json.dumps({
+                        "orchestrator": args.run_id,
+                        "removed": [str(path) for path in removed],
+                    })
+                )
             else:
                 item = (
                     inspect_worktree(working_dir, args.run_id)
@@ -163,7 +175,12 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
                 payload = asdict(item)
                 payload["path"] = str(item.path)
                 print(json.dumps(payload))
-        except (WorktreeSafetyError, RunStateError, OSError) as exc:
+        except (
+            WorktreeSafetyError,
+            RunStateError,
+            OrchestratorStateError,
+            OSError,
+        ) as exc:
             print(f"Worktree {args.worktree_command} failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc
         return
@@ -186,6 +203,13 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
                     repair=args.repair,
                 )
             )
+        except _EXPECTED_FAILURES as exc:
+            print(f"\n{_describe_failure(exc)}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        raise SystemExit(code)
+    if args.command == "orchestrate":
+        try:
+            code = orchestrate_command(args, working_dir)
         except _EXPECTED_FAILURES as exc:
             print(f"\n{_describe_failure(exc)}", file=sys.stderr)
             raise SystemExit(1) from exc
