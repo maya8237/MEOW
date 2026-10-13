@@ -9,9 +9,10 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from meow.installer._prompt import path_prompt
+from meow.installer.bun import configure_bunfig, migrate_bun_projects
 from meow.project.claude_settings import path_key, register_checkout_plugin
 from meow.project.onboarding import onboard_project
-from meow.project.repos import remember
+from meow.project.repos import _saved, remember
 
 NEWLINE = chr(10)
 EXIT_INTERRUPTED = 130
@@ -245,11 +246,44 @@ def _cancelled_message(onboarded: int) -> str:
     )
 
 
+def _setup_bun(ask: Callable[[str], str], output: Callable[[str], None]) -> bool:
+    try:
+        answer = ask(
+            "Enable Bun's shared dependency store for worktrees and migrate "
+            "onboarded Bun repos? [Y/n]: "
+        )
+    except EOFError:
+        return False
+    if answer.strip().lower() not in {"", "y", "yes"}:
+        return False
+    path = Path.home() / ".bunfig.toml"
+    try:
+        configure_bunfig(path)
+    except (OSError, ValueError) as exc:
+        output(f"Could not configure Bun shared storage: {exc}")
+        return False
+    output(
+        f"Configured {path}: isolated linker and globalStore. "
+        "Registered and newly onboarded Bun repos will be migrated automatically. "
+        "For other repos, "
+        "run `bun install --force --linker isolated` in each repo "
+        "(add --frozen-lockfile when it has a Bun lockfile). "
+        "Project bunfig.toml can override user settings."
+    )
+    return True
+
+
 def _setup_projects() -> int:
     """Run the project prompts; Ctrl+C cancels the whole installer."""
     onboarded: list[Path] = []
     try:
+        shared_bun = _setup_bun(input, print)
         _onboard_projects(input, print, path_prompt(), onboarded)
+        if shared_bun:
+            migrate_bun_projects(
+                list(dict.fromkeys([*onboarded, *(Path(repo) for repo in _saved())])),
+                print,
+            )
     except KeyboardInterrupt:
         print(NEWLINE + _cancelled_message(len(onboarded)))
         return EXIT_INTERRUPTED

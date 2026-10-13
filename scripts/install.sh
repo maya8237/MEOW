@@ -186,7 +186,11 @@ fetch_origin_version() {
 run_setup() {
     setup_python=$1
     setup_status=0
-    "$1" -m meow.installer --repo-dir "$2" || setup_status=$?
+    if has_tty; then
+        "$1" -m meow.installer --repo-dir "$2" </dev/tty || setup_status=$?
+    else
+        "$1" -m meow.installer --repo-dir "$2" || setup_status=$?
+    fi
     case $setup_status in
         0) ;;
         130) failure_reported=1; exit 130 ;; # cancelled with Ctrl+C

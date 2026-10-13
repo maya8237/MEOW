@@ -148,7 +148,7 @@ def test_main_onboards_each_literal_destination_and_prints_next_steps(
         return OnboardingReport((".gitignore",), None, (), None)
 
     monkeypatch.setattr(_runtime, "onboard_project", fake_onboard)
-    answers = iter(("y", str(project), ""))
+    answers = iter(("n", "y", str(project), ""))
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
 
     assert installer.main(["--repo-dir", str(repo)]) == 0
@@ -177,7 +177,7 @@ def test_main_registers_new_and_already_onboarded_projects(tmp_path, monkeypatch
         "onboard_project",
         lambda root: OnboardingReport((), None, (), None),
     )
-    answers = iter(("y", str(onboarded), str(fresh), ""))
+    answers = iter(("n", "y", str(onboarded), str(fresh), ""))
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
 
     assert installer.main(["--repo-dir", str(repo)]) == 0
@@ -217,7 +217,7 @@ def test_main_skips_project_setup_when_the_user_declines(tmp_path, monkeypatch):
 
     assert installer.main(["--repo-dir", str(repo)]) == 0
     assert calls == []
-    assert len(prompts) == 1
+    assert len(prompts) == len(("bun", "projects"))
     assert "[Y/n]" in prompts[0]
 
 

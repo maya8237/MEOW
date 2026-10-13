@@ -25,8 +25,13 @@ from meow.infrastructure.checks import (
 )
 from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import get_logger
+from meow.infrastructure.node_dependencies import ensure_node_dependencies
 from meow.infrastructure.worktree import current_branch
-from meow.infrastructure.worktree_setup import run_setup
+from meow.infrastructure.worktree_setup import (
+    prepare_environment,
+    run_setup,
+    setup_command_decision,
+)
 from meow.project.config import config_paths, config_root, load_config
 from meow.project.custom.definitions import discover
 from meow.project.custom.sources import builtin_sources
@@ -261,12 +266,10 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     manifest = sprint.config.get("worktree_setup", {"copy": [], "commands": []})
     setup_source = record_root or working_dir
     setup_done = bool(record.results.get("setup_complete"))
-    if (
-        active_dir != setup_source
-        and not (worktree_preexisted or worktree_preexisting)
-        and not setup_done
-        and any(manifest.values())
-    ):
+    setup_needed = (active_dir / ".meow" / "worktree-setup.pending").exists() or not (
+        worktree_preexisted or worktree_preexisting or setup_done
+    )
+    if active_dir != setup_source and setup_needed and any(manifest.values()):
         store.transition(record.id, "setting_up")
         actions: list[dict[str, object]] = []
 
@@ -289,6 +292,10 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
         )
         check_cancel(store, record.id)
         store.transition(record.id, "prepared", results={"setup_complete": True})
+    ensure_node_dependencies(
+        active_dir,
+        command_decision=lambda argv: setup_command_decision(sprint.config, argv),
+    )
     sprint, checks_dir = _run_onboarding(
         store, record.id, sprint, (active_dir, settings_dir)
     )
@@ -412,6 +419,7 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
         source_branch=source_branch,
         fresh=True,
     )
+    prepare_environment(working_dir, active_dir, sprint.config, new=True)
     sprint, _, _ = _onboard_sprint(sprint, (active_dir, working_dir))
 
     PlanStore(active_dir).assert_available(

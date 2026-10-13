@@ -91,7 +91,8 @@ defaults to 300 seconds.
 
 ### New-worktree setup
 
-`[worktree_setup]` runs only when MEOW creates a new feature worktree:
+`[worktree_setup]` runs when MEOW creates a new feature, issue, branch-review,
+or task worktree, in SDK and native mode (including plan-only runs):
 
 ```toml
 [worktree_setup]
@@ -105,6 +106,45 @@ worktree with a 300-second timeout. Paths containing `..`, absolute paths,
 links, or secret-like names are rejected. Onboarding previews each command;
 the `setup` permission role can deny or require approval. An approval request
 stops an unattended run rather than prompting indefinitely.
+
+Failed setup retains its worktree and a `.meow/worktree-setup.pending` marker.
+Preparing that worktree again retries setup; successful setup is not repeated
+on ordinary reuse. Copies already completed are accepted when their bytes match.
+
+After explicit setup, MEOW installs missing Node dependencies before running
+agents. This also repairs reused worktrees and in-place runs. It detects nested
+apps and installs workspace members together from their workspace root, without
+sharing a writable `node_modules` directory between branches. `packageManager`
+in `package.json` takes priority over lockfiles; ambiguous lockfiles require an
+explicit manager. Supported managers are Bun, npm, pnpm, and Yarn (including PnP).
+Existing lockfiles use frozen/immutable installs (`npm ci` for npm). Projects
+without a lockfile use a regular install. Automatic commands obey the same
+`setup` permission role, retain installation diagnostics, and fail clearly when
+the required manager is missing from PATH.
+
+The installer offers a default-yes Bun shared-store option. It preserves other
+user settings while setting `linker = "isolated"` and `globalStore = true` in
+`~/.bunfig.toml`; Bun's default cache determines the shared store location.
+`globalDir` controls global CLI packages and is not needed for this feature.
+Previously registered and newly onboarded Bun repos are migrated automatically:
+project `bunfig.toml` is updated
+and `bun install --force --linker isolated` rebuilds existing dependencies
+(`--frozen-lockfile` is added when a Bun lockfile exists). Commit the project
+settings so checked-out branches inherit them. Migration failures are reported
+with a retry command. No package-manager switch is performed for npm/pnpm/Yarn.
+Use a Bun release supporting `install.globalStore`; project settings and
+environment variables can override the user configuration.
+
+For additional Bun repos, run from the install root:
+
+```sh
+bun install --force --linker isolated --frozen-lockfile
+```
+
+Omit `--frozen-lockfile` if the repo has no Bun lockfile. Shared storage still
+requires a local install to create each worktree's links. With the option off,
+MEOW uses the package manager's normal cache/install behavior instead. See
+[Bun's global store documentation](https://bun.com/docs/pm/global-store).
 
 ### Role permissions
 

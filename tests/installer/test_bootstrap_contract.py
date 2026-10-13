@@ -18,6 +18,41 @@ def _bash_path() -> Path:
     return Path("C:/Program Files/Git/bin/bash.exe")
 
 
+@pytest.mark.parametrize("terminal_available", [True, False])
+def test_post_install_prompts_use_terminal_when_script_is_streamed(
+    tmp_path, terminal_available
+):
+    bash = _bash_path() if os.name == "nt" else Path(shutil.which("bash") or "")
+    if not bash.is_file():
+        pytest.skip("Bash is required for streamed installer checks")
+    source = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    setup = re.search(r"^run_setup\(\) \{.*?^\}", source, re.M | re.S).group()
+    terminal = tmp_path / "terminal-input"
+    terminal.write_text("yes-from-terminal\n", encoding="utf-8")
+    terminal_path = _git_bash_path(terminal) if os.name == "nt" else terminal.as_posix()
+    setup = setup.replace("</dev/tty", f'<"{terminal_path}"')
+    wrapper = tmp_path / "prompt-test.sh"
+    wrapper.write_text(
+        "has_tty() { " + ("return 0" if terminal_available else "return 1") + "; }\n"
+        'fake_python() { IFS= read -r answer; printf "%s" "$answer"; }\n'
+        + setup
+        + "\nrun_setup fake_python checkout\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [str(bash), str(wrapper)],
+        input="script-input\n",
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == (
+        "yes-from-terminal" if terminal_available else "script-input"
+    )
+
+
 def _git_bash_path(path: Path) -> str:
     value = path.as_posix()
     return "/" + value[0].lower() + value[2:]
