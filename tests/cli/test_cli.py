@@ -2317,3 +2317,14 @@ class CliShortcutTests(unittest.TestCase):
         self.assertNotIn("--fun", plain.getvalue())
         self.assertIn("v=review", plain.getvalue())
         self.assertIn("pounce=run", fun.getvalue())
+
+
+def test_orchestrator_task_command_is_internal(capsys):
+    import pytest
+
+    usage_error = 2
+    with pytest.raises(SystemExit) as exc:
+        cli.cli_main(["_orchestrator-task", "0123456789ab", "t1"])
+
+    assert exc.value.code == usage_error
+    assert "_orchestrator-task is internal" in capsys.readouterr().err
