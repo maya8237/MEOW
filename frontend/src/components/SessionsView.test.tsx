@@ -231,7 +231,7 @@ test("Stop targets the selected running session", async () => {
   );
 });
 
-test("imported runs explain missing history and rerun from recorded facts with unknown flags", async () => {
+test("imported runs explain missing history and open editable recipes with unknown flags", async () => {
   const user = userEvent.setup();
   const run = {
     id: "e".repeat(32),
@@ -304,15 +304,22 @@ test("imported runs explain missing history and rerun from recorded facts with u
     true,
   );
   await user.click(screen.getByRole("button", { name: "Duplicate as draft" }));
-  expect(
-    await screen.findByRole("heading", { name: "Search" }),
-  ).toBeInTheDocument();
+  expect(onRunRecipe).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      name: "Search",
+      repo,
+      workflow: "quick",
+      inputs: { area: "ui" },
+      arguments: [],
+      options: { unattended: true, no_worktree: false },
+    }),
+    undefined,
+    undefined,
+    true,
+  );
   expect(
     vi
       .mocked(fetch)
-      .mock.calls.some(
-        ([, options]) =>
-          options?.method === "POST" && String(options.body).includes("/"),
-      ),
-  ).toBe(true);
+      .mock.calls.some(([, options]) => options?.method === "POST"),
+  ).toBe(false);
 });

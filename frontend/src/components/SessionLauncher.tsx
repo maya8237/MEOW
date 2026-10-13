@@ -51,7 +51,11 @@ export default function SessionLauncher({
   onSaved,
 }: Props) {
   const seed = useMemo(() => {
-    const value = { ...defaults(repo), ...initialRecipe, repo } as Recipe;
+    const value = {
+      ...defaults(repo),
+      ...initialRecipe,
+      repo: sessionId ? initialRecipe?.repo || repo : repo,
+    } as Recipe;
     if (value.mode === "claude" && !initialRecipe?.options)
       value.options = { permission_policy: "default" };
     if (catalogItem?.kind === "workflow") {
@@ -72,7 +76,7 @@ export default function SessionLauncher({
       value.options = { ...value.options, agent: catalogItem.item.name };
     }
     return value;
-  }, [repo, initialRecipe, catalogItem]);
+  }, [repo, initialRecipe, catalogItem, sessionId]);
   const [draft, setDraft] = useState<Recipe>(seed);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [reviewed, setReviewed] = useState("");
@@ -136,8 +140,9 @@ export default function SessionLauncher({
     setBusy(true);
     setError("");
     try {
+      const ownerRepo = sessionId ? initialRecipe?.repo || repo : draft.repo;
       const saved = currentSessionId
-        ? await updateSession(draft.repo, currentSessionId, draft)
+        ? await updateSession(ownerRepo, currentSessionId, draft)
         : await createSession(draft.repo, draft);
       setCurrentSessionId(saved.session.id);
       if (editOnly) onSaved(saved.session.id);
@@ -154,6 +159,28 @@ export default function SessionLauncher({
         reason instanceof Error
           ? reason.message
           : "Launch failed. Your settings are still here.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveDraft() {
+    if (
+      !unknownFlags ||
+      currentSessionId ||
+      !draft.repo ||
+      !draft.request.trim()
+    )
+      return;
+    setBusy(true);
+    setError("");
+    try {
+      const saved = await createSession(draft.repo, draft);
+      setCurrentSessionId(saved.session.id);
+      onSaved(saved.session.id);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Could not save this draft.",
       );
     } finally {
       setBusy(false);
@@ -226,6 +253,7 @@ export default function SessionLauncher({
               <select
                 aria-label="Repository"
                 value={draft.repo}
+                disabled={!!sessionId}
                 onChange={(event) => patch({ repo: event.target.value })}
               >
                 <option value="">Choose a repository</option>
@@ -572,6 +600,16 @@ export default function SessionLauncher({
               <Eye />
               {busy ? "Checking…" : "Preview command"}
             </Button>
+            {unknownFlags && !currentSessionId && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy || !draft.repo || !draft.request.trim()}
+                onClick={() => void saveDraft()}
+              >
+                Save as draft
+              </Button>
+            )}
             <Button
               type="button"
               disabled={
