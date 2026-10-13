@@ -667,13 +667,20 @@ class SessionAgent(Agent):
         await self._restart()
 
     async def _recover_crash(self, exc: ProcessError, crashes: int) -> None:
-        """Replace a session whose CLI process crashed, or re-raise `exc`."""
+        """Replace a crashed session, or report a terminal process failure."""
         if (
             not _looks_like_a_crash(exc.exit_code)
             or not self._entered
             or crashes >= _SDK_CRASH_RETRY_ATTEMPTS
         ):
-            raise exc
+            raise RuntimeError(
+                _process_error_message(
+                    self.role,
+                    exc,
+                    crashed=_looks_like_a_crash(exc.exit_code),
+                    attempt=crashes,
+                )
+            ) from exc
         logger.warning(
             "session_crash_retry",
             role=self.role,
@@ -706,6 +713,8 @@ class SessionAgent(Agent):
                     )
                     self._check_result(item)
         except ProcessError as exc:
+            if not exc.stderr and text:
+                exc.stderr = text[-1]
             if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
                 raise _ContextOverflow from exc
             raise

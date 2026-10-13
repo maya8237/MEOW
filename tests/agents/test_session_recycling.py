@@ -115,7 +115,48 @@ class SessionTurnFailureTests(unittest.IsolatedAsyncioTestCase):
         with patch("meow.agents.base.ClaudeSDKClient", side_effect=[failing]):
             agent.open(MagicMock())
             async with agent:
-                with self.assertRaises(ProcessError):
+                with self.assertRaisesRegex(RuntimeError, r"generator.*exit code 1"):
+                    await agent.send("go")
+        failing.query.assert_awaited_once()
+
+    async def test_repeated_cli_crashes_raise_a_readable_failure(self):
+        from claude_agent_sdk import ProcessError
+
+        clients = [_client([]) for _ in range(3)]
+        for client in clients:
+            client.query = AsyncMock(
+                side_effect=ProcessError("died", exit_code=-1073740791, stderr="boom")
+            )
+        agent = _agent()
+        with (
+            patch("meow.agents.base.ClaudeSDKClient", side_effect=clients),
+            patch("meow.agents.base._SDK_CRASH_RETRY_BACKOFF", 0),
+        ):
+            agent.open(MagicMock())
+            async with agent:
+                with self.assertRaisesRegex(
+                    RuntimeError, r"generator.*crashed.*3 attempt.*boom"
+                ) as caught:
+                    await agent.send("go")
+        self.assertIsInstance(caught.exception.__cause__, ProcessError)
+        for client in clients:
+            client.query.assert_awaited_once()
+
+    async def test_process_failure_preserves_the_assistants_error_message(self):
+        from claude_agent_sdk import ProcessError
+
+        client = _client([])
+
+        async def responses():  # ruff: ignore[unused-async] -- SDK async stream
+            yield _text("API Error: Connection refused")
+            raise ProcessError("failed", exit_code=1)
+
+        client.receive_response = responses
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", return_value=client):
+            agent.open(MagicMock())
+            async with agent:
+                with self.assertRaisesRegex(RuntimeError, "Connection refused"):
                     await agent.send("go")
 
     async def test_context_size_is_the_last_call_not_the_turn_total(self):
