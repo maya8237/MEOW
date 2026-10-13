@@ -4,6 +4,9 @@ All notable changes to MEOW will be documented here.
 
 ## Unreleased
 
+- Pending schedules can be rescheduled with `meow schedule edit ID --at TIME`
+  or **Edit time** in UI session details, preserving their saved run settings.
+
 - One-shot scheduling through `meow schedule`, `/meow:schedule`, and the UI's
   **Schedule for later** option, using Windows Task Scheduler or Linux systemd
   user timers. Schedules preserve reviewed arguments, support cancellation,

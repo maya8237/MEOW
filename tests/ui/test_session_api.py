@@ -131,6 +131,30 @@ def test_schedule_session_freezes_recipe_lists_and_cancels(  # ruff: ignore[too-
     assert body["session"]["attempts"] == []
     status, body = post(
         running.server_port,
+        f"/api/sessions/{session_id}/edit-schedule",
+        {
+            "repo": str(project),
+            "schedule_id": schedule_id,
+            "at": "2099-12-01T15:30+03:00",
+        },
+    )
+    assert status == HTTPStatus.OK, body
+    assert body["session"]["schedules"][0]["at"] == "2099-12-01T12:30:00+00:00"
+    assert scheduling.list_schedules(project)[0]["recipe"] == frozen
+    status, _ = post(
+        running.server_port,
+        f"/api/sessions/{session_id}/edit-schedule",
+        {"repo": str(project), "schedule_id": "f" * 32, "at": at},
+    )
+    assert status == HTTPStatus.NOT_FOUND
+    status, _ = post(
+        running.server_port,
+        f"/api/sessions/{session_id}/edit-schedule",
+        {"repo": str(project), "schedule_id": schedule_id, "at": "yesterday"},
+    )
+    assert status == HTTPStatus.BAD_REQUEST
+    status, body = post(
+        running.server_port,
         f"/api/sessions/{session_id}/cancel-schedule",
         {"repo": str(project), "schedule_id": schedule_id},
     )

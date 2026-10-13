@@ -1,6 +1,6 @@
 ---
 name: schedule
-description: Schedule MEOW to run itself later on Windows or Linux. Use when the user asks to run a request, feature, workflow, or Jira issue at a future time, or to list or cancel scheduled MEOW runs. Registers an OS task through the MEOW CLI and works from CLI or native skill sessions.
+description: Schedule MEOW to run itself later on Windows or Linux. Use when the user asks to run a request, feature, workflow, or Jira issue at a future time, or to list, edit, reschedule, or cancel scheduled MEOW runs. Registers an OS task through the MEOW CLI and works from CLI or native skill sessions.
 ---
 
 # schedule
@@ -44,7 +44,13 @@ native sprint now when the user's request is to execute it later.
    fails, report the error; do not claim a timer exists or silently fall back to
    an in-session delay.
 
-Inspect schedules with `meow schedule list --work-dir "<project>"`. Cancel a
+Inspect schedules with `meow schedule list --work-dir "<project>"`. Change a
+pending schedule's time with `meow schedule edit <id> --at "<time>" --work-dir
+"<project>"`; resolve the time using the same timezone rules as creation. This
+preserves the schedule identifier and frozen request/settings. Use `list` to
+identify the existing schedule rather than creating a duplicate. Started,
+completed, and cancelled schedules cannot be edited. Check the command's exit
+status and returned time before reporting success. Cancel a
 trigger with `meow schedule cancel <id> --work-dir "<project>"`. Cancellation
 does not stop a run that has already started; use `meow cancel <run-id>` or the
 UI session stop controls. CLI output and execution results live under
@@ -61,5 +67,6 @@ not copied into schedule files).
 
 The UI offers the same operation: New session → Start → Schedule for later →
 Run at → Preview command → Schedule session. UI schedules freeze the reviewed
-recipe, show the time in session details, and can be cancelled there. Each
+recipe, show the time in session details, and can be edited with **Edit time**
+or cancelled there. Editing the schedule time preserves its frozen recipe. Each
 scheduled trigger is one-shot; create separate schedules for separate dates.

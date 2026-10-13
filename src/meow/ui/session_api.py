@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from meow.infrastructure import ui_sessions
 from meow.infrastructure.scheduling import (
     cancel_schedule,
+    edit_schedule,
     list_schedules,
     schedule_session,
 )
@@ -372,13 +373,16 @@ def post(server, url: str, payload: dict):  # ruff: ignore[complex-structure, to
                 "session": _detail(store, store.load(session_id)),
                 "schedule": {key: job[key] for key in ("id", "at", "state")},
             }
-        if action == "cancel-schedule":
+        if action in {"cancel-schedule", "edit-schedule"}:
             schedule_id = _id(payload.get("schedule_id", ""))
             if not any(
                 job["id"] == schedule_id for job in _session_schedules(repo, session_id)
             ):
                 raise ApiError(HTTPStatus.NOT_FOUND, "Schedule not found.")
-            cancel_schedule(repo, schedule_id)
+            if action == "edit-schedule":
+                edit_schedule(repo, schedule_id, payload.get("at"))
+            else:
+                cancel_schedule(repo, schedule_id)
             return HTTPStatus.OK, {"session": _detail(store, store.load(session_id))}
         if action == "launch":
             attempt = ui_sessions.launch_attempt(repo, session_id)

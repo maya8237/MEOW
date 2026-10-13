@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { Recipe, SessionDetail as SessionRecord } from "@/lib/sessions";
 import SessionDetail from "./SessionDetail";
 
@@ -78,6 +79,49 @@ const chunk = (text: string) =>
       reset: false,
     }),
   );
+
+test("edits a pending schedule in local time and preserves invalid drafts", async () => {
+  const record = session("scheduled", "unused", "Scheduled session");
+  record.attempts = [];
+  record.schedules = [
+    { id: "job", at: "2099-12-01T12:30:00Z", state: "scheduled" },
+  ];
+  const edit = vi.fn().mockResolvedValue(false);
+  const user = userEvent.setup();
+  render(
+    <SessionDetail
+      repo={repo}
+      session={record}
+      repos={[repo]}
+      {...callbacks}
+      onEditSchedule={edit}
+    />,
+  );
+  await user.click(screen.getByRole("button", { name: "Edit time" }));
+  const input = screen.getByLabelText("Schedule run at");
+  expect((input as HTMLInputElement).value).toBe(
+    new Date(
+      new Date(record.schedules[0].at).getTime() -
+        new Date(record.schedules[0].at).getTimezoneOffset() * 60000,
+    )
+      .toISOString()
+      .slice(0, 16),
+  );
+  await user.clear(input);
+  expect(screen.getByRole("button", { name: "Save time" })).toBeDisabled();
+  await user.type(input, "2099-12-02T09:15");
+  await user.click(screen.getByRole("button", { name: "Save time" }));
+  expect(edit).toHaveBeenCalledWith(
+    "job",
+    new Date("2099-12-02T09:15").toISOString(),
+  );
+  expect(screen.getByLabelText("Schedule run at")).toHaveValue(
+    "2099-12-02T09:15",
+  );
+  edit.mockResolvedValue(true);
+  await user.click(screen.getByRole("button", { name: "Save time" }));
+  expect(screen.queryByLabelText("Schedule run at")).not.toBeInTheDocument();
+});
 
 test("selection changes abort pending output and ignore its late response", async () => {
   let releaseOld!: (value: Response) => void;

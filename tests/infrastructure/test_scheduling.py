@@ -17,6 +17,11 @@ def future():
     return (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0).isoformat()
 
 
+def make_due(repo, job):
+    job = {**job, "at": (datetime.now(UTC) - timedelta(seconds=1)).isoformat()}
+    scheduling._atomic_json(scheduling._path(repo, job["id"]), job)
+
+
 @pytest.fixture
 def backend(monkeypatch, tmp_path):
     runner = Mock(return_value=Mock(stdout="DOMAIN\\user\n", stderr="", returncode=0))
@@ -104,6 +109,7 @@ def test_registration_failure_is_saved_and_reported(tmp_path, monkeypatch, backe
 def test_worker_runs_once_and_records_exit(tmp_path, monkeypatch, backend):
     monkeypatch.setattr(scheduling.sys, "platform", "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
+    make_due(tmp_path, job)
     backend.reset_mock()
     backend.return_value = Mock(returncode=FAILED_EXIT)
     assert scheduling.execute_schedule(tmp_path, job["id"]) == FAILED_EXIT
@@ -123,6 +129,7 @@ def test_imminent_worker_waits_through_registration(tmp_path, monkeypatch, backe
 
     monkeypatch.setattr(scheduling.sys, "platform", "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
+    make_due(tmp_path, job)
     lock = scheduling._path(tmp_path, job["id"]).with_suffix(".lock")
     with ThreadPoolExecutor(max_workers=1) as pool:
         with scheduling._file_transaction(lock, "registration"):
@@ -162,6 +169,7 @@ def test_ui_execution_uses_frozen_recipe_after_edit(tmp_path, monkeypatch, backe
     store = SessionStore(tmp_path)
     store.save_recipe(frozen)
     job = scheduling.schedule_session(tmp_path, future(), frozen)
+    make_due(tmp_path, job)
     store.update_recipe(frozen.id, replace(frozen, request="edited request"))
     launcher = Mock(return_value=Mock(id="b" * 32))
     monkeypatch.setattr(ui_sessions, "launch_attempt", launcher)
@@ -190,3 +198,82 @@ def test_cli_schedule_does_not_run_now(tmp_path, monkeypatch, backend, capsys):
     job = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert job["state"] == "scheduled"
     assert all(call.args[0][0] != sys.executable for call in backend.call_args_list)
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+def test_edit_time_preserves_identity_and_command(  # ruff: ignore[too-many-statements]
+    tmp_path, monkeypatch, backend, platform
+):
+    monkeypatch.setattr(scheduling.sys, "platform", platform)
+    job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
+    at = "2099-12-01T15:30:00+03:00"
+    updated = scheduling.edit_schedule(tmp_path, job["id"], at)
+    assert updated["id"] == job["id"]
+    assert updated["argv"] == job["argv"]
+    assert updated["at"] == "2099-12-01T12:30:00+00:00"
+    assert scheduling.list_schedules(tmp_path)[0] == updated
+    if platform == "win32":
+        xml = ET.parse(scheduling._path(tmp_path, job["id"]).with_suffix(".xml"))
+        ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+        assert xml.find(".//t:StartBoundary", ns).text == updated["at"]
+        assert "/F" in backend.call_args.args[0]
+    else:
+        timer = (tmp_path / "units" / f"meow-{job['id']}.timer").read_text()
+        assert "OnCalendar=2099-12-01 12:30:00 UTC" in timer
+        assert backend.call_args.args[0][:3] == ["systemctl", "--user", "restart"]
+    backend.reset_mock()
+    # A trigger queued at the previous time cannot launch the rescheduled job early.
+    assert scheduling.execute_schedule(tmp_path, job["id"]) == 0
+    backend.assert_not_called()
+    assert scheduling.list_schedules(tmp_path)[0]["state"] == "scheduled"
+
+
+def test_edit_rejects_invalid_time_and_started_schedule(tmp_path, monkeypatch, backend):
+    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
+    backend.reset_mock()
+    with pytest.raises(ValueError):
+        scheduling.edit_schedule(tmp_path, job["id"], "yesterday")
+    assert scheduling.list_schedules(tmp_path)[0] == job
+    for state in ("running", "succeeded", "cancelled", "launched", "failed"):
+        scheduling._atomic_json(
+            scheduling._path(tmp_path, job["id"]), {**job, "state": state}
+        )
+        with pytest.raises(ValueError, match="pending"):
+            scheduling.edit_schedule(tmp_path, job["id"], future())
+    backend.assert_not_called()
+
+
+def test_edit_failure_restores_original_trigger(tmp_path, monkeypatch, backend):
+    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
+    backend.side_effect = [
+        Mock(stdout=""),
+        scheduling.subprocess.CalledProcessError(1, [], stderr="restart failed"),
+        Mock(stdout=""),
+        Mock(stdout=""),
+    ]
+    with pytest.raises(ValueError, match="restart failed"):
+        scheduling.edit_schedule(tmp_path, job["id"], "2099-12-01T12:30Z")
+    assert scheduling.list_schedules(tmp_path)[0] == job
+    timer = (tmp_path / "units" / f"meow-{job['id']}.timer").read_text()
+    assert datetime.fromisoformat(job["at"]).strftime("%Y-%m-%d %H:%M:%S") in timer
+
+
+def test_cli_edit_changes_time(tmp_path, monkeypatch, backend, capsys):
+    from meow.cli.cli import cli_main
+
+    monkeypatch.setattr(scheduling.sys, "platform", "linux")
+    job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
+    cli_main([
+        "schedule",
+        "edit",
+        job["id"],
+        "--at",
+        "2099-12-01T12:30Z",
+        "-d",
+        str(tmp_path),
+    ])
+    updated = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert updated["id"] == job["id"]
+    assert updated["at"] == "2099-12-01T12:30:00+00:00"

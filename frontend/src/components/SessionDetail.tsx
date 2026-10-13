@@ -11,6 +11,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { repoName } from "@/lib/catalog";
 import {
   ImportedRun,
@@ -54,6 +55,7 @@ type Props = {
   onImportedResume: (request: string, repair: boolean) => void;
   onImportedCancel: () => void;
   onCancelSchedule?: (scheduleId: string) => void;
+  onEditSchedule?: (scheduleId: string, at: string) => Promise<boolean>;
 };
 
 export default function SessionDetail({
@@ -75,6 +77,7 @@ export default function SessionDetail({
   onImportedResume,
   onImportedCancel,
   onCancelSchedule,
+  onEditSchedule,
 }: Props) {
   const [attemptId, setAttemptId] = useState("");
   const [output, setOutput] = useState("");
@@ -85,6 +88,11 @@ export default function SessionDetail({
   const [repair, setRepair] = useState(false);
   const [copied, setCopied] = useState(false);
   const [retryOutput, setRetryOutput] = useState(0);
+  const [editingSchedule, setEditingSchedule] = useState("");
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const validScheduleTime =
+    !!scheduleAt && new Date(scheduleAt).getTime() > Date.now();
   const pane = useRef<HTMLPreElement>(null);
   const cursors = useRef(new Map<string, number>());
   const attempts = session?.attempts || [];
@@ -116,6 +124,7 @@ export default function SessionDetail({
     setOutputError("");
     setResumeRequest("");
     setRepair(false);
+    setEditingSchedule("");
   }, [session?.id, importedRun?.id]);
 
   useEffect(() => {
@@ -365,12 +374,76 @@ export default function SessionDetail({
           </span>
           {job.error && <span role="status">{job.error}</span>}
           {job.state === "scheduled" && (
-            <Button
-              variant="outline"
-              onClick={() => onCancelSchedule?.(job.id)}
-            >
-              Cancel schedule
-            </Button>
+            <>
+              {editingSchedule === job.id ? (
+                <>
+                  <label className="session-field">
+                    Run at
+                    <Input
+                      type="datetime-local"
+                      aria-label="Schedule run at"
+                      value={scheduleAt}
+                      disabled={savingSchedule}
+                      onChange={(event) => setScheduleAt(event.target.value)}
+                    />
+                    <small>
+                      Your local time (
+                      {Intl.DateTimeFormat().resolvedOptions().timeZone}).
+                    </small>
+                  </label>
+                  <Button
+                    disabled={savingSchedule || !validScheduleTime}
+                    onClick={async () => {
+                      setSavingSchedule(true);
+                      try {
+                        if (
+                          await onEditSchedule?.(
+                            job.id,
+                            new Date(scheduleAt).toISOString(),
+                          )
+                        )
+                          setEditingSchedule("");
+                      } finally {
+                        setSavingSchedule(false);
+                      }
+                    }}
+                  >
+                    Save time
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={savingSchedule}
+                    onClick={() => setEditingSchedule("")}
+                  >
+                    Cancel edit
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const time = new Date(job.at);
+                    setScheduleAt(
+                      new Date(
+                        time.getTime() - time.getTimezoneOffset() * 60000,
+                      )
+                        .toISOString()
+                        .slice(0, 16),
+                    );
+                    setEditingSchedule(job.id);
+                  }}
+                >
+                  Edit time
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                disabled={savingSchedule}
+                onClick={() => onCancelSchedule?.(job.id)}
+              >
+                Cancel schedule
+              </Button>
+            </>
           )}
         </div>
       ))}

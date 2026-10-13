@@ -401,6 +401,7 @@ timers. The CLI, `/meow:schedule` skill, and UI use the same scheduling helper:
 meow schedule add --at "09:00" --work-dir /path/to/project -- run --jira PROJ-123
 meow schedule add --at "2026-12-01T09:00:00+02:00" -- run "Add CSV export" --name csv-export
 meow schedule list --work-dir /path/to/project
+meow schedule edit <schedule-id> --at "2026-12-02T10:30:00+02:00" --work-dir /path/to/project
 meow schedule cancel <schedule-id> --work-dir /path/to/project
 ```
 
@@ -415,7 +416,9 @@ In a plugin conversation, ask MEOW to run a request or Jira issue at a future
 time, or invoke `/meow:schedule`. In the UI, select **Schedule for later** in
 the session launcher, choose a local date/time, preview, and schedule. UI
 schedules save the reviewed recipe, so later edits do not change that run.
-The session details show its scheduled time and cancellation control.
+The session details show its scheduled time, **Edit time**, and cancellation
+controls. Editing changes only the pending trigger's time, preserving its saved
+recipe and identifier. Started, completed, and cancelled schedules cannot be edited.
 
 **Windows:** tasks run as the current logged-in user with least privilege.
 No administrator privileges or password storage are needed. Keep that user
