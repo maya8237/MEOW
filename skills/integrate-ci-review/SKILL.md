@@ -5,6 +5,8 @@ description: Add MEOW's report-only CI review job to an existing GitHub Actions 
 
 # Integrate CI review
 
+First follow [the shared update check](../_shared/update-check.md).
+
 Add the MEOW CI review job to the repository's own CI configuration. The
 `--ci` flag selects the exact CI checkout as the review source; that path is
 always **report-only**: it runs `meow review --ci`, writes the review artifacts,

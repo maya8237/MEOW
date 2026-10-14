@@ -258,9 +258,17 @@ run_setup() {
 }
 
 # Reinstalls the checkout in editable mode so the package matches its source.
+run_maintenance() {
+    # Older checkouts do not yet contain the shared runtime. Fetch only that
+    # stdlib helper, using the same HTTPS source as this streamed installer.
+    maintenance_python=$1
+    shift
+    "$maintenance_python" -c 'import pathlib, sys, urllib.request; repo=sys.argv[1]; path=pathlib.Path(repo)/"src/meow/installer/maintenance.py"; source=path.read_bytes() if path.is_file() else urllib.request.urlopen("https://raw.githubusercontent.com/maya8237/MEOW/main/src/meow/installer/maintenance.py", timeout=10).read(); sys.argv=[str(path), "--repo-dir", repo, *sys.argv[2:]]; exec(compile(source, str(path), "exec"), {"__name__": "__main__"})' "$@"
+}
+
 reinstall_existing_checkout() {
     remove_previous_meow
-    run_with_spinner 'Installing editable MEOW update' "$existing_python" -m pip install -e "$existing_checkout" \
+    run_with_spinner 'Installing editable MEOW update' run_maintenance "$existing_python" "$existing_checkout" --install \
         || die 'Editable MEOW update failed.'
     installed_current=1
 }
@@ -271,22 +279,11 @@ update_existing_checkout() {
     printf '%s\n' "Updating MEOW from existing checkout: $existing_checkout"
     command -v git >/dev/null 2>&1 \
         || die 'Git is required to update the existing MEOW checkout.'
-    # A detached HEAD would be updated instead of the main branch.
-    if ! git -C "$existing_checkout" symbolic-ref -q HEAD >/dev/null 2>&1; then
-        run_with_spinner 'Switching the detached checkout to main' git -C "$existing_checkout" checkout main \
-            || die 'Could not switch the MEOW checkout to main; commit or stash your changes, then run the installer again.'
-    fi
     if [ "${1:-pull}" = reset ]; then
-        # Moving to an older origin/main cannot fast-forward, so reset to it.
-        [ -z "$(git -C "$existing_checkout" status --porcelain 2>/dev/null)" ] \
-            || die 'The MEOW checkout has uncommitted changes; commit or stash them, then run the installer again.'
-        run_with_spinner 'Fetching origin/main' git -C "$existing_checkout" fetch origin main \
-            || die 'MEOW source update failed.'
-        run_with_spinner 'Resetting MEOW source to origin/main' \
-            git -C "$existing_checkout" reset --hard FETCH_HEAD \
+        run_with_spinner 'Resetting MEOW source to origin/main' run_maintenance "$existing_python" "$existing_checkout" --update --reset \
             || die 'MEOW source update failed.'
     else
-        run_with_spinner 'Pulling MEOW source' git -C "$existing_checkout" pull --ff-only origin main \
+        run_with_spinner 'Pulling MEOW source' run_maintenance "$existing_python" "$existing_checkout" --update \
             || die 'MEOW source update failed.'
     fi
     reinstall_existing_checkout
@@ -451,7 +448,7 @@ install_fresh_meow() {
     fi
 
     remove_previous_meow
-    run_with_spinner "Installing MEOW with $python_command -m pip install -e ..." "$python_command" -m pip install -e "$clone_path" \
+    run_with_spinner "Installing MEOW with $python_command -m pip install -e ..." run_maintenance "$python_command" "$clone_path" --install \
         || die 'Editable MEOW installation failed.'
 
     printf '%s\n' 'Configuring Claude and onboarding projects...'

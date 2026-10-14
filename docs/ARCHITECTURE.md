@@ -35,7 +35,9 @@ top-level alias or compatibility modules.
   definitions under `builtin/`. `project/prompts.py` supplies computed context
   and verdict contracts; editable role prose belongs in the agent definitions.
 - `hooks/`: optional Claude Code hook handlers and installation.
-- `installer/`: post-install plugin registration and project onboarding.
+- `installer/`: shared checkout updates and editable installation in the
+  stdlib-only `maintenance.py`, plus post-install plugin registration and
+  project onboarding. Both streamed scripts and `meow --update` use it.
 - `tasks/`: task-graph models, scheduling, execution, and integration.
 
 `__main__.py` is the console entry point. Tests live in `tests/` and are not

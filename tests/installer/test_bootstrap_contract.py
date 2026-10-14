@@ -100,6 +100,14 @@ def _run_posix_installer(  # ruff: ignore[too-many-arguments, too-many-statement
         "function python3.15 {",
         '  printf \'python %s\\n\' "$*" >> "$MEOW_TEST_LOG"',
         '  case "$*" in',
+        "    *'installer/maintenance.py'*)",
+        '      case "$*" in',
+        "        *'--install'*) printf 'python -m pip install -e %s\\n' "
+        '"$3" >> "$MEOW_TEST_LOG"; printf \'FAKE_PIP\\n\' >&2 ;;',
+        "        *'--reset'*) git -C \"$3\" fetch origin main; "
+        'git -C "$3" reset --hard FETCH_HEAD ;;',
+        "        *'--update'*) git -C \"$3\" pull --ff-only origin main ;;",
+        "      esac ;;",
         "    *'runpy.run_module'*) printf '3.15.0\\n' ;;",
         "    *'import importlib.metadata'*) "
         "printf '%s\\n' \"$MEOW_PACKAGE_VERSION\" ;;",

@@ -5,6 +5,8 @@ description: Schedule MEOW to run itself later on Windows or Linux. Use when the
 
 # schedule
 
+First follow [the shared update check](../_shared/update-check.md).
+
 When the user asks MEOW to run at a future time, register the schedule now;
 do not run the work immediately, sleep in the session, or use host-specific
 cron/Task Scheduler commands yourself. Both CLI and native sessions use the

@@ -350,18 +350,24 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         return $null
     }
 
+    # Use the checkout's stdlib runtime, or fetch it for older installations.
+    function Invoke-Maintenance {
+        param([hashtable]$Setup, [string[]]$Actions, [string]$Message)
+
+        $loader = 'import pathlib, sys, urllib.request; repo=sys.argv[1]; path=pathlib.Path(repo)/"src/meow/installer/maintenance.py"; source=path.read_bytes() if path.is_file() else urllib.request.urlopen("https://raw.githubusercontent.com/maya8237/MEOW/main/src/meow/installer/maintenance.py", timeout=10).read(); sys.argv=[str(path), "--repo-dir", repo, *sys.argv[2:]]; exec(compile(source, str(path), "exec"), {"__name__": "__main__"})'
+        Invoke-WithSpinner -Message $Message -ScriptBlock {
+            $setup = $using:Setup
+            Invoke-NativeHidden -Executable $setup.Executable -Arguments (@($setup.Arguments) + @('-c', $using:loader, $setup.Checkout) + @($using:Actions))
+            if ($LASTEXITCODE -ne 0) { throw "MEOW maintenance failed." }
+        }
+    }
+
     # Reinstalls the checkout in editable mode so the package matches its source.
     function Install-ExistingCheckout {
         param([Parameter(Mandatory = $true)][hashtable]$Setup)
 
         Remove-PreviousMeow
-        Invoke-WithSpinner -Message "Installing editable MEOW update" -ScriptBlock {
-            $setup = $using:Setup
-            Invoke-NativeHidden -Executable $setup.Executable -Arguments (@($setup.Arguments) + @('-m', 'pip', 'install', '-e', $setup.Checkout))
-            if ($LASTEXITCODE -ne 0) {
-                throw "Editable MEOW update failed."
-            }
-        }
+        Invoke-Maintenance -Setup $Setup -Actions @('--install') -Message "Installing editable MEOW update"
         $script:installedCurrent = $true
     }
 
@@ -374,44 +380,10 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
             throw "Git is required to update the existing MEOW checkout."
         }
-        # A detached HEAD would be updated instead of the main branch.
-        & git -C $Setup.Checkout symbolic-ref -q HEAD *> $null
-        if ($LASTEXITCODE -ne 0) {
-            Invoke-WithSpinner -Message "Switching the detached checkout to main" -ScriptBlock {
-                $setup = $using:Setup
-                Invoke-NativeHidden -Executable git -Arguments @('-C', $setup.Checkout, 'checkout', 'main')
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Could not switch the MEOW checkout to main; commit or stash your changes, then run the installer again."
-                }
-            }
-        }
         if ($Reset) {
-            # Moving to an older origin/main cannot fast-forward, so reset to it.
-            if (& git -C $Setup.Checkout status --porcelain) {
-                throw "The MEOW checkout has uncommitted changes; commit or stash them, then run the installer again."
-            }
-            Invoke-WithSpinner -Message "Fetching origin/main" -ScriptBlock {
-                $setup = $using:Setup
-                Invoke-NativeHidden -Executable git -Arguments @('-C', $setup.Checkout, 'fetch', 'origin', 'main')
-                if ($LASTEXITCODE -ne 0) {
-                    throw "MEOW source update failed."
-                }
-            }
-            Invoke-WithSpinner -Message "Resetting MEOW source to origin/main" -ScriptBlock {
-                $setup = $using:Setup
-                Invoke-NativeHidden -Executable git -Arguments @('-C', $setup.Checkout, 'reset', '--hard', 'FETCH_HEAD')
-                if ($LASTEXITCODE -ne 0) {
-                    throw "MEOW source update failed."
-                }
-            }
+            Invoke-Maintenance -Setup $Setup -Actions @('--update', '--reset') -Message "Resetting MEOW source to origin/main"
         } else {
-            Invoke-WithSpinner -Message "Pulling MEOW source" -ScriptBlock {
-                $setup = $using:Setup
-                Invoke-NativeHidden -Executable git -Arguments @('-C', $setup.Checkout, 'pull', '--ff-only', 'origin', 'main')
-                if ($LASTEXITCODE -ne 0) {
-                    throw "MEOW source update failed."
-                }
-            }
+            Invoke-Maintenance -Setup $Setup -Actions @('--update') -Message "Pulling MEOW source"
         }
         Install-ExistingCheckout -Setup $Setup
 
@@ -566,13 +538,8 @@ from pathlib import Path; import meow; package=Path(meow.__file__).resolve(); pr
         }
 
         Remove-PreviousMeow
-        Invoke-WithSpinner -Message "Installing MEOW with $(Format-PythonCommand -Python $python) -m pip install -e ..." -ScriptBlock {
-            $selectedPython = $using:python
-            Invoke-NativeHidden -Executable $selectedPython.Executable -Arguments (@($selectedPython.Arguments) + @('-m', 'pip', 'install', '-e', $using:clonePath))
-            if ($LASTEXITCODE -ne 0) {
-                throw "Editable MEOW installation failed."
-            }
-        }
+        $python.Checkout = $clonePath
+        Invoke-Maintenance -Setup $python -Actions @('--install') -Message "Installing MEOW with $(Format-PythonCommand -Python $python) -m pip install -e ..."
 
         Write-Host "Configuring Claude and onboarding projects..."
         Set-PendingSetup -Python $python -Checkout $clonePath
