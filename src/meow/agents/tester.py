@@ -1,5 +1,7 @@
 """Exploratory tester role and project architecture context."""
 
+import re
+from contextlib import suppress
 from pathlib import Path
 
 from claude_agent_sdk import ClaudeAgentOptions
@@ -163,7 +165,29 @@ class VerificationAgent(Agent):
                 f"SUMMARY: Tester did not produce a readable verdict at "
                 f"{report_file}.\nSTATUS: FAIL",
             )
+        if not re.search(r"^\s*STATUS:", verdict, re.MULTILINE):
+            await self.run_definition_query(
+                self.definition("tester"),
+                f"Your report at {report_file} is missing a plain STATUS: line. "
+                "Read it and correct only its format. Preserve the findings and "
+                "verdict; do not rerun tests or change source files. Start with "
+                "SUMMARY: followed by STATUS: PASS or STATUS: FAIL on the next "
+                "line, without Markdown headings. Write the corrected report "
+                "to the same path.",
+                self._options(report_file),
+                "Tester",
+            )
+            # Keep the original malformed report if the correction is unreadable.
+            with suppress(OSError, UnicodeError):
+                verdict = report_file.read_text(encoding="utf-8")
         status = _verdict_status(verdict)
+        if not re.search(r"^\s*STATUS:", verdict, re.MULTILINE):
+            verdict = force_fail(
+                verdict,
+                "Tester verdict is missing a plain STATUS: line. Write SUMMARY: "
+                "followed by STATUS: PASS or STATUS: FAIL without Markdown headings.",
+            )
+            report_file.write_text(verdict, encoding="utf-8")
         if evidence.blocking_failed:
             failures = [
                 f"{command.command} "
