@@ -17,7 +17,12 @@ approves, runs a task graph when present, loops generation and review, checks,
 and delivers. `quick` omits knowledge and shaping. `review-only` reviews existing
 code first, fixes failures in later rounds, and runs checks; it has no automatic
 delivery. `--test` also works without a plan in that workflow: the tester uses
-the review request as its basis. Existing plan-based testing is unchanged.
+the review request as its basis. During a run (including resume), plan-based
+review and testing also receive the original request. The builtin roles must
+check each acceptance criterion against observed behavior and fail for
+requirements omitted or weakened by the plan; a passing existing suite alone
+is insufficient evidence. Scoped agent overrides replace the builtin prose,
+so ejected reviewer/tester definitions need equivalent instructions.
 
 Before executing a planner task graph, MEOW validates its dependencies and
 file ownership. If the graph is invalid (for example, independent tasks own

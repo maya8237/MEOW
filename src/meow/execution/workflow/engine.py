@@ -2,7 +2,7 @@
 
 import asyncio
 from contextlib import AsyncExitStack
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from meow.agents.base import SessionAgent
@@ -76,6 +76,10 @@ class RunState:
     has_review: bool = False
     evidence: object = None
     checks_results: object = None
+
+    def __post_init__(self):
+        if self.request:
+            self.sprint = replace(self.sprint, original_request=self.request)
 
     def variables(self) -> dict:
         from meow.infrastructure.checks import configured_checks

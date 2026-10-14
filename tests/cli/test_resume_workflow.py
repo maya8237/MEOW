@@ -94,6 +94,20 @@ def test_resume_propagates_saved_unattended_policy(tmp_path):
     assert captured["unattended"] is True
 
 
+@pytest.mark.parametrize("continue_run", [False, True])
+def test_original_request_reaches_sprint_on_run_and_resume(tmp_path, continue_run):
+    store, record, metadata, _ = setup_workflow(tmp_path)
+    store.transition(record.id, "failed", results={"workflow": metadata})
+    with patch("meow.execution.sprint_runner.run_workflow", new=AsyncMock()) as execute:
+        if continue_run:
+            assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+        else:
+            asyncio.run(run_sprint(tmp_path, None, record.request, use_worktree=False))
+    state = execute.await_args.args[0]
+    assert state.request == record.request
+    assert state.sprint.original_request == record.request
+
+
 def test_interrupted_custom_loop_resumes_review_first_without_plan(tmp_path):
     store, record, metadata, path = setup_workflow(tmp_path)
     path.write_text(

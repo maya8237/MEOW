@@ -25,6 +25,7 @@ class Sprint(ConfigLookups):
     lint_hook: object
     working_dir: Path | None = None
     use_worktree: bool = False
+    original_request: str = ""
 
     def active_working_dir(self) -> Path:
         return self.working_dir or self.repo_dir
