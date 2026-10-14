@@ -21,6 +21,7 @@ def test_powershell_removes_old_install_before_installing_new_python(tmp_path):
         for name in (
             "Invoke-WithSpinner",
             "Remove-PreviousMeow",
+            "Invoke-Maintenance",
             "Install-ExistingCheckout",
         )
     )
@@ -31,7 +32,10 @@ def test_powershell_removes_old_install_before_installing_new_python(tmp_path):
         "import sys\nfrom pathlib import Path\n"
         "environment, log, removed = sys.argv[1:4]\n"
         "args = sys.argv[4:]\n"
-        "if args[0] == '-c':\n"
+        "if '--install' in args:\n"
+        "    with open(log, 'a') as stream:\n"
+        "        stream.write(environment + ' -m pip install -e ' + args[-2] + '\\n')\n"
+        "elif args[0] == '-c':\n"
         "    if environment != 'old' or Path(removed).exists(): sys.exit(1)\n"
         "    print('old-distribution')\n"
         "else:\n"

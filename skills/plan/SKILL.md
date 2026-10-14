@@ -5,6 +5,8 @@ description: Have meow write a sprint plan (with a testable Sprint Contract) for
 
 # plan
 
+First follow [the shared update check](../_shared/update-check.md).
+
 Writes a numbered task list and a Sprint Contract, implements nothing. Runs
 **natively** by default: you are the planner. Read
 [`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this

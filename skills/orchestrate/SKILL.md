@@ -5,6 +5,8 @@ description: Split an objective, a set of Jira issues, a JQL query, or a task fi
 
 # orchestrate
 
+First follow [the shared update check](../_shared/update-check.md).
+
 One objective in, one reviewed branch and one pull request out. The orchestrator
 decomposes the work into tasks, runs every task as an ordinary unattended
 sprint in its own worktree (detached CLI child processes, up to `max_parallel`

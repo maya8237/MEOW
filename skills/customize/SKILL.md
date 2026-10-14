@@ -5,6 +5,8 @@ description: Create, override, attach, or remove MEOW skills, agents, and workfl
 
 # Customize MEOW
 
+First follow [the shared update check](../_shared/update-check.md).
+
 Definitions load on every run; no reinstall is needed. Use `docs/WORKFLOWS.md`
 for agent/workflow formats and `docs/INTEGRATIONS.md` for configured sources,
 skills, models, and permissions.

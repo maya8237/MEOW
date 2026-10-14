@@ -23,6 +23,9 @@ irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | i
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 ```
 
+Run `meow --update` to update an existing installation. Public commands and
+`/meow:*` skills warn when a newer version is available.
+
 ## Run
 
 Claude Code:

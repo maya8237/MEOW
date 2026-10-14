@@ -14,7 +14,7 @@ from meow.cli.catalog_cli import catalog_command
 from meow.cli.dispatch import _dispatch
 from meow.cli.ipython_cli import start_ipython
 from meow.cli.orchestrate_cli import orchestrate_command
-from meow.cli.parser import _build_arg_parser
+from meow.cli.parser import _build_arg_parser, expand_shortcuts
 from meow.cli.resume_cli import resume
 from meow.cli.status_cli import status
 from meow.cli.validation import (
@@ -101,11 +101,37 @@ def _check_clean_tree(args, working_dir: Path) -> None:
 
 def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-statements, too-many-locals] -- command dispatch
     configure_logging()
+    from meow.installer.maintenance import check_for_updates
+
+    effective_argv = expand_shortcuts(list(sys.argv[1:] if argv is None else argv))
+    first = effective_argv[0] if effective_argv else "ipython"
+    if first not in {"native", "--update", "--check-update"} and not first.startswith(
+        "_"
+    ):
+        check_for_updates()
     if argv is None and len(sys.argv) == 1:
         start_ipython()
         return
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+    if args.check_update:
+        check_for_updates()
+        return
+    if args.update:
+        from meow.installer.maintenance import update
+
+        try:
+            raise SystemExit(update())
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            subprocess.CalledProcessError,
+        ) as exc:
+            print(f"Update failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        except KeyboardInterrupt:
+            raise SystemExit(130) from None
     if args.command == "_orchestrator-task":
         parser.error("_orchestrator-task is internal")
     if args.command == "ipython":

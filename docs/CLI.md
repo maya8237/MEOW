@@ -7,6 +7,24 @@ and GitLab/GitHub configuration, scheduled runs, and error details, see
 
 ## User commands
 
+Run `meow --update` (or `mw --update`) from any directory to check the
+version on MEOW's `origin/main`. If a newer release exists, MEOW fast-forwards
+its installation checkout, reinstalls the editable package with the running
+Python interpreter, and reruns the shared installer setup: Claude plugin
+registration, optional Bun shared storage/migration, and project onboarding
+prompts. Equal or newer local versions are left alone. Network, Git, and
+installation failures return a nonzero exit code. Commit or stash checkout
+changes and switch to `main` before upgrading; upgrades never reset local
+commits. If installation or setup fails after the source update, rerun
+`meow --update` to finish it. The command also repairs stale editable-package
+metadata. `--update` cannot be combined with a project command.
+
+Every public CLI invocation checks for newer versions and warns on stderr
+with `meow --update` when one is available. This best-effort check has a short
+network timeout and stays silent on failure. Native JSON helpers and internal
+workers skip it. Each public `/meow:*` skill checks once at entry, including
+native-mode skills. `meow --check-update` performs only this warning check.
+
 These are the commands meant for normal project work:
 
 | Command | Use it when you want to |

@@ -86,7 +86,12 @@ class _MeowParser(argparse.ArgumentParser):
             self.print_help()
             print(f"\ncat shortcuts:\n  {_format_shortcuts(_FUN_SHORTCUTS)}")
             self.exit()
-        return super().parse_known_args(expand_shortcuts(argv), namespace)
+        parsed, rest = super().parse_known_args(expand_shortcuts(argv), namespace)
+        if (parsed.update or parsed.check_update) and parsed.command:
+            self.error("update options cannot be combined with a command")
+        if not (parsed.update or parsed.check_update or parsed.command):
+            self.error("a command or --update is required")
+        return parsed, rest
 
 
 def _add_common_args(parser: argparse.ArgumentParser):
@@ -175,10 +180,21 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
         action="version",
         version=f"meow {version('meow')}",
     )
+    updates = parser.add_mutually_exclusive_group()
+    updates.add_argument(
+        "--update",
+        action="store_true",
+        help="Check origin/main and update MEOW, then rerun installer setup.",
+    )
+    updates.add_argument(
+        "--check-update",
+        action="store_true",
+        help="Only check for a newer version and print an update warning.",
+    )
     subparsers = parser.add_subparsers(
         parser_class=argparse.ArgumentParser,
         dest="command",
-        required=True,
+        required=False,
         metavar="{" + ",".join(_VISIBLE_COMMANDS) + "}",
     )
 
