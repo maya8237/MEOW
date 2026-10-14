@@ -364,89 +364,95 @@ export default function SessionDetail({
           {picked.error}
         </div>
       )}
-      {session?.schedules?.map((job) => (
-        <div className="session-facts" key={job.id}>
-          <span>
-            {job.state === "scheduled"
-              ? "Scheduled for"
-              : `Schedule ${job.state}:`}{" "}
-            {new Date(job.at).toLocaleString()}
-          </span>
-          {job.error && <span role="status">{job.error}</span>}
-          {job.state === "scheduled" && (
-            <>
-              {editingSchedule === job.id ? (
+      {!!session?.schedules?.length && (
+        <div className="session-schedules">
+          {session.schedules.map((job) => (
+            <div className="session-schedule" key={job.id}>
+              <span>
+                {job.state === "scheduled"
+                  ? "Scheduled for"
+                  : `Schedule ${job.state}:`}{" "}
+                {new Date(job.at).toLocaleString()}
+              </span>
+              {job.error && <span role="status">{job.error}</span>}
+              {job.state === "scheduled" && (
                 <>
-                  <label className="session-field">
-                    Run at
-                    <Input
-                      type="datetime-local"
-                      aria-label="Schedule run at"
-                      value={scheduleAt}
-                      disabled={savingSchedule}
-                      onChange={(event) => setScheduleAt(event.target.value)}
-                    />
-                    <small>
-                      Your local time (
-                      {Intl.DateTimeFormat().resolvedOptions().timeZone}).
-                    </small>
-                  </label>
-                  <Button
-                    disabled={savingSchedule || !validScheduleTime}
-                    onClick={async () => {
-                      setSavingSchedule(true);
-                      try {
-                        if (
-                          await onEditSchedule?.(
-                            job.id,
-                            new Date(scheduleAt).toISOString(),
+                  {editingSchedule === job.id ? (
+                    <>
+                      <label className="session-field">
+                        Run at
+                        <Input
+                          type="datetime-local"
+                          aria-label="Schedule run at"
+                          value={scheduleAt}
+                          disabled={savingSchedule}
+                          onChange={(event) =>
+                            setScheduleAt(event.target.value)
+                          }
+                        />
+                        <small>
+                          Your local time (
+                          {Intl.DateTimeFormat().resolvedOptions().timeZone}).
+                        </small>
+                      </label>
+                      <Button
+                        disabled={savingSchedule || !validScheduleTime}
+                        onClick={async () => {
+                          setSavingSchedule(true);
+                          try {
+                            if (
+                              await onEditSchedule?.(
+                                job.id,
+                                new Date(scheduleAt).toISOString(),
+                              )
+                            )
+                              setEditingSchedule("");
+                          } finally {
+                            setSavingSchedule(false);
+                          }
+                        }}
+                      >
+                        Save time
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={savingSchedule}
+                        onClick={() => setEditingSchedule("")}
+                      >
+                        Cancel edit
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const time = new Date(job.at);
+                        setScheduleAt(
+                          new Date(
+                            time.getTime() - time.getTimezoneOffset() * 60000,
                           )
-                        )
-                          setEditingSchedule("");
-                      } finally {
-                        setSavingSchedule(false);
-                      }
-                    }}
-                  >
-                    Save time
-                  </Button>
+                            .toISOString()
+                            .slice(0, 16),
+                        );
+                        setEditingSchedule(job.id);
+                      }}
+                    >
+                      Edit time
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     disabled={savingSchedule}
-                    onClick={() => setEditingSchedule("")}
+                    onClick={() => onCancelSchedule?.(job.id)}
                   >
-                    Cancel edit
+                    Cancel schedule
                   </Button>
                 </>
-              ) : (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const time = new Date(job.at);
-                    setScheduleAt(
-                      new Date(
-                        time.getTime() - time.getTimezoneOffset() * 60000,
-                      )
-                        .toISOString()
-                        .slice(0, 16),
-                    );
-                    setEditingSchedule(job.id);
-                  }}
-                >
-                  Edit time
-                </Button>
               )}
-              <Button
-                variant="outline"
-                disabled={savingSchedule}
-                onClick={() => onCancelSchedule?.(job.id)}
-              >
-                Cancel schedule
-              </Button>
-            </>
-          )}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
       {picked?.run_ids.map((id) => (
         <p className="linked-run" key={id}>
           Linked MEOW run <code>{id}</code>

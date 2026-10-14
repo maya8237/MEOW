@@ -1009,7 +1009,7 @@ h3 svg {
 .session-detail {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 310px);
-  grid-template-areas: "head head" "facts facts" "output side";
+  grid-template-areas: "head head" "facts facts" "schedules schedules" "output side";
   align-content: start;
   gap: 0 20px;
   max-width: 1500px;
@@ -1072,6 +1072,26 @@ h3 svg {
   height: 31px;
   max-width: 240px;
   background: #141b27;
+}
+.session-schedules {
+  grid-area: schedules;
+  min-width: 0;
+}
+.session-schedule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.session-schedule .session-field {
+  flex: 0 1 260px;
+}
+.session-schedule small {
+  display: block;
+  margin-top: 6px;
 }
 .output-section {
   grid-area: output;
@@ -1467,7 +1487,7 @@ h3 svg {
   }
   .session-detail {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "head" "facts" "output" "side";
+    grid-template-areas: "head" "facts" "schedules" "output" "side";
     padding: 22px 18px;
   }
   .session-detail-header {
