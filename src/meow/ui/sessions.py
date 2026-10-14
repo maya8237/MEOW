@@ -280,7 +280,7 @@ def _validated_cli_options(options: dict, command: str) -> dict[str, bool | str]
         raise RecipeError("no_worktree is available only for run and plan recipes")
     if command != "run" and "unattended" in options:
         raise RecipeError("unattended is available only for run recipes")
-    return options
+    return {**options, "unattended": True} if command == "run" else options
 
 
 def _validated_options(mode: str, command: str, value: object) -> dict[str, bool | str]:
@@ -471,8 +471,7 @@ def _run_cli_options(recipe: Recipe) -> list[str]:
         for key, value in recipe.inputs.items()
         for token in ("--input", f"{key}={value}")
     ]
-    if recipe.options.get("unattended", True):
-        options.append("--unattended")
+    options.append("--unattended")
     return options
 
 

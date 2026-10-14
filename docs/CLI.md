@@ -121,7 +121,7 @@ Claude Code and keeps their output and attempts together. Select a registered
 repository, then choose a command or start from a workflow, skill, or supported
 Claude agent. The launcher previews the exact command and validates its flags;
 CLI commands use argument arrays and run headlessly without interactive stdin.
-Feature runs default to unattended execution in an isolated worktree. Existing
+Feature runs always use unattended execution in an isolated worktree; the UI cannot answer approval prompts. Existing
 verified unattended delivery policy still applies: a successful run can commit
 and push its worktree branch. Running the UI locally does not turn that delivery
 behavior off. Commands that do not accept `--unattended` still run headlessly,

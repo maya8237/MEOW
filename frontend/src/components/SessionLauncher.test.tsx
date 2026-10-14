@@ -83,8 +83,8 @@ test("CLI draft defaults to unattended and cannot launch before its preview", as
   const user = userEvent.setup();
   render(<SessionLauncher {...props()} />);
   expect(
-    screen.getByRole("checkbox", { name: "Unattended execution" }),
-  ).toBeChecked();
+    screen.queryByRole("checkbox", { name: "Unattended execution" }),
+  ).not.toBeInTheDocument();
   const launch = screen.getByRole("button", { name: "Launch session" });
   expect(launch).toBeDisabled();
   await user.type(screen.getByLabelText("Session name"), "Fix search");

@@ -75,6 +75,13 @@ export default function SessionLauncher({
       value.command = "prompt";
       value.options = { ...value.options, agent: catalogItem.item.name };
     }
+    if (value.mode === "cli" && value.command === "run") {
+      value.options = {
+        ...value.options,
+        unattended: true,
+        no_worktree: false,
+      };
+    }
     return value;
   }, [repo, initialRecipe, catalogItem, sessionId]);
   const [draft, setDraft] = useState<Recipe>(seed);
@@ -341,7 +348,21 @@ export default function SessionLauncher({
                 aria-label="Command"
                 value={draft.command}
                 disabled={draft.command.startsWith("/")}
-                onChange={(event) => patch({ command: event.target.value })}
+                onChange={(event) =>
+                  patch({
+                    command: event.target.value,
+                    ...(draft.mode === "cli"
+                      ? {
+                          options:
+                            event.target.value === "run"
+                              ? { unattended: true, no_worktree: false }
+                              : event.target.value === "plan"
+                                ? { no_worktree: false }
+                                : {},
+                        }
+                      : {}),
+                  })
+                }
               >
                 {draft.mode === "cli" ? (
                   <>
@@ -388,26 +409,9 @@ export default function SessionLauncher({
                     ))}
                   </select>
                 </label>
-                <fieldset className="launcher-options launcher-wide">
-                  <legend>CLI options</legend>
-                  {draft.command === "run" && (
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={draft.options.unattended !== false}
-                        onChange={(event) =>
-                          patch({
-                            options: {
-                              ...draft.options,
-                              unattended: event.target.checked,
-                            },
-                          })
-                        }
-                      />{" "}
-                      Unattended execution
-                    </label>
-                  )}
-                  {(draft.command === "run" || draft.command === "plan") && (
+                {draft.command === "plan" && (
+                  <fieldset className="launcher-options launcher-wide">
+                    <legend>CLI options</legend>
                     <label>
                       <input
                         type="checkbox"
@@ -423,8 +427,8 @@ export default function SessionLauncher({
                       />{" "}
                       Work in this repository directly
                     </label>
-                  )}
-                </fieldset>
+                  </fieldset>
+                )}
                 {draft.workflow && (
                   <div className="launcher-wide launcher-subfields">
                     <div>
@@ -612,8 +616,9 @@ export default function SessionLauncher({
           )}
           {draft.mode === "cli" && draft.command === "run" && (
             <p className="session-note">
-              Unattended runs follow the repository delivery policy. They may
-              commit and push verified work in their worktree.
+              UI feature runs execute unattended in an isolated worktree and
+              follow the repository delivery policy. They may commit and push
+              verified work in their worktree.
             </p>
           )}
           {error && (
