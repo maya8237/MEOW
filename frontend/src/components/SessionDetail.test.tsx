@@ -99,6 +99,11 @@ test("edits a pending schedule in local time and preserves invalid drafts", asyn
   );
   await user.click(screen.getByRole("button", { name: "Edit time" }));
   const input = screen.getByLabelText("Schedule run at");
+  expect(
+    screen.queryByText(new Date(record.schedules[0].at).toLocaleString(), {
+      exact: false,
+    }),
+  ).not.toBeInTheDocument();
   expect((input as HTMLInputElement).value).toBe(
     new Date(
       new Date(record.schedules[0].at).getTime() -

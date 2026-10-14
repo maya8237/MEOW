@@ -288,6 +288,7 @@ export default function SessionDetail({
                 </Button>
               )}
               <Button variant="outline" onClick={onDuplicate}>
+                <Copy />
                 Duplicate
               </Button>
             </>
@@ -368,19 +369,21 @@ export default function SessionDetail({
         <div className="session-schedules">
           {session.schedules.map((job) => (
             <div className="session-schedule" key={job.id}>
-              <span>
-                {job.state === "scheduled"
-                  ? "Scheduled for"
-                  : `Schedule ${job.state}:`}{" "}
-                {new Date(job.at).toLocaleString()}
-              </span>
+              {(editingSchedule !== job.id || job.state !== "scheduled") && (
+                <span>
+                  {job.state === "scheduled"
+                    ? "Scheduled for"
+                    : `Schedule ${job.state}:`}{" "}
+                  {new Date(job.at).toLocaleString()}
+                </span>
+              )}
               {job.error && <span role="status">{job.error}</span>}
               {job.state === "scheduled" && (
                 <>
                   {editingSchedule === job.id ? (
                     <>
                       <label className="session-field">
-                        Run at
+                        Scheduled for
                         <Input
                           type="datetime-local"
                           aria-label="Schedule run at"
@@ -560,7 +563,7 @@ export default function SessionDetail({
                 checked={wrap}
                 onChange={(event) => setWrap(event.target.checked)}
               />
-              Wrap lines
+              Wrap long output lines
             </label>
             <Button
               variant="outline"
@@ -612,7 +615,11 @@ export default function SessionDetail({
       </section>
       {session && (
         <aside className="session-recipe">
-          <h3>Next attempt settings</h3>
+          <h3>Saved run settings</h3>
+          <p>
+            Used when you rerun this session. Edit settings to change the next
+            run.
+          </p>
           <p>
             {session.recipe.mode === "cli" ? "MEOW CLI" : "Claude Code"} ·{" "}
             {session.recipe.command}

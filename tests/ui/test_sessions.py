@@ -114,27 +114,31 @@ def test_cli_recipe_uses_parser_to_reject_unknown_and_invalid_options(tmp_path):
 
     in_place = validate_recipe(
         tmp_path,
-        valid_payload(options={"no_worktree": True, "unattended": False}),
+        valid_payload(command="plan", options={"no_worktree": True}),
     )
     argv = command_for(in_place)
     assert "--no-worktree" in argv
     assert "--unattended" not in argv
 
 
-def test_no_worktree_does_not_silently_disable_default_unattended(tmp_path):
+@pytest.mark.parametrize(
+    "options", [{"no_worktree": True}, {"no_worktree": True, "unattended": False}]
+)
+def test_no_worktree_does_not_silently_disable_default_unattended(tmp_path, options):
     with pytest.raises(RecipeError, match="--unattended requires an isolated worktree"):
         validate_recipe(
             tmp_path,
-            valid_payload(options={"no_worktree": True}),
+            valid_payload(options=options),
         )
 
-    in_place = validate_recipe(
+
+def test_legacy_interactive_ui_run_is_always_unattended(tmp_path):
+    recipe = validate_recipe(
         tmp_path,
-        valid_payload(options={"no_worktree": True, "unattended": False}),
+        valid_payload(options={"unattended": False}),
     )
-    argv = command_for(in_place)
-    assert "--no-worktree" in argv
-    assert "--unattended" not in argv
+    assert recipe.options["unattended"] is True
+    assert "--unattended" in command_for(recipe)
 
 
 def test_cli_recipe_rejects_duplicate_singleton_flags(tmp_path):
