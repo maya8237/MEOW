@@ -51,10 +51,11 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
     async def _run_tester(self, verdict, evidence=None, config=None):
         plan = self.root / "feature.md"
         plan.write_text("Plan body", encoding="utf-8")
+        reports = iter(verdict) if isinstance(verdict, tuple) else None
 
         def write_report(prompt, options, role):
             report = plan.with_name("feature-test.md")
-            report.write_text(verdict, encoding="utf-8")
+            report.write_text(next(reports) if reports else verdict, encoding="utf-8")
 
         with patch.object(
             VerificationAgent, "run_query", new=AsyncMock(side_effect=write_report)
@@ -108,8 +109,25 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
         run.assert_awaited_once()
 
     async def test_malformed_verdict_fails_clearly(self):
-        status, _, _, _ = await self._run_tester("SUMMARY: incomplete")
-        self.assertEqual(status, "FAIL")
+        for report in (
+            "SUMMARY: incomplete",
+            "## SUMMARY\nAll tests pass.\n## STATUS: PASS",
+        ):
+            with self.subTest(report=report):
+                status, text, run, _ = await self._run_tester(report)
+                self.assertEqual(status, "FAIL")
+                self.assertIn("Tester verdict is missing a plain STATUS: line", text)
+                self.assertIn("STATUS: FAIL", text)
+                self.assertEqual(
+                    (self.root / "feature-test.md").read_text(encoding="utf-8"), text
+                )
+                self.assertEqual(run.await_count, 2)
+
+        valid = "SUMMARY: all tests passed\nSTATUS: PASS"
+        status, text, run, _ = await self._run_tester(("## STATUS: PASS", valid))
+        self.assertEqual((status, text), ("PASS", valid))
+        self.assertEqual(run.await_count, 2)
+        self.assertIn("Preserve the findings", run.await_args.args[0])
 
     async def test_stale_report_is_not_accepted_without_a_fresh_verdict(self):
         plan = self.root / "feature.md"
