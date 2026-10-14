@@ -504,7 +504,12 @@ class ReviewerAgent(Agent):
         )
         await self.run_definition_query(
             agent,
-            plan_review_query(plan_file, lint_evidence.report()),
+            plan_review_query(plan_file, lint_evidence.report())
+            + (
+                f"\n\nOriginal request:\n{self.context.original_request}"
+                if getattr(self.context, "original_request", "")
+                else ""
+            ),
             options,
             "Reviewer",
         )

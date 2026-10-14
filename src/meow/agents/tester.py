@@ -86,7 +86,14 @@ class VerificationAgent(Agent):
                 f"Could not read tester plan {plan_file}: {exc}"
             ) from exc
         return await self._test_basis(
-            f"Plan file: {plan_file}\nPlan content:\n{plan}\n\n", report_file, evidence
+            (
+                f"Original request:\n{self.context.original_request}\n\n"
+                if getattr(self.context, "original_request", "")
+                else ""
+            )
+            + f"Plan file: {plan_file}\nPlan content:\n{plan}\n\n",
+            report_file,
+            evidence,
         )
 
     async def test_request(self, request: str, evidence: VerificationStageEvidence):
