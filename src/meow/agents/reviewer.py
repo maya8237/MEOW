@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -279,6 +280,32 @@ class ReviewerAgent(Agent):
 
     last_review_file: Path | None = None  # the verdict file of the latest branch review
 
+    async def _read_verdict(self, review_file: Path, agent, options) -> str:
+        verdict = _read_review_file(review_file)
+        if re.search(r"^\s*STATUS:", verdict, re.MULTILINE):
+            return verdict
+        await self.run_definition_query(
+            agent,
+            f"Your report at {review_file} is missing a plain STATUS: line. "
+            "Read it and correct only its format. Preserve the findings and "
+            "verdict; do not rerun tests or change source files. Start with "
+            "SUMMARY: followed by STATUS: PASS or STATUS: FAIL on the next "
+            "line, without Markdown headings. Write the corrected report "
+            "to the same path.",
+            options,
+            "Reviewer",
+        )
+        with suppress(OSError, UnicodeError):
+            verdict = review_file.read_text(encoding="utf-8")
+        if not re.search(r"^\s*STATUS:", verdict, re.MULTILINE):
+            verdict = force_fail(
+                verdict,
+                "Reviewer verdict is missing a plain STATUS: line. Write SUMMARY: "
+                "followed by STATUS: PASS or STATUS: FAIL without Markdown headings.",
+            )
+            review_file.write_text(verdict, encoding="utf-8")
+        return verdict
+
     async def review_ci_branch(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches] -- stream validates each SDK message type
         self, context: "CiReviewContext"
     ) -> tuple[str, str]:
@@ -384,7 +411,7 @@ class ReviewerAgent(Agent):
             lint_report=lint_evidence.report(),
         )
         await self.run_definition_query(agent, query_prompt, options, "Reviewer")
-        verdict_text = _read_review_file(review_file)
+        verdict_text = await self._read_verdict(review_file, agent, options)
         return self._apply_lint_gate(
             _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
         )
@@ -425,7 +452,7 @@ class ReviewerAgent(Agent):
         )
         query_prompt = remote_review_query(request_label, title, description, diff)
         await self.run_definition_query(agent, query_prompt, options, "Reviewer")
-        verdict_text = _read_review_file(review_file)
+        verdict_text = await self._read_verdict(review_file, agent, options)
         return _verdict_status(verdict_text), verdict_text
 
     async def review_branch(
@@ -467,7 +494,7 @@ class ReviewerAgent(Agent):
             target, branch, diff_text, lint_evidence.report()
         )
         await self.run_definition_query(agent, query_prompt, options, "Reviewer")
-        verdict_text = _read_review_file(review_file)
+        verdict_text = await self._read_verdict(review_file, agent, options)
         return self._apply_lint_gate(
             _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
         )
@@ -513,7 +540,7 @@ class ReviewerAgent(Agent):
             options,
             "Reviewer",
         )
-        verdict_text = _read_review_file(review_file)
+        verdict_text = await self._read_verdict(review_file, agent, options)
         return self._apply_lint_gate(
             _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
         )
