@@ -110,6 +110,65 @@ test("CLI launcher offers orchestration without inheriting run options", async (
   expect(screen.getByLabelText("Command")).toHaveValue("orchestrate");
 });
 
+test.each(["skill", "agent"] as const)(
+  "catalog %s preview starts with Claude options only",
+  async (kind) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input, init?: RequestInit) => {
+        const recipe = JSON.parse(String(init?.body)).recipe;
+        const valid =
+          recipe.mode === "claude" &&
+          recipe.options.permission_policy === "default" &&
+          !Object.hasOwn(recipe.options, "unattended") &&
+          !Object.hasOwn(recipe.options, "no_worktree") &&
+          (kind !== "agent" || recipe.options.agent === "helper");
+        return new Response(
+          JSON.stringify(
+            valid
+              ? {
+                  valid: true,
+                  argv: ["claude"],
+                  display: "claude preview",
+                  warnings: [],
+                  capabilities: {
+                    cli: { available: true },
+                    claude: { available: true },
+                  },
+                }
+              : { error: "Invalid Claude options" },
+          ),
+          { status: valid ? 200 : 400 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <SessionLauncher
+        {...props()}
+        catalogItem={{
+          kind,
+          item: {
+            name: "helper",
+            description: "Help",
+            scope: "project",
+            repo: "/repo",
+            file: "/repo/helper",
+            text: "Help",
+            claude_resolvable: true,
+          },
+        }}
+      />,
+    );
+    await user.type(screen.getByLabelText("Request"), "Check this change");
+    await user.click(screen.getByRole("button", { name: "Preview command" }));
+    expect(await screen.findByText("claude preview")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Launch session" }),
+    ).toBeEnabled();
+  },
+);
+
 test("review source flags can preview with an empty request", async () => {
   const user = userEvent.setup();
   const bodies: { recipe: { request: string; arguments: string[] } }[] = [];
