@@ -139,6 +139,12 @@ Claude Code and keeps their output and attempts together. Select a registered
 repository, then choose a command or start from a workflow, skill, or supported
 Claude agent. The launcher previews the exact command and validates its flags;
 CLI commands use argument arrays and run headlessly without interactive stdin.
+The CLI command picker includes `orchestrate`: enter its objective in Request
+and add options such as `--from`, `--max-parallel`, `--dry-run`, `--test`, and
+`--no-pr` as argument tokens. These recipes start a new orchestrator; use
+`meow orchestrate status`, `resume`, or `cancel` in a terminal for its lifecycle
+controls. Orchestration always owns its worktrees and may push its integration
+branch after final review, including when `--no-pr` is selected.
 Feature runs always use unattended execution in an isolated worktree; the UI cannot answer approval prompts. Existing
 verified unattended delivery policy still applies: a successful run can commit
 and push its worktree branch. Running the UI locally does not turn that delivery

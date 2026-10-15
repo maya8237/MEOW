@@ -86,6 +86,32 @@ def recipe(repo, **changes):
     return {**value, **changes}
 
 
+def test_orchestrate_preview_builds_cli_and_warns_about_delivery(running, project):
+    status, body = post(
+        running.server_port,
+        "/api/sessions/preview",
+        {
+            "repo": str(project),
+            "recipe": recipe(
+                project,
+                command="orchestrate",
+                options={},
+                arguments=["--max-parallel", "2", "--dry-run", "--no-pr"],
+            ),
+        },
+    )
+    assert status == HTTPStatus.OK, body
+    assert body["argv"][4:] == [
+        "orchestrate",
+        "--max-parallel",
+        "2",
+        "--dry-run",
+        "--no-pr",
+        "do the task",
+    ]
+    assert body["warnings"]
+
+
 def test_schedule_session_freezes_recipe_lists_and_cancels(  # ruff: ignore[too-many-statements]
     running, project, monkeypatch
 ):

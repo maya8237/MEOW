@@ -372,6 +372,7 @@ export default function SessionLauncher({
                     <option value="run">run</option>
                     <option value="plan">plan</option>
                     <option value="review">review</option>
+                    <option value="orchestrate">orchestrate</option>
                   </>
                 ) : draft.command.startsWith("/") ? (
                   <option value={draft.command}>{draft.command}</option>

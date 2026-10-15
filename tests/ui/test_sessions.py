@@ -60,6 +60,32 @@ def test_feature_recipe_builds_unattended_isolated_cli_argv(tmp_path):
     ]
 
 
+def test_orchestrate_recipe_preserves_objective_and_options(tmp_path):
+    objective = "Build a ledger with CSV import and monthly budgets"
+    arguments = ["--from", "main", "--max-parallel", "2", "--test", "--no-pr"]
+    recipe = validate_recipe(
+        tmp_path,
+        valid_payload(command="orchestrate", request=objective, arguments=arguments),
+    )
+    assert command_for(recipe, python="python-test") == [
+        "python-test",
+        "-u",
+        "-m",
+        "meow",
+        "orchestrate",
+        *arguments,
+        objective,
+    ]
+
+
+@pytest.mark.parametrize("objective", ["status", "resume", "cancel"])
+def test_orchestrate_recipe_cannot_turn_objective_into_action(tmp_path, objective):
+    with pytest.raises(RecipeError):
+        validate_recipe(
+            tmp_path, valid_payload(command="orchestrate", request=objective)
+        )
+
+
 def test_leading_hyphen_request_is_separated_in_generated_argv(tmp_path):
     recipe = validate_recipe(
         tmp_path,
