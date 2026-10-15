@@ -26,6 +26,13 @@ schema, migration, fix, or verification; shared files, public seams, and
 state force sequencing. Tasks with disjoint owned_paths and no dependency may
 run in parallel. Omit the graph only for a simple single-outcome request or
 unclear ownership, and say why in the plan.
+Verification commands must run on the project's host platform without shell
+pipes or redirection (these are rejected on Windows). Inspect existing tests
+before selecting pytest node ids; use a test file and -k when the exact node
+does not exist yet. Compare CSV records with csv.reader or splitlines(), not
+raw newline splitting: CSV may use CRLF even when Python source uses LF.
+Avoid builtin names for new APIs when they would shadow annotation types;
+use builtins.list or postponed annotations where an existing list method is needed.
 {{> shape}}
 {{#if preplan}}
 Pre-plan repository evidence: {{preplan}}

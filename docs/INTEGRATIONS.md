@@ -22,10 +22,9 @@ configured tables and lists. Unknown variables are left unchanged.
 
 When a run creates a feature worktree, it normally reads configuration from
 the original project root, including `.meow/config.local.toml`; the worktree
-does not need its own copy. The exception is a project with no shared
-`.meow/config.toml`: if auto-onboarding creates that file in the worktree,
-the run reads configuration from the worktree until the shared config is
-available in the original project root.
+does not need its own copy. If the shared `.meow/config.toml` is missing,
+auto-onboarding creates it in the original project root and reloads it there.
+Onboarding edits stay out of feature and orchestrator task branches.
 
 Each `[[lint]]` entry may set `cwd`, `include`, `exclude`, `args`, `env`, and
 `timeout`. `include` and `exclude` are repository-relative path prefixes. A

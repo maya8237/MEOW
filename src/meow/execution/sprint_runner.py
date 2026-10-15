@@ -75,7 +75,7 @@ def _worktree_name_of(working_dir: Path, plan_file: Path) -> str | None:
 def _onboard_sprint(
     sprint: Sprint, dirs: tuple[Path, Path]
 ) -> tuple[Sprint, Path, dict | None]:
-    """Onboard a never-onboarded project inside the active directory.
+    """Onboard a never-onboarded project in its config checkout.
 
     Returns the sprint (rebuilt when a new config was written), the directory
     later config checks must read, and the report (None when nothing was
@@ -88,7 +88,7 @@ def _onboard_sprint(
     checks_dir = config_dir
     if ".meow/config.toml" in report["files"]:
         try:
-            fresh = load_config(active_dir)
+            fresh = load_config(config_dir)
         except (OSError, ValueError) as exc:
             report = {**report, "error": str(exc)}
         else:
@@ -99,7 +99,7 @@ def _onboard_sprint(
                     active_dir, fresh["lint"], fresh["lint_timeout"]
                 ),
             )
-            checks_dir = active_dir
+            checks_dir = config_dir
     logger.info("onboarding_finished", **report)
     return sprint, checks_dir, report
 

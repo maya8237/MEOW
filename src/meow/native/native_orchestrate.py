@@ -297,7 +297,7 @@ def save_tasks(repo: Path, orch_id: str, file: Path) -> dict:
         tasks = save_decomposed(
             store, orch_id, json.loads(file.read_text(encoding="utf-8"))
         )
-    except ValueError as exc:
+    except (OSError, ValueError) as exc:
         return _tasks_rejected(store, orch_id, str(exc))
 
     def accept(record: OrchestratorRecord) -> None:
@@ -305,7 +305,11 @@ def save_tasks(repo: Path, orch_id: str, file: Path) -> dict:
         record.phase = "running"
 
     store.update(orch_id, accept)
-    return {"ok": True, "tasks": len(tasks)}
+    result = {"ok": True, "tasks": len(tasks)}
+    expected = store.dir_for(orch_id) / "tasks.json"
+    if file.resolve() != expected.resolve():
+        result["warning"] = f"Decomposer output was expected at {expected}, got {file}"
+    return result
 
 
 def _conflict_json(

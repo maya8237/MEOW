@@ -122,16 +122,16 @@ def test_already_onboarded_project_skips_phase(tmp_path):
     assert (repo / ".meow" / "config.toml").read_bytes() == before
 
 
-def test_worktree_with_onboarded_main_checkout_only_repairs_boundary(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
+def test_worktree_onboarding_repairs_main_checkout_without_editing_task(tmp_path):
+    repo = _git_dir(tmp_path / "repo")
     (repo / ".meow").mkdir()
     (repo / ".meow" / "config.toml").write_text("max_rounds = 1\n", encoding="utf-8")
     active = _git_dir(tmp_path / "worktree")
 
     final_checks = _run(active, record_root=repo)
 
-    assert BOUNDARY[0] in (active / ".gitignore").read_text(encoding="utf-8")
+    assert not (active / ".gitignore").exists()
+    assert BOUNDARY[0] in (repo / ".gitignore").read_text(encoding="utf-8")
     assert not (active / ".meow" / "config.toml").exists()
     assert final_checks.await_args.args[1]["max_rounds"] == 1
     assert RunStore(repo).latest().config_fingerprint == config_fingerprint(repo)

@@ -269,19 +269,22 @@ def _record_decision(task: OrchestratorTask, decision: TriageDecision) -> None:
         "action": decision.action,
         "cause": failure["cause"] if failure else None,
         "rationale": decision.rationale,
-        "evidence": [],
+        "evidence": list(failure["evidence"]) if failure else [],
         "decision_key": decision.key(),
         "request": task.request,
     })
 
 
 def _is_repeat(task: OrchestratorTask, decision: TriageDecision) -> bool:
-    """Same decision as the previous one, with the request unchanged since."""
+    """Same decision, request, and failure evidence as the previous cycle."""
+    failure = _last_failure(task)
+    evidence = set(failure["evidence"]) if failure else set()
     for entry in reversed(task.history):
         if "decision_key" in entry:
             return (
                 entry["decision_key"] == decision.key()
                 and entry["request"] == task.request
+                and set(entry.get("evidence", [])) == evidence
             )
     return False
 

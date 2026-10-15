@@ -127,6 +127,7 @@ async def execute_in_worktrees(  # ruff: ignore[complex-structure, too-many-argu
         raise ValueError("integration checkout must be clean")
     conflict = None
     add_lock = asyncio.Lock()
+    bases: dict[str, str] = {}
 
     async def worker(spec: TaskSpec) -> TaskOutcome:
         task_dir = worker_root / f"{run_id}-{spec.id}"
@@ -137,7 +138,10 @@ async def execute_in_worktrees(  # ruff: ignore[complex-structure, too-many-argu
                 repo, "worktree", "list", "--porcelain"
             ):
                 await asyncio.to_thread(_discard_worktree, repo, task_dir)
-            await _git(repo, "worktree", "add", "--detach", str(task_dir), head)
+            bases[spec.id] = head
+            await _git(
+                repo, "worktree", "add", "--detach", str(task_dir), bases[spec.id]
+            )
         if prepare is not None:
             await prepare(task_dir)
         await implement(spec, task_dir)
@@ -151,6 +155,8 @@ async def execute_in_worktrees(  # ruff: ignore[complex-structure, too-many-argu
             if name
         ]
         if not staged:
+            if await _git(task_dir, "rev-parse", "HEAD") == bases[spec.id]:
+                return TaskOutcome(spec.id, "complete", str(task_dir), bases[spec.id])
             raise ValueError(f"task {spec.id} produced no changes")
         outside = [path for path in staged if not _owned(path, spec)]
         if outside:
@@ -174,6 +180,8 @@ async def execute_in_worktrees(  # ruff: ignore[complex-structure, too-many-argu
 
     async def integrate(outcome: TaskOutcome) -> bool:
         nonlocal head, conflict
+        if outcome.commit == bases.get(outcome.id):
+            return True
         result = await asyncio.to_thread(integrate_results, repo, head, (outcome,))
         if result.conflict:
             conflict = result.conflict

@@ -109,6 +109,37 @@ def _one_commit_repo(tmp_path):
     return repo
 
 
+def test_noop_worker_completes_without_replaying_its_base(tmp_path, monkeypatch):
+    repo = _one_commit_repo(tmp_path)
+    original = _git(repo, "rev-parse", "HEAD")
+    graph = TaskGraph((
+        TaskSpec("noop", (), ("unused.txt",), ()),
+        TaskSpec("change", ("noop",), ("change.txt",), ()),
+        TaskSpec("verify", ("change",), ("unused.txt",), ()),
+    ))
+    real = executor.integrate_results
+    integrated = []
+
+    def integrate(*args):
+        integrated.extend(outcome.id for outcome in args[2])
+        return real(*args)
+
+    async def implement(spec, worktree):  # ruff: ignore[unused-async]
+        if spec.id == "change":
+            (worktree / "change.txt").write_text("done", encoding="utf-8")
+        elif spec.id == "verify":
+            assert (worktree / "change.txt").read_text() == "done"
+
+    monkeypatch.setattr(executor, "integrate_results", integrate)
+    result = asyncio.run(
+        execute_in_worktrees(repo, graph, "e" * 32, implement, max_parallel=1)
+    )
+    assert result.passed, [outcome.error for outcome in result.outcomes]
+    assert integrated == ["change"]
+    assert result.revision != original
+    assert _git(repo, "rev-list", "--count", f"{original}..HEAD") == "1"
+
+
 def _ticks_while_executing(repo):
     graph = TaskGraph((
         TaskSpec("api", (), ("api.txt",), ()),

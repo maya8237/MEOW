@@ -302,9 +302,10 @@ On a project that was never onboarded, the first run onboards it automatically
 before planning: it repairs the `.gitignore` boundary (`.meow/*`, `!.meow/`,
 `!.meow/config.toml`) and writes a minimal `.meow/config.toml` with the lint
 command it detects (ruff or eslint). Nothing is prompted and there is no
-opt-out flag. The setup happens in the run's own checkout, so it is delivered
-with the feature from a linked worktree and left as local changes for an
-in-place run. `plan`, `review`, `run --lint-fix`, queued runs, and Jira runs
+opt-out flag. Setup stays in the original project checkout as local changes,
+so onboarding edits do not enter a feature or orchestrator task branch.
+Python editable-install metadata (`*.egg-info/`) is ignored locally through
+Git's `info/exclude`. `plan`, `review`, `run --lint-fix`, queued runs, and Jira runs
 onboard the same way; onboarding never overwrites an existing config and an
 onboarding failure never fails the command. `/meow:onboard` is for add-ons.
 
