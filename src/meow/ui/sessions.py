@@ -58,7 +58,7 @@ class Recipe:
     options: dict[str, bool | str]
 
 
-_CLI_COMMANDS = {"run", "plan", "review"}
+_CLI_COMMANDS = {"run", "plan", "review", "orchestrate"}
 _PROHIBITED_ARGUMENTS = {
     "--work-dir",
     "-d",
@@ -208,15 +208,30 @@ def _validate_semantics(command: str, repo: Path, parser, parsed) -> None:
         raise RecipeError(str(exc)) from exc
 
 
+def _validate_orchestrate_arguments(parsed) -> None:
+    from meow.cli.orchestrate_cli import classify
+
+    try:
+        invocation = classify(parsed)
+    except ValueError as exc:
+        raise RecipeError(str(exc)) from exc
+    if invocation.action != "start":
+        raise RecipeError("An orchestrate recipe requires an objective")
+
+
 def _validate_arguments(recipe: Recipe, generated: list[str]) -> None:
     _check_argument_tokens(recipe.arguments)
     final_options = [*generated, *recipe.arguments]
     _check_unique_options(recipe.command, final_options)
     parser, parsed = _parse_arguments(recipe.command, final_options, recipe.request)
-    _validate_semantics(recipe.command, Path(recipe.repo), parser, parsed)
-    if (
-        parsed.command != recipe.command
-        or getattr(parsed, "request", None) != recipe.request
+    if recipe.command == "orchestrate":
+        _validate_orchestrate_arguments(parsed)
+    else:
+        _validate_semantics(recipe.command, Path(recipe.repo), parser, parsed)
+    if parsed.command != recipe.command or (
+        parsed.words != [recipe.request]
+        if recipe.command == "orchestrate"
+        else getattr(parsed, "request", None) != recipe.request
     ):
         raise RecipeError("Arguments cannot replace the recipe request")
     if (

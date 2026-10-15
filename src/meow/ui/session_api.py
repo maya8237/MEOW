@@ -331,7 +331,7 @@ def post(server, url: str, payload: dict):  # ruff: ignore[complex-structure, to
                 "Run commands may commit and push when the saved delivery policy "
                 "allows it."
             ]
-            if recipe.command == "run" and recipe.mode == "cli"
+            if recipe.command in {"run", "orchestrate"} and recipe.mode == "cli"
             else []
         )
         return HTTPStatus.OK, {

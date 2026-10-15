@@ -23,6 +23,13 @@ const props = (mode: "cli" | "claude" = "cli") => ({
       : undefined,
 });
 
+test("CLI launcher offers orchestration without inheriting run options", async () => {
+  const user = userEvent.setup();
+  render(<SessionLauncher {...props()} />);
+  await user.selectOptions(screen.getByLabelText("Command"), "orchestrate");
+  expect(screen.getByLabelText("Command")).toHaveValue("orchestrate");
+});
+
 test("scheduling sends a timestamp and never launches immediately", async () => {
   const user = userEvent.setup();
   const id = "a".repeat(32);
