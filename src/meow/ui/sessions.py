@@ -39,7 +39,7 @@ class Capabilities(TypedDict):
     available: bool
     version: str | None
     missing: list[str]
-    permission_policy: Literal["dontAsk+none", "unsupported"]
+    permission_policy: Literal["dontAsk", "dontAsk+none", "unsupported"]
     bypass_supported: bool
     error: str | None
 
@@ -86,11 +86,9 @@ _REQUIRED_CLAUDE_CAPABILITIES = (
         r"(?=.*(?<![\w-])--permission-mode(?![\w-]))(?=.*dontAsk)",
         "--permission-mode dontAsk",
     ),
-    (
-        "--permission-prompts none",
-        r"(?=.*(?<![\w-])--permission-prompts(?![\w-]))(?=.*\bnone\b)",
-        "--permission-prompts none",
-    ),
+)
+_CLAUDE_PERMISSION_PROMPTS_NONE = (
+    r"(?=.*(?<![\w-])--permission-prompts(?![\w-]))(?=.*\bnone\b)"
 )
 
 
@@ -589,7 +587,13 @@ def detect_capabilities(repo: Path) -> Capabilities:
         "available": True,
         "version": version,
         "missing": [],
-        "permission_policy": "dontAsk+none",
+        "permission_policy": (
+            "dontAsk+none"
+            if re.search(
+                _CLAUDE_PERMISSION_PROMPTS_NONE, help_text, re.IGNORECASE | re.DOTALL
+            )
+            else "dontAsk"
+        ),
         "bypass_supported": bypass_supported,
         "error": None,
     }
@@ -622,10 +626,11 @@ def command_for(recipe: Recipe, python: str = sys.executable) -> list[str]:  # r
         "--permission-mode",
         "dontAsk" if policy == "default" else "bypassPermissions",
     ]
-    if policy == "default":
-        argv.extend(["--permission-prompts", "none"])
-    else:
+    if policy == "bypass":
         argv.append("--allow-dangerously-skip-permissions")
+    elif capabilities["permission_policy"] == "dontAsk+none":
+        # Older Claude versions deny prompts via dontAsk without this extra flag.
+        argv.extend(["--permission-prompts", "none"])
     if agent := recipe.options.get("agent"):
         argv.extend(["--agent", str(agent)])
     prompt = (

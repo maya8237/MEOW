@@ -376,7 +376,8 @@ def test_preview_capabilities_and_output_download(running, project):  # ruff: ig
     assert status == HTTPStatus.OK
     assert preview["valid"] is True
     assert preview["argv"]
-    assert "capabilities" in preview
+    assert preview["capabilities"]["cli"]["available"] is True
+    assert isinstance(preview["capabilities"]["claude"]["available"], bool)
 
     status, _, _, body = get(
         running.server_port, f"/api/capabilities?repo={project.resolve()}"
