@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+from meow.common.process import process_identity
 from meow.project.command_policy import split_command
 from meow.project.config_models import (
     DevServerCommand,
@@ -182,13 +183,34 @@ def _decode(data: bytes) -> str:
     return output
 
 
+async def _terminate_windows_job(job) -> None:
+    import win32job
+
+    try:
+        win32job.TerminateJobObject(job, 1)
+        deadline = asyncio.get_running_loop().time() + 2
+        while any(
+            process_identity(pid)
+            for pid in win32job.QueryInformationJobObject(
+                job, win32job.JobObjectBasicProcessIdList
+            )
+        ):
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError("Owned Windows server processes did not exit")
+            await asyncio.sleep(0.01)
+    finally:
+        job.Close()
+
+
 async def _terminate(  # ruff: ignore[too-many-branches, complex-structure, too-many-statements]
     owned: asyncio.subprocess.Process | _OwnedProcess,
 ) -> None:
     process = owned.process if isinstance(owned, _OwnedProcess) else owned
     if isinstance(owned, _OwnedProcess) and owned.job is not None:
-        owned.job.Close()
-        owned.job = None
+        try:
+            await _terminate_windows_job(owned.job)
+        finally:
+            owned.job = None
         if process.returncode is None:
             with suppress(Exception):
                 await asyncio.wait_for(process.wait(), timeout=2)
