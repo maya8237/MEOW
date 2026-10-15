@@ -96,7 +96,7 @@ orchestrator ID.
 | Command | Purpose and JSON |
 |---|---|
 | `init (--objective TEXT \| --tasks FILE) [--from B] [--max-parallel N] [--test] [--no-pr]` | Needs a clean checkout. Creates the orchestrator and its integration worktree and takes the lock. Returns `id`, `integration_worktree`, `state_file`, `tasks_file`, and `decomposer` (`system_prompt`, `query`, `output_file`; `null` when a plain tasks file already defines the tasks, which makes the phase `running`). A tasks file whose every entry has a `source_ref` (a Jira key) is a Jira set and still gets a decomposer, which may only add `depends_on` and `expected_paths` |
-| `tasks ID --file F` | Validate and save the decomposer's output: `{ok: true, tasks}` or `{ok: false, error, retry_allowed}`. One corrective retry; the second rejection fails the orchestrator |
+| `tasks ID --file F` | Validate and save the decomposer's output: `{ok: true, tasks}` (plus `warning` when F differs from the given output path) or `{ok: false, error, retry_allowed}`. Missing files also allow one corrective retry; the second rejection fails the orchestrator |
 | `tick ID` | One supervisor step: poll children, commit and merge passed tasks, launch ready ones. Returns `state` (`waiting`, `conflicts`, `failures`, `all_merged`, `blocked`, `cancelled`), `launched`, `merged`, `running`, `conflicts` (`task`, `paths`, `prompt` with `system_prompt` and `query`) and `failures` (`task`, `cause`, `evidence`, `prompt` with `system_prompt`, `query`, `output_file`). Releases the lock on `blocked` and `cancelled` |
 | `wait ID [--timeout S]` | Blocks until a running child's run journal or the cancel marker changes, or `S` seconds (default 300) pass: `{changed, elapsed}`. Run it as a background command instead of polling |
 | `merge-done ID --task T` | Finish a conflicted merge after the files were resolved: `{task, status, commit, paths}` with `status` `merged`, `noop`, `conflict` (conflict markers remain in `paths`), or `checks_failed` (rolled back; the task returns under `failures`) |
@@ -237,11 +237,12 @@ then stop." plus the full review text (same wording as the CLI).
 - Never edit files under `docs_dir` other than the plan and the review verdicts.
   Native `finalize` commits and pushes only after verification in a separate
   linked worktree; in-place native runs do not deliver automatically.
-- Worktree hygiene: when `use_worktree` is true, every change goes in `active_dir`;
-  the main checkout must stay untouched.
+- Worktree hygiene: when `use_worktree` is true, implementation changes go in
+  `active_dir`. Automatic project onboarding uses the original checkout as
+  described below.
 - `meow native prepare` onboards the project (a documented `.meow/config.toml`,
   a comment-only `.meow/config.local.toml` when missing, and the `.gitignore`
-  boundary, in `active_dir`) when it was never onboarded, and reports it in the
+  boundary, in the original project checkout) when it was never onboarded, and reports it in the
   JSON's `onboarding` field; mention any `onboarding.files` to the user. Existing
   config files are never overwritten. Do not invent lint commands;
   `/meow:onboard` handles add-ons.

@@ -544,6 +544,32 @@ def test_identical_decision_with_unchanged_request_blocks(tmp_path):
     assert record.blocker["cause"] == "repeated-decision"
 
 
+@pytest.mark.parametrize("changed", [False, True])
+def test_repeated_retry_compares_failure_evidence(tmp_path, changed):
+    record = make_record(tmp_path, [task("api")])
+    record_failure(
+        record,
+        "api",
+        cause="child-failed",
+        evidence=["first.json"],
+        max_cycles=MAX_CYCLES,
+    )
+    decide(tmp_path, record, "api", action="retry")
+    record_failure(
+        record,
+        "api",
+        cause="child-failed",
+        evidence=["second.json" if changed else "first.json"],
+        max_cycles=MAX_CYCLES,
+    )
+
+    pending = decide(tmp_path, record, "api", action="retry")
+
+    assert pending == (["api"] if changed else [])
+    assert record.task("api").cycles == (SECOND_CYCLE if changed else 1)
+    assert record.phase == ("running" if changed else "blocked")
+
+
 def test_a_different_decision_after_a_retry_is_applied(tmp_path):
     record = make_record(tmp_path, [task("api")])
     decide(tmp_path, record, "api", action="retry")

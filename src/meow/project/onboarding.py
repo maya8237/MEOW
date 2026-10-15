@@ -233,11 +233,27 @@ def _verify(root: Path) -> str | None:
     return None
 
 
+def _ignore_python_metadata(root: Path) -> None:
+    """Keep editable-install artifacts out of commits without a tracked edit."""
+    if not any((root / name).is_file() for name in ("pyproject.toml", "setup.py")):
+        return
+    result = _git(root, "rev-parse", "--git-path", "info/exclude")
+    if result is None or result.returncode:
+        return
+    exclude = root / result.stdout.strip()
+    existing = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+    if "*.egg-info/" not in existing.splitlines():
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        prefix = "" if not existing or existing.endswith("\n") else "\n"
+        exclude.write_text(f"{existing}{prefix}*.egg-info/\n", encoding="utf-8")
+
+
 def _apply(
     root: Path, lint: tuple[str, str] | None, files: list[str], *, write_config: bool
 ) -> str | None:
     if not _in_git_repo(root):
         return "not inside a git repository; ignore boundary could not be verified"
+    _ignore_python_metadata(root)
     if repair_boundary(root):
         files.append(".gitignore")
     error = _verify(root)
@@ -272,11 +288,10 @@ def onboard_project(root: Path, *, write_config: bool = True) -> OnboardingRepor
 
 
 def onboard_if_needed(active_dir: Path, config_dir: Path) -> dict | None:
-    """Onboard `active_dir` unless the project is already onboarded.
+    """Onboard the config checkout without adding tracked edits to a task branch.
 
     `config_dir` is the checkout MEOW reads config from (the main checkout for a
-    linked worktree). A config already there is never duplicated, so only the
-    ignore boundary is repaired in that case. Returns the report as a dict
+    linked worktree). A config already there is never duplicated. Returns a dict
     (with `error` set on failure), or None when nothing needed doing.
     """
     active_dir, config_dir = Path(active_dir), Path(config_dir)
@@ -285,7 +300,7 @@ def onboard_if_needed(active_dir: Path, config_dir: Path) -> dict | None:
         return None
     write_config = not (config_dir / CONFIG_RELPATH).is_file()
     try:
-        report = onboard_project(active_dir, write_config=write_config)
+        report = onboard_project(config_dir, write_config=write_config)
     except (OSError, ValueError, RuntimeError) as exc:
         return {"files": [], "lint": None, "skipped": [], "error": str(exc)}
     if report.error is None:

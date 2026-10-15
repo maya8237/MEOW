@@ -260,6 +260,27 @@ def test_save_tasks_allows_one_corrective_retry_then_fails(git_repo):
         orch.save_tasks(repo, result["id"], bad)
 
 
+def test_save_tasks_flags_a_file_outside_the_given_output_path(git_repo):
+    repo, _ = git_repo
+    result = orch.init(repo, objective="Build login")
+    wrong = write_tasks(repo.parent, [{"id": "api", "request": "Build API"}])
+
+    saved = orch.save_tasks(repo, result["id"], wrong)
+
+    assert saved["ok"] is True
+    assert result["tasks_file"] in saved["warning"]
+
+
+def test_save_tasks_missing_output_allows_corrective_retry(git_repo):
+    repo, _ = git_repo
+    result = orch.init(repo, objective="Build login")
+
+    saved = orch.save_tasks(repo, result["id"], Path(result["tasks_file"]))
+
+    assert saved["ok"] is False
+    assert saved["retry_allowed"] is True
+
+
 # --- tick -------------------------------------------------------------------
 
 

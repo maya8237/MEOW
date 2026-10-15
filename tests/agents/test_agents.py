@@ -228,6 +228,45 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
         ):
             await Agent.run_query("do work", object(), "Reviewer")
 
+    async def test_failed_result_includes_session_limit_reason(self):
+        async def limited_query(*, prompt, options):
+            await asyncio.sleep(0)
+            yield ResultMessage(
+                subtype="error_during_execution",
+                duration_ms=0,
+                duration_api_ms=0,
+                is_error=True,
+                num_turns=1,
+                session_id="session",
+                result="You've hit your session limit; resets 1am",
+            )
+
+        with (
+            patch("meow.agents.base.query", limited_query),
+            self.assertRaisesRegex(RuntimeError, "Reviewer.*session limit.*1am"),
+        ):
+            await Agent.run_query("do work", object(), "Reviewer")
+
+    async def test_process_error_without_stderr_uses_result_text(self):
+        async def limited_query(*, prompt, options):
+            await asyncio.sleep(0)
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=0,
+                duration_api_ms=0,
+                is_error=False,
+                num_turns=1,
+                session_id="session",
+                result="You've hit your session limit; resets 1am",
+            )
+            raise ProcessError("Command failed", exit_code=1, stderr=None)
+
+        with (
+            patch("meow.agents.base.query", limited_query),
+            self.assertRaisesRegex(RuntimeError, "Reviewer.*session limit.*1am"),
+        ):
+            await Agent.run_query("do work", object(), "Reviewer")
+
 
 class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):

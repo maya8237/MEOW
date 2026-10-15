@@ -327,3 +327,22 @@ def test_onboard_if_needed_registers_new_and_already_onboarded_repos(
     registry.unlink()
     assert onboard_if_needed(other, other) is None
     assert str(other.resolve()) in repos._saved()
+
+
+def test_python_build_metadata_is_ignored_locally(repo):
+    (repo / "pyproject.toml").write_text('[project]\nname = "demo"\n')
+    metadata = repo / "demo.egg-info"
+    metadata.mkdir()
+    (metadata / "PKG-INFO").write_text("generated")
+
+    onboard_project(repo)
+
+    assert "demo.egg-info" not in (repo / ".gitignore").read_text()
+    assert (
+        subprocess.run(
+            ["git", "check-ignore", "-q", "demo.egg-info/PKG-INFO"],
+            cwd=repo,
+            check=False,
+        ).returncode
+        == 0
+    )

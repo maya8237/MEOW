@@ -48,7 +48,7 @@ def _committed_repo(root):
     subprocess.run(["git", "commit", "-qm", "init"], cwd=root, check=True)
 
 
-def test_prepare_onboards_the_feature_worktree(repo):
+def test_prepare_onboards_the_project_without_editing_feature_worktree(repo):
     _committed_repo(repo)
     (repo / "pyproject.toml").write_text("[tool.ruff]\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
@@ -64,8 +64,8 @@ def test_prepare_onboards_the_feature_worktree(repo):
         ".meow/config.toml",
         ".meow/config.local.toml",
     }
-    assert (active / ".meow" / "config.toml").is_file()
-    assert not (repo / ".meow" / "config.toml").exists()
+    assert not (active / ".meow" / "config.toml").exists()
+    assert (repo / ".meow" / "config.toml").is_file()
     assert data["lint"][0]["command"] == "python -m ruff check"
 
 

@@ -106,7 +106,7 @@ def _onboard(
     onboard_dir = working_dir if options.existing_branch else active_dir
     report = onboard_if_needed(onboard_dir, working_dir)
     if report and CONFIG_RELPATH in report["files"]:
-        config = load_config(onboard_dir)
+        config = load_config(working_dir)
     return report, config
 
 

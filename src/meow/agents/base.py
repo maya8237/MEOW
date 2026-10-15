@@ -250,7 +250,9 @@ def _last_text_block(message: AssistantMessage) -> str:
     return texts[-1] if texts else ""
 
 
-async def _consume_query(prompt: str, options: ClaudeAgentOptions, role: str) -> str:
+async def _consume_query(  # ruff: ignore[complex-structure]
+    prompt: str, options: ClaudeAgentOptions, role: str
+) -> str:
     """Run `query()` once to completion, raising `RuntimeError` on a
     non-success result. A `ProcessError` (the CLI subprocess crashed or
     otherwise failed) propagates unchanged for `Agent.run_query`'s retry
@@ -268,9 +270,16 @@ async def _consume_query(prompt: str, options: ClaudeAgentOptions, role: str) ->
                     for block in message.content
                     if isinstance(block, TextBlock)
                 )
-            if isinstance(message, ResultMessage) and message.subtype != "success":
-                logger.error("agent_query_failed", role=role, subtype=message.subtype)
-                raise RuntimeError(f"{role} failed: {message.subtype}")
+            if isinstance(message, ResultMessage):
+                last_text = message.result or last_text
+                if message.is_error or message.subtype != "success":
+                    logger.error(
+                        "agent_query_failed", role=role, subtype=message.subtype
+                    )
+                    raise RuntimeError(
+                        f"{role} failed: {message.subtype}"
+                        + (f": {last_text}" if last_text else "")
+                    )
     except ProcessError as exc:
         if not exc.stderr and last_text:
             exc.stderr = last_text
