@@ -112,6 +112,7 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
         for report in (
             "SUMMARY: incomplete",
             "## SUMMARY\nAll tests pass.\n## STATUS: PASS",
+            "SUMMARY: all tests pass\nSTATUS: **PASS**",
         ):
             with self.subTest(report=report):
                 status, text, run, _ = await self._run_tester(report)
@@ -124,10 +125,12 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(run.await_count, 2)
 
         valid = "SUMMARY: all tests passed\nSTATUS: PASS"
-        status, text, run, _ = await self._run_tester(("## STATUS: PASS", valid))
-        self.assertEqual((status, text), ("PASS", valid))
-        self.assertEqual(run.await_count, 2)
-        self.assertIn("Preserve the findings", run.await_args.args[0])
+        for malformed in ("## STATUS: PASS", "STATUS: **PASS**"):
+            with self.subTest(malformed=malformed):
+                status, text, run, _ = await self._run_tester((malformed, valid))
+                self.assertEqual((status, text), ("PASS", valid))
+                self.assertEqual(run.await_count, 2)
+                self.assertIn("Preserve the findings", run.await_args.args[0])
 
     async def test_stale_report_is_not_accepted_without_a_fresh_verdict(self):
         plan = self.root / "feature.md"

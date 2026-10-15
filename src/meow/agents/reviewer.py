@@ -36,6 +36,7 @@ REMOTE_REVIEW_SPECS = {
     "gitlab": ("gitlab", "GitLab merge request"),
     "github": ("github", "GitHub pull request"),
 }
+PLAIN_STATUS_LINE = re.compile(r"^\s*STATUS:\s*(?:PASS|FAIL)\b", re.MULTILINE)
 
 
 def _prepare_review_file(review_file: Path) -> None:
@@ -282,7 +283,7 @@ class ReviewerAgent(Agent):
 
     async def _read_verdict(self, review_file: Path, agent, options) -> str:
         verdict = _read_review_file(review_file)
-        if re.search(r"^\s*STATUS:", verdict, re.MULTILINE):
+        if PLAIN_STATUS_LINE.search(verdict):
             return verdict
         await self.run_definition_query(
             agent,
@@ -290,18 +291,18 @@ class ReviewerAgent(Agent):
             "Read it and correct only its format. Preserve the findings and "
             "verdict; do not rerun tests or change source files. Start with "
             "SUMMARY: followed by STATUS: PASS or STATUS: FAIL on the next "
-            "line, without Markdown headings. Write the corrected report "
+            "line, without Markdown headings or bold formatting. Write the report "
             "to the same path.",
             options,
             "Reviewer",
         )
         with suppress(OSError, UnicodeError):
             verdict = review_file.read_text(encoding="utf-8")
-        if not re.search(r"^\s*STATUS:", verdict, re.MULTILINE):
+        if not PLAIN_STATUS_LINE.search(verdict):
             verdict = force_fail(
                 verdict,
                 "Reviewer verdict is missing a plain STATUS: line. Write SUMMARY: "
-                "followed by STATUS: PASS or STATUS: FAIL without Markdown headings.",
+                "followed by STATUS: PASS or STATUS: FAIL without Markdown formatting.",
             )
             review_file.write_text(verdict, encoding="utf-8")
         return verdict

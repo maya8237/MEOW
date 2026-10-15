@@ -1,13 +1,12 @@
 """Exploratory tester role and project architecture context."""
 
-import re
 from contextlib import suppress
 from pathlib import Path
 
 from claude_agent_sdk import ClaudeAgentOptions
 
 from meow.agents.base import Agent
-from meow.agents.reviewer import _verdict_status, force_fail
+from meow.agents.reviewer import PLAIN_STATUS_LINE, _verdict_status, force_fail
 from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.project.plan_files import plan_test_file, stage_file
 from meow.project.prompts import tester_prompt
@@ -172,14 +171,14 @@ class VerificationAgent(Agent):
                 f"SUMMARY: Tester did not produce a readable verdict at "
                 f"{report_file}.\nSTATUS: FAIL",
             )
-        if not re.search(r"^\s*STATUS:", verdict, re.MULTILINE):
+        if not PLAIN_STATUS_LINE.search(verdict):
             await self.run_definition_query(
                 self.definition("tester"),
                 f"Your report at {report_file} is missing a plain STATUS: line. "
                 "Read it and correct only its format. Preserve the findings and "
                 "verdict; do not rerun tests or change source files. Start with "
                 "SUMMARY: followed by STATUS: PASS or STATUS: FAIL on the next "
-                "line, without Markdown headings. Write the corrected report "
+                "line, without Markdown headings or bold formatting. Write the report "
                 "to the same path.",
                 self._options(report_file),
                 "Tester",
@@ -188,11 +187,11 @@ class VerificationAgent(Agent):
             with suppress(OSError, UnicodeError):
                 verdict = report_file.read_text(encoding="utf-8")
         status = _verdict_status(verdict)
-        if not re.search(r"^\s*STATUS:", verdict, re.MULTILINE):
+        if not PLAIN_STATUS_LINE.search(verdict):
             verdict = force_fail(
                 verdict,
                 "Tester verdict is missing a plain STATUS: line. Write SUMMARY: "
-                "followed by STATUS: PASS or STATUS: FAIL without Markdown headings.",
+                "followed by STATUS: PASS or STATUS: FAIL without Markdown formatting.",
             )
             report_file.write_text(verdict, encoding="utf-8")
         if evidence.blocking_failed:
