@@ -138,6 +138,11 @@ in a detached background process, including nested apps such as `frontend/`.
 The installer prints the migration PID and log path; migration may continue
 after the installer prints Done. `bun install --force --linker isolated` rebuilds
 existing dependencies (`--frozen-lockfile` is added when a Bun lockfile exists).
+All Bun folders are discovered and listed before migration starts, including
+explicit Bun projects inside workspaces. A failed install does not stop the
+remaining folders. Bun installs retry once without `--frozen-lockfile` when
+Bun reports a frozen-lockfile error; the retry can update the lockfile and
+still obeys the setup permission policy. Other install errors are not retried.
 Configuration is user-only: project `bunfig.toml` files are never created or
 edited. Existing project configurations produce a warning in the migration log
 because they can override user settings. Migration failures include a retry

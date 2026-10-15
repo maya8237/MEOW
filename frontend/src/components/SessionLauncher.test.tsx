@@ -23,11 +23,134 @@ const props = (mode: "cli" | "claude" = "cli") => ({
       : undefined,
 });
 
+test("advanced flags use parser choices and remove the entire saved option", async () => {
+  const user = userEvent.setup();
+  const previews: string[][] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/cli-options")
+        return new Response(
+          JSON.stringify({
+            commands: {
+              run: [
+                {
+                  flag: "--test",
+                  aliases: ["--test"],
+                  kind: "switch",
+                  help: "Run tests",
+                  nargs: 0,
+                  choices: null,
+                  controlled: null,
+                },
+                {
+                  flag: "--resume-at",
+                  aliases: ["--resume-at"],
+                  kind: "value",
+                  help: "Resume stage",
+                  nargs: 1,
+                  choices: ["generate", "review"],
+                  controlled: null,
+                },
+              ],
+            },
+          }),
+        );
+      if (String(input).endsWith("/preview")) {
+        previews.push(JSON.parse(String(init?.body)).recipe.arguments);
+        return new Response(
+          JSON.stringify({
+            valid: true,
+            argv: [],
+            display: "meow run",
+            warnings: [],
+            capabilities: {
+              cli: { available: true },
+              claude: { available: false },
+            },
+          }),
+        );
+      }
+      throw new Error(`Unexpected ${input}`);
+    }),
+  );
+  render(
+    <SessionLauncher
+      {...props()}
+      initialRecipe={{
+        request: "Fix search",
+        arguments: ["--resume-at=review"],
+      }}
+    />,
+  );
+  await user.click(screen.getByText("Advanced arguments"));
+  expect(await screen.findByLabelText("--resume-at value")).toHaveValue(
+    "review",
+  );
+  expect(screen.queryByLabelText("Argument 1")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Remove --resume-at" }));
+  expect(screen.queryByLabelText("--resume-at value")).toBeNull();
+  await user.click(screen.getByLabelText("--test"));
+  await user.click(screen.getByLabelText("--resume-at"));
+  await user.selectOptions(
+    screen.getByLabelText("--resume-at value"),
+    "generate",
+  );
+  await user.click(screen.getByRole("button", { name: "Preview command" }));
+  await screen.findByText("meow run");
+  expect(previews.at(-1)).toEqual(["--test", "--resume-at", "generate"]);
+  await user.click(screen.getByRole("button", { name: "Remove --test" }));
+  expect(screen.queryByText("meow run")).toBeNull();
+});
+
 test("CLI launcher offers orchestration without inheriting run options", async () => {
   const user = userEvent.setup();
   render(<SessionLauncher {...props()} />);
   await user.selectOptions(screen.getByLabelText("Command"), "orchestrate");
   expect(screen.getByLabelText("Command")).toHaveValue("orchestrate");
+});
+
+test("review source flags can preview with an empty request", async () => {
+  const user = userEvent.setup();
+  const bodies: { recipe: { request: string; arguments: string[] } }[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_input, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(
+        JSON.stringify({
+          valid: true,
+          argv: [],
+          display: "meow review --branch feature",
+          warnings: [],
+          capabilities: {
+            cli: { available: true },
+            claude: { available: false },
+          },
+        }),
+      );
+    }),
+  );
+  render(
+    <SessionLauncher
+      {...props()}
+      initialRecipe={{
+        command: "review",
+        request: "",
+        arguments: ["--branch", "feature", "--target", "main"],
+        options: {},
+      }}
+    />,
+  );
+  await user.click(screen.getByRole("button", { name: "Preview command" }));
+  await screen.findByText("meow review --branch feature");
+  expect(bodies[0].recipe.request).toBe("");
+  expect(bodies[0].recipe.arguments).toEqual([
+    "--branch",
+    "feature",
+    "--target",
+    "main",
+  ]);
 });
 
 test("scheduling sends a timestamp and never launches immediately", async () => {

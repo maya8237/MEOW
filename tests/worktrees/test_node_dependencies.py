@@ -11,6 +11,97 @@ from meow.infrastructure.worktree_setup import (
 
 
 @pytest.mark.parametrize(
+    "error",
+    [
+        "error: lockfile had changes, but lockfile is frozen",
+        "error: Outdated lockfile: --frozen-lockfile was specified",
+    ],
+)
+def test_bun_frozen_error_retries_unfrozen(tmp_path, monkeypatch, error):
+    calls, actions = [], []
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+
+    def install(argv, *_args):
+        calls.append(argv)
+        return (1, error, False) if len(calls) == 1 else (0, "", False)
+
+    monkeypatch.setattr(node, "run_captured", install)
+    node.run_node_install(
+        tmp_path,
+        ["bun", "install", "--force", "--frozen-lockfile"],
+        record_action=actions.append,
+    )
+    assert calls == [
+        ["bun", "install", "--force", "--frozen-lockfile"],
+        ["bun", "install", "--force"],
+    ]
+    assert [action["status"] for action in actions] == ["failed", "passed"]
+    assert not (tmp_path / ".meow/node-install.pending").exists()
+
+
+@pytest.mark.parametrize(
+    ("manager", "output", "timed_out"),
+    [
+        ("bun", "registry unavailable", False),
+        ("bun", "lockfile is frozen", True),
+        ("pnpm", "lockfile is frozen", False),
+    ],
+)
+def test_other_install_errors_do_not_retry(  # ruff: ignore[too-many-arguments]
+    tmp_path, monkeypatch, *, manager, output, timed_out
+):
+    calls = []
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+
+    def install(argv, *_args):
+        calls.append(argv)
+        return 1, output, timed_out
+
+    monkeypatch.setattr(node, "run_captured", install)
+    with pytest.raises(WorktreeSetupError):
+        node.run_node_install(tmp_path, [manager, "install", "--frozen-lockfile"])
+    assert len(calls) == 1
+
+
+def test_bun_unfrozen_retry_obeys_policy(tmp_path, monkeypatch):
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+    monkeypatch.setattr(
+        node, "run_captured", lambda *_args: (1, "lockfile is frozen", False)
+    )
+    decisions = []
+
+    def decision(argv):
+        decisions.append(argv)
+        return "allow" if "--frozen-lockfile" in argv else "deny"
+
+    with pytest.raises(WorktreeSetupError, match="denied"):
+        node.run_node_install(
+            tmp_path,
+            ["bun", "install", "--frozen-lockfile"],
+            command_decision=decision,
+        )
+    assert decisions == [
+        ["bun", "install", "--frozen-lockfile"],
+        ["bun", "install"],
+    ]
+
+
+def test_failed_bun_retry_stops_and_keeps_pending_marker(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+
+    def install(argv, *_args):
+        calls.append(argv)
+        return 1, "error: lockfile is frozen", False
+
+    monkeypatch.setattr(node, "run_captured", install)
+    with pytest.raises(WorktreeSetupError, match="lockfile is frozen"):
+        node.run_node_install(tmp_path, ["bun", "install", "--frozen-lockfile"])
+    assert calls == [["bun", "install", "--frozen-lockfile"], ["bun", "install"]]
+    assert (tmp_path / ".meow/node-install.pending").exists()
+
+
+@pytest.mark.parametrize(
     ("manager", "lock", "argv"),
     [
         ("bun@1.4.0", "bun.lock", ["bun", "install", "--frozen-lockfile"]),

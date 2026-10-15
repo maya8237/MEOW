@@ -214,6 +214,10 @@ def get(server, url: str):  # ruff: ignore[complex-structure, too-many-return-st
     path = urlsplit(url).path
     query = _query(url)
     parts = _route_parts(path)
+    if parts == ["", "api", "cli-options"]:
+        from meow.ui.cli_options import cli_options
+
+        return HTTPStatus.OK, cli_options()
     if parts == ["", "api", "capabilities"]:
         repo = _repo(server, query.get("repo"))
         return HTTPStatus.OK, {

@@ -56,6 +56,7 @@ def test_feature_recipe_builds_unattended_isolated_cli_argv(tmp_path):
         "--input",
         "scope=users",
         "--unattended",
+        "--",
         "Add an API endpoint",
     ]
 
@@ -74,6 +75,7 @@ def test_orchestrate_recipe_preserves_objective_and_options(tmp_path):
         "meow",
         "orchestrate",
         *arguments,
+        "--",
         objective,
     ]
 
@@ -96,6 +98,29 @@ def test_leading_hyphen_request_is_separated_in_generated_argv(tmp_path):
     separator = argv.index("--")
     assert argv[separator + 1] == "--please keep this as the request"
     assert argv[-1] == "--please keep this as the request"
+
+
+@pytest.mark.parametrize(
+    ("command", "arguments"),
+    [
+        ("review", ["--jira"]),
+        ("review", ["--branch", "feature", "--target", "main"]),
+        ("orchestrate", ["--jira", "ABC-1", "ABC-2"]),
+        ("orchestrate", ["--tasks", "tasks.toml"]),
+    ],
+)
+def test_source_flags_can_supply_work_without_request(tmp_path, command, arguments):
+    recipe = validate_recipe(
+        tmp_path, valid_payload(command=command, request="", arguments=arguments)
+    )
+    argv = command_for(recipe)
+    assert argv[4:] == [command, *arguments]
+
+
+def test_optional_flag_cannot_consume_the_request():
+    _, parsed = sessions._parse_arguments("review", ["--jira"], "Review this change")
+    assert parsed.jira == ""
+    assert parsed.request == "Review this change"
 
 
 @pytest.mark.parametrize("command", ["ui", "ipython", "_worker", "detach"])
@@ -189,7 +214,7 @@ def test_review_recipe_allows_only_headless_review_form(tmp_path):
         tmp_path,
         valid_payload(command="review", arguments=["--fix"], request="Review API"),
     )
-    assert command_for(recipe)[4:] == ["review", "--fix", "Review API"]
+    assert command_for(recipe)[4:] == ["review", "--fix", "--", "Review API"]
 
     with pytest.raises(RecipeError):
         validate_recipe(

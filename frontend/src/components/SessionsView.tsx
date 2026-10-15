@@ -402,7 +402,11 @@ export default function SessionsView({
                     aria-current={
                       selection?.key === entry.key ? "true" : undefined
                     }
-                    onClick={() => setSelection(entry)}
+                    onClick={() =>
+                      setSelection((current) =>
+                        current?.key === entry.key ? null : entry,
+                      )
+                    }
                   >
                     <span className="sessions-item-top">
                       <strong>{title}</strong>

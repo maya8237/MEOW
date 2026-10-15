@@ -173,6 +173,15 @@ offer rerun instead. Archive hides an inactive session and can be reversed; it
 does not delete output, transcripts, or worktrees. Stop preserves output and
 resume identity.
 
+The launcher's Advanced arguments panel derives the chosen command's flags,
+aliases, descriptions, value types, and choices from MEOW's CLI parser. Select
+flags using checkboxes and edit their values in the provided controls; Remove
+clears the whole flag and its values. Flags managed elsewhere in the launcher
+or incompatible with unattended feature runs remain visible with an explanation.
+Review and orchestration recipes may leave Request empty when a source option
+such as `--branch`, `--jira`, or `--tasks` supplies the work. The command preview
+checks all combinations before launch.
+
 The page also imports existing MEOW runs from registered repositories. Their
 run facts and supported actions remain available; historical live output is
 shown only when a background log exists. A rerun or duplicate from an imported
