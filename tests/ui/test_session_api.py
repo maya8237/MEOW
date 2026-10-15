@@ -112,6 +112,19 @@ def test_orchestrate_preview_builds_cli_and_warns_about_delivery(running, projec
     assert body["warnings"]
 
 
+@pytest.mark.parametrize("mode", [[], {}])
+def test_preview_rejects_unhashable_mode_without_dropping_connection(
+    running, project, mode
+):
+    status, body = post(
+        running.server_port,
+        "/api/sessions/preview",
+        {"repo": str(project), "recipe": recipe(project, mode=mode)},
+    )
+    assert status == HTTPStatus.BAD_REQUEST
+    assert body["error"] == "mode must be 'cli' or 'claude'"
+
+
 def test_schedule_session_freezes_recipe_lists_and_cancels(  # ruff: ignore[too-many-statements]
     running, project, monkeypatch
 ):
