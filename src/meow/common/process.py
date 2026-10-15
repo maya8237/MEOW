@@ -9,6 +9,8 @@ import sys
 from ctypes import wintypes
 from pathlib import Path
 
+_WINDOWS_WAIT_TIMEOUT = 0x102
+
 
 def process_identity(  # ruff: ignore[too-many-return-statements, complex-structure, too-many-branches, too-many-statements]
     pid: int,
@@ -17,16 +19,22 @@ def process_identity(  # ruff: ignore[too-many-return-statements, complex-struct
     if sys.platform == "win32":
         kernel = ctypes.windll.kernel32
         kernel.OpenProcess.restype = wintypes.HANDLE
-        handle = kernel.OpenProcess(0x1000, False, pid)
+        # Query information plus SYNCHRONIZE, so a retained dead object is rejected.
+        handle = kernel.OpenProcess(0x1000 | 0x100000, False, pid)
         if not handle:
             return None
         try:
+            if (
+                kernel.WaitForSingleObject(wintypes.HANDLE(handle), 0)
+                != _WINDOWS_WAIT_TIMEOUT
+            ):
+                return None
             created = wintypes.FILETIME()
             exited = wintypes.FILETIME()
             kernel_time = wintypes.FILETIME()
             user_time = wintypes.FILETIME()
             if not kernel.GetProcessTimes(
-                handle,
+                wintypes.HANDLE(handle),
                 ctypes.byref(created),
                 ctypes.byref(exited),
                 ctypes.byref(kernel_time),
@@ -35,7 +43,7 @@ def process_identity(  # ruff: ignore[too-many-return-statements, complex-struct
                 return None
             return f"{created.dwHighDateTime}:{created.dwLowDateTime}"
         finally:
-            kernel.CloseHandle(handle)
+            kernel.CloseHandle(wintypes.HANDLE(handle))
     stat = Path(f"/proc/{pid}/stat")
     if stat.is_file():
         try:

@@ -12,6 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 _WINDOWS_QUERY_LIMITED_INFORMATION = 0x1000
+_WINDOWS_SYNCHRONIZE = 0x100000
 # A lock with no readable owner after this long was left by a worker that died
 # between creating the file and writing its PID.
 _UNREADABLE_LOCK_GRACE_SECONDS = 30
@@ -31,14 +32,19 @@ def _pid_is_alive(pid: int) -> bool:
         import ctypes
 
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = ctypes.c_void_p
         handle = kernel32.OpenProcess(
-            _WINDOWS_QUERY_LIMITED_INFORMATION,
+            _WINDOWS_QUERY_LIMITED_INFORMATION | _WINDOWS_SYNCHRONIZE,
             False,
             pid,
         )
         if handle:
-            kernel32.CloseHandle(handle)
-        return bool(handle) or ctypes.get_last_error() == _WINDOWS_ERROR_ACCESS_DENIED
+            try:
+                # A terminated process stays open while another process holds it.
+                return kernel32.WaitForSingleObject(ctypes.c_void_p(handle), 0) != 0
+            finally:
+                kernel32.CloseHandle(ctypes.c_void_p(handle))
+        return ctypes.get_last_error() == _WINDOWS_ERROR_ACCESS_DENIED
 
     alive = True
     try:
