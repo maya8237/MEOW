@@ -94,7 +94,6 @@ export default function SessionDetail({
   const validScheduleTime =
     !!scheduleAt && new Date(scheduleAt).getTime() > Date.now();
   const pane = useRef<HTMLPreElement>(null);
-  const cursors = useRef(new Map<string, number>());
   const attempts = session?.attempts || [];
   const picked =
     attempts.find((item) => item.id === attemptId) || attempts.at(-1) || null;
@@ -141,18 +140,15 @@ export default function SessionDetail({
       setLoading(false);
       return;
     }
-    const key = pickedId
-      ? `${selectedSessionId}:${pickedId}`
-      : `run:${importedRepo}:${importedId}`;
     const controller = new AbortController();
     let cancelled = false;
+    let cursor = 0;
     setOutput("");
     setOutputError("");
     setLoading(true);
     async function poll() {
       while (!cancelled) {
         try {
-          const cursor = cursors.current.get(key) || 0;
           const chunk: OutputChunk = pickedId
             ? await loadOutput(
                 pickedRepo,
@@ -168,7 +164,7 @@ export default function SessionDetail({
                 controller.signal,
               );
           if (cancelled) return;
-          cursors.current.set(key, chunk.next_cursor);
+          cursor = chunk.next_cursor;
           const before = pane.current;
           const follows =
             !before ||
@@ -178,11 +174,11 @@ export default function SessionDetail({
           );
           setOutputError("");
           setLoading(false);
-          if (chunk.reset) cursors.current.set(key, chunk.next_cursor);
           requestAnimationFrame(() => {
             const element = pane.current;
             if (follows && element) element.scrollTop = element.scrollHeight;
           });
+          if (chunk.truncated) continue;
           if (!(pickedId ? active.has(pickedState) : importedActive)) return;
           await new Promise((resolve) => setTimeout(resolve, 1200));
         } catch (error) {

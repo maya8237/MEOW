@@ -367,6 +367,45 @@ test("workflow Run opens the CLI launcher with its workflow selected", async () 
   expect(screen.getByLabelText("Workflow")).toHaveValue("quick");
 });
 
+test.each(["Workflows", "Agents", "Skills"])(
+  "returns from Sessions to the %s catalog",
+  async (kind) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        return new Response(
+          JSON.stringify(
+            url.startsWith("/api/catalog")
+              ? catalog
+              : url.startsWith("/api/runs")
+                ? { runs: [] }
+                : { sessions: [] },
+          ),
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("heading", { name: "quick" });
+    const navigation = within(
+      screen.getByRole("navigation", { name: "Catalog kinds" }),
+    );
+    await user.click(navigation.getByRole("button", { name: "Sessions" }));
+    await screen.findByRole("heading", { name: "Sessions" });
+    await user.click(
+      navigation.getByRole("button", { name: new RegExp(kind) }),
+    );
+    expect(screen.getByRole("heading", { name: kind })).toBeInTheDocument();
+    expect(
+      navigation.getByRole("button", { name: "Sessions" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("searchbox", { name: "Search catalog" }),
+    ).toBeInTheDocument();
+  },
+);
+
 test("skill Run uses its qualified Claude command and unverified agents have no Run action", async () => {
   const skill = {
     name: "notes",

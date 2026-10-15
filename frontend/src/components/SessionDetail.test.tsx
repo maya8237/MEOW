@@ -171,3 +171,128 @@ test("selection changes abort pending output and ignore its late response", asyn
     "stale output",
   );
 });
+
+test("stopping a running attempt preserves its recorded output", async () => {
+  const record = session("s1", "a1", "Work");
+  record.state = "running";
+  record.attempts[0].state = "running";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const cursor = Number(
+        new URL(String(input), "http://local").searchParams.get("cursor"),
+      );
+      return chunk("recorded output".slice(cursor));
+    }),
+  );
+  const view = render(
+    <SessionDetail
+      repo={repo}
+      session={record}
+      repos={[repo]}
+      {...callbacks}
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("Text output")).toHaveTextContent(
+      "recorded output",
+    ),
+  );
+  const stopped = {
+    ...record,
+    state: "stopped",
+    attempts: [{ ...record.attempts[0], state: "stopped" }],
+  };
+  view.rerender(
+    <SessionDetail
+      repo={repo}
+      session={stopped}
+      repos={[repo]}
+      {...callbacks}
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("Text output")).toHaveTextContent(
+      "recorded output",
+    ),
+  );
+});
+
+test("completed attempts load every recorded output chunk", async () => {
+  const record = session("s1", "a1", "Work");
+  const text = "x".repeat(65536) + "final output";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const cursor = Number(
+        new URL(String(input), "http://local").searchParams.get("cursor"),
+      );
+      const end = Math.min(cursor + 65536, text.length);
+      return new Response(
+        JSON.stringify({
+          text: text.slice(cursor, end),
+          next_cursor: end,
+          size: text.length,
+          truncated: end < text.length,
+          reset: false,
+        }),
+      );
+    }),
+  );
+  render(
+    <SessionDetail
+      repo={repo}
+      session={record}
+      repos={[repo]}
+      {...callbacks}
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("Text output")).toHaveTextContent(
+      "final output",
+    ),
+  );
+});
+
+test("returning to a previously viewed attempt reloads its output", async () => {
+  const record = session("s1", "a1", "Work");
+  record.attempts.push({ ...record.attempts[0], id: "a2" });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://local");
+      const text =
+        url.searchParams.get("attempt") === "a1"
+          ? "first output"
+          : "second output";
+      return chunk(text.slice(Number(url.searchParams.get("cursor"))));
+    }),
+  );
+  const user = userEvent.setup();
+  render(
+    <SessionDetail
+      repo={repo}
+      session={record}
+      repos={[repo]}
+      {...callbacks}
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("Text output")).toHaveTextContent(
+      "second output",
+    ),
+  );
+  const attempt = screen.getByRole("combobox", { name: "Attempt" });
+  await user.selectOptions(attempt, "a1");
+  await waitFor(() =>
+    expect(screen.getByLabelText("Text output")).toHaveTextContent(
+      "first output",
+    ),
+  );
+  await user.selectOptions(attempt, "a2");
+  await waitFor(() =>
+    expect(screen.getByLabelText("Text output")).toHaveTextContent(
+      "second output",
+    ),
+  );
+});

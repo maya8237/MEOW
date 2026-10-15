@@ -57,8 +57,6 @@ export default function SessionLauncher({
       ...initialRecipe,
       repo: sessionId ? initialRecipe?.repo || repo : repo,
     } as Recipe;
-    if (value.mode === "claude" && !initialRecipe?.options)
-      value.options = { permission_policy: "default" };
     if (catalogItem?.kind === "workflow") {
       value.name = catalogItem.item.name;
       value.mode = "cli";
@@ -74,7 +72,13 @@ export default function SessionLauncher({
       value.name = catalogItem.item.name;
       value.mode = "claude";
       value.command = "prompt";
-      value.options = { ...value.options, agent: catalogItem.item.name };
+    }
+    if (value.mode === "claude") {
+      value.options = initialRecipe?.options || {
+        permission_policy: "default",
+      };
+      if (catalogItem?.kind === "agent")
+        value.options = { ...value.options, agent: catalogItem.item.name };
     }
     if (value.mode === "cli" && value.command === "run") {
       value.options = {

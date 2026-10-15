@@ -176,8 +176,9 @@ export default function App() {
                 key={entry.key}
                 type="button"
                 className="nav-item"
-                aria-pressed={kind === entry.key}
+                aria-pressed={!showSessions && kind === entry.key}
                 onClick={() => {
+                  setShowSessions(false);
                   setKind(entry.key);
                   setSelected("");
                   setSaved(null);
