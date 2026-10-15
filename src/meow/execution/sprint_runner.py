@@ -49,7 +49,7 @@ logger = get_logger(__name__)
 
 
 def _owner_finished(store: RunStore, owner: str) -> bool:
-    """Return True only when the owner run is verifiably finished.
+    """Return True only when the owner run is verifiably settled.
 
     A missing or unreadable owner record counts as not finished, so a plan is
     never redrafted under a run that may still be working on it.
@@ -58,7 +58,7 @@ def _owner_finished(store: RunStore, owner: str) -> bool:
         phase = store.load(owner).phase
     except RunStateError:
         return False
-    return phase in TERMINAL_PHASES
+    return phase in _SETTLED_PHASES
 
 
 def _worktree_name_of(working_dir: Path, plan_file: Path) -> str | None:
