@@ -94,7 +94,7 @@ export interface Capabilities {
   available: boolean;
   version: string | null;
   missing: string[];
-  permission_policy: "dontAsk+none" | "unsupported";
+  permission_policy: "dontAsk" | "dontAsk+none" | "unsupported";
   bypass_supported: boolean;
   error: string | null;
 }

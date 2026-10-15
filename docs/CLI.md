@@ -152,8 +152,10 @@ behavior off. Commands that do not accept `--unattended` still run headlessly,
 without receiving that unsupported flag.
 
 Claude sessions use the installed Claude executable and a noninteractive
-permission policy that denies operations requiring an unanswered prompt. The
-launcher reports when Claude is missing, unauthenticated, too old for the
+permission policy that denies operations requiring an unanswered prompt:
+`--permission-mode dontAsk`, plus `--permission-prompts none` when the installed
+Claude version supports it. Versions without the latter flag still use `dontAsk`.
+The launcher reports when Claude is missing, unauthenticated, too old for the
 required capabilities, or cannot resolve the selected MEOW plugin or agent.
 Permission bypass is an explicit opt-in: enable the labeled bypass option to
 send both `--allow-dangerously-skip-permissions` and

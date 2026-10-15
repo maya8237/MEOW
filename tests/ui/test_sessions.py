@@ -324,8 +324,9 @@ def test_missing_claude_partial_message_flag_is_reported(monkeypatch):
         detect_capabilities(Path("/repo"))
 
 
+@pytest.mark.parametrize("prompt_target_supported", [True, False])
 def test_capability_probe_checks_help_and_version_without_starting_session(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, prompt_target_supported
 ):
     help_text = """Usage: claude [options]
       --print
@@ -337,6 +338,8 @@ def test_capability_probe_checks_help_and_version_without_starting_session(
       --permission-prompts <mode> (none)
       --allow-dangerously-skip-permissions
 """
+    if not prompt_target_supported:
+        help_text = help_text.replace("      --permission-prompts <mode> (none)\n", "")
     calls = []
     monkeypatch.setattr(sessions, "claude_path", lambda: "claude-test")
 
@@ -356,7 +359,7 @@ def test_capability_probe_checks_help_and_version_without_starting_session(
         "available": True,
         "version": "1.2.3",
         "missing": [],
-        "permission_policy": "dontAsk+none",
+        "permission_policy": "dontAsk+none" if prompt_target_supported else "dontAsk",
         "bypass_supported": True,
         "error": None,
     }
@@ -365,6 +368,31 @@ def test_capability_probe_checks_help_and_version_without_starting_session(
         ["claude-test", "--version"],
     ]
     assert all(call[1]["shell"] is False for call in calls)
+
+    recipe = validate_recipe(tmp_path, valid_payload(mode="claude", command="prompt"))
+    argv = command_for(recipe)
+    assert argv[argv.index("--permission-mode") + 1] == "dontAsk"
+    assert ("--permission-prompts" in argv) is prompt_target_supported
+    assert "--allow-dangerously-skip-permissions" not in argv
+
+
+def test_claude_without_dontask_is_still_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(sessions, "claude_path", lambda: "claude-test")
+    monkeypatch.setattr(
+        sessions,
+        "claude_help",
+        lambda: (
+            "--print --verbose --output-format stream-json "
+            "--include-partial-messages --resume --permission-mode default"
+        ),
+    )
+    monkeypatch.setattr(
+        sessions.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, stdout="1.2.3"),
+    )
+    with pytest.raises(RecipeError, match="--permission-mode dontAsk"):
+        detect_capabilities(tmp_path)
 
 
 def test_claude_capability_probe_reports_unavailable_and_missing_executable(

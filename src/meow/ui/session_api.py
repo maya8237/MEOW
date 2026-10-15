@@ -339,7 +339,10 @@ def post(server, url: str, payload: dict):  # ruff: ignore[complex-structure, to
             "argv": argv,
             "display": display_command(argv),
             "warnings": warnings,
-            "capabilities": _capabilities(repo),
+            "capabilities": {
+                "cli": {"available": True},
+                "claude": _capabilities(repo),
+            },
         }
     if parts == ["", "api", "sessions"]:
         repo = _body_repo(server, payload)
