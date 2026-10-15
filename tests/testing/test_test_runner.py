@@ -6,12 +6,15 @@ import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from meow.infrastructure.test_runner import (
     VerificationSetupError,
     _argv,
+    _OwnedProcess,
     _probe,
+    _terminate,
     prepared_test_stage,
 )
 from meow.project.config_models import DevServerCommand, VerificationCommand
@@ -21,6 +24,33 @@ def _port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
+
+
+def test_job_cleanup_waits_for_child_exit_after_wrapper_exit(monkeypatch):
+    active = [True]
+    observations = iter(["child", "child", None])
+
+    def identity(_pid):
+        value = next(observations)
+        active[0] = value is not None
+        return value
+
+    def close():
+        assert not active[0], "cleanup returned while the child still owned its cwd"
+
+    job = SimpleNamespace(Close=Mock(side_effect=close))
+    windows = SimpleNamespace(
+        TerminateJobObject=Mock(),
+        QueryInformationJobObject=Mock(return_value=[123]),
+        JobObjectBasicProcessIdList=object(),
+    )
+    monkeypatch.setitem(sys.modules, "win32job", windows)
+    monkeypatch.setattr(
+        "meow.infrastructure.test_runner.process_identity", identity, raising=False
+    )
+    asyncio.run(_terminate(_OwnedProcess(SimpleNamespace(returncode=0), job)))
+    windows.TerminateJobObject.assert_called_once_with(job, 1)
+    job.Close.assert_called_once()
 
 
 def test_advisory_launch_failure_does_not_abort_remaining_checks(tmp_path):
