@@ -87,6 +87,34 @@ function fixture(state = "draft", archived = false) {
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), { status });
 
+test("clicking the selected session clears it and allows selecting it again", async () => {
+  const user = userEvent.setup();
+  const data = fixture();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/sessions?"))
+        return Promise.resolve(json({ sessions: [data.summary] }));
+      if (url.startsWith("/api/runs"))
+        return Promise.resolve(json({ runs: [] }));
+      if (url.startsWith(`/api/sessions/${data.id}?`))
+        return Promise.resolve(json({ session: data.detail }));
+      throw new Error(`Unexpected ${url}`);
+    }),
+  );
+  render(<SessionsView repo={repo} catalog={catalog} onRunRecipe={vi.fn()} />);
+  const row = await screen.findByRole("button", { name: /Search work/ });
+  await user.click(row);
+  await screen.findByRole("heading", { name: "Search work" });
+  expect(row).toHaveAttribute("aria-current", "true");
+  await user.click(row);
+  expect(row).not.toHaveAttribute("aria-current");
+  expect(screen.queryByRole("heading", { name: "Search work" })).toBeNull();
+  await user.click(row);
+  await screen.findByRole("heading", { name: "Search work" });
+});
+
 test("shows aggregate loading feedback while its first request is pending", async () => {
   vi.stubGlobal(
     "fetch",

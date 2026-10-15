@@ -159,6 +159,66 @@ def test_migration_warns_without_changing_project_bunfig(tmp_path, monkeypatch):
     assert any("Warning" in line and "override" in line for line in output)
 
 
+def test_migration_discovers_all_bun_folders_before_installing(  # ruff: ignore[too-many-statements]
+    tmp_path, monkeypatch
+):
+    from meow.infrastructure.worktree_setup import WorktreeSetupError
+    from meow.installer import bun
+
+    first = tmp_path / "first"
+    nested = first / "packages" / "app"
+    second = tmp_path / "second"
+    for directory in (first, nested, second):
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "package.json").write_text(
+            '{"packageManager":"bun@1.4.0","workspaces":["packages/*"]}'
+        )
+    discovered, installed = [], []
+    real_projects = bun.node_projects
+
+    def discover(*args, **kwargs):
+        for directory, data in real_projects(*args, **kwargs):
+            discovered.append(directory)
+            yield directory, data
+
+    def install(directory, _argv):
+        assert discovered == [first, nested, second]
+        installed.append(directory)
+        if directory == first:
+            raise WorktreeSetupError("registry unavailable")
+
+    monkeypatch.setattr(bun, "node_projects", discover)
+    monkeypatch.setattr(bun, "run_node_install", install)
+    output = []
+    bun.migrate_bun_projects([first, second, first], output.append)
+    assert installed == [first, nested, second]
+    assert any("migration failed" in line for line in output)
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        "{",
+        '{"packageManager":"unsupported@1"}',
+        '{"workspaces":42}',
+        '{"workspaces":[""]}',
+    ],
+)
+def test_bun_discovery_continues_after_invalid_sibling(tmp_path, manifest):
+    from meow.installer.bun import _bun_projects
+
+    broken, valid = tmp_path / "a-broken", tmp_path / "b-bun"
+    for directory, data in (
+        (broken, manifest),
+        (valid, '{"packageManager":"bun@1.4.0"}'),
+    ):
+        directory.mkdir()
+        (directory / "package.json").write_text(data)
+    output = []
+    assert _bun_projects([tmp_path], output.append) == {valid: tmp_path}
+    assert any(str(broken) in line and "failed" in line for line in output)
+
+
 def test_bun_migration_runs_in_background_and_logs_nested_app(tmp_path, monkeypatch):  # ruff: ignore[too-many-statements]
     from meow.installer.bun import start_bun_migration
 

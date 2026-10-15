@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -22,7 +23,10 @@ _SKIP = {"node_modules", ".git", ".worktrees", ".meow", ".venv", "venv"}
 
 
 def node_projects(  # ruff: ignore[complex-structure]
-    root: Path, *, include_members: bool = False
+    root: Path,
+    *,
+    include_members: bool = False,
+    on_error: Callable[[Path, Exception], None] | None = None,
 ) -> Iterator[tuple[Path, dict]]:
     """Find install roots, including nested apps; workspace members install together."""
     members: set[Path] = set()
@@ -34,32 +38,36 @@ def node_projects(  # ruff: ignore[complex-structure]
             dirs.clear()
             continue
         if "package.json" in files:
-            data = _package_json(directory)
-            workspaces = data.get("workspaces", [])
-            patterns = (
-                workspaces.get("packages", [])
-                if isinstance(workspaces, dict)
-                else workspaces
-            )
-            if not isinstance(patterns, list) or not all(
-                isinstance(p, str) for p in patterns
-            ):
-                raise WorktreeSetupError(
-                    f"Invalid workspaces in {directory / 'package.json'}"
-                )
-            for pattern in patterns:
-                if Path(pattern).is_absolute() or ".." in Path(pattern).parts:
-                    raise WorktreeSetupError(
-                        f"Workspace path escapes project: {pattern}"
-                    )
-                members.update(
-                    path.resolve() for path in directory.glob(pattern) if path.is_dir()
-                )
+            try:
+                data = _package_json(directory)
+                members.update(_workspace_members(directory, data))
+            except (OSError, ValueError, WorktreeSetupError) as exc:
+                if on_error is None:
+                    raise
+                on_error(directory, exc)
+                continue
             if (directory / "pnpm-workspace.yaml").is_file() and not include_members:
                 # pnpm installs the entire workspace from this root, including members
                 # declared in its YAML rather than package.json.
                 dirs.clear()
             yield directory, data
+
+
+def _workspace_members(directory: Path, data: dict) -> set[Path]:
+    workspaces = data.get("workspaces", [])
+    patterns = (
+        workspaces.get("packages", []) if isinstance(workspaces, dict) else workspaces
+    )
+    if not isinstance(patterns, list) or not all(isinstance(p, str) for p in patterns):
+        raise WorktreeSetupError(f"Invalid workspaces in {directory / 'package.json'}")
+    members = set()
+    for pattern in patterns:
+        if Path(pattern).is_absolute() or ".." in Path(pattern).parts:
+            raise WorktreeSetupError(f"Workspace path escapes project: {pattern}")
+        members.update(
+            path.resolve() for path in directory.glob(pattern) if path.is_dir()
+        )
+    return members
 
 
 def _package_json(directory: Path) -> dict:
@@ -114,7 +122,7 @@ def install_command(directory: Path, data: dict) -> list[str]:
     return argv
 
 
-def run_node_install(
+def run_node_install(  # ruff: ignore[complex-structure, too-many-statements]
     directory: Path,
     argv: list[str],
     *,
@@ -153,6 +161,21 @@ def run_node_install(
             "exit_code": code,
         })
     if timed_out or code != 0:
+        if (
+            not timed_out
+            and argv[0] == "bun"
+            and "--frozen-lockfile" in argv
+            and re.search(r"frozen[- ]lockfile|lockfile[^\n]*\bfrozen\b", output, re.I)
+        ):
+            _LOGGER.warning(
+                "bun_frozen_lockfile_retry", cwd=str(directory), output=output
+            )
+            return run_node_install(
+                directory,
+                [arg for arg in argv if arg != "--frozen-lockfile"],
+                command_decision=command_decision,
+                record_action=record_action,
+            )
         reason = "timed out" if timed_out else f"exit {code}"
         raise WorktreeSetupError(
             f"Dependency install failed in {directory} ({reason}): "

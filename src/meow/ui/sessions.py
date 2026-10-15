@@ -165,10 +165,7 @@ def _check_unique_options(command: str, final_options: list[str]) -> None:
 
 def _parse_arguments(command: str, final_options: list[str], request: str):
     parser = _build_arg_parser()
-    argv = [command, *final_options]
-    if request.startswith("-"):
-        argv.append("--")
-    argv.append(request)
+    argv = [command, *final_options, *(["--", request] if request else [])]
     try:
         with contextlib.redirect_stderr(io.StringIO()):
             parsed = parser.parse_args(argv)
@@ -227,9 +224,9 @@ def _validate_arguments(recipe: Recipe, generated: list[str]) -> None:
     else:
         _validate_semantics(recipe.command, Path(recipe.repo), parser, parsed)
     if parsed.command != recipe.command or (
-        parsed.words != [recipe.request]
+        parsed.words != ([recipe.request] if recipe.request else [])
         if recipe.command == "orchestrate"
-        else getattr(parsed, "request", None) != recipe.request
+        else (getattr(parsed, "request", None) or "") != recipe.request
     ):
         raise RecipeError("Arguments cannot replace the recipe request")
     if (
@@ -433,7 +430,11 @@ def validate_recipe(repo: Path, payload: object) -> Recipe:
         raise RecipeError("name cannot start with a dash")
     mode = payload.get("mode")
     command = _text(payload, "command")
-    request = _text(payload, "request")
+    request = _text(
+        payload,
+        "request",
+        required=mode != "cli" or command not in {"review", "orchestrate"},
+    )
     _validate_mode_command(mode, command)
 
     workflow_value = payload.get("workflow")
@@ -506,8 +507,7 @@ def _cli_argv(recipe: Recipe) -> list[str]:
         recipe.command,
         *generated,
         *recipe.arguments,
-        *(["--"] if recipe.request.startswith("-") else []),
-        recipe.request,
+        *(["--", recipe.request] if recipe.request else []),
     ]
 
 

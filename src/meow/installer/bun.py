@@ -85,33 +85,48 @@ def _warn_project_bunfig(
             warned.add(config)
 
 
+def _bun_projects(
+    projects: Sequence[Path], output: Callable[[str], None]
+) -> dict[Path, Path]:
+    targets: dict[Path, Path] = {}
+
+    def failed(directory: Path, exc: Exception) -> None:
+        output(f"{directory}: Bun discovery failed ({exc}).")
+
+    for project in dict.fromkeys(path.resolve() for path in projects):
+        for directory, data in node_projects(
+            project, include_members=True, on_error=failed
+        ):
+            try:
+                if package_manager(directory, data)[0] == "bun":
+                    targets.setdefault(directory.resolve(), project)
+            except (OSError, ValueError, RuntimeError) as exc:
+                failed(directory, exc)
+    return targets
+
+
 def migrate_bun_projects(
     projects: Sequence[Path], output: Callable[[str], None]
 ) -> None:
-    for project in projects:
-        warned: set[Path] = set()
+    targets = _bun_projects(projects, output)
+    output(f"Found {len(targets)} Bun dependency folders to migrate.")
+    warned: set[Path] = set()
+    for directory in targets:
+        output(f"{directory}: discovered Bun dependency folder.")
+    for directory, project in targets.items():
         try:
-            for directory, data in node_projects(project):
-                if package_manager(directory, data)[0] == "bun":
-                    _warn_project_bunfig(
-                        [project / "bunfig.toml", directory / "bunfig.toml"],
-                        warned,
-                        output,
-                    )
-                    argv = ["bun", "install", "--force", "--linker", "isolated"]
-                    if (directory / "bun.lock").is_file() or (
-                        directory / "bun.lockb"
-                    ).is_file():
-                        argv.append("--frozen-lockfile")
-                    output(
-                        f"{directory}: rebuilding Bun dependency links "
-                        "for the shared store"
-                    )
-                    run_node_install(directory, argv)
-                    output(f"{directory}: Bun dependency migration completed.")
+            _warn_project_bunfig(
+                [project / "bunfig.toml", directory / "bunfig.toml"], warned, output
+            )
+            argv = ["bun", "install", "--force", "--linker", "isolated"]
+            if any((directory / lock).is_file() for lock in ("bun.lock", "bun.lockb")):
+                argv.append("--frozen-lockfile")
+            output(f"{directory}: rebuilding Bun dependency links for the shared store")
+            run_node_install(directory, argv)
+            output(f"{directory}: Bun dependency migration completed.")
         except (OSError, ValueError, RuntimeError) as exc:
             output(
-                f"{project}: Bun migration failed ({exc}). "
+                f"{directory}: Bun migration failed ({exc}). "
                 "Rerun bun install --force --linker isolated after resolving this."
             )
 

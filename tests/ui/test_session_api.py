@@ -86,6 +86,41 @@ def recipe(repo, **changes):
     return {**value, **changes}
 
 
+def test_cli_options_are_derived_from_the_command_parsers(running):
+    status, _, _, body = get(running.server_port, "/api/cli-options")
+    assert status == HTTPStatus.OK
+    commands = json.loads(body)["commands"]
+    assert set(commands) == {"run", "plan", "review", "orchestrate"}
+    run = {item["flag"]: item for item in commands["run"]}
+    assert run["--test"]["kind"] == "switch"
+    assert run["--resume-at"]["choices"] == ["generate", "review"]
+    assert run["--jira"]["nargs"] == "?"
+    assert run["--from"]["aliases"] == ["--from", "-b"]
+    assert run["--work-dir"]["controlled"]
+    assert run["--background"]["controlled"]
+    assert run["--name"]["controlled"]
+    assert run["--no-worktree"]["controlled"]
+    assert run["--lint-fix"]["controlled"]
+    assert run["--resume-at"]["controlled"]
+    orchestrate = {item["flag"]: item for item in commands["orchestrate"]}
+    assert orchestrate["--max-parallel"]["kind"] == "number"
+    assert orchestrate["--jira"]["nargs"] == "+"
+    assert orchestrate["--dry-run"]["help"]
+
+
+def test_cli_options_include_new_parser_flags_without_a_ui_flag_list(monkeypatch):
+    from meow.ui import cli_options
+    from meow.ui.sessions import _parser_for
+
+    parser = cli_options._build_arg_parser()
+    _parser_for(parser, "run").add_argument("--extra-check", choices=["quick", "full"])
+    monkeypatch.setattr(cli_options, "_build_arg_parser", lambda: parser)
+    flags = cli_options.cli_options()["commands"]["run"]
+    extra = next(item for item in flags if item["flag"] == "--extra-check")
+    assert extra["choices"] == ["quick", "full"]
+    assert extra["controlled"] is None
+
+
 def test_orchestrate_preview_builds_cli_and_warns_about_delivery(running, project):
     status, body = post(
         running.server_port,
@@ -107,6 +142,7 @@ def test_orchestrate_preview_builds_cli_and_warns_about_delivery(running, projec
         "2",
         "--dry-run",
         "--no-pr",
+        "--",
         "do the task",
     ]
     assert body["warnings"]

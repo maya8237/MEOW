@@ -13,6 +13,7 @@ import {
 } from "@/lib/sessions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import AdvancedOptions from "@/components/AdvancedOptions";
 
 type LauncherItem = CatalogItem & { claude_resolvable?: boolean };
 type Props = {
@@ -99,9 +100,7 @@ export default function SessionLauncher({
       ? Object.entries(seed.inputs || {})
       : [["", ""]],
   );
-  const [argumentRows, setArgumentRows] = useState<string[]>(
-    seed.arguments || [""],
-  );
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [claudeCapabilities, setClaudeCapabilities] =
     useState<Capabilities | null>(null);
   const serialized = JSON.stringify({ draft, start, runAt });
@@ -110,6 +109,8 @@ export default function SessionLauncher({
     !!scheduleTime &&
     Number.isFinite(scheduleTime.getTime()) &&
     scheduleTime.getTime() > Date.now();
+  const requestRequired =
+    draft.mode !== "cli" || !["review", "orchestrate"].includes(draft.command);
   const itemCanRun =
     catalogItem?.kind !== "agent" || catalogItem.item.claude_resolvable;
   const modeError =
@@ -188,7 +189,7 @@ export default function SessionLauncher({
       !unknownFlags ||
       currentSessionId ||
       !draft.repo ||
-      !draft.request.trim()
+      (requestRequired && !draft.request.trim())
     )
       return;
     setBusy(true);
@@ -351,6 +352,7 @@ export default function SessionLauncher({
                 onChange={(event) =>
                   patch({
                     command: event.target.value,
+                    arguments: [],
                     ...(draft.mode === "cli"
                       ? {
                           options:
@@ -390,6 +392,12 @@ export default function SessionLauncher({
                 onChange={(event) => patch({ request: event.target.value })}
                 placeholder="Describe the work this session should do."
               />
+              {!requestRequired && (
+                <small>
+                  Leave empty when a source flag supplies the work. MEOW checks
+                  the selected combination before launch.
+                </small>
+              )}
             </label>
             {draft.mode === "cli" && (
               <>
@@ -485,7 +493,7 @@ export default function SessionLauncher({
                               const rows = inputRows.filter(
                                 (_, i) => i !== index,
                               );
-                              setInputRows(rows.length ? rows : [["", ""]]);
+                              setInputRows(rows);
                               patch({
                                 inputs: Object.fromEntries(
                                   rows.filter(([k]) => k),
@@ -509,54 +517,33 @@ export default function SessionLauncher({
                     </div>
                   </div>
                 )}
-                <details className="launcher-wide">
+                <details
+                  className="launcher-wide"
+                  onToggle={(event) =>
+                    setAdvancedOpen(event.currentTarget.open)
+                  }
+                >
                   <summary>Advanced arguments</summary>
                   <p>
-                    Each row is passed as one argument. The server checks these
-                    against the MEOW command parser.
+                    Choose the flags for this command. Values and choices come
+                    from MEOW's command parser.
                   </p>
                   {unknownFlags && (
                     <p className="unknown-flags">
-                      Original flags were not recorded. Add only the flags you
-                      want on this new attempt.
+                      Original flags were not recorded. Select only the flags
+                      you want on this new attempt.
                     </p>
                   )}
-                  {argumentRows.map((value, index) => (
-                    <div className="recipe-row" key={index}>
-                      <Input
-                        aria-label={`Argument ${index + 1}`}
-                        value={value}
-                        onChange={(event) => {
-                          const rows = argumentRows.map((item, i) =>
-                            i === index ? event.target.value : item,
-                          );
-                          setArgumentRows(rows);
-                          patch({ arguments: rows.filter(Boolean) });
-                        }}
-                        placeholder="--option value"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          const rows = argumentRows.filter(
-                            (_, i) => i !== index,
-                          );
-                          setArgumentRows(rows.length ? rows : [""]);
-                          patch({ arguments: rows.filter(Boolean) });
-                        }}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setArgumentRows((rows) => [...rows, ""])}
-                  >
-                    Add argument
-                  </Button>
+                  {advancedOpen && (
+                    <AdvancedOptions
+                      key={draft.command}
+                      command={draft.command}
+                      arguments={draft.arguments}
+                      onChange={(arguments_) =>
+                        patch({ arguments: arguments_ })
+                      }
+                    />
+                  )}
                 </details>
               </>
             )}
@@ -654,7 +641,7 @@ export default function SessionLauncher({
                 !!modeError ||
                 !itemCanRun ||
                 !draft.repo ||
-                !draft.request.trim()
+                (requestRequired && !draft.request.trim())
               }
             >
               <Eye />
@@ -664,7 +651,11 @@ export default function SessionLauncher({
               <Button
                 type="button"
                 variant="outline"
-                disabled={busy || !draft.repo || !draft.request.trim()}
+                disabled={
+                  busy ||
+                  !draft.repo ||
+                  (requestRequired && !draft.request.trim())
+                }
                 onClick={() => void saveDraft()}
               >
                 Save as draft
