@@ -11,10 +11,40 @@ import pytest
 from meow.execution.orchestrator import _run_rounds
 from meow.execution.run_state import RunStore
 from meow.execution.sprint import Sprint
-from meow.execution.sprint_runner import run_sprint
+from meow.execution.sprint_runner import _owner_finished, run_sprint
 from meow.infrastructure.checks import code_revision
 from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.infrastructure.worktree import _ensure_clean_tree
+from meow.project.plan_state import PlanStore
+
+
+def test_interrupted_owner_releases_plan_for_orchestrator_retry(tmp_path):
+    store = RunStore(tmp_path)
+    old = store.create(
+        source="orchestrator",
+        request="x",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="dev",
+    )
+    plan = tmp_path / "plan.md"
+    plan.write_text("Plan", encoding="utf-8")
+    plans = PlanStore(tmp_path)
+    plans.claim(
+        plan, old.id, owner_finished=lambda owner: _owner_finished(store, owner)
+    )
+    store.transition(old.id, "interrupted_mutation")
+    new = store.create(
+        source="orchestrator",
+        request="x",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="dev",
+    )
+    claimed = plans.claim(
+        plan, new.id, owner_finished=lambda owner: _owner_finished(store, owner)
+    )
+    assert claimed.run_id == new.id
 
 
 def test_interrupted_generator_is_recorded_before_edit(tmp_path):
