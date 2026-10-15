@@ -2,6 +2,8 @@
 
 import asyncio
 import subprocess
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -110,6 +112,24 @@ def test_triage_retry_then_success_delivers(tmp_path, monkeypatch):
         "url": "https://example.test/pr/1",
         "provider": "github",
     }
+
+
+def test_triage_agent_failure_reports_original_cause(tmp_path, monkeypatch):
+    world = one_task_world(tmp_path, monkeypatch, [("fail", "worker failed")])
+    reason = "Session limit reached; resets at 11:30am"
+    agent = SimpleNamespace(run=AsyncMock(side_effect=RuntimeError(reason)))
+    world.script.agents.triage = lambda context: agent
+
+    oid, code = world.start()
+
+    record = world.record(oid)
+    assert code == EXIT_BLOCKED
+    assert record.blocker["cause"] == "triage-agent-failed"
+    assert reason in record.blocker["needed"]
+    assert reason in (world.store.dir_for(oid) / "report.md").read_text(
+        encoding="utf-8"
+    )
+    assert record.delivery.get("pushed_commit") is None
 
 
 def test_blocked_pushes_nothing_and_exits_2(tmp_path, monkeypatch):
