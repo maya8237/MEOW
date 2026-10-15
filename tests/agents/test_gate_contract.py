@@ -10,7 +10,11 @@ from meow.project.plan_files import plan_review_file
 
 
 @pytest.mark.parametrize("corrected", ["PASS", "FAIL", None])
-def test_reviewer_corrects_malformed_verdict_once(tmp_path, corrected):
+@pytest.mark.parametrize(
+    "malformed",
+    ["## SUMMARY: reviewed\n## STATUS: PASS", "SUMMARY: ok\nSTATUS: **PASS**"],
+)
+def test_reviewer_corrects_malformed_verdict_once(tmp_path, corrected, malformed):
     plan = tmp_path / "plan.md"
     plan.write_text("Plan", encoding="utf-8")
     report = plan_review_file(plan)
@@ -19,7 +23,7 @@ def test_reviewer_corrects_malformed_verdict_once(tmp_path, corrected):
 
     async def query(request, options, role):  # ruff: ignore[unused-async]
         prompts.append(request)
-        text = "## SUMMARY: reviewed\n## STATUS: PASS"
+        text = malformed
         if len(prompts) > 1 and corrected:
             text = f"SUMMARY: reviewed\nSTATUS: {corrected}"
         report.write_text(text, encoding="utf-8")
