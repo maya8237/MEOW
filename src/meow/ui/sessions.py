@@ -311,7 +311,7 @@ def _validated_options(mode: str, command: str, value: object) -> dict[str, bool
 
 
 def _validate_mode_command(mode: object, command: str) -> None:
-    if mode not in {"cli", "claude"}:
+    if not isinstance(mode, str) or mode not in {"cli", "claude"}:
         raise RecipeError("mode must be 'cli' or 'claude'")
     if mode == "cli" and command not in _CLI_COMMANDS:
         raise RecipeError(f"Unsupported headless MEOW command: {command}")
