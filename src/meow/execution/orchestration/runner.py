@@ -45,6 +45,7 @@ from meow.execution.orchestration.store import DriverLock, OrchestratorStore
 from meow.execution.orchestration.tick import (
     ConflictInfo,
     FailureInfo,
+    block_task,
     max_recovery_cycles,
     record_conflict_resolved,
     record_task_failure,
@@ -304,6 +305,8 @@ class _Driver:
     async def _triage(self, failures: tuple[FailureInfo, ...]) -> None:
         for failure in failures:
             await self._triage_one(failure)
+            if self._load().phase == "blocked":
+                return
 
     async def _triage_one(self, failure: FailureInfo) -> None:
         task = self._load().task(failure.task_id)
@@ -319,8 +322,18 @@ class _Driver:
                 max_cycles=max_cycles,
             )
         except RuntimeError as exc:
-            # No decision file follows; applying it blocks the task visibly.
             logger.warning("triage_agent_failed", task=task.id, reason=str(exc))
+            blocker = {
+                "task_id": task.id,
+                "cause": "triage-agent-failed",
+                "evidence": list(failure.evidence),
+                "needed": f"Triage failed: {exc}",
+            }
+            self.store.update(
+                self.orch_id,
+                lambda r: block_task(r, blocker),
+            )
+            return
         self.store.update(
             self.orch_id,
             lambda r: apply_decision_file(
