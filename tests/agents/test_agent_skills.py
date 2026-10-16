@@ -1,4 +1,5 @@
 import asyncio
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -33,7 +34,9 @@ def make_sprint(tmp_path: Path) -> Sprint:
 
 class AgentSkillTests(unittest.TestCase):
     def setUp(self):
-        self.tmp_path = Path.cwd()
+        tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp_dir.cleanup)
+        self.tmp_path = Path(tmp_dir.name)
 
     def test_explorer_uses_debugging_skill_for_read_only_investigation(self):
         agent = explorer.make_explorer_agent(
@@ -119,7 +122,6 @@ class AgentSkillTests(unittest.TestCase):
                 "meow.agents.reviewer._git_review_context",
                 return_value=("context", True),
             ),
-            patch.object(Path, "mkdir"),
             patch.object(
                 Path,
                 "read_text",
