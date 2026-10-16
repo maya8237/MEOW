@@ -94,6 +94,12 @@ def is_plan_file_name(name: str) -> bool:
     return not name.endswith(("review.md", "-test.md", ".stage.md"))
 
 
+def is_review_report(path: Path, docs_dir: Path) -> bool:
+    """Runtime verdicts and their bindings, including legacy report directories."""
+    name = path.name.removesuffix(".scope.json").removesuffix(".checks.json")
+    return path.is_relative_to(docs_dir) and not is_plan_file_name(name)
+
+
 def _latest_plan_file(docs_dir: Path) -> Path:
     """The most recently modified sprint plan in docs_dir, excluding reviews.
 

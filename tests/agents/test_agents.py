@@ -619,7 +619,9 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 ReviewerAgent, "run_query", new_callable=AsyncMock
             ) as run_query,
-            patch.object(Path, "read_text", return_value=verdict) as read_text,
+            patch(
+                "meow.agents.reviewer._read_review_file", return_value=verdict
+            ) as read_text,
             patch(
                 "meow.agents.reviewer.new_review_filename",
                 return_value="prompt.00000000.review.md",
@@ -631,7 +633,7 @@ class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual((status, received_verdict), ("FAIL", verdict))
         git_context.assert_called_once_with(self.context)
-        read_text.assert_called_once_with(encoding="utf-8")
+        read_text.assert_called_once_with(review_file)
         prompt, options, role = run_query.await_args.args
         self.assertIn("Review the prompt: Ship the feature\n\ngit context", prompt)
         self.assertIn("Harness lint evidence", prompt)

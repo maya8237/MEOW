@@ -45,6 +45,26 @@ branch out locally first). Resuming from a review file always fixes (there's no
 
 ## Native mode
 
+For a whole-project request (including "from scratch", "from zero", or "from 0"),
+use the prompt source with `--scope project`, even when a plan or dirty diff
+exists. Inspect every area in the code-owned inventory and include the grounded
+`COVERAGE:` records requested by the generated prompt. `native verdict` rejects
+missing or stale coverage.
+
+Every local review must run `meow native review-checks --background` with the
+same `--work-dir` and `--active-dir` as the reviewer. Inspect
+`meow native review-checks --status` until the durable job finishes, then use
+`meow native verdict <review_file>` to validate the report. Required tests and
+builds block PASS alongside required lint. The JSON supplies durable log/result
+paths. After source/config edits, rerun checks and generate a fresh review
+prompt. Remote reviews remain report-only against the supplied diff.
+
+Pass `--host codex` in Codex (or the actual host name elsewhere) to every
+`native prompt` call. If exact supported model IDs are known, repeat
+`--available-model ID` for each. Dispatch using the returned `model` only when
+non-null; null means inherit the host model. Surface `model_fallback_reason`
+when present. Never invent mappings between providers' model names.
+
 1. Pick source and mode as above. The project uses `.meow/config.toml` at
    its root.
 2. Resolve the working directory and, for jira/gitlab/github, fetch the source
@@ -135,7 +155,9 @@ branch out locally first). Resuming from a review file always fixes (there's no
    Report PASS, or, if exhausted, the review file's path and remaining
    findings.
 5. **Resuming a review file** (always fixes): read it (`meow native
-   verdict <review_file>`); if it already says PASS, report that and stop.
+   verdict <review_file>`). Before accepting PASS, run current required
+   checks. For an old report without verification/coverage bindings, generate
+   a fresh reviewer prompt and review the current checkout first.
    Anchor the counter on the plan file (plan flavor: the review file's
    name without `-review`) or the review file itself (prompt flavor);
    `round <anchor> --reset`, then `round <anchor>` once -- the existing
@@ -155,6 +177,7 @@ sources. Without `--test`, keep the native flow above.
 
 ```bash
 meow review "<prompt>" --work-dir "<project-path>"              # prompt source, report-only
+meow review --scope project --fix --work-dir "<project-path>"  # review and fix every repository area
 meow review --fix "<prompt>" --work-dir "<project-path>"        # prompt source, loop to max_rounds
 meow review --jira [KEY] [--fix] --work-dir "<project-path>"
 meow review --gitlab "<mr-url>" --work-dir "<project-path>"     # always report-only

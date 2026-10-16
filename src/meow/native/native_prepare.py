@@ -190,6 +190,14 @@ def verdict(review_file: Path) -> dict:
             "summary": f"reviewer wrote no verdict file: {review_file}",
         }
     text = review_file.read_text(encoding="utf-8")
+    from meow.agents.reviewer import force_fail
+    from meow.native.native_review import review_check_errors
+    from meow.project.review_scope import coverage_errors
+
+    errors = coverage_errors(review_file, text) + review_check_errors(review_file)
+    if errors:
+        text = force_fail(text, "Review completion gates:\n" + "\n".join(errors))
+        review_file.write_text(text, encoding="utf-8")
     summary = next(
         (
             line.strip().removeprefix("SUMMARY:").strip()
@@ -198,4 +206,7 @@ def verdict(review_file: Path) -> dict:
         ),
         None,
     )
-    return {"status": _verdict_status(text), "summary": summary}
+    result = {"status": _verdict_status(text), "summary": summary}
+    if errors:
+        result["gate_errors"] = errors
+    return result

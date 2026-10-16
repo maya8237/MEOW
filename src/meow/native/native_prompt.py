@@ -2,6 +2,7 @@
 SDK role would use, for a Task subagent to run with."""
 
 import asyncio
+from collections.abc import Sequence
 from pathlib import Path
 
 from meow.agents.base import Agent, ProjectContext
@@ -15,6 +16,8 @@ from meow.agents.reviewer import (
     remote_review_query,
 )
 from meow.infrastructure.lint import check_lint_evidence
+from meow.native.native_models import resolve_native_model
+from meow.native.native_review import bind_review_checks
 from meow.project.config import config_root, load_config
 from meow.project.plan_files import new_review_filename, plan_review_file
 from meow.project.prompts import (
@@ -28,6 +31,7 @@ from meow.project.prompts import (
     remote_review_prompt,
     review_fixer_prompt,
 )
+from meow.project.review_scope import prepare_scope, scope_instructions
 from meow.project.shaping import ShapeContext, load_shape_artifact
 
 
@@ -93,6 +97,15 @@ def _prompt_review(context: ProjectContext, basis: str | None) -> dict:
     review_dir = context.active_working_dir() / docs_dir
     review_file = review_dir / new_review_filename("prompt")
     git_context, has_diff = _git_review_context(context)
+    scope = prepare_scope(
+        review_file,
+        context.active_working_dir(),
+        docs_dir,
+        basis,
+        has_diff,
+        context.config.get("_review_scope", "auto"),
+    )
+    contract = scope_instructions(scope)
     text = prompt_review_prompt(
         (basis or "").strip(),
         review_file,
@@ -109,7 +122,12 @@ def _prompt_review(context: ProjectContext, basis: str | None) -> dict:
         docs_dir=docs_dir,
         lint_report=_lint_report(context),
     )
-    return {"system_prompt": text, "query": query, "review_file": str(review_file)}
+    return {
+        "system_prompt": text + contract,
+        "query": query + contract,
+        "review_file": str(review_file),
+        "scope": scope["mode"],
+    }
 
 
 def _mr_review(context: ProjectContext, provider: str) -> dict:
@@ -199,7 +217,7 @@ def _reviewer_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-ar
     return _branch_review(context, target, branch)
 
 
-def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native prompt` flags one to one
+def role_prompt(  # ruff: ignore[too-many-arguments, too-many-statements] -- mirrors native flags and role metadata
     working_dir: Path,
     active_dir: Path,
     role: str,
@@ -211,13 +229,23 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
     branch: str | None = None,
     remote_provider: str = "gitlab",
     shape_path: Path | None = None,
+    host: str | None = None,
+    available_models: Sequence[str] | None = None,
+    scope: str = "auto",
 ) -> dict:
     """The exact system prompt (and task message, where there is one) the SDK
     agent for `role` would use, so a Task subagent launched with it behaves
     like the SDK role."""
     if role not in PROMPT_ROLES:
         raise ValueError(f"role must be one of {PROMPT_ROLES}, got {role!r}")
+    if scope not in {"auto", "project", "diff"} or (
+        scope != "auto" and role != "reviewer-prompt"
+    ):
+        raise ValueError(
+            "--scope requires reviewer-prompt and must be auto, project, or diff"
+        )
     config = load_config(config_root(working_dir, active_dir))
+    config["_review_scope"] = scope
     context = ProjectContext(active_dir, config, use_worktree=use_worktree)
     shape_context = _load_shape_context(shape_path)
     if role.startswith("reviewer-"):
@@ -233,12 +261,32 @@ def role_prompt(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native
         )
     else:
         result = _simple_prompt(role, context, plan_file, shape_context)
+    if role.startswith("reviewer-") and role != "reviewer-mr":
+        result["verification"] = bind_review_checks(
+            Path(result["review_file"]),
+            working_dir,
+            active_dir,
+            project_scope=result.get("scope") == "project",
+        )
+        result["query"] += (
+            "\n\nCompletion requires current configured lint, test, and build checks. "
+            "Run `meow native review-checks --background` for this active directory, "
+            "inspect `review-checks --status`, then use `meow native verdict` "
+            "to validate this report. Missing, running, failed, interrupted, "
+            "or stale checks block PASS."
+        )
     model_role = role.split("-", 1)[0] if role.startswith("reviewer-") else role
     # Same lookup (and reviewer fallback) as the SDK role.
     model_role = model_role.replace("-", "_")
     base = Agent(context)
     agent = base.definition(model_role.replace("_", "-"))
-    result["model"] = context.model(model_role, agent)
+    result.update(
+        resolve_native_model(
+            context.model(model_role, agent),
+            host=host,
+            available_models=available_models,
+        )
+    )
     tools = list(agent.tools or ())
     if role == "reviewer-mr":
         tools = [tool for tool in tools if tool in {"Read", "Grep", "Glob", "Write"}]

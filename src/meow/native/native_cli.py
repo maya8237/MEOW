@@ -174,6 +174,16 @@ def _add_prompt(sub) -> None:
     parser = sub.add_parser("prompt", help="Print a role's system prompt as JSON.")
     _add_dirs(parser)
     parser.add_argument("role", choices=native.PROMPT_ROLES)
+    parser.add_argument("--scope", choices=("auto", "project", "diff"), default="auto")
+    parser.add_argument(
+        "--host", default=None, help="Native host, e.g. claude or codex."
+    )
+    parser.add_argument(
+        "--available-model",
+        action="append",
+        default=None,
+        help="Exact supported model ID; repeat for each available model.",
+    )
     parser.add_argument("--plan", default=None, help="Sprint plan file.")
     parser.add_argument(
         "--focus",
@@ -345,7 +355,7 @@ def _add_orchestrate(sub) -> None:
     _add_orchestrate_options(commands)
 
 
-def add_native_parser(
+def add_native_parser(  # ruff: ignore[too-many-statements] -- register independent helper parsers
     subparsers: argparse._SubParsersAction,
     *,
     help: str | None = None,
@@ -368,6 +378,13 @@ def add_native_parser(
     _add_round(sub)
     _add_checkpoint(sub)
     _add_prompt(sub)
+    checks = sub.add_parser(
+        "review-checks", help="Run or inspect durable local review verification."
+    )
+    _add_dirs(checks)
+    check_mode = checks.add_mutually_exclusive_group()
+    check_mode.add_argument("--background", action="store_true")
+    check_mode.add_argument("--status", action="store_true")
     _add_push(sub)
     _add_knowledge(sub)
     _add_onboard(sub)
@@ -433,6 +450,13 @@ def _checkpoint(args, working_dir: Path, active: Path) -> dict:
 
 
 def _prompt(args, working_dir: Path, active: Path) -> dict:
+    options = {}
+    if args.scope != "auto":
+        options["scope"] = args.scope
+    if args.host is not None:
+        options["host"] = args.host
+    if args.available_model is not None:
+        options["available_models"] = args.available_model
     return native.role_prompt(
         working_dir,
         active,
@@ -444,6 +468,15 @@ def _prompt(args, working_dir: Path, active: Path) -> dict:
         branch=args.branch,
         remote_provider=args.remote_provider,
         shape_path=_resolve(args.shape, active),
+        **options,
+    )
+
+
+def _review_checks(args, working_dir: Path, active: Path) -> dict:
+    from meow.native.native_review import review_checks
+
+    return review_checks(
+        working_dir, active, background=args.background, status=args.status
     )
 
 
@@ -513,6 +546,7 @@ _HANDLERS = {
         native.finalize(wd, active, args.run_id)
     ),
     "prompt": _prompt,
+    "review-checks": _review_checks,
     "push": lambda args, wd, active: native.push(active, args.branch),
     "knowledge-audit": lambda args, wd, active: native.knowledge_audit(active),
     "knowledge-check": lambda args, wd, active: native.knowledge_check(active),

@@ -16,7 +16,7 @@ from meow.agents.base import (
     _looks_like_a_crash,
     log_stream_message,
 )
-from meow.infrastructure.lint import LintGateEvidence, check_lint_evidence
+from meow.infrastructure.lint import LintGateEvidence
 from meow.infrastructure.logging import get_logger
 from meow.project.plan_files import new_review_filename, plan_review_file
 from meow.project.prompts import (
@@ -27,6 +27,7 @@ from meow.project.prompts import (
     prompt_review_prompt,
     remote_review_prompt,
 )
+from meow.project.review_scope import coverage_errors, prepare_scope, scope_instructions
 
 if TYPE_CHECKING:
     from meow.integrations.ci_review import CiReviewContext
@@ -358,11 +359,13 @@ class ReviewerAgent(Agent):
         statuses = re.findall(r"^STATUS: (PASS|FAIL)\s*$", response, re.MULTILINE)
         return (statuses[0] if len(statuses) == 1 else "UNVERIFIED", response)
 
-    async def _lint_evidence(self) -> LintGateEvidence:
-        return await check_lint_evidence(
+    async def _lint_evidence(self, *, retry_failed=True) -> LintGateEvidence:
+        from meow.infrastructure.review_verification import review_evidence
+
+        return await review_evidence(
             self.context.active_working_dir(),
-            self.context.lint_commands(),
-            self.context.config.get("lint_timeout", 60),
+            self.context.config,
+            retry_failed=retry_failed,
         )
 
     @staticmethod
@@ -381,7 +384,7 @@ class ReviewerAgent(Agent):
             return status, f"{verdict}\n\n{evidence.report()}"
         return status, verdict
 
-    async def review_prompt(self, prompt: str | None) -> tuple[str, str]:
+    async def review_prompt(self, prompt: str | None) -> tuple[str, str]:  # ruff: ignore[too-many-statements] -- prepare, execute, and validate one review
         """Grade the working tree against a free-text prompt, or the git diff."""
         review_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
         review_dir.mkdir(parents=True, exist_ok=True)
@@ -390,6 +393,15 @@ class ReviewerAgent(Agent):
         review_basis = (prompt or "").strip()
         docs_dir = self.context.config["docs_dir"]
         git_context, has_diff = _git_review_context(self.context)
+        review_scope = prepare_scope(
+            review_file,
+            self.context.active_working_dir(),
+            docs_dir,
+            review_basis,
+            has_diff,
+            self.context.config.get("_review_scope", "auto"),
+        )
+        scope_contract = scope_instructions(review_scope)
         lint_evidence = await self._lint_evidence()
         agent = self.definition("reviewer")
         options = self.definition_options(
@@ -402,19 +414,33 @@ class ReviewerAgent(Agent):
                 docs_dir=docs_dir,
                 check_worktree_hygiene=self.context.use_worktree,
                 agent=agent,
-            ),
+            )
+            + scope_contract,
         )
-        query_prompt = prompt_review_query(
-            review_basis,
-            git_context,
-            has_diff=has_diff,
-            docs_dir=docs_dir,
-            lint_report=lint_evidence.report(),
+        query_prompt = (
+            prompt_review_query(
+                review_basis,
+                git_context,
+                has_diff=has_diff,
+                docs_dir=docs_dir,
+                lint_report=lint_evidence.report(),
+            )
+            + scope_contract
         )
         await self.run_definition_query(agent, query_prompt, options, "Reviewer")
         verdict_text = await self._read_verdict(review_file, agent, options)
+        if review_scope:
+            errors = coverage_errors(review_file, verdict_text, required=True)
+            if errors:
+                verdict_text = force_fail(
+                    verdict_text, "Coverage gate:\n" + "\n".join(errors)
+                )
+                review_file.write_text(verdict_text, encoding="utf-8")
         return self._apply_lint_gate(
-            _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
+            _verdict_status(verdict_text),
+            verdict_text,
+            await self._lint_evidence(retry_failed=False),
+            review_file,
         )
 
     async def review_remote_change(
@@ -497,7 +523,10 @@ class ReviewerAgent(Agent):
         await self.run_definition_query(agent, query_prompt, options, "Reviewer")
         verdict_text = await self._read_verdict(review_file, agent, options)
         return self._apply_lint_gate(
-            _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
+            _verdict_status(verdict_text),
+            verdict_text,
+            await self._lint_evidence(retry_failed=False),
+            review_file,
         )
 
     async def review_plan(
@@ -543,5 +572,8 @@ class ReviewerAgent(Agent):
         )
         verdict_text = await self._read_verdict(review_file, agent, options)
         return self._apply_lint_gate(
-            _verdict_status(verdict_text), verdict_text, lint_evidence, review_file
+            _verdict_status(verdict_text),
+            verdict_text,
+            await self._lint_evidence(retry_failed=False),
+            review_file,
         )

@@ -10,7 +10,7 @@ fix loop with a re-diffing re-review) and remote (`--gitlab`/`--github`,
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
-from meow.agents.reviewer import ReviewerAgent, _verdict_status
+from meow.agents.reviewer import ReviewerAgent, _verdict_status, force_fail
 from meow.execution.orchestrator import (
     _run_prompt_fix_rounds,
     _run_review_rounds,
@@ -37,6 +37,7 @@ from meow.project.plan_files import (
     _latest_plan_file,
     reviewed_plan_file,
 )
+from meow.project.review_scope import coverage_errors, saved_scope_mode
 
 logger = get_logger(__name__)
 
@@ -280,6 +281,21 @@ _UNRESUMABLE_FLAVOR_MESSAGES = {
 }
 
 
+async def _validated_saved_verdict(context: ProjectContext, review_file: Path):
+    """A saved PASS must satisfy the same current gates as a fresh review."""
+    review_text = review_file.read_text(encoding="utf-8")
+    coverage = coverage_errors(review_file, review_text)
+    if coverage:
+        review_text = force_fail(review_text, "Coverage gate:\n" + "\n".join(coverage))
+        review_file.write_text(review_text, encoding="utf-8")
+    return ReviewerAgent._apply_lint_gate(
+        _verdict_status(review_text),
+        review_text,
+        await ReviewerAgent(context)._lint_evidence(),
+        review_file,
+    )
+
+
 async def _resume_review_file(
     working_dir: Path, config: dict, prompt: str | None, review_file: Path
 ) -> None:
@@ -287,9 +303,15 @@ async def _resume_review_file(
     if flavor in _UNRESUMABLE_FLAVOR_MESSAGES:
         message = _UNRESUMABLE_FLAVOR_MESSAGES[flavor].format(file=review_file)
         raise RuntimeError(message)
-
-    review_text = review_file.read_text(encoding="utf-8")
-    initial_verdict = (_verdict_status(review_text), review_text)
+    config["_review_scope"] = saved_scope_mode(review_file)
+    context = ProjectContext(working_dir, config)
+    text = review_file.read_text(encoding="utf-8")
+    refresh = bool(coverage_errors(review_file, text)) or (
+        config["_review_scope"] == "auto" and _verdict_status(text) == "PASS"
+    )
+    initial_verdict = (
+        None if refresh else await _validated_saved_verdict(context, review_file)
+    )
 
     if flavor == "plan":
         plan_file = reviewed_plan_file(review_file)
@@ -303,7 +325,8 @@ async def _resume_review_file(
             sprint, plan_file, initial_verdict=initial_verdict, focus=prompt
         )
     else:
-        context = ProjectContext(working_dir, config)
+        if initial_verdict is None:
+            initial_verdict = await ReviewerAgent(context).review_prompt(prompt)
         passed = await _run_prompt_fix_rounds(
             context,
             initial_verdict,
@@ -327,6 +350,7 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
     review_file: Path | None = None,
     use_worktree: bool = True,
     test: bool = False,
+    scope: str = "auto",
 ) -> None:
     """`meow review`'s dispatcher. Exactly one of `jira_key`,
     `gitlab_link`, `github_link`, `branch`(+`target`), `plan_file`, or
@@ -340,6 +364,13 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
     `fix=True` outright: there is no local checkout of a remote request to
     fix.
     """
+    if scope not in {"auto", "project", "diff"}:
+        raise ValueError("--scope must be auto, project, or diff")
+    if scope != "auto" and any(
+        value is not None
+        for value in (plan_file, review_file, gitlab_link, github_link, branch)
+    ):
+        raise ValueError("--scope requires a prompt or Jira review source")
     _validate_review_flags(
         prompt,
         jira_key,
@@ -388,6 +419,7 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
         # Keep lightweight in-memory configs accepted by integrations and tests.
         config.setdefault("docs_dir", DEFAULT_CONFIG["docs_dir"])
         config.setdefault("max_rounds", DEFAULT_CONFIG["max_rounds"])
+        config["_review_scope"] = scope
         if store and record:
             config["_run_journal"] = (store, record.id)
         describe_lint_plan(config["lint"])
@@ -405,6 +437,8 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
         elif jira_key is not None:
             jira_prompt = await _jira_review_prompt(working_dir, config, jira_key)
             await _prompt_review(working_dir, config, jira_prompt, fix=fix)
+        elif scope != "auto":
+            await _prompt_review(working_dir, config, prompt, fix=fix)
         else:
             await _plan_or_prompt_review(
                 working_dir,
