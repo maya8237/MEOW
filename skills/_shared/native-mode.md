@@ -1,5 +1,20 @@
 # Native mode: shared protocol
 
+Other agent hosts can use the same helpers. In Codex, pass `--host codex` to
+`meow native prompt`; repeat `--available-model ID` only for exact supported
+IDs. Returned `model: null` means inherit the host model. `configured_model`
+preserves the SDK setting; `model_fallback_reason` explains a fallback.
+Default callers retain Claude behavior. Use the host's subagent API when its
+tool names differ from Claude Code's Task tool.
+
+Local reviews expose `meow native review-checks` (foreground),
+`review-checks --background` (detached worker), and `review-checks --status`
+(read-only evidence). Pass the same directory flags as `prompt`. Required
+lint/test/build checks and project coverage are enforced by `native verdict`;
+a model-authored PASS alone cannot finish a newly prepared local review.
+Logs and atomic results live under `.meow/review-checks/`. Preserve the scope
+and verification sidecars alongside their review report.
+
 The workflow skills `plan`, `review`, `lint`, and `orchestrate` use **native
 mode** by default when invoked inside Claude Code: *you* (this session) do the
 planning, generation, fixes, or supervision, and you dispatch reviewer/explorer

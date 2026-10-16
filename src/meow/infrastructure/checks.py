@@ -349,14 +349,16 @@ def run_check(
     )
 
 
-def checks_current(
+def checks_current(  # ruff: ignore[too-many-arguments] -- optional explicit fingerprint supports in-memory review config
     results: list[CheckResult],
     checks: list[Check],
     repo: Path,
     revision: str | None = None,
+    *,
+    fingerprint: str | None = None,
 ) -> bool:
     revision = revision or code_revision(repo)
-    fingerprint = config_fingerprint(repo)
+    fingerprint = fingerprint or config_fingerprint(repo)
     for check in checks:
         identity = check_identity(check)
         matches = [r for r in results if r.identity == identity]
@@ -389,7 +391,9 @@ def completion_ready(  # ruff: ignore[too-many-arguments, too-many-positional-ar
     ) and checks_current(results, checks, repo, revision)
 
 
-async def run_final_checks(repo: Path, config: dict) -> list[CheckResult]:
+async def run_final_checks(
+    repo: Path, config: dict, *, fingerprint: str | None = None
+) -> list[CheckResult]:
     """Run current gates after the last edit, reusing the managed test stage.
 
     A batch that edits existing source is re-run (its results describe code that
@@ -400,27 +404,28 @@ async def run_final_checks(repo: Path, config: dict) -> list[CheckResult]:
     checks = configured_checks(config)
     for _attempt in range(3):
         baseline = await asyncio.to_thread(stage_baseline, repo)
-        results = await _run_check_batch(repo, config, checks)
+        results = await _run_check_batch(repo, config, checks, fingerprint=fingerprint)
         revision = await asyncio.to_thread(code_revision, repo)
-        fingerprint = config_fingerprint(repo)
+        current_fingerprint = fingerprint or config_fingerprint(repo)
         if all(
-            result.revision == revision and result.config_fingerprint == fingerprint
+            result.revision == revision
+            and result.config_fingerprint == current_fingerprint
             for result in results
         ):
             return results
         if await asyncio.to_thread(_stage_source_unchanged, repo, baseline) and all(
-            r.config_fingerprint == fingerprint for r in results
+            r.config_fingerprint == current_fingerprint for r in results
         ):
             return [replace(result, revision=revision) for result in results]
     return results
 
 
 async def _run_check_batch(  # ruff: ignore[complex-structure, too-many-branches]
-    repo: Path, config: dict, checks: list[Check]
+    repo: Path, config: dict, checks: list[Check], *, fingerprint: str | None = None
 ) -> list[CheckResult]:
     results = []
     revision = await asyncio.to_thread(code_revision, repo)
-    fingerprint = config_fingerprint(repo)
+    fingerprint = fingerprint or config_fingerprint(repo)
     for check in checks:
         if check.kind not in {"test", "browser"}:
             results.append(

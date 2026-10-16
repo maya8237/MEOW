@@ -99,6 +99,8 @@ def _dispatch_review(args, working_dir: Path) -> None:
             review_kwargs["github_link"] = args.github
         if args.test:
             review_kwargs["test"] = True
+        if args.scope != "auto":
+            review_kwargs["scope"] = args.scope
         asyncio.run(run_review_command(working_dir, args.request, **review_kwargs))
     except ValueError as exc:
         print(f"\n{exc}", file=sys.stderr)

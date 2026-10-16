@@ -434,6 +434,15 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     review_parser.add_argument(
+        "--scope",
+        choices=("auto", "project", "diff"),
+        default="auto",
+        help=(
+            "Prompt/Jira scope; project inventories every code area "
+            "and skips plan discovery."
+        ),
+    )
+    review_parser.add_argument(
         "--ci",
         action="store_true",
         help="Review the exact GitLab pipeline checkout and emit CI artifacts.",

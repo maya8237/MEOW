@@ -12,4 +12,5 @@ gate = true
 [tester]
 [[tester.tests]]
 command = "python -m pytest -q"
+timeout = 1800
 gate = true

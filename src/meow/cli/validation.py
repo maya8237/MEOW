@@ -130,6 +130,7 @@ def _validate_ci_flags(parser: argparse.ArgumentParser, args) -> None:
             ("--review-file", args.review_file),
             ("--no-worktree", args.no_worktree),
             ("--test", args.test),
+            ("--scope", args.scope != "auto"),
         )
         if active
     ]
