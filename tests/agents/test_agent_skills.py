@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 from meow.agents import explorer, generator, planner
 from meow.agents.base import ProjectContext
 from meow.execution.sprint import Sprint
+from meow.infrastructure.lint import LintGateEvidence
 
 
 def make_sprint(tmp_path: Path) -> Sprint:
@@ -109,6 +110,11 @@ class AgentSkillTests(unittest.TestCase):
                 "run_query",
                 new_callable=AsyncMock,
             ) as run_query,
+            patch.object(
+                reviewer.ReviewerAgent,
+                "_lint_evidence",
+                new=AsyncMock(return_value=LintGateEvidence()),
+            ),
             patch(
                 "meow.agents.reviewer._git_review_context",
                 return_value=("context", True),
