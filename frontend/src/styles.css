@@ -1169,7 +1169,6 @@ h3 svg {
 .output-error {
   color: #ffb7bc;
 }
-.session-recipe,
 .linked-run-stack {
   grid-area: side;
   align-self: start;

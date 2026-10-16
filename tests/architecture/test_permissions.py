@@ -160,3 +160,32 @@ def test_agent_options_attach_policy_only_when_configured(tmp_path):
     # An allowed_tools entry would auto-approve Write before the callback runs.
     assert options.allowed_tools == ["Read"]
     assert asyncio.run(callback("Write", {"file_path": "x"}, None)).behavior == "deny"
+
+
+@pytest.mark.parametrize("action", ["deny", "ask"])
+def test_mcp_wildcard_does_not_bypass_explicit_policy(tmp_path, action):
+    config = {
+        "models": {"github_fetcher": None},
+        "lint": [],
+        "permissions": parse_policy({
+            "rule": [
+                {
+                    "role": "github_fetcher",
+                    "tool": "mcp__github__create_issue",
+                    "action": action,
+                }
+            ]
+        }),
+    }
+    options = Agent(ProjectContext(tmp_path, config)).options(
+        system_prompt="x",
+        allowed_tools=["Read", "mcp__github__*"],
+        role="github_fetcher",
+    )
+
+    assert options.allowed_tools == ["Read"]
+    denied = asyncio.run(options.can_use_tool("mcp__github__create_issue", {}, None))
+    assert denied.behavior == "deny"
+    assert denied.interrupt is (action == "ask")
+    allowed = asyncio.run(options.can_use_tool("mcp__github__get_issue", {}, None))
+    assert allowed.behavior == "allow"

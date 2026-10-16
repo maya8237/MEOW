@@ -9,7 +9,13 @@ import pytest
 
 from meow.execution.run_state import RunStore
 from meow.execution.workflow.builtin_steps import checks
-from meow.infrastructure.checks import Check, code_revision
+from meow.infrastructure.checks import (
+    Check,
+    adopt_stage_artifacts,
+    code_revision,
+    run_final_checks,
+    stage_baseline,
+)
 from meow.project.config import load_config
 
 
@@ -61,6 +67,66 @@ def test_check_that_edits_reviewed_source_still_invalidates_the_review(tmp_path)
     state, _, _ = _state(tmp_path, "open('source.py', 'w').write('x = 2\\n')")
     with pytest.raises(RuntimeError, match="evidence"):
         asyncio.run(checks(state))
+
+
+@pytest.mark.parametrize("action", ["edit", "delete"])
+def test_existing_untracked_source_changes_invalidate_review(tmp_path, action):
+    _, store, run_id = _state(tmp_path, "pass")
+    source = tmp_path / "feature.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    reviewed = code_revision(tmp_path)
+    store.update_results(run_id, reviewer_revision=reviewed)
+    baseline = stage_baseline(tmp_path)
+    if action == "delete":
+        source.unlink()
+    else:
+        source.write_text("x = 2\n", encoding="utf-8")
+
+    adopt_stage_artifacts(store, run_id, tmp_path, baseline)
+
+    assert store.load(run_id).results["reviewer_revision"] == reviewed
+    assert code_revision(tmp_path) != reviewed
+
+
+def test_checks_rerun_after_editing_existing_untracked_source(tmp_path):
+    code = (
+        "from pathlib import Path; p=Path('feature.py'); "
+        "s=p.read_text(); p.write_text('x = 2\\n'); "
+        "raise SystemExit(0 if s == 'x = 1\\n' else 1)"
+    )
+    state, _, _ = _state(tmp_path, code)
+    (tmp_path / "feature.py").write_text("x = 1\n", encoding="utf-8")
+
+    results = asyncio.run(run_final_checks(tmp_path, state.sprint.config))
+
+    assert not results[0].passed
+
+
+@pytest.mark.parametrize("action", ["add", "edit", "delete"])
+def test_shared_meow_definitions_change_code_revision(tmp_path, action):
+    _git(tmp_path, "init", "-q")
+    path = tmp_path / ".meow" / "skills" / "demo" / "SKILL.md"
+    path.parent.mkdir(parents=True)
+    if action != "add":
+        path.write_text("before", encoding="utf-8")
+        _git(tmp_path, "add", "-A")
+    before = code_revision(tmp_path)
+    if action == "delete":
+        path.unlink()
+    else:
+        path.write_text("after", encoding="utf-8")
+
+    assert code_revision(tmp_path) != before
+
+
+def test_meow_runtime_writes_do_not_change_code_revision(tmp_path):
+    _git(tmp_path, "init", "-q")
+    before = code_revision(tmp_path)
+    path = tmp_path / ".meow" / "runs" / "run.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{}", encoding="utf-8")
+
+    assert code_revision(tmp_path) == before
 
 
 def test_cache_directories_do_not_change_the_code_revision(tmp_path):

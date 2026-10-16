@@ -89,7 +89,8 @@ def test_real_worker_survives_launcher_and_reports_failure(tmp_path):
         ["run", "feature", "--name", "x", "--unattended", "--background"],
     )
     store = RunStore(tmp_path)
-    deadline = time.monotonic() + 10
+    # Cold Windows startup can exceed ten seconds on a busy machine.
+    deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if store.load(run_id).phase == "failed":
             break
