@@ -263,7 +263,6 @@
             }
             return [Version]::Parse($stdout.Result.Split([char]10)[0].Trim())
         } catch {
-            Write-Warning "$Executable $($Arguments -join ' ') failed the Python health check ($($_.Exception.Message); Python 3.12+ and pip required). Trying another interpreter."
             return $false
         } finally {
             $process.Dispose()
@@ -282,12 +281,17 @@
 
     function Select-Python {
         $best = $null
+        $skipped = @()
         foreach ($candidate in Get-PythonCandidates) {
             $version = Test-Python312 -Executable $candidate.Executable -Arguments $candidate.Arguments
+            if (-not $version) { $skipped += $candidate.Executable }
             if ($version -and (($null -eq $best) -or ($version -gt $best.Version))) {
                 $candidate.Version = $version
                 $best = $candidate
             }
+        }
+        if ($skipped.Count -gt 0) {
+            Write-Warning "Skipped $($skipped.Count) unusable Python candidate(s) (Python 3.12+ and pip required): $($skipped -join ', ')"
         }
         if ($null -ne $best) { return $best }
         throw "No working Python 3.12+ interpreter with pip found. Install or repair Python and run this installer again."
@@ -297,7 +301,6 @@
         $distributionQuery = "import os, importlib.metadata as m; print(os.path.normcase(os.path.realpath(m.distribution('meow').locate_file(''))))"
         foreach ($candidate in Get-PythonCandidates) {
             if (-not (Test-Python312 -Executable $candidate.Executable -Arguments $candidate.Arguments)) {
-                Write-Warning "Cannot inspect or uninstall previous MEOW from broken Python: $($candidate.Executable)"
                 continue
             }
             try {
