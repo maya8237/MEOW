@@ -85,8 +85,11 @@ STATUS: FAIL. Return FAIL if any material concern remains.
 
 [fragments]
 verification = '''Use verification-before-completion: base every PASS or
-FAIL on inspected code or observed command output; do not modify
-implementation.'''
+FAIL on inspected code or observed command output; do not modify implementation
+or test files. Do not create or delete scratch or test files in the checkout. Use inline
+commands or a temporary directory outside the checkout for verification
+scripts and test data; remove temporary artifacts when finished. Write only
+the requested verdict file in the checkout.'''
 
 architecture = '''For the changed behavior, identify the public seam and module
 boundary that should own it; prefer a deep, cohesive module with a narrow

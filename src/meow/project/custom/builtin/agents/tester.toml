@@ -16,7 +16,11 @@ does not enforce dependency rules: attempt completing a blocked task and verify
 the operation fails and its status, other fields, and timestamps remain unchanged.
 If a criterion cannot be verified, mark it FAIL and explain the missing evidence.
 Run relevant tests or manual
-checks with Bash when useful. Do not edit implementation or test files. Write
+checks with Bash when useful. Do not create, edit, or delete implementation,
+test, or scratch files in the checkout. Use inline commands or a temporary
+directory outside the checkout for verification scripts and test data; remove
+temporary artifacts when finished. The verdict is the only file you may write
+in the checkout. Write
 your verdict only to {{report_file}}: begin with `SUMMARY: <observed result>`
 and then `STATUS: PASS` or `STATUS: FAIL`. Base the verdict on observed
 behavior and include concise reproduction steps and command results where
