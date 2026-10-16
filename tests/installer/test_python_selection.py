@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import sys
+import venv
 from pathlib import Path
 
 import pytest
@@ -68,9 +69,7 @@ def test_powershell_removes_old_install_before_installing_new_python(tmp_path):
         "old -m pip uninstall -y meow",
         f"new -m pip install -e {tmp_path / 'checkout with spaces'}",
     ]
-    assert (
-        "Cannot inspect or uninstall previous MEOW from broken Python" in result.stdout
-    )
+    assert "broken Python" not in result.stdout
 
 
 @pytest.mark.parametrize("broken", ["crash", "hang", "all"])
@@ -253,3 +252,115 @@ def test_powershell_selects_highest_healthy_version(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "3.15.1"
+
+
+def test_posix_warns_once_across_discovery_selection_and_cleanup(tmp_path):
+    bash = (
+        "C:/Program Files/Git/bin/bash.exe" if os.name == "nt" else shutil.which("bash")
+    )
+    source = (ROOT / "scripts/install.sh").read_text(encoding="utf-8")
+    functions = source[
+        source.index("is_supported_python()") : source.index("# Prints how")
+    ]
+    wrapper = tmp_path / "warnings.sh"
+    wrapper.write_text(
+        "python_probe_timeout=1\npython_candidates='broken good'\n"
+        "broken() { return 1; }\n"
+        "good() { case \"$*\" in *runpy.run_module*) printf '3.14.0\\n';; "
+        "*) return 1;; esac; }\n"
+        + functions
+        + "\npython_paths() { printf 'broken\\ngood\\n'; }\n"
+        "find_existing_checkout || true\nselect_python\nremove_previous_meow\n"
+    )
+    result = subprocess.run(
+        [bash, str(wrapper)], capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "good"
+    assert result.stderr.count("Warning:") == 1, result.stderr
+    assert "broken" in result.stderr
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Python subprocesses")
+def test_powershell_warns_once_across_discovery_selection_and_cleanup(tmp_path):
+    source = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
+    functions = "\n".join(
+        re.search(rf"    function {name} \{{.*?^    \}}", source, re.M | re.S).group()
+        for name in (
+            "Test-Python312",
+            "Select-Python",
+            "Find-ExistingMeowCheckout",
+            "Remove-PreviousMeow",
+        )
+    )
+    fake = tmp_path / "probe.py"
+    fake.write_text(
+        "import sys\n"
+        "if sys.argv[1] == 'good' and 'runpy.run_module' in sys.argv[-1]:\n"
+        "    print('3.14.0'); sys.exit(0)\n"
+        "sys.exit(1)\n"
+    )
+    wrapper = tmp_path / "warnings.ps1"
+    wrapper.write_text(
+        "$ErrorActionPreference='Stop'\n$pythonProbeTimeoutMs=1000\n"
+        + functions
+        + "\nfunction Get-PythonCandidates { return $candidates }\n"
+        "$candidates=@('broken','good') | ForEach-Object { "
+        f"@{{Executable='{sys.executable}'; Arguments=@('\"{fake}\"', $_)}} }}\n"
+        "$null=Find-ExistingMeowCheckout\n"
+        "(Select-Python).Arguments[-1]\nRemove-PreviousMeow\n"
+    )
+    result = subprocess.run(
+        [
+            shutil.which("powershell"),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(wrapper),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.count("WARNING:") == 1, result.stdout
+    assert "good" in result.stdout
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Python subprocesses")
+def test_powershell_rejects_real_interpreter_without_pip(tmp_path):
+    environment = tmp_path / "python without pip"
+    venv.create(environment, with_pip=False)
+    broken = environment / "Scripts/python.exe"
+    source = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
+    functions = "\n".join(
+        re.search(rf"    function {name} \{{.*?^    \}}", source, re.M | re.S).group()
+        for name in ("Test-Python312", "Select-Python")
+    )
+    wrapper = tmp_path / "missing-pip.ps1"
+    wrapper.write_text(
+        "$ErrorActionPreference='Stop'\n$pythonProbeTimeoutMs=10000\n"
+        + functions
+        + "\nfunction Get-PythonCandidates { "
+        f"@{{Executable='{broken}'; Arguments=@()}}; "
+        f"@{{Executable='{sys.executable}'; Arguments=@()}} }}\n"
+        "(Select-Python).Executable\n"
+    )
+    result = subprocess.run(
+        [
+            shutil.which("powershell"),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(wrapper),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().endswith(sys.executable)
+    assert result.stdout.count("WARNING:") == 1
+    assert str(broken) in result.stdout.replace("\n", "")

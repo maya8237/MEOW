@@ -1,9 +1,12 @@
+import json
 import os
 import re
 import shutil
 import stat
 import subprocess
 import sys
+import time
+import tomllib
 import venv
 from pathlib import Path
 
@@ -562,7 +565,15 @@ def test_windows_ci_installer_uses_checkout(  # ruff: ignore[too-many-statements
 
     git = shutil.which("git")
     assert git is not None, "Git is required for the Windows installer test"
-    path_parts = [str(bin_dir), str(Path(powershell).parent), str(Path(git).parent)]
+    broken_bin = tmp_path / "broken python"
+    broken_bin.mkdir()
+    (broken_bin / "python3.13.exe").write_bytes(b"invalid executable")
+    path_parts = [
+        str(broken_bin),
+        str(bin_dir),
+        str(Path(powershell).parent),
+        str(Path(git).parent),
+    ]
     system_root = os.environ.get("SYSTEMROOT")
     if system_root:
         path_parts.append(str(Path(system_root) / "System32"))
@@ -595,6 +606,10 @@ def test_windows_ci_installer_uses_checkout(  # ruff: ignore[too-many-statements
     assert "existing MEOW checkout" in output
     assert "The editable MEOW install is not on PATH." not in output
     assert "Cloning MEOW" not in output
+
+    assert output.count("WARNING: Skipped") == 1, output
+    assert "failed the Python health check" not in output
+    assert "Cannot inspect or uninstall" not in output
 
 
 def test_posix_bootstrap_installs_when_meow_is_not_on_path(tmp_path):
@@ -779,3 +794,169 @@ def test_posix_bootstrap_offers_a_reinstall_when_only_the_package_is_stale(tmp_p
     assert "-m pip install -e" in log
     assert "git pull" not in log
     assert "MEOW reinstalled." in result.stdout
+
+
+@pytest.mark.parametrize("project_kind", ["plain", "npm", "bun", "bun-missing"])
+def test_installer_onboards_real_repos_and_finishes_migration(  # ruff: ignore[too-many-statements, too-many-branches, complex-structure]
+    tmp_path, project_kind
+):
+    home, project = tmp_path / "home", tmp_path / "project with spaces"
+    home.mkdir()
+    project.mkdir()
+    subprocess.run(["git", "init", str(project)], check=True, capture_output=True)
+    if project_kind != "plain":
+        manager = "npm@10.0.0" if project_kind == "npm" else "bun@1.3.0"
+        (project / "package.json").write_text(
+            json.dumps({
+                "name": "installer-e2e",
+                "packageManager": manager,
+                "dependencies": {"local-dep": "file:./dependency"},
+            })
+        )
+        dependency = project / "dependency"
+        dependency.mkdir()
+        (dependency / "package.json").write_text(
+            '{"name":"local-dep","version":"1.0.0"}'
+        )
+    env = dict(os.environ, HOME=str(home), USERPROFILE=str(home))
+    if project_kind == "bun-missing":
+        # Keep Git available while deliberately excluding every Bun binary.
+        env["PATH"] = os.pathsep.join([
+            str(Path(sys.executable).parent),
+            str(Path(shutil.which("git")).parent),
+            os.path.join(os.environ.get("SYSTEMROOT", "/usr"), "System32")
+            if os.name == "nt"
+            else "/usr/bin:/bin",
+        ])
+    elif project_kind == "bun" and not shutil.which("bun"):
+        pytest.skip("Real Bun required for successful migration")
+    result = subprocess.run(
+        [sys.executable, "-m", "meow.installer", "--repo-dir", str(ROOT)],
+        input=f"y\ny\n{project}\n\n",
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "onboarded" in output
+    assert (project / ".meow/config.toml").is_file()
+    settings = json.loads((home / ".claude/settings.json").read_text())
+    assert settings["enabledPlugins"]["meow@meow"] is True
+    assert tomllib.loads((home / ".bunfig.toml").read_text())["install"] == {
+        "linker": "isolated",
+        "globalStore": True,
+    }
+    deadline = time.monotonic() + 30
+    migration = ""
+    while time.monotonic() < deadline:
+        migration = "\n".join(
+            path.read_text(encoding="utf-8") for path in (home / ".meow").rglob("*.log")
+        )
+        if "Bun migration finished" in migration:
+            break
+        time.sleep(0.1)
+    assert "Bun migration finished" in migration, migration
+    if project_kind == "bun":
+        assert "Bun dependency migration completed" in migration, migration
+        assert (project / "node_modules/local-dep/package.json").is_file()
+    elif project_kind == "bun-missing":
+        assert "Bun migration failed" in migration, migration
+        assert "Rerun bun install" in migration
+    else:
+        assert "Found 0 Bun dependency folders" in migration, migration
+        assert not (project / "node_modules").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows streamed installer upgrade")
+def test_streamed_windows_installer_upgrades_old_checkout(  # ruff: ignore[too-many-statements]
+    tmp_path, installer_checkout
+):
+    checkout = installer_checkout
+    shutil.copy2(ROOT / ".gitignore", checkout / ".gitignore")
+    pyproject = checkout / "pyproject.toml"
+    current = pyproject.read_text()
+    current_version = tomllib.loads(current)["project"]["version"]
+    pyproject.write_text(
+        current.replace(f'version = "{current_version}"', 'version = "0.0.1"')
+    )
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-C", str(checkout), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.strip()
+
+    git("init", "-b", "main")
+    git("config", "user.name", "Installer test")
+    git("config", "user.email", "installer@example.test")
+    git("add", ".")
+    git("commit", "-m", "Old installation")
+    old_commit = git("rev-parse", "HEAD")
+    remote = tmp_path / "origin.git"
+    subprocess.run(
+        ["git", "clone", "--bare", str(checkout), str(remote)],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
+    git("remote", "add", "origin", str(remote))
+    pyproject.write_text(current)
+    git("add", "pyproject.toml")
+    git("commit", "-m", "Current release")
+    git("push", "origin", "main")
+    git("reset", "--hard", old_commit)
+    environment = tmp_path / "venv"
+    venv.create(environment, with_pip=True)
+    python = environment / "Scripts/python.exe"
+    subprocess.run(
+        [str(python), "-m", "pip", "install", "-e", str(checkout)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=240,
+    )
+    powershell = shutil.which("powershell") or shutil.which("pwsh")
+    home = tmp_path / "home"
+    home.mkdir()
+    env = dict(os.environ, HOME=str(home), USERPROFILE=str(home))
+    env.pop("PYTHONPATH", None)
+    env["PATH"] = os.pathsep.join([
+        str(python.parent),
+        str(Path(powershell).parent),
+        str(Path(shutil.which("git")).parent),
+        str(Path(os.environ["SYSTEMROOT"]) / "System32"),
+    ])
+    # Only the public version lookup is substituted; Git, pip and setup are real.
+    command = (
+        "function Invoke-WebRequest { param($Uri, [switch]$UseBasicParsing) "
+        f"@{{Content='version = \"{current_version}\"'}} }}; "
+        f"Get-Content -Raw '{checkout / 'scripts/install.ps1'}' | Invoke-Expression; "
+        "exit $LASTEXITCODE"
+    )
+    result = subprocess.run(
+        [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        input="y\nn\nn\n",
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=240,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "MEOW updated successfully" in output
+    assert "Done!" in output
+    assert git("rev-parse", "HEAD") != old_commit
+    version = subprocess.run(
+        [str(python), "-c", "import importlib.metadata as m; print(m.version('meow'))"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    ).stdout.strip()
+    assert version == current_version
+    assert (home / ".claude/settings.json").is_file()

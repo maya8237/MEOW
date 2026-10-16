@@ -123,7 +123,6 @@ is_supported_python() (
     kill "$timer_pid" 2>/dev/null || true
     wait "$timer_pid" 2>/dev/null || true
     if [ "$probe_status" -ne 0 ]; then
-        printf 'Warning: %s failed the Python health check (Python 3.12+ and pip required; %ss timeout). Trying another interpreter.\n' "$1" "$python_probe_timeout" >&2
         return 1
     fi
     sed -n '1p' "$probe_output"
@@ -149,12 +148,19 @@ select_python() {
     python_paths | awk '!seen[$0]++' | (
         best_python=''
         best_score=0
+        skipped=''
         while IFS= read -r candidate; do
-            version=$(is_supported_python "$candidate") || continue
+            if ! version=$(is_supported_python "$candidate"); then
+                skipped="${skipped}${skipped:+, }$candidate"
+                continue
+            fi
             score=$(printf '%s\n' "$version" | awk -F. 'NF == 3 {print $1*1000000+$2*1000+$3}')
             [ -n "$score" ] || continue
             if [ "$score" -gt "$best_score" ]; then best_python=$candidate; best_score=$score; fi
         done
+        if [ -n "$skipped" ]; then
+            printf 'Warning: skipped unusable Python candidates (Python 3.12+ and pip required): %s\n' "$skipped" >&2
+        fi
         [ -n "$best_python" ] || return 1
         printf '%s\n' "$best_python"
     )
@@ -190,7 +196,6 @@ remove_previous_meow() {
     while IFS= read -r candidate; do
         [ -n "$candidate" ] || continue
         if ! is_supported_python "$candidate" >/dev/null; then
-            printf 'Warning: cannot inspect or uninstall previous MEOW from broken Python: %s\n' "$candidate" >&2
             continue
         fi
         candidate_distribution=$("$candidate" -c "$distribution_query" 2>/dev/null) || continue
