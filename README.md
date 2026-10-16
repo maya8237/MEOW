@@ -45,6 +45,11 @@ meow run "Add CSV export" --name csv-export
 Projects are set up automatically on first use. Use `/meow:onboard` to configure
 integrations and optional features.
 
+To start a session in the browser, run `meow ui`, open **Sessions**, and choose
+**New session**. Enter your request, preview the command, then select **Launch session**.
+
+![Starting a new MEOW UI session with a CSV export request and command preview](docs/images/meow-ui-new-session.png)
+
 ## Common commands
 
 | Need | Command |
