@@ -9,6 +9,8 @@
 MEOW is a workflow harness for Claude that plans, implements, tests, reviews,
 and delivers software changes in isolated worktrees.
 
+![MEOW UI showing the default workflow and its execution steps](docs/images/meow-ui.png)
+
 ## Install
 
 ### PowerShell
@@ -43,28 +45,19 @@ meow run "Add CSV export" --name csv-export
 Projects are set up automatically on first use. Use `/meow:onboard` to configure
 integrations and optional features.
 
-To run later, ask `/meow:schedule` to run your request at a future time, use
-`meow schedule add --at "09:00" -- run "Add CSV export" --name csv-export`,
-or choose **Schedule for later** in `meow ui`. Scheduling uses Windows Task
-Scheduler or Linux systemd user timers; see the [CLI guide](docs/CLI.md#scheduling-a-run)
-for timezones, platform requirements, and cancellation.
-
 ## Common commands
 
 | Need | Command |
 | --- | --- |
 | Plan only | `/meow:plan ...` or `meow plan ...` |
-| Several related changes at once | `/meow:orchestrate ...` or `meow orchestrate "..."` |
+| Run related tasks in parallel and deliver one PR | `/meow:orchestrate ...` or `meow orchestrate "Add SSO login and an admin audit log"` |
+| [Schedule a run](docs/CLI.md#scheduling-a-run) | `/meow:schedule ...` or `meow schedule add --at "09:00" -- run "Add CSV export" --name csv-export` |
 | Review | `/meow:review ...` or `meow review ...` |
 | Integrate CI review | `/meow:integrate-ci-review` |
 | Fix lint | `/meow:lint` |
 | Queue work | `meow queue "..."` |
 | Check or continue | `meow status` or `meow resume RUN_ID` |
 | Browse definitions or manage command sessions | `meow ui` |
-
-`meow orchestrate "Add SSO login and an admin audit log"` splits an objective
-into tasks, runs them in parallel, merges them into one branch, reviews it as
-a whole, and opens a single pull request.
 
 See the [CLI guide](docs/CLI.md) for worktrees, background runs, recovery,
 orchestration, and advanced options.
