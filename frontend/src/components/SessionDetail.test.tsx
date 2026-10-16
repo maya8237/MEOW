@@ -80,6 +80,50 @@ const chunk = (text: string) =>
     }),
   );
 
+test("groups linked run facts and saved settings in one sidebar", () => {
+  const record = session("s1", "a1", "Work");
+  record.attempts[0].run_ids = ["run1"];
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(chunk("")));
+  render(
+    <SessionDetail
+      repo={repo}
+      session={record}
+      repos={[repo]}
+      linkedRuns={[
+        {
+          id: "run1",
+          repo,
+          source: "prompt",
+          request: "Do work",
+          phase: "failed",
+          created_at: "now",
+          updated_at: "now",
+          worktree: repo,
+          branch: "feature",
+          feature_name: "work",
+          workflow: null,
+          plan_file: null,
+          background_output_available: false,
+          ui_session_id: "s1",
+          ui_attempt_id: "a1",
+          resume_supported: true,
+          resume_needs_request: false,
+          cancel_supported: false,
+        },
+      ]}
+      {...callbacks}
+    />,
+  );
+
+  const sidebar = screen.getByRole("complementary", { name: "Run details" });
+  expect(sidebar).toContainElement(
+    screen.getByRole("heading", { name: "MEOW run facts" }),
+  );
+  expect(sidebar).toContainElement(
+    screen.getByRole("heading", { name: "Saved run settings" }),
+  );
+});
+
 test("edits a pending schedule in local time and preserves invalid drafts", async () => {
   const record = session("scheduled", "unused", "Scheduled session");
   record.attempts = [];

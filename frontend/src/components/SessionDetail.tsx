@@ -457,8 +457,8 @@ export default function SessionDetail({
           Linked MEOW run <code>{id}</code>
         </p>
       ))}
-      {!!(importedRun ? [importedRun] : linkedRuns).length && (
-        <aside className="linked-run-stack">
+      {(session || !!(importedRun ? [importedRun] : linkedRuns).length) && (
+        <aside className="linked-run-stack" aria-label="Run details">
           {(importedRun ? [importedRun] : linkedRuns).map((run) => (
             <section className="linked-run-facts" key={`${run.repo}:${run.id}`}>
               <h3>MEOW run facts</h3>
@@ -517,6 +517,29 @@ export default function SessionDetail({
               )}
             </section>
           ))}
+          {session && (
+            <section className="session-recipe">
+              <h3>Saved run settings</h3>
+              <p>
+                Used when you rerun this session. Edit settings to change the
+                next run.
+              </p>
+              <p>
+                {session.recipe.mode === "cli" ? "MEOW CLI" : "Claude Code"} ·{" "}
+                {session.recipe.command}
+              </p>
+              <pre>{session.recipe.request}</pre>
+              <p>Repository: {labels.repo}</p>
+              {session.recipe.options.permission_policy && (
+                <p>
+                  Permission policy:{" "}
+                  {session.recipe.options.permission_policy === "default"
+                    ? "Ask when needed; unanswered prompts are denied"
+                    : "Bypass permissions"}
+                </p>
+              )}
+            </section>
+          )}
         </aside>
       )}
       {picked && canResume && picked.resume_needs_request && (
@@ -609,29 +632,6 @@ export default function SessionDetail({
           </pre>
         )}
       </section>
-      {session && (
-        <aside className="session-recipe">
-          <h3>Saved run settings</h3>
-          <p>
-            Used when you rerun this session. Edit settings to change the next
-            run.
-          </p>
-          <p>
-            {session.recipe.mode === "cli" ? "MEOW CLI" : "Claude Code"} ·{" "}
-            {session.recipe.command}
-          </p>
-          <pre>{session.recipe.request}</pre>
-          <p>Repository: {labels.repo}</p>
-          {session.recipe.options.permission_policy && (
-            <p>
-              Permission policy:{" "}
-              {session.recipe.options.permission_policy === "default"
-                ? "Ask when needed; unanswered prompts are denied"
-                : "Bypass permissions"}
-            </p>
-          )}
-        </aside>
-      )}
     </article>
   );
 }

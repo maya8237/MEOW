@@ -15,6 +15,7 @@ from meow.execution.run_state import MAX_OUTPUT, CheckResult, RunStore
 from meow.infrastructure.test_runner import prepared_test_stage
 from meow.project.command_policy import split_command
 from meow.project.config import config_paths
+from meow.project.config_files import SHARED_PROJECT_PATHS
 from meow.project.config_models import (
     LintCommand,
     VerificationCommand,
@@ -100,14 +101,15 @@ _GENERATED_DIRS = frozenset({
 })
 
 
-def code_revision(repo: Path) -> str:
-    """Hash HEAD and content, including edits that have not been committed."""
-    root = repo.resolve()
-    digest = hashlib.sha256()
-    head = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, check=False
+def _reviewed_path(path: Path) -> bool:
+    if any(part in {".test-tmp"} | _GENERATED_DIRS for part in path.parts):
+        return False
+    return ".meow" not in path.parts or any(
+        path.is_relative_to(shared) for shared in SHARED_PROJECT_PATHS
     )
-    digest.update(head.stdout)
+
+
+def _code_paths(root: Path) -> tuple[Path, ...]:
     files = subprocess.run(
         ["git", "ls-files", "-co", "--exclude-standard", "-z"],
         cwd=root,
@@ -119,17 +121,25 @@ def code_revision(repo: Path) -> str:
             p
             for p in root.rglob("*")
             if p.is_file()
-            and not any(
-                part in {".git", ".venv", ".meow", ".test-tmp"} for part in p.parts
-            )
+            and not any(part in {".git", ".venv", ".test-tmp"} for part in p.parts)
         ]
     else:
         paths = [root / os.fsdecode(name) for name in files.stdout.split(b"\0") if name]
-    for path in sorted(paths):
-        if path.is_file() and not any(
-            part in {".meow", ".test-tmp"} | _GENERATED_DIRS
-            for part in path.relative_to(root).parts
-        ):
+    return tuple(
+        sorted(path for path in paths if _reviewed_path(path.relative_to(root)))
+    )
+
+
+def code_revision(repo: Path, *, paths: tuple[Path, ...] | None = None) -> str:
+    """Hash HEAD and content, including edits that have not been committed."""
+    root = repo.resolve()
+    digest = hashlib.sha256()
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, check=False
+    )
+    digest.update(head.stdout)
+    for path in _code_paths(root) if paths is None else paths:
+        if path.is_file():
             digest.update(str(path.relative_to(root)).encode())
             digest.update(hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()
@@ -170,10 +180,21 @@ class StageBaseline:
 
     revision: str
     tracked: str
+    paths: tuple[Path, ...]
 
 
 def stage_baseline(repo: Path) -> StageBaseline:
-    return StageBaseline(code_revision(repo), tracked_revision(repo))
+    paths = _code_paths(repo.resolve())
+    return StageBaseline(
+        code_revision(repo, paths=paths), tracked_revision(repo), paths
+    )
+
+
+def _stage_source_unchanged(repo: Path, baseline: StageBaseline) -> bool:
+    return (
+        tracked_revision(repo) == baseline.tracked
+        and code_revision(repo, paths=baseline.paths) == baseline.revision
+    )
 
 
 def adopt_stage_artifacts(
@@ -182,13 +203,13 @@ def adopt_stage_artifacts(
     """Keep a current review valid across a stage that only added files.
 
     Tests, builds and testers leave reports and screenshots behind. When the
-    review covered the tree the stage started from and no tracked file changed,
+    review covered the tree the stage started from and no existing file changed,
     the reviewed code is untouched, so the review is re-stamped to the new tree.
-    An edit to tracked source is left to invalidate it.
+    An edit or deletion of existing source, including untracked code, invalidates it.
     """
     if store.load(run_id).results.get("reviewer_revision") != baseline.revision:
         return
-    if tracked_revision(repo) != baseline.tracked:
+    if not _stage_source_unchanged(repo, baseline):
         return
     store.update_results(run_id, reviewer_revision=code_revision(repo))
 
@@ -371,14 +392,14 @@ def completion_ready(  # ruff: ignore[too-many-arguments, too-many-positional-ar
 async def run_final_checks(repo: Path, config: dict) -> list[CheckResult]:
     """Run current gates after the last edit, reusing the managed test stage.
 
-    A batch that edits tracked source is re-run (its results describe code that
-    no longer exists). A batch that only left untracked output behind (a
+    A batch that edits existing source is re-run (its results describe code that
+    no longer exists). A batch that only left new untracked output behind (a
     timestamped report) cannot be made to converge by re-running, so its
     results are re-stamped to the tree they produced.
     """
     checks = configured_checks(config)
     for _attempt in range(3):
-        tracked = await asyncio.to_thread(tracked_revision, repo)
+        baseline = await asyncio.to_thread(stage_baseline, repo)
         results = await _run_check_batch(repo, config, checks)
         revision = await asyncio.to_thread(code_revision, repo)
         fingerprint = config_fingerprint(repo)
@@ -387,7 +408,7 @@ async def run_final_checks(repo: Path, config: dict) -> list[CheckResult]:
             for result in results
         ):
             return results
-        if await asyncio.to_thread(tracked_revision, repo) == tracked and all(
+        if await asyncio.to_thread(_stage_source_unchanged, repo, baseline) and all(
             r.config_fingerprint == fingerprint for r in results
         ):
             return [replace(result, revision=revision) for result in results]

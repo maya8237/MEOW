@@ -223,7 +223,8 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     # before the repo itself had a config; keep reading it from there.
     settings_dir = config_root(config_dir, working_dir)
     record = store.load(run_id)
-    store.transition(record.id, "preparing")
+    test = test or bool(record.results.get("test", False))
+    store.transition(record.id, "preparing", results={"test": test})
     check_cancel(store, record.id)
     # A run that plans from scratch gets its own worktree rather than reusing
     # an earlier one by name; continuing (--plan, --resume-at review)
@@ -300,6 +301,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
         store, record.id, sprint, (active_dir, settings_dir)
     )
     test = test or bool(sprint.config.get("tester", {}).get("tests"))
+    store.update_results(record.id, test=test)
     describe_lint_plan(sprint.config["lint"])
     check_cancel(store, record.id)
 

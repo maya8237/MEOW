@@ -94,6 +94,33 @@ def test_resume_propagates_saved_unattended_policy(tmp_path):
     assert captured["unattended"] is True
 
 
+def test_resume_preserves_explicit_tester_mode(tmp_path):
+    store, record, _, _ = setup_workflow(tmp_path)
+    with (
+        patch(
+            "meow.execution.sprint_runner.run_workflow",
+            new=AsyncMock(side_effect=RuntimeError("interrupted")),
+        ),
+        pytest.raises(RuntimeError, match="interrupted"),
+    ):
+        asyncio.run(
+            run_sprint(
+                tmp_path,
+                None,
+                "Audit",
+                use_worktree=False,
+                run_id=record.id,
+                test=True,
+            )
+        )
+    assert store.load(record.id).phase == "failed"
+
+    with patch("meow.execution.sprint_runner.run_workflow", new=AsyncMock()) as execute:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+
+    assert execute.await_args.args[0].test is True
+
+
 @pytest.mark.parametrize("continue_run", [False, True])
 def test_original_request_reaches_sprint_on_run_and_resume(tmp_path, continue_run):
     store, record, metadata, _ = setup_workflow(tmp_path)

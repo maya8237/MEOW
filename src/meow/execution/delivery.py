@@ -8,6 +8,7 @@ from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled, check_cancel, delivery_lock
 from meow.infrastructure.worktree import _is_linked_worktree, _run_git
 from meow.infrastructure.worktree_setup import is_secret_like
+from meow.project.config_files import SHARED_PROJECT_PATHS
 
 # An unattended run must fail a stuck push (credential prompt, hook, network)
 # rather than wait on it forever.
@@ -48,7 +49,7 @@ def _branch_and_remote(
 
 
 def _unstage_secret_like(directory: Path) -> None:
-    staged = _git(directory, "diff", "--cached", "--name-only").stdout.splitlines()
+    staged = _git(directory, "diff", "--cached", "--name-only", "-z").stdout.split("\0")
     secrets = [path for path in staged if is_secret_like(Path(path).name)]
     if secrets:
         _git(directory, "reset", "-q", "--", *secrets)
@@ -67,17 +68,27 @@ def _commit(directory: Path, message: list[str]) -> None:
 def commit_worktree(active: Path, message: list[str]) -> str:
     """Commit everything shareable in `active` and return its HEAD sha.
 
-    Stages all changes, keeps MEOW runtime state (`.meow/`, except the shared
-    `.meow/config.toml`) and secret-like files out, and commits only when
+    Stages all changes, keeps MEOW runtime/local state and secret-like files
+    out while retaining shared project definitions, and commits only when
     something is staged, so a clean tree just returns the current HEAD.
     """
     _git(active, "add", "-A")
-    _git(active, "reset", "-q", "--", ".meow", check=False)
-    _unstage_secret_like(active)
-    # Re-stage the one shareable MEOW file; the update pass also handles
-    # its deletion without bringing runtime state back into the commit.
+    staged = _git(active, "diff", "--cached", "--name-only", "-z").stdout.split("\0")
+    runtime = [
+        name
+        for name in staged
+        if name.startswith(".meow/")
+        and not any(
+            Path(name).is_relative_to(shared) for shared in SHARED_PROJECT_PATHS
+        )
+    ]
+    if runtime:
+        _git(active, "reset", "-q", "--", *runtime)
+    # Keep shared config even with a legacy ignore boundary; the update pass
+    # also handles its deletion without bringing runtime state into the commit.
     _git(active, "add", "-f", "--", ".meow/config.toml", check=False)
     _git(active, "add", "-u", "--", ".meow/config.toml", check=False)
+    _unstage_secret_like(active)
     if _git(active, "diff", "--cached", "--quiet", check=False).returncode:
         _commit(active, message)
     return _git(active, "rev-parse", "HEAD").stdout.strip()

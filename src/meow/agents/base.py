@@ -437,7 +437,8 @@ class Agent:
         if extra_options.get("permission_mode") == "dontAsk":
             extra_options["permission_mode"] = "default"
         gated = role_policy.gated_tools()
-        return [tool for tool in allowed_tools if tool not in gated]
+        # Wildcard approvals also bypass the callback for explicitly gated tools.
+        return [tool for tool in allowed_tools if tool not in gated and "*" not in tool]
 
     def options(  # ruff: ignore[complex-structure, too-many-statements]
         self,

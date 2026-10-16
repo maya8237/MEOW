@@ -13,7 +13,12 @@ MAX_HANG_SECONDS = 15
 
 def git(directory: Path, *args: str) -> str:
     result = subprocess.run(
-        ["git", *args], cwd=directory, check=True, capture_output=True, text=True
+        ["git", *args],
+        cwd=directory,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
     )
     return result.stdout.strip()
 
@@ -337,3 +342,44 @@ def test_commit_worktree_without_changes_returns_head(tmp_path):
 
     assert commit_worktree(active, ["-m", "Nothing"]) == before
     assert git(active, "rev-parse", "HEAD") == before
+
+
+def test_commit_worktree_excludes_secrets_in_quoted_paths(tmp_path):
+    repo, _ = repository(tmp_path)
+    directory = repo / "café"
+    directory.mkdir()
+    (directory / ".env").write_text("TOKEN=fake\n", encoding="utf-8")
+    (repo / "feature.py").write_text("x = 1\n", encoding="utf-8")
+
+    commit_worktree(repo, ["-m", "feature"])
+
+    names = git(repo, "ls-tree", "-rz", "--name-only", "HEAD").split("\0")
+    assert "café/.env" not in names
+    assert "feature.py" in names
+
+
+@pytest.mark.parametrize("action", ["add", "edit", "delete"])
+def test_commit_worktree_keeps_shared_project_definitions(tmp_path, action):
+    from meow.project.onboarding import repair_boundary
+
+    repo, _ = repository(tmp_path)
+    repair_boundary(repo)
+    relative = ".meow/workflows/feature.toml"
+    path = repo / relative
+    path.parent.mkdir(parents=True)
+    if action != "add":
+        path.write_text("before", encoding="utf-8")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "definition")
+    if action == "delete":
+        path.unlink()
+    else:
+        path.write_text("after", encoding="utf-8")
+    (repo / "feature.py").write_text("x = 1\n", encoding="utf-8")
+
+    commit_worktree(repo, ["-m", "feature"])
+
+    changed = git(repo, "diff", "HEAD~", "HEAD", "--name-only")
+    assert relative in changed.splitlines()
+    if action != "delete":
+        assert git(repo, "show", f"HEAD:{relative}") == "after"
