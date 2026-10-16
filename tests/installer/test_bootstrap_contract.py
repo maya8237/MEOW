@@ -929,6 +929,8 @@ def test_streamed_windows_installer_upgrades_old_checkout(  # ruff: ignore[too-m
         str(python.parent),
         str(Path(powershell).parent),
         str(Path(shutil.which("git")).parent),
+        # Git Bash's native git needs its shell utilities when MSYSTEM is inherited.
+        str(Path(shutil.which("sh") or shutil.which("git")).parent),
         str(Path(os.environ["SYSTEMROOT"]) / "System32"),
     ])
     # Only the public version lookup is substituted; Git, pip and setup are real.
