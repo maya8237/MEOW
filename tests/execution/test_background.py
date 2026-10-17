@@ -51,7 +51,7 @@ def test_background_cli_returns_run_id_without_running_agent(
             "feature",
             "--name",
             "x",
-            "--unattended",
+            "--auto",
             "--background",
             "--work-dir",
             str(tmp_path),
@@ -72,7 +72,7 @@ def test_launch_creates_checkpoint_and_worker_log(tmp_path, monkeypatch):
 
     monkeypatch.setattr(background.subprocess, "Popen", fake_popen)
     run_id = background.launch_background(
-        tmp_path, ["run", "feature", "--name", "x", "--unattended", "--background"]
+        tmp_path, ["run", "feature", "--name", "x", "--auto", "--background"]
     )
     record = RunStore(tmp_path).load(run_id)
     assert record.background["launcher_pid"] == worker_pid
@@ -86,7 +86,7 @@ def test_real_worker_survives_launcher_and_reports_failure(tmp_path):
     # An absent MEOW config makes the fixture worker exit without an agent.
     run_id = background.launch_background(
         tmp_path,
-        ["run", "feature", "--name", "x", "--unattended", "--background"],
+        ["run", "feature", "--name", "x", "--auto", "--background"],
     )
     store = RunStore(tmp_path)
     # Cold Windows startup can exceed ten seconds on a busy machine.
@@ -161,7 +161,7 @@ def test_worker_runs_saved_sprint_and_completes(tmp_path, monkeypatch):
         record.id,
         launcher_pid=os.getpid(),
         nonce="n",
-        argv=["run", "feature", "--name", "x", "--unattended", "--background"],
+        argv=["run", "feature", "--name", "x", "--auto", "--background"],
     )
 
     async def fake_run_sprint(*_args, **kwargs):  # ruff: ignore[unused-async]
@@ -210,7 +210,7 @@ def test_background_cli_launches_from_the_argv_it_was_given(tmp_path, monkeypatc
         "feature",
         "--name",
         "x",
-        "--unattended",
+        "--auto",
         "--background",
         "--work-dir",
         str(tmp_path),
@@ -265,15 +265,13 @@ def test_orchestrator_task_launch_without_seed_is_rejected(tmp_path):
 
 def test_run_launch_with_a_seed_is_rejected(tmp_path):
     seed = background.RunSeed("orchestrator", "x", tmp_path, "b")
-    argv = ["run", "feature", "--name", "x", "--unattended", "--background"]
+    argv = ["run", "feature", "--name", "x", "--auto", "--background"]
     with pytest.raises(background.BackgroundError, match="does not take a run seed"):
         background.launch_background(tmp_path, argv, seed=seed)
 
 
 def test_run_without_unattended_is_still_rejected(tmp_path):
-    with pytest.raises(
-        background.BackgroundError, match="run --unattended --background"
-    ):
+    with pytest.raises(background.BackgroundError, match="run --auto --background"):
         background.launch_background(
             tmp_path, ["run", "x", "--name", "y", "--background"]
         )
@@ -288,7 +286,7 @@ def test_invocation_kind_classifies_saved_argv():
         "feature",
         "--name",
         "x",
-        "--unattended",
+        "--auto",
         "--background",
     ])
     task_args = parser.parse_args(["_orchestrator-task", ORCHESTRATOR_ID, "t1"])
