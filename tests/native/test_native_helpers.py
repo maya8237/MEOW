@@ -5,6 +5,7 @@ import pytest
 from meow.native.native_lint import LintOptions, lint
 from meow.native.native_prepare import latest_plan, latest_review, verdict
 from meow.native.native_prompt import role_prompt
+from meow.native.native_review import bind_review_checks
 
 
 def _docs(root: Path) -> Path:
@@ -14,14 +15,16 @@ def _docs(root: Path) -> Path:
 
 
 def test_verdict_reads_status_and_summary(tmp_path):
-    review = tmp_path / "plan-review.md"
+    review = _docs(tmp_path) / "plan-review.md"
     review.write_text("SUMMARY: all criteria met\nSTATUS: PASS\n", encoding="utf-8")
+    bind_review_checks(review, tmp_path, tmp_path)
     assert verdict(review) == {"status": "PASS", "summary": "all criteria met"}
 
 
 def test_verdict_without_status_line_fails_closed(tmp_path):
-    review = tmp_path / "plan-review.md"
+    review = _docs(tmp_path) / "plan-review.md"
     review.write_text("no verdict here\n", encoding="utf-8")
+    bind_review_checks(review, tmp_path, tmp_path)
     assert verdict(review) == {"status": "FAIL", "summary": None}
 
 

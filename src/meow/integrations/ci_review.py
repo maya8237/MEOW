@@ -1,7 +1,9 @@
 """Immutable, report-only review of a GitLab pipeline checkout."""
 
 import asyncio
+import hashlib
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -41,13 +43,10 @@ class CiReviewResult:
     json_path: Path
 
 
-def _git(repo: Path, *args: str) -> str:
+def _git_bytes(repo: Path, *args: str) -> bytes:
     result = subprocess.run(
         ["git", "-C", str(repo), *args],
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         check=False,
     )
     if result.returncode:
@@ -55,7 +54,11 @@ def _git(repo: Path, *args: str) -> str:
         raise CiReviewError(f"git {args[0]} failed (exit {result.returncode})")
     if len(result.stdout) > MAX_DIFF:
         raise CiReviewError(f"git {args[0]} output exceeds {MAX_DIFF} characters")
-    return result.stdout.strip()
+    return result.stdout
+
+
+def _git(repo: Path, *args: str) -> str:
+    return _git_bytes(repo, *args).decode("utf-8", errors="replace").strip()
 
 
 def prepare_ci_review(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches] -- validates each CI context requirement
@@ -109,14 +112,29 @@ def prepare_ci_review(  # ruff: ignore[complex-structure, too-many-statements, t
     )
 
 
-def _snapshot(repo: Path) -> tuple[str, str]:
+def _snapshot(repo: Path) -> tuple[str, str, str]:
     status = _git(repo, "status", "--porcelain", "--untracked-files=all")
     changes = "\n".join(
         line
         for line in status.splitlines()
         if not line[3:].replace("\\", "/").startswith(".meow/ci-artifacts/")
     )
-    return _git(repo, "rev-parse", "HEAD"), changes
+    # Porcelain records only change categories: rewriting an already modified
+    # or untracked file leaves the same status. Fingerprint the contents too.
+    paths = ["--", ".", ":(exclude).meow/ci-artifacts/**"]
+    digest = hashlib.sha256(
+        _git_bytes(
+            repo, "diff", "--no-ext-diff", "--no-textconv", "--binary", "HEAD", *paths
+        )
+    )
+    untracked = _git_bytes(
+        repo, "ls-files", "--others", "--exclude-standard", "-z", *paths
+    )
+    for name in untracked.split(b"\0"):
+        if name:
+            digest.update(name)
+            digest.update((repo / os.fsdecode(name)).read_bytes())
+    return _git(repo, "rev-parse", "HEAD"), changes, digest.hexdigest()
 
 
 def _atomic_write(path: Path, content: str) -> None:

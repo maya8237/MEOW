@@ -44,6 +44,11 @@ file unless the user explicitly chooses a merge. Otherwise write the
 shareable project settings to `.meow/config.toml` and keep the legacy file as a
 read-only rollback reference until the user removes it.
 
+Automatic first-run migration stops when the legacy file contains MCP,
+environment, personal skill/source, or credential settings. Complete this
+explicit flow to separate shared and local settings; do not bypass that check
+by copying the entire legacy file into the shared config.
+
 Do not carry a legacy `docs_dir` into the shared file. Omit it so the default
 `.meow/plans` applies, matching where step 3 moves MEOW-generated plans. Keep
 an explicit `docs_dir` only if the user chooses to leave plans in place, and

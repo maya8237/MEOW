@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 
 from meow.project.custom.definitions import PLUGIN_NAME, CustomSkill
+from meow.project.custom.sources import source_files
 
 _MANIFEST = Path(".claude-plugin") / "plugin.json"
 
@@ -23,14 +24,10 @@ def _cache_root() -> Path:
     return Path.home() / ".meow" / "cache" / "custom-skills"
 
 
-def _files(skill: CustomSkill) -> list[Path]:
-    return sorted(path for path in skill.directory.rglob("*") if path.is_file())
-
-
 def _digest(skills: tuple[CustomSkill, ...]) -> str:
     digest = hashlib.sha256()
     for skill in skills:
-        for path in _files(skill):
+        for path in source_files(skill.directory, skill.source):
             relative = path.relative_to(skill.directory).as_posix()
             digest.update(f"{skill.name}/{relative}\0".encode())
             digest.update(path.read_bytes())
@@ -50,6 +47,7 @@ def _build(skills: tuple[CustomSkill, ...], target: Path) -> None:
         encoding="utf-8",
     )
     for skill in skills:
+        source_files(skill.directory, skill.source)
         shutil.copytree(skill.directory, target / "skills" / skill.name)
 
 

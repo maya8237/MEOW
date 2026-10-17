@@ -280,7 +280,7 @@ def onboard_project(root: Path, *, write_config: bool = True) -> OnboardingRepor
     files: list[str] = []
     try:
         error = _apply(root, lint, files, write_config=write_config)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         error = str(exc)
     return OnboardingReport(
         tuple(files), lint[0] if lint else None, SKIPPED_FEATURES, error

@@ -180,8 +180,9 @@ def latest_review(working_dir: Path, active_dir: Path) -> dict:
 
 
 def verdict(review_file: Path) -> dict:
-    """PASS/FAIL and summary of a review file, the way the CLI reads one.
+    """Return the gated PASS/FAIL and summary of a native review file.
 
+    Local reports require their current native verification binding.
     A review file the reviewer never wrote fails closed instead of erroring.
     """
     if not review_file.is_file():

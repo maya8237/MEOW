@@ -431,6 +431,7 @@ def test_push_is_idempotent(git_repo, monkeypatch):
     scenario.add_task("api", {"api.py": "x\n"})
     scenario.begin("api")
     scenario.finish("api")
+    _approve_push(scenario)
     pushes = []
     real_git = integration._git
 
@@ -454,7 +455,30 @@ def test_push_is_idempotent(git_repo, monkeypatch):
 
 def test_push_without_origin_raises(git_repo):
     scenario = start(git_repo)
+    _approve_push(scenario)
     git(scenario.repo, "remote", "remove", "origin")
 
     with pytest.raises(RuntimeError, match="No origin remote configured"):
+        push_integration(scenario.repo, scenario.store, scenario.oid)
+
+
+def _approve_push(scenario):
+    from meow.execution.orchestration.final_review import run_objective_review
+    from meow.project.config import load_config
+    from tests.orchestration.review_fakes import ReviewScript
+
+    asyncio.run(
+        run_objective_review(
+            scenario.repo,
+            scenario.store,
+            scenario.oid,
+            load_config(scenario.repo),
+            ReviewScript(["PASS"]).agents,
+        )
+    )
+
+
+def test_push_requires_passing_objective_review(git_repo):
+    scenario = start(git_repo)
+    with pytest.raises(RuntimeError, match="review"):
         push_integration(scenario.repo, scenario.store, scenario.oid)

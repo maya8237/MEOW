@@ -18,6 +18,7 @@ from pathlib import Path
 from meow.agents.base import Agent, ProjectContext
 from meow.agents.reviewer import _verdict_status, force_fail
 from meow.execution.delivery import commit_worktree
+from meow.execution.orchestration import review_evidence
 from meow.execution.orchestration.children import failure_evidence
 from meow.execution.orchestration.final_review import objective_text
 from meow.execution.orchestration.intake import (
@@ -72,6 +73,7 @@ from meow.execution.run_state import RunStore
 from meow.infrastructure.background import launch_background
 from meow.infrastructure.checks import run_final_checks
 from meow.infrastructure.worktree import _boot_repo, _ensure_clean_tree, current_branch
+from meow.native.native_models import resolve_native_model
 from meow.native.native_prompt import _branch_review
 from meow.project.config import load_config
 from meow.project.prompts import (
@@ -107,6 +109,12 @@ def _take_lock(store: OrchestratorStore, orch_id: str) -> DriverLock:
             f"stop it with `meow orchestrate cancel {orch_id}`"
         )
     return lock
+
+
+def _raise_if_cancelled(store: OrchestratorStore, orch_id: str) -> None:
+    if store.cancel_marker(orch_id).exists():
+        _apply_cancel_marker(store.repo, store, orch_id)
+        raise ValueError(f"orchestrator {orch_id} is cancelled")
 
 
 def _require_phase(record: OrchestratorRecord, *phases: str) -> None:
@@ -561,7 +569,9 @@ def _start_round(
     store.update(orch_id, mutate)
 
 
-def review(repo: Path, orch_id: str) -> dict:
+def review(  # ruff: ignore[too-many-statements] -- one atomic review-round setup
+    repo: Path, orch_id: str, *, host=None, available_models=None
+) -> dict:
     """Run the checks and build the objective-review prompt for the next round."""
     repo = repo.resolve()
     store = OrchestratorStore(repo)
@@ -578,6 +588,8 @@ def review(repo: Path, orch_id: str) -> dict:
     if record.review["round"]:
         commit_worktree(worktree, ["-m", f"Fix objective review findings ({number})"])
     results = asyncio.run(run_final_checks(worktree, config))
+    _raise_if_cancelled(store, orch_id)
+    evidence = review_evidence.capture(repo, worktree, config, results)
     failures = [_check_json(r) for r in results if r.required and not r.passed]
     context = _context(record, config)
     branch = record.integration["branch"]
@@ -585,6 +597,7 @@ def review(repo: Path, orch_id: str) -> dict:
         context, record.base_branch, branch, objective=objective_text(record)
     )
     _start_round(store, orch_id, number, (prompt["review_file"], failures))
+    store.update(orch_id, lambda rec: rec.review.update(evidence))
     agent = Agent(context).definition("reviewer")
     return {
         "round": number,
@@ -594,7 +607,11 @@ def review(repo: Path, orch_id: str) -> dict:
         "system_prompt": prompt["system_prompt"],
         "query": prompt["query"],
         "review_file": prompt["review_file"],
-        "model": context.model("reviewer", agent),
+        **resolve_native_model(
+            context.model("reviewer", agent),
+            host=host,
+            available_models=available_models,
+        ),
         "tools": list(agent.tools or ()),
     }
 
@@ -615,23 +632,50 @@ def _block_objective_review(record: OrchestratorRecord, review_file: Path) -> No
     }
 
 
-def review_result(repo: Path, orch_id: str, file: Path) -> dict:
+def _validate_review_result(repo: Path, record: OrchestratorRecord, file: Path) -> dict:
+    _raise_if_cancelled(OrchestratorStore(repo), record.id)
+    expected = record.review.get("review_file")
+    if not expected or file.resolve() != Path(expected).resolve():
+        raise ValueError("The verdict must use the expected objective review report")
+    config = load_config(repo)
+    if not review_evidence.current(
+        repo,
+        Path(record.integration["worktree"]),
+        config,
+        record.review,
+        verify_checks=False,
+    ):
+        raise ValueError("Objective review evidence is stale; run review again")
+    return config
+
+
+def review_result(  # ruff: ignore[too-many-statements] -- validate then persist one verdict transition
+    repo: Path, orch_id: str, file: Path
+) -> dict:
     """Record the reviewer's verdict; PASS moves on, the last FAIL blocks."""
     repo = repo.resolve()
     store = OrchestratorStore(repo)
     _take_lock(store, orch_id)
     record = store.load(orch_id)
     _require_phase(record, "reviewing")
+    config = _validate_review_result(repo, record, file)
     text = file.read_text(encoding="utf-8") if file.is_file() else ""
     failures = record.review.get("check_failures") or []
     if failures and file.is_file():
         text = force_fail(text, _checks_appendix(failures))
         file.write_text(text, encoding="utf-8")
     verdict = "FAIL" if failures else _verdict_status(text)
-    rounds = load_config(repo)["orchestrator"]["review_rounds"]
+    if verdict == "PASS" and not review_evidence.current(
+        repo, Path(record.integration["worktree"]), config, record.review
+    ):
+        raise ValueError(
+            "Objective review required checks are missing or stale; run review again"
+        )
+    rounds = config["orchestrator"]["review_rounds"]
 
     def mutate(rec: OrchestratorRecord) -> None:
         rec.review.update(verdict=verdict, review_file=str(file))
+        rec.review["report_digest"] = review_evidence.report_digest(file)
         if verdict == "PASS":
             rec.phase = "delivering"
         elif rec.review["round"] >= rounds:
@@ -660,6 +704,7 @@ def deliver(repo: Path, orch_id: str) -> dict:
     store = OrchestratorStore(repo)
     _take_lock(store, orch_id)
     _require_phase(store.load(orch_id), "delivering")
+    _validate_delivery(store, orch_id)
     try:
         push_integration(repo, store, orch_id)
     except RuntimeError as exc:
@@ -684,6 +729,30 @@ def deliver(repo: Path, orch_id: str) -> dict:
         "open_pr": skip is None,
         "skip_reason": skip,
     }
+
+
+def _validate_delivery(store: OrchestratorStore, orch_id: str) -> None:
+    _raise_if_cancelled(store, orch_id)
+    record = store.load(orch_id)
+    try:
+        review_evidence.require_delivery_review(
+            store.repo, record, load_config(store.repo)
+        )
+    except RuntimeError:
+
+        def invalidate(rec):
+            if (
+                rec.review["round"]
+                >= load_config(store.repo)["orchestrator"]["review_rounds"]
+            ):
+                _block_objective_review(
+                    rec, Path(rec.review.get("review_file") or store.dir_for(orch_id))
+                )
+            else:
+                rec.phase = "reviewing"
+
+        store.update(orch_id, invalidate)
+        raise
 
 
 def record_pr(

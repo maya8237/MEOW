@@ -1,7 +1,9 @@
 """`meow native custom`: the custom skills and agents in effect for a role."""
 
+from collections.abc import Sequence
 from pathlib import Path
 
+from meow.native.native_models import resolve_native_model
 from meow.project.config import config_root, load_config
 from meow.project.custom import AGENT_ROLES, Customizations, CustomSource
 from meow.project.custom.workflows import expand, fingerprint, select_workflow
@@ -42,7 +44,14 @@ def _source(source: CustomSource) -> dict:
     }
 
 
-def custom(working_dir: Path, active_dir: Path, role: str | None = None) -> dict:
+def custom(  # ruff: ignore[too-many-arguments] -- shared host capability dispatch
+    working_dir: Path,
+    active_dir: Path,
+    role: str | None = None,
+    *,
+    host: str | None = None,
+    available_models: Sequence[str] | None = None,
+) -> dict:
     """List custom skills and agents, optionally only those a role receives.
 
     Native mode has no SDK plugin, so each skill is reported by its SKILL.md
@@ -74,7 +83,9 @@ def custom(working_dir: Path, active_dir: Path, role: str | None = None) -> dict
                 "file": str(agent.file),
                 "prompt": agent.prompt,
                 "tools": list(agent.tools) if agent.tools is not None else "inherit",
-                "model": agent.model,
+                **resolve_native_model(
+                    agent.model, host=host, available_models=available_models
+                ),
                 "skills": list(agent.skills),
                 "roles": list(agent.source.roles) or sorted(AGENT_ROLES),
                 **_source(agent.source),

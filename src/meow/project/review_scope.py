@@ -159,8 +159,10 @@ def save_scope(review_file: Path, scope: dict) -> Path:
     return sidecar
 
 
-def saved_scope_mode(review_file: Path) -> str:
+def saved_scope_mode(review_file: Path, *, focus: str | None = None) -> str:
     """Preserve a resumed review's project contract; invalid metadata widens it."""
+    if _WHOLE_PROJECT.search(focus or ""):
+        return "project"
     sidecar = review_file.with_suffix(review_file.suffix + ".scope.json")
     if not sidecar.exists():
         return "auto"

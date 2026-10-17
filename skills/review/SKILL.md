@@ -158,6 +158,9 @@ when present. Never invent mappings between providers' model names.
    verdict <review_file>`). Before accepting PASS, run current required
    checks. For an old report without verification/coverage bindings, generate
    a fresh reviewer prompt and review the current checkout first.
+   A new focus requires a fresh review even when the saved report passed.
+   If the new focus requests the whole project, use project scope for the
+   fresh review and all subsequent rounds; an old diff scope must not narrow it.
    Anchor the counter on the plan file (plan flavor: the review file's
    name without `-review`) or the review file itself (prompt flavor);
    `round <anchor> --reset`, then `round <anchor>` once -- the existing

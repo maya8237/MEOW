@@ -220,6 +220,7 @@ class _Driver:
         return self._load().phase
 
     async def _advance(self) -> None:
+        self._validate_delivery_review()
         if self._phase() in {"running", "blocked"}:
             if await self._supervise() != "all_merged":
                 return
@@ -233,6 +234,26 @@ class _Driver:
             self._set_phase("delivering")
         if self._phase() == "delivering":
             await self._deliver()
+
+    def _validate_delivery_review(self) -> None:
+        from meow.execution.orchestration.review_evidence import require_delivery_review
+
+        if self._phase() != "delivering":
+            return
+        record = self._load()
+        try:
+            require_delivery_review(self.repo, record, self.config)
+        except RuntimeError:
+            if record.review["round"] >= self.config["orchestrator"]["review_rounds"]:
+                blocker = {
+                    "task_id": None,
+                    "cause": "objective-review",
+                    "evidence": [record.review.get("review_file")],
+                    "needed": "Review evidence is stale. Resume for a fresh review.",
+                }
+                self.store.update(self.orch_id, lambda r: block_task(r, blocker))
+            else:
+                self._set_phase("reviewing")
 
     async def _supervise(self) -> str:
         """Tick until every task is merged, the orchestrator is blocked, or it
@@ -344,6 +365,9 @@ class _Driver:
     # -- delivery ---------------------------------------------------------
 
     async def _deliver(self) -> None:
+        if self.store.cancel_marker(self.orch_id).exists():
+            self._mark_cancelled()
+            return
         try:
             push_integration(self.repo, self.store, self.orch_id)
         except RuntimeError as exc:

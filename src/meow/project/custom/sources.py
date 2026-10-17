@@ -47,6 +47,7 @@ class CustomSource:
     config_file: Path | None  # None: a conventional or builtin directory
     roles: tuple[str, ...] = ()  # empty: every role the kind allows
     missing: bool = False  # user scope only: the directory is absent, so skipped
+    project_dir: Path | None = None  # containment boundary for project contents
 
     @property
     def delegate(self) -> bool:
@@ -72,9 +73,15 @@ def conventional_sources(project_dir: Path, user_dir: Path) -> list[CustomSource
     return [
         CustomSource(
             kind,
-            conventional_dir(scope, kind, project_dir, user_dir).resolve(),
+            _resolved_source(
+                conventional_dir(scope, kind, project_dir, user_dir),
+                scope,
+                project_dir,
+                "conventional custom directory",
+            ),
             scope,
             None,
+            project_dir=project_dir if scope == "project" else None,
         )
         for scope in ("local", "project", "user")
         for kind in KINDS
@@ -130,7 +137,53 @@ def _resolve(raw: str, scope: str, base: Path, where: str) -> Path:
                 ".meow/config.local.toml or ~/.meow/config.toml"
             )
     path = Path(raw).expanduser()
-    return (path if path.is_absolute() else base / path).resolve()
+    return _resolved_source(
+        path if path.is_absolute() else base / path, scope, base, where
+    )
+
+
+def _resolved_source(path: Path, scope: str, base: Path, where: str) -> Path:
+    resolved = path.resolve()
+    if scope == "project" and not resolved.is_relative_to(base.resolve()):
+        raise ValueError(
+            f"{where}: project-scope path {str(path)!r} must stay inside "
+            "the repository "
+            "after resolving filesystem links; put personal paths in "
+            ".meow/config.local.toml or ~/.meow/config.toml"
+        )
+    return resolved
+
+
+def validate_source_path(path: Path, source: CustomSource) -> Path:
+    """Check a discovered definition or asset without changing its logical name."""
+    if source.scope == "project":
+        _resolved_source(
+            path,
+            source.scope,
+            source.project_dir or source.path,
+            "custom project content",
+        )
+    return path
+
+
+def source_files(directory: Path, source: CustomSource) -> list[Path]:
+    """List skill files with containment checks, following links like copytree."""
+    files = []
+
+    def visit(path: Path, ancestors: frozenset[Path]) -> None:
+        validate_source_path(path, source)
+        if not path.is_dir():
+            if path.is_file():
+                files.append(path)
+            return
+        resolved = path.resolve()
+        if resolved in ancestors:
+            raise ValueError(f"{path}: recursive filesystem link in custom skill")
+        for child in path.iterdir():
+            visit(child, ancestors | {resolved})
+
+    visit(directory, frozenset())
+    return sorted(files)
 
 
 def _roles(value: object, kind: str, where: str) -> tuple[str, ...]:
@@ -181,7 +234,15 @@ def _entry(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
     path = _directory(raw.get("path"), scope, base, where)
     roles = _roles(raw["roles"], kind, where) if "roles" in raw else ()
     missing = scope == "user" and not path.is_dir()
-    return CustomSource(kind, path, scope, config_file, roles, missing)
+    return CustomSource(
+        kind,
+        path,
+        scope,
+        config_file,
+        roles,
+        missing,
+        project_dir=base if scope == "project" else None,
+    )
 
 
 def parse_sources(

@@ -1,6 +1,8 @@
 """The orchestrator journal is atomic and its driver lock is exclusive."""
 
 import json
+import subprocess
+import sys
 import time
 
 import pytest
@@ -194,6 +196,7 @@ def test_live_native_lock_blocks_cli(tmp_path):
 def test_native_lock_reclaimable_after_heartbeat_timeout(tmp_path, monkeypatch):
     directory = tmp_path / "orch"
     assert DriverLock(directory, mode="native").acquire() is True
+    monkeypatch.setattr(store_module, "_pid_is_alive", lambda pid: False)
     real_now = time.time()
     monkeypatch.setattr(
         store_module.time, "time", lambda: real_now + MISSING_HEARTBEAT_SECONDS
@@ -211,6 +214,81 @@ def test_native_lock_can_be_taken_over_by_another_native_call(tmp_path):
     second.release()
     assert not (directory / "driver.lock").exists()
     first.release()
+
+
+def test_live_native_operation_blocks_another_process_even_after_timeout(tmp_path):
+    directory = tmp_path / "orch"
+    first = DriverLock(directory, mode="native")
+    assert first.acquire()
+    holder = first.holder()
+    holder["heartbeat_at"] = 0
+    first.path.write_text(json.dumps(holder))
+    script = (
+        "from pathlib import Path; "
+        "from meow.execution.orchestration.store import DriverLock; "
+        "import sys; "
+        "lock = DriverLock(Path(sys.argv[1]), mode=sys.argv[2]); "
+        "print(lock.acquire())"
+    )
+    for mode in ("native", "cli"):
+        result = subprocess.run(
+            [sys.executable, "-c", script, str(directory), mode],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert result.stdout.strip() == "False"
+
+
+def test_concurrent_native_helpers_cannot_both_claim_dead_holder(tmp_path):
+    directory = tmp_path / "orch"
+    directory.mkdir()
+    (directory / "driver.lock").write_text(
+        json.dumps({"mode": "native", "pid": 2**30, "heartbeat_at": 0})
+    )
+    script = """
+import sys
+import time
+from pathlib import Path
+from meow.execution.orchestration.store import DriverLock
+
+class SlowClaim(DriverLock):
+    def _take_native(self, holder):
+        # Both contenders can read the old holder before either replaces it.
+        time.sleep(0.25)
+        return super()._take_native(holder)
+
+lock = SlowClaim(Path(sys.argv[1]), mode="native")
+print("ready", flush=True)
+sys.stdin.readline()
+print(lock.acquire(), flush=True)
+sys.stdin.readline()  # Keep the winning process alive during the other claim.
+"""
+    children = [
+        subprocess.Popen(
+            [sys.executable, "-c", script, str(directory)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(2)
+    ]
+    try:
+        for child in children:
+            assert child.stdout.readline().strip() == "ready"
+        for child in children:
+            child.stdin.write("claim\n")
+            child.stdin.flush()
+        claimed = [child.stdout.readline().strip() for child in children]
+        errors = [
+            child.stderr.read() if child.poll() is not None else ""
+            for child in children
+        ]
+        assert sorted(claimed) == ["False", "True"], errors
+    finally:
+        for child in children:
+            child.communicate("exit\n", timeout=10)
 
 
 def test_native_heartbeat_refreshes_the_timestamp(tmp_path, monkeypatch):

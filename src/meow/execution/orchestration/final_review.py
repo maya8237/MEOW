@@ -14,6 +14,7 @@ from pathlib import Path
 from meow.agents.base import ProjectContext
 from meow.agents.reviewer import force_fail
 from meow.execution.delivery import commit_worktree
+from meow.execution.orchestration import review_evidence
 from meow.execution.orchestration.model import OrchestratorRecord
 from meow.execution.orchestration.report import task_label
 from meow.execution.orchestration.store import OrchestratorStore
@@ -53,6 +54,7 @@ class _Round:
     verdict: str
     review_file: Path | None
     evidence: list[str] = field(default_factory=list)
+    binding: dict = field(default_factory=dict)
 
 
 class _ObjectiveReview:
@@ -69,6 +71,7 @@ class _ObjectiveReview:
         self.config = config
         self.agents = agents
         self.rounds = config["orchestrator"]["review_rounds"]
+        self.used_rounds = record.review["round"]
         self.base = record.base_branch
         self.branch = record.integration["branch"]
         self.worktree = Path(record.integration["worktree"])
@@ -79,9 +82,15 @@ class _ObjectiveReview:
     async def run(self) -> str:
         self.store.update(self.orch_id, lambda r: setattr(r, "phase", "reviewing"))
         fixer = None
+        outcome = _Round("FAIL", "Objective review rounds are exhausted", None)
         async with AsyncExitStack() as stack:
-            for number in range(1, self.rounds + 1):
+            for number in range(self.used_rounds + 1, self.rounds + 1):
                 outcome = await self._round()
+                if self.store.cancel_marker(self.orch_id).exists():
+                    self.store.update(
+                        self.orch_id, lambda r: setattr(r, "phase", "cancelled")
+                    )
+                    return "CANCELLED"
                 self._record(number, outcome)
                 if outcome.status == "PASS":
                     return "PASS"
@@ -96,6 +105,9 @@ class _ObjectiveReview:
 
     async def _round(self) -> _Round:
         results = await run_final_checks(self.worktree, self.config)
+        binding = review_evidence.capture(
+            self.store.repo, self.worktree, self.config, results
+        )
         failed = [r for r in results if r.required and not r.passed]
         reviewer = self.agents.reviewer(self.context)
         status, verdict = await reviewer.review_branch(
@@ -111,6 +123,15 @@ class _ObjectiveReview:
             outcome.evidence.append(str(review_file))
         if status == "PASS" and self.test:
             await self._test(outcome)
+        if outcome.status == "PASS" and not review_evidence.current(
+            self.store.repo, self.worktree, self.config, binding
+        ):
+            outcome.status = "FAIL"
+            outcome.verdict = force_fail(
+                outcome.verdict,
+                "Objective review evidence became stale; review current code again.",
+            )
+        outcome.binding = binding
         return outcome
 
     async def _test(self, outcome: _Round) -> None:
@@ -139,6 +160,10 @@ class _ObjectiveReview:
             "round": number,
             "verdict": outcome.status,
             "review_file": str(outcome.review_file) if outcome.review_file else None,
+            **outcome.binding,
+            "report_digest": review_evidence.report_digest(outcome.review_file)
+            if outcome.review_file
+            else None,
         }
         self.store.update(self.orch_id, lambda r: setattr(r, "review", review))
 

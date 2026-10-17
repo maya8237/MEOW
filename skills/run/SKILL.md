@@ -23,6 +23,15 @@ first; it defines the `meow native` helper and review loop.
 
 ## Native mode
 
+Before fetching an issue, preparing a worktree, or creating a checkpoint, run
+`meow native verify --work-dir "<project-path>"`. If `--test` was requested
+or `tester.configured` is true, use the CLI mode below: configured tests enable
+the tester automatically, and native mode cannot run its server/agent lifecycle.
+Preserve the user's Jira, existing-plan, source-branch, and worktree options.
+For a saved native run, inspect and continue that same ID with `meow resume <run_id>
+--continue --repair`; for an existing plan without a saved run use the documented
+`--resume-at review --plan <plan_file>` flow, never a fresh sprint.
+
 1. **Request text**: whatever the user gave, unless they named a Jira issue
    (or asked for "the latest issue") -- then skip to step 1a instead.
    Otherwise if there's no text and no issue either, ask for a one-line
@@ -76,7 +85,8 @@ first; it defines the `meow native` helper and review loop.
    `--fresh`, in the same worktree).
 3. Plan (skip if the user supplied an existing plan file, or the resume check
    found a ready plan): `meow native round <plan_file> --reset --active-dir <active_dir>`,
-   then, as planner, write `plan_file` per the shared protocol's Planner row.
+   then checkpoint `planning --run-id <run_id>` with both directory flags.
+   As planner, write `plan_file` per the shared protocol's Planner row.
    Read it back and confirm it has a numbered task list and a `## Sprint Contract`.
    Write a `planned` checkpoint with `--plan <plan_file>`.
 4. If the user asked to approve the plan first, show it and ask before
@@ -90,8 +100,11 @@ first; it defines the `meow native` helper and review loop.
    `interrupted_mutation` and inspect the worktree before another edit.
    Record `reviewer_started` before dispatch and `reviewer_finished
    --review <review_file> --reviewer PASS|FAIL` after reading the verdict.
-   Record an enabled tester verdict separately with `tester_finished
-   --tester PASS|FAIL`. On final PASS, call `meow native finalize <run_id>
+   If tester configuration is enabled after preparation, continue the saved
+   run with `meow resume <run_id> --continue --repair` through CLI mode; native
+   checkpoints have no Claude session IDs, so `--repair` starts fresh agent
+   sessions against the saved plan. Do not invent a tester verdict.
+   On final PASS, call `meow native finalize <run_id>
    --work-dir "<project-path>" --active-dir "<active_dir>"`; report success
    only when its JSON says `"complete": true`.
 6. Report: on PASS, the plan file and review file paths (or, for a

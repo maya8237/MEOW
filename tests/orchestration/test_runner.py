@@ -2,6 +2,7 @@
 
 import asyncio
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -229,6 +230,23 @@ def test_push_failure_marks_failed_and_resume_retries_delivery(tmp_path, monkeyp
     assert record.phase == "delivered"
     assert record.error is None
     assert git(world.remote, "show", f"orchestrator/{oid}:api.py") == "x = 1"
+
+
+def test_resumed_delivery_reviews_code_changed_after_push_failure(
+    tmp_path, monkeypatch
+):
+    world = one_task_world(tmp_path, monkeypatch, [PASS_API])
+    git(world.repo, "remote", "set-url", "origin", str(tmp_path / "missing.git"))
+    oid, code = world.start()
+    assert code == EXIT_FAILED
+    worktree = Path(world.record(oid).integration["worktree"])
+    (worktree / "api.py").write_text("x = 2\n")
+    git(worktree, "add", "api.py")
+    git(worktree, "commit", "-m", "late edit")
+    git(world.repo, "remote", "set-url", "origin", str(world.remote))
+    assert world.resume(oid) == 0
+    assert world.record(oid).review["round"] == ATTEMPTS
+    assert git(world.remote, "show", f"orchestrator/{oid}:api.py") == "x = 2"
 
 
 def test_resume_reattaches_a_live_child(tmp_path, monkeypatch):

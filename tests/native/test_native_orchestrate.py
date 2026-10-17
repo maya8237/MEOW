@@ -618,6 +618,10 @@ def test_review_returns_the_prompt_and_runs_the_checks(git_repo, monkeypatch):
         "query",
         "review_file",
         "model",
+        "configured_model",
+        "host",
+        "model_resolution",
+        "model_fallback_reason",
         "tools",
     }
     assert (payload["round"], payload["checks_passed"]) == (1, True)
@@ -732,9 +736,95 @@ def test_review_result_needs_a_review_round_first(git_repo):
 # --- delivery ---------------------------------------------------------------
 
 
+@pytest.mark.parametrize("change", ["commit", "edit", "config", "report"])
+def test_review_result_rejects_stale_or_unrelated_evidence(
+    git_repo, monkeypatch, change
+):
+    repo, _ = git_repo
+    orch_id, store, verdict = reviewed(repo, monkeypatch, PASS_VERDICT)
+    worktree = Path(store.load(orch_id).integration["worktree"])
+    if change in {"commit", "edit"}:
+        (worktree / "new-code.py").write_text("broken = True\n")
+        if change == "commit":
+            git(worktree, "add", "new-code.py")
+            git(worktree, "commit", "-m", "unreviewed")
+    elif change == "config":
+        (repo / ".meow" / "config.local.toml").write_text(
+            "[orchestrator]\nreview_rounds = 2\n"
+        )
+    else:
+        verdict = repo.parent / "unrelated.review.md"
+        verdict.write_text(PASS_VERDICT)
+    with pytest.raises(ValueError, match="review"):
+        orch.review_result(repo, orch_id, verdict)
+    assert store.load(orch_id).phase == "reviewing"
+
+
+def test_delivery_rejects_code_changed_after_passing_review(git_repo, monkeypatch):
+    repo, remote = git_repo
+    orch_id, store, verdict = reviewed(repo, monkeypatch, PASS_VERDICT)
+    orch.review_result(repo, orch_id, verdict)
+    worktree = Path(store.load(orch_id).integration["worktree"])
+    (worktree / "late.py").write_text("broken = True\n")
+    with pytest.raises(RuntimeError, match="review"):
+        orch.deliver(repo, orch_id)
+    branch = store.load(orch_id).integration["branch"]
+    assert not git(remote, "branch", "--list", branch)
+
+
+@pytest.mark.parametrize("change", ["tracked", "staged", "untracked"])
+def test_delivery_rejects_reviewed_source_absent_from_head(
+    git_repo, monkeypatch, change
+):
+    repo, _ = git_repo
+    orch_id, store = merged_orchestrator(repo)
+    no_checks(monkeypatch)
+    worktree = Path(store.load(orch_id).integration["worktree"])
+    source = "new.py" if change == "untracked" else "README.md"
+    (worktree / source).write_text("reviewed but absent from HEAD\n")
+    if change == "staged":
+        git(worktree, "add", source)
+    payload = orch.review(repo, orch_id)
+    verdict = Path(payload["review_file"])
+    verdict.parent.mkdir(parents=True, exist_ok=True)
+    verdict.write_text(PASS_VERDICT)
+    orch.review_result(repo, orch_id, verdict)
+    with pytest.raises(RuntimeError, match="commit"):
+        orch.deliver(repo, orch_id)
+    assert store.load(orch_id).phase == "reviewing"
+
+
+def test_review_resolves_host_model(git_repo, monkeypatch):
+    repo, _ = git_repo
+    orch_id, _ = merged_orchestrator(repo)
+    no_checks(monkeypatch)
+    payload = orch.review(repo, orch_id, host="codex", available_models=["gpt-6"])
+    assert payload["host"] == "codex"
+    assert payload["model"] is None
+
+
+def test_cancel_during_final_checks_does_not_start_review(git_repo, monkeypatch):
+    repo, _ = git_repo
+    orch_id, store = merged_orchestrator(repo)
+
+    async def cancel_in_checks(worktree, config):  # ruff: ignore[unused-async]
+        store.cancel_marker(orch_id).write_text("cancel requested")
+        return []
+
+    monkeypatch.setattr(orch, "run_final_checks", cancel_in_checks)
+    with pytest.raises(ValueError, match="cancelled"):
+        orch.review(repo, orch_id)
+    assert store.load(orch_id).phase == "cancelled"
+
+
 def delivering(repo: Path):
     orch_id, store = merged_orchestrator(repo)
-    edit(store, orch_id, phase="delivering", objective="Add login")
+    edit(store, orch_id, objective="Add login")
+    payload = orch.review(repo, orch_id)
+    verdict = Path(payload["review_file"])
+    verdict.parent.mkdir(parents=True, exist_ok=True)
+    verdict.write_text(PASS_VERDICT)
+    orch.review_result(repo, orch_id, verdict)
     return orch_id, store
 
 

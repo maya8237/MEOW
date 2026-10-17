@@ -357,6 +357,8 @@ def checks_current(  # ruff: ignore[too-many-arguments] -- optional explicit fin
     *,
     fingerprint: str | None = None,
 ) -> bool:
+    if not checks:
+        return True
     revision = revision or code_revision(repo)
     fingerprint = fingerprint or config_fingerprint(repo)
     for check in checks:
@@ -402,6 +404,8 @@ async def run_final_checks(
     results are re-stamped to the tree they produced.
     """
     checks = configured_checks(config)
+    if not checks:
+        return []
     for _attempt in range(3):
         baseline = await asyncio.to_thread(stage_baseline, repo)
         results = await _run_check_batch(repo, config, checks, fingerprint=fingerprint)

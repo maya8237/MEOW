@@ -267,6 +267,12 @@ def reset_mid_merge(repo: Path, store: OrchestratorStore, orch_id: str) -> str |
 def push_integration(repo: Path, store: OrchestratorStore, orch_id: str) -> str:
     """Push the integration branch unless origin already has this commit."""
     record = store.load(orch_id)
+    from meow.execution.orchestration.review_evidence import require_delivery_review
+    from meow.project.config import load_config
+
+    if store.cancel_marker(orch_id).exists():
+        raise RuntimeError("Orchestrator cancelled before delivery")
+    require_delivery_review(repo, record, load_config(repo))
     worktree = _worktree(record)
     branch = record.integration["branch"]
     if "origin" not in _git(worktree, "remote").stdout.splitlines():

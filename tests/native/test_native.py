@@ -8,6 +8,7 @@ from pathlib import Path
 
 from meow.infrastructure.worktree import DirtyWorkingTreeError
 from meow.native import native
+from meow.native.native_review import bind_review_checks
 
 OK_CMD = "python ok.py"
 FAIL_CMD = "python fail.py"
@@ -327,8 +328,10 @@ class LookupTests(unittest.TestCase):
 class VerdictTests(unittest.TestCase):
     def test_reads_status_and_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
-            review = Path(tmp) / "r.md"
+            review = Path(tmp) / ".meow" / "plans" / "plan-review.md"
+            review.parent.mkdir(parents=True)
             review.write_text("SUMMARY: looks fine\nSTATUS: PASS\n- ok\n")
+            bind_review_checks(review, Path(tmp), Path(tmp))
 
             self.assertEqual(
                 native.verdict(review), {"status": "PASS", "summary": "looks fine"}
@@ -336,8 +339,10 @@ class VerdictTests(unittest.TestCase):
 
     def test_missing_status_defaults_to_fail(self):
         with tempfile.TemporaryDirectory() as tmp:
-            review = Path(tmp) / "r.md"
+            review = Path(tmp) / ".meow" / "plans" / "plan-review.md"
+            review.parent.mkdir(parents=True)
             review.write_text("no verdict here\n")
+            bind_review_checks(review, Path(tmp), Path(tmp))
 
             self.assertEqual(
                 native.verdict(review), {"status": "FAIL", "summary": None}

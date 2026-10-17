@@ -9,7 +9,13 @@ from typing import TYPE_CHECKING
 from meow.infrastructure.logging import get_logger
 from meow.project.custom import frontmatter
 from meow.project.custom.agent_files import read_agent_toml
-from meow.project.custom.sources import AGENT_ROLES, SCOPES, CustomSource
+from meow.project.custom.sources import (
+    AGENT_ROLES,
+    SCOPES,
+    CustomSource,
+    source_files,
+    validate_source_path,
+)
 
 if TYPE_CHECKING:
     from meow.project.custom.workflows import WorkflowFile
@@ -129,6 +135,7 @@ def _names(value: object, key: str, where: Path) -> tuple[str, ...]:
 
 
 def _load_skill(directory: Path, source: CustomSource) -> CustomSkill:
+    source_files(directory, source)
     skill_file = directory / "SKILL.md"
     data, _ = frontmatter.parse(skill_file)
     name = _name(data.get("name", directory.name), skill_file)
@@ -147,6 +154,7 @@ def _load_toml_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
 
 
 def load_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
+    validate_source_path(agent_file, source)
     if agent_file.suffix == ".toml":
         return _load_toml_agent(agent_file, source)
     data, body = frontmatter.parse(agent_file)
@@ -176,7 +184,7 @@ def _definitions(source: CustomSource) -> list:
         from meow.project.custom.workflows import load_workflow
 
         return [
-            load_workflow(path, source)
+            load_workflow(validate_source_path(path, source), source)
             for path in sorted(source.path.glob("*.toml"))
             if path.is_file()
         ]

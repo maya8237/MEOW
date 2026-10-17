@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from meow.common.process import process_identity
 from meow.execution.orchestration.model import (
     MODES,
     PHASES,
@@ -182,8 +183,9 @@ class DriverLock:
 
     A CLI lock names the owning PID and is reclaimable when that PID is dead.
     A native lock carries a heartbeat that every mutating helper refreshes, is
-    reclaimable after `NATIVE_HEARTBEAT_SECONDS` without one, and may be taken
-    over by any other native call (each `meow native` call is its own process).
+    reclaimable after `NATIVE_HEARTBEAT_SECONDS` without one. A native helper
+    records its process identity while running, so the next native call may
+    take over after it exits, while concurrent helpers cannot steal its lock.
     """
 
     def __init__(self, directory: Path, *, mode: Literal["cli", "native"]):
@@ -195,6 +197,8 @@ class DriverLock:
         if self.mode == "native":
             data = {
                 "mode": "native",
+                "pid": os.getpid(),
+                "start_identity": process_identity(os.getpid()),
                 "heartbeat_at": time.time(),
                 "started_at": _now(),
             }
@@ -226,18 +230,47 @@ class DriverLock:
             return self._unreadable_is_stale()
         if holder.get("mode") == "native":
             beat = holder.get("heartbeat_at")
-            if not isinstance(beat, (int, float)):
-                return True
-            return time.time() - beat > NATIVE_HEARTBEAT_SECONDS
+            return not self._live_native(holder) and (
+                not isinstance(beat, (int, float))
+                or time.time() - beat > NATIVE_HEARTBEAT_SECONDS
+            )
         pid = holder.get("pid")
         return not isinstance(pid, int) or not _pid_is_alive(pid)
+
+    @staticmethod
+    def _live_native(holder: dict) -> bool:
+        pid = holder.get("pid")
+        identity = holder.get("start_identity")
+        return (
+            isinstance(pid, int)
+            and _pid_is_alive(pid)
+            and (identity is None or process_identity(pid) == identity)
+        )
 
     def _write_over(self) -> None:
         temporary = self.path.with_name(f"{LOCK_FILE}.{os.getpid()}.tmp")
         temporary.write_text(self._payload(), encoding="utf-8")
         os.replace(temporary, self.path)
 
+    def _take_native(self, holder: dict) -> bool:
+        if holder.get("pid") != os.getpid() and self._live_native(holder):
+            return False
+        self._write_over()
+        self._owned = True
+        return True
+
     def acquire(self) -> bool:
+        from meow.ui.sessions import _file_transaction
+
+        # Serializing the read and replacement prevents two helpers from both
+        # taking over the same dead native holder. The kernel releases this
+        # short transaction lock even when a claimant crashes.
+        with _file_transaction(
+            self.path.with_name("driver.claim.lock"), "orchestrator driver"
+        ):
+            return self._acquire()
+
+    def _acquire(self) -> bool:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # A stale lock is reclaimed once; the bounded retry keeps a concurrent
         # driver from turning a missing lock into recursion.
@@ -247,9 +280,7 @@ class DriverLock:
             except FileExistsError:
                 holder = self.holder()
                 if self.mode == "native" and holder and holder.get("mode") == "native":
-                    self._write_over()
-                    self._owned = True
-                    return True
+                    return self._take_native(holder)
                 if self._reclaimable(holder):
                     self.path.unlink(missing_ok=True)
                     continue

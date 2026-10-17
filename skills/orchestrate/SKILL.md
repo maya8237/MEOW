@@ -89,10 +89,14 @@ of fighting for it.
    - `cancelled`: say so and stop.
    After every tick give the user one short line: launched, merged, running,
    and any failures.
-5. **Review the whole objective.** Run `meow native orchestrate review <id>`. It
+5. **Review the whole objective.** Run `meow native orchestrate review <id>`.
+   On hosts other than Claude, pass `--host <host>` and repeat
+   `--available-model <id>` for each advertised model, following the shared
+   protocol's model-resolution rules. It
    runs the required checks in the integration worktree and returns
    `system_prompt`, `query`, `review_file`, `model`, `tools`, `round`,
-   `max_rounds`, `checks_passed`, and `check_failures`. Launch a **fresh
+   `max_rounds`, `checks_passed`, `check_failures`, and model-resolution
+   metadata. Surface `model_fallback_reason` when supplied. Launch a **fresh
    subagent every round** (never yourself, never a reused one) with the
    `system_prompt`, a blank line, and the `query`; use `model` when it is not
    null; tell it the working directory is `integration_worktree`, that it must
@@ -108,6 +112,10 @@ of fighting for it.
      your fixes first.
    - `phase` is `blocked`: the rounds are used up; go to "When it blocks".
    A failing required check always forces FAIL, even when the reviewer passes.
+   `review-result` accepts only the report path returned by `review`. If code
+   or configuration changed after that round's checks, run `review` again.
+   Delivery also requires the same passing report and unchanged reviewed code.
+   Source changes must be committed before the review that authorizes delivery.
 6. **Deliver.** Run `meow native orchestrate deliver <id>`; it pushes the
    integration branch (a push failure fails the orchestrator and `resume`
    retries it). If `open_pr` is true, open the pull request (GitHub) or merge

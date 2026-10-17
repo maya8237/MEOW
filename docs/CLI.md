@@ -17,6 +17,10 @@ verdicts enforce these checks and scope coverage in code. Native prompts accept
 an unsupported configured model yields `model: null` to inherit the host model,
 with the configured model and fallback reason preserved in JSON.
 
+Native `custom` and `orchestrate review` accept the same host/model capability
+flags as `prompt`. A resumed PASS is reviewed again when a new focus is given;
+whole-project wording widens an earlier diff review to project scope.
+
 This page covers the detailed behavior of MEOW's command-line interface.
 For installation and a quick start, see the [README](../README.md). For Jira
 and GitLab/GitHub configuration, scheduled runs, and error details, see

@@ -80,7 +80,9 @@ def test_late_generator_checkpoint_marks_saved_review_stale(tmp_path):
     subprocess.run([*git, "commit", "-qm", "one"], check=True)
     run_id = checkpoint(tmp_path, tmp_path, "planning", request="x")["run_id"]
     checkpoint(tmp_path, tmp_path, "reviewer_started", run_id=run_id)
-    checkpoint(tmp_path, tmp_path, "reviewer_finished", run_id=run_id, reviewer="PASS")
+    from tests.native.test_native_finalize import _review
+
+    _review(tmp_path, run_id)
     results = RunStore(tmp_path).load(run_id).results
     assert results["reviewer"] == "PASS"
 
@@ -90,3 +92,34 @@ def test_late_generator_checkpoint_marks_saved_review_stale(tmp_path):
     results = RunStore(tmp_path).load(run_id).results
     assert results["reviewer"] == "STALE"
     assert results["reviewer_revision"] == ""
+
+
+@pytest.mark.parametrize("reviewer", [None, "PASS"])
+def test_generator_checkpoint_invalidates_tester_independently(tmp_path, reviewer):
+    from meow.infrastructure.checks import code_revision
+
+    subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
+    source = tmp_path / "source.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    run_id = checkpoint(tmp_path, tmp_path, "planning")["run_id"]
+    if reviewer == "PASS":
+        from tests.native.test_native_finalize import _review
+
+        _review(tmp_path, run_id)
+    checkpoint(
+        tmp_path,
+        tmp_path,
+        "tester_finished",
+        run_id=run_id,
+        tester="PASS",
+    )
+    assert RunStore(tmp_path).load(run_id).results["tester_revision"] == code_revision(
+        tmp_path
+    )
+
+    source.write_text("x = 2\n", encoding="utf-8")
+    checkpoint(tmp_path, tmp_path, "generator_finished", run_id=run_id)
+
+    results = RunStore(tmp_path).load(run_id).results
+    assert results["tester"] == "STALE"
+    assert results["tester_revision"] == ""

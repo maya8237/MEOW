@@ -21,21 +21,23 @@ otherwise tell the user and stop (point at `docs/INTEGRATIONS.md` for the
 `[[lint]]` schema, or invoke `/meow:onboard` to configure it).
 2. Run `meow native prepare --no-worktree --allow-dirty --work-dir "<project-path>"`
    for `max_rounds` and `docs_dir`, then
-   `meow native round <docs_dir>/lint-fix.md --reset`.
+   `meow native round <docs_dir>/lint-fix.md --reset --work-dir "<project-path>"`.
 3. Auto-fix pass, then check: `meow native lint --fix --all-blocking --work-dir "<project-path>"`.
    `--all-blocking` fixes every configured command unconditionally, matching
    `meow run --lint-fix`'s own CLI behavior -- `gate` only controls what fails a
    *review*, not what this skill leaves alone.
    - `"clean": true` -> report that nothing is left and stop.
-   - Otherwise each entry in `blocking` is a `$ <command>` block of raw linter
+   - Otherwise call `meow native round <docs_dir>/lint-fix.md --work-dir
+     "<project-path>"` before the first manual fix attempt; stop if exhausted.
+     Each entry in `blocking` is a `$ <command>` block of raw linter
      output. Before editing, run `meow native prompt lint-fixer --active-dir
-     <active_dir>` and follow its returned `system_prompt`, just as the CLI
+     <active_dir> --work-dir "<project-path>"` and follow its returned `system_prompt`, just as the CLI
      lint-fixer role follows `lint_fixer_prompt`. Fix each finding yourself
      with the smallest edit that resolves it, without unrelated refactoring;
      run `meow native lint --file <path> --active-dir <active_dir>` after each
      edit. Do not launch another agent.
-4. Re-check with `meow native lint --all-blocking`; call
-   `meow native round <docs_dir>/lint-fix.md` before each further fix attempt
+4. Re-check with `meow native lint --all-blocking --work-dir "<project-path>"`; call
+   `meow native round <docs_dir>/lint-fix.md --work-dir "<project-path>"` before each further fix attempt
    and stop if it says `exhausted`.
 5. Report the final outcome: clean, or what is still outstanding and why (e.g. a
    project-wide type error needing a design decision).

@@ -253,3 +253,25 @@ def test_ci_reviewer_grants_only_read_tools(  # ruff: ignore[too-many-statements
         status, _ = asyncio.run(agent.review_ci_branch(context))
     assert status == "PASS"
     assert len(store.load(record.id).usage["entries"]) == 1
+
+
+@pytest.mark.parametrize(
+    "filename", ["file.txt", "existing-untracked.txt", " leading café.txt"]
+)
+def test_rewriting_already_dirty_file_invalidates_pass(checkout, filename):
+    repo, _, _, env = checkout
+    changed = repo / filename
+    changed.write_text("before review\n")
+
+    async def rewrites_file(_self, _context):  # ruff: ignore[unused-async] -- SDK seam
+        changed.write_text("changed during review\n")
+        return "PASS", "SUMMARY: Fine\nSTATUS: PASS"
+
+    with patch(
+        "meow.integrations.ci_review.ReviewerAgent.review_ci_branch", rewrites_file
+    ):
+        result = run_ci_review(
+            repo, {}, env, "dev", repo / ".meow" / "ci-artifacts", None
+        )
+    assert result.verdict == "UNVERIFIED"
+    assert "checkout HEAD or files changed" in result.report_path.read_text()

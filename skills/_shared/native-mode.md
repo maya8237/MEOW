@@ -1,7 +1,7 @@
 # Native mode: shared protocol
 
 Other agent hosts can use the same helpers. In Codex, pass `--host codex` to
-`meow native prompt`; repeat `--available-model ID` only for exact supported
+`meow native prompt` and `meow native custom`; repeat `--available-model ID` only for exact supported
 IDs. Returned `model: null` means inherit the host model. `configured_model`
 preserves the SDK setting; `model_fallback_reason` explains a fallback.
 Default callers retain Claude behavior. Use the host's subagent API when its
@@ -50,6 +50,11 @@ plan before another edit. Do not clean up failed or interrupted worktrees.
 Completion requires current passing required lint, test, and build checks,
 reviewer PASS, and enabled tester PASS. SDK usage missing from evidence is
 `unavailable`.
+Native reviewer PASS checkpoints require the actual current bound report and
+save its content fingerprint; flags alone are not evidence. Finalization
+revalidates that report and its binding. Native finalization always routes
+configured tester projects to the CLI lifecycle, even if a caller supplied
+`--tester PASS`.
 
 ## The `meow native` helper
 
@@ -151,7 +156,13 @@ scopes, and catalog commands.
 
 `/meow:run --test` and `/meow:review --plan PATH --test` use the matching
 CLI flow so configured servers stay alive during the tester agent's run.
-Without `--test`, native skill behavior is unchanged. Review accepts `--test`
+Before native run preparation, inspect `meow native verify --work-dir PATH`.
+If `tester.configured` is true, use the CLI run flow even without `--test`:
+configured tests automatically enable the CLI tester, and native run has no
+tester agent lifecycle. Preserve resume/run IDs and supplied plan/Jira options
+when switching modes. A native checkpoint has no Claude transcript IDs; use
+`meow resume ID --continue --repair` to start fresh CLI agent sessions from
+its saved plan. Review accepts `--test`
 only with an explicit plan file and rejects other sources and `--review-file`.
 
 ## Roles
@@ -162,7 +173,7 @@ only with an explicit plan file and rejects other sources and `--review-file`.
 | Planner | You. Invoke `superpowers:writing-plans`, but meow's constraints win: write the plan to the `plan_file` from `prepare`, include a `## Sprint Contract` of concrete pass/fail criteria, do not use the skill's default location, do not stop for its execution-method handoff. Run `meow native prompt planner --plan <plan_file>` and honour it. |
 | Generator | You. Invoke `superpowers:executing-plans`, `superpowers:test-driven-development`, `superpowers:systematic-debugging` (on unexpected failures), `superpowers:receiving-code-review` (before acting on findings) and `superpowers:verification-before-completion`. Follow `meow native prompt generator --plan <plan_file>`: stay inside the Sprint Contract, do not commit, do not grade your own work. |
 | Reviewer | **A fresh subagent every round** (Agent tool, `general-purpose`), never you: it must not share your context. See below. |
-| Explorer | Optional read-only subagent (Agent tool, `Explore` or `general-purpose`) for research whose raw output you do not need in full. Use `meow native prompt explorer` as its instructions and `models.explorer` as its model. |
+| Explorer | Optional read-only subagent (Agent tool, `Explore` or `general-purpose`) for research whose raw output you do not need in full. Use `meow native prompt explorer` as its instructions and its returned `model` when not null; null inherits the host default. Never dispatch the raw `prepare.models.explorer` SDK setting. |
 | Review fixer | The shipped CLI definition has an empty skills list; overrides may add skills. It uses a scoped fixer prompt and a post-edit lint hook. In native review fix flows, run `meow native prompt review-fixer`, verify findings before editing, make the smallest in-scope correction, and run per-file lint after edits. |
 | Lint fixer | The shipped CLI definition has an empty skills list; overrides may add skills. It uses a lint-specific prompt and a post-edit lint hook. In the native lint skill, run `meow native prompt lint-fixer` and run per-file lint after edits. Do not start a second agent. |
 | Decomposer | You, in `/meow:orchestrate`. `meow native orchestrate init` returns the exact decomposer `system_prompt` and `query` (the same text the CLI role gets); follow them with read-only tools and write only the `output_file` it names. For a Jira set keep every issue as its own task. |
@@ -195,7 +206,15 @@ tool cap and `[permissions]` policy; in native mode you must respect them.
    followed by a blank line and the `query`. Tell it the working directory
    (`active_dir`) and that it must write its verdict to the `review_file` from
    the JSON. Use the JSON's `model` if it is not null.
-3. When it returns, run `meow native verdict <review_file>`. Trust the file
+3. When a local reviewer returns, inspect `meow native review-checks --status` with the same
+   directory flags. If the evidence is missing, stale, or interrupted, run
+   `review-checks --background` and wait for completion before reading the
+   verdict. Pending checks are infrastructure work, not a failed reviewer
+   round; do not burn fix rounds on missing verification metadata.
+   If source/config inputs changed after the reviewer prompt, prepare a new
+   prompt and dispatch a fresh reviewer against the current inputs; running
+   checks alone cannot refresh an old review binding.
+   For every review, run `meow native verdict <review_file>`. Trust the file
    and the command, not the subagent's chat summary. A missing file or missing
    `STATUS:` line counts as FAIL.
 
@@ -209,6 +228,11 @@ tool cap and `[permissions]` policy; in native mode you must respect them.
   (project-wide, check-only) and fix everything in `blocking`. Then build the
   reviewer prompt: its `query` already carries the current lint evidence, so
   the reviewer does not rerun lint; `informational` findings never block.
+- Before building a local reviewer prompt, run `meow native review-checks
+  --background --work-dir <project-path> --active-dir <active_dir>` and wait
+  for `review-checks --status` to report current completed evidence. Reuse
+  unchanged passing evidence. Fix actual blocking check failures before the
+  reviewer; a running or interrupted check never counts as PASS.
 
 ## Round limits
 
@@ -231,6 +255,7 @@ repeat:
   round <plan>            -> stop if exhausted
   generate / fix          (skipped in review-first flows until the review fails)
   lint (project-wide)     -> fix blocking findings
+  review-checks           -> wait for current required verification; fix failures
   reviewer subagent       -> verdict
   PASS -> done            FAIL -> feed the review file's findings into the next
                                    generate/fix step (verify each finding first;

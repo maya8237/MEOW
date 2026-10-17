@@ -124,3 +124,38 @@ def test_legacy_saved_pass_gets_fresh_review_before_any_fixer(tmp_path):
         asyncio.run(_resume_review_file(tmp_path, {"max_rounds": 1}, None, report))
     reviewer.assert_awaited_once_with(None)
     assert rounds.call_args.args[1][0] == "PASS"
+
+
+@pytest.mark.parametrize(
+    "focus,expected_scope",
+    [
+        ("Review the whole project from zero", "project"),
+        ("Review security handling in these changes", "diff"),
+    ],
+)
+@pytest.mark.parametrize("previous_status", ["PASS", "FAIL"])
+def test_saved_report_does_not_skip_new_review_focus(
+    tmp_path, focus, expected_scope, previous_status
+):
+    from meow.cli.review_cli import _resume_review_file
+    from meow.project.review_scope import prepare_scope
+
+    report = tmp_path / ".meow/review.md"
+    prepare_scope(report, tmp_path, ".meow/plans", "changes", True, "diff")
+    report.write_text(f"SUMMARY: previous diff report\nSTATUS: {previous_status}\n")
+    config = {"max_rounds": 1}
+    with (
+        patch(
+            "meow.cli.review_cli.ReviewerAgent.review_prompt",
+            new_callable=AsyncMock,
+            return_value=("PASS", "SUMMARY: fresh project review\nSTATUS: PASS\n"),
+        ) as reviewer,
+        patch(
+            "meow.cli.review_cli._run_prompt_fix_rounds",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        asyncio.run(_resume_review_file(tmp_path, config, focus, report))
+    reviewer.assert_awaited_once_with(focus)
+    assert config["_review_scope"] == expected_scope

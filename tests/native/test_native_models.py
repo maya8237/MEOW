@@ -6,8 +6,35 @@ import subprocess
 import pytest
 
 from meow.agents.base import Agent, ProjectContext
+from meow.native.native_custom import custom
 from meow.native.native_prompt import PROMPT_ROLES, role_prompt
 from meow.project.config import load_config
+
+
+@pytest.mark.parametrize(
+    ("host", "available", "expected"),
+    [(None, None, "haiku"), ("codex", None, None), ("codex", ["haiku"], "haiku")],
+)
+def test_custom_delegate_routes_model_without_changing_config(
+    tmp_path, host, available, expected
+):
+    directory = tmp_path / ".meow"
+    directory.mkdir()
+    (directory / "config.toml").write_text(
+        '[custom]\nagents = ["delegates"]\n', encoding="utf-8"
+    )
+    delegates = tmp_path / "delegates"
+    delegates.mkdir()
+    (delegates / "audit.md").write_text(
+        "---\nname: audit\ndescription: Audit code\nmodel: haiku\n---\nInspect.\n",
+        encoding="utf-8",
+    )
+
+    result = custom(tmp_path, tmp_path, host=host, available_models=available)
+
+    assert result["agents"][0]["model"] == expected
+    assert result["agents"][0]["configured_model"] == "haiku"
+    assert load_config(tmp_path)["customizations"].agents[0].model == "haiku"
 
 
 def _configure(root, model):

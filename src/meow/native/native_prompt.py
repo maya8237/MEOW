@@ -10,6 +10,7 @@ from meow.agents.reviewer import (
     REMOTE_REVIEW_SPECS,
     _branch_diff,
     _git_review_context,
+    _prepare_review_file,
     branch_review_query,
     plan_review_query,
     prompt_review_query,
@@ -262,11 +263,13 @@ def role_prompt(  # ruff: ignore[too-many-arguments, too-many-statements] -- mir
     else:
         result = _simple_prompt(role, context, plan_file, shape_context)
     if role.startswith("reviewer-") and role != "reviewer-mr":
+        _prepare_review_file(Path(result["review_file"]))
         result["verification"] = bind_review_checks(
             Path(result["review_file"]),
             working_dir,
             active_dir,
             project_scope=result.get("scope") == "project",
+            plan_file=plan_file if role == "reviewer-plan" else None,
         )
         result["query"] += (
             "\n\nCompletion requires current configured lint, test, and build checks. "

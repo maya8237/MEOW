@@ -303,11 +303,13 @@ async def _resume_review_file(
     if flavor in _UNRESUMABLE_FLAVOR_MESSAGES:
         message = _UNRESUMABLE_FLAVOR_MESSAGES[flavor].format(file=review_file)
         raise RuntimeError(message)
-    config["_review_scope"] = saved_scope_mode(review_file)
+    config["_review_scope"] = saved_scope_mode(review_file, focus=prompt)
     context = ProjectContext(working_dir, config)
     text = review_file.read_text(encoding="utf-8")
-    refresh = bool(coverage_errors(review_file, text)) or (
-        config["_review_scope"] == "auto" and _verdict_status(text) == "PASS"
+    refresh = (
+        bool(prompt and prompt.strip())
+        or bool(coverage_errors(review_file, text))
+        or (config["_review_scope"] == "auto" and _verdict_status(text) == "PASS")
     )
     initial_verdict = (
         None if refresh else await _validated_saved_verdict(context, review_file)

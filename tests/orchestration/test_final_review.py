@@ -11,6 +11,7 @@ from meow.execution.orchestration import final_review
 from meow.execution.orchestration.final_review import run_objective_review
 from meow.execution.orchestration.model import OrchestratorTask
 from meow.execution.run_state import CheckResult
+from meow.project.config_models import VerificationCommand
 from tests.orchestration.fakes import (
     create_orchestrator,
     git,
@@ -82,6 +83,38 @@ def test_pass_first_round_proceeds(tmp_path):
     assert case.script.fixes == []
 
 
+def test_reviewer_code_edits_cannot_pass_the_objective_review(tmp_path):
+    case = setup(tmp_path, ["PASS"])
+    case.config["orchestrator"]["review_rounds"] = 1
+    factory = case.script.agents.reviewer
+
+    def editing_reviewer(context):
+        reviewer = factory(context)
+        original = reviewer.review_branch
+
+        async def run(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            (case.worktree / "unreviewed.py").write_text("broken = True\n")
+            return result
+
+        reviewer.review_branch = run
+        return reviewer
+
+    case.script.agents.reviewer = editing_reviewer
+    assert review(case) == "FAIL"
+    assert case.store.load(case.oid).phase == "blocked"
+
+
+def test_resumed_review_preserves_used_rounds(tmp_path):
+    case = setup(tmp_path, ["PASS"])
+    case.store.update(case.oid, lambda rec: rec.review.update(round=2))
+    assert review(case) == "PASS"
+    assert (
+        case.store.load(case.oid).review["round"]
+        == case.config["orchestrator"]["review_rounds"]
+    )
+
+
 def test_fail_then_fix_then_pass(tmp_path):
     case = setup(tmp_path, ["FAIL", "PASS"])
     worktree = case.worktree
@@ -147,7 +180,11 @@ def test_failing_checks_force_fail_even_when_reviewer_passes(tmp_path, monkeypat
 def test_tester_runs_only_with_test_option_and_config(tmp_path, monkeypatch, scenario):
     option, configured, expected_calls = scenario
     case = setup(tmp_path, ["PASS"], test=option)
-    case.config["tester"] = {"tests": ["pytest"] if configured else []}
+    case.config["tester"] = {
+        "tests": [VerificationCommand(Path("."), "pytest", gate=False)]
+        if configured
+        else []
+    }
     no_checks_and_fake_stage(monkeypatch)
 
     result = review(case)
@@ -159,7 +196,9 @@ def test_tester_runs_only_with_test_option_and_config(tmp_path, monkeypatch, sce
 def test_tester_failure_is_a_failure(tmp_path, monkeypatch):
     case = setup(tmp_path, ["PASS"], test=True)
     case.script.tester_result = ("FAIL", "login is broken")
-    case.config["tester"] = {"tests": ["pytest"]}
+    case.config["tester"] = {
+        "tests": [VerificationCommand(Path("."), "pytest", gate=False)]
+    }
     case.config["orchestrator"]["review_rounds"] = 1
     no_checks_and_fake_stage(monkeypatch)
 

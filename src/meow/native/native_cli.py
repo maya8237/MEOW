@@ -170,11 +170,7 @@ def _add_checkpoint(sub) -> None:
     finish.add_argument("run_id")
 
 
-def _add_prompt(sub) -> None:
-    parser = sub.add_parser("prompt", help="Print a role's system prompt as JSON.")
-    _add_dirs(parser)
-    parser.add_argument("role", choices=native.PROMPT_ROLES)
-    parser.add_argument("--scope", choices=("auto", "project", "diff"), default="auto")
+def _add_model_host(parser) -> None:
     parser.add_argument(
         "--host", default=None, help="Native host, e.g. claude or codex."
     )
@@ -184,6 +180,14 @@ def _add_prompt(sub) -> None:
         default=None,
         help="Exact supported model ID; repeat for each available model.",
     )
+
+
+def _add_prompt(sub) -> None:
+    parser = sub.add_parser("prompt", help="Print a role's system prompt as JSON.")
+    _add_dirs(parser)
+    parser.add_argument("role", choices=native.PROMPT_ROLES)
+    parser.add_argument("--scope", choices=("auto", "project", "diff"), default="auto")
+    _add_model_host(parser)
     parser.add_argument("--plan", default=None, help="Sprint plan file.")
     parser.add_argument(
         "--focus",
@@ -251,6 +255,7 @@ def _add_custom(sub) -> None:
         "custom", help="List the custom skills and agents in effect."
     )
     _add_dirs(parser)
+    _add_model_host(parser)
     parser.add_argument(
         "--role",
         choices=sorted(SKILL_ROLES),
@@ -311,7 +316,9 @@ def _add_orchestrate_simple(commands) -> None:
         ("cancel", "Cancel the orchestrator and its live children."),
         ("release", "Drop the native driver lock."),
     ):
-        _orchestrate_leaf(commands, name, text)
+        parser = _orchestrate_leaf(commands, name, text)
+        if name == "review":
+            _add_model_host(parser)
     _orchestrate_leaf(commands, "status", "Roll-up of an orchestrator.", "?")
     _orchestrate_leaf(
         commands, "wait", "Block until a child journal changes."
@@ -449,14 +456,19 @@ def _checkpoint(args, working_dir: Path, active: Path) -> dict:
     )
 
 
-def _prompt(args, working_dir: Path, active: Path) -> dict:
+def _model_host_options(args) -> dict:
     options = {}
-    if args.scope != "auto":
-        options["scope"] = args.scope
     if args.host is not None:
         options["host"] = args.host
     if args.available_model is not None:
         options["available_models"] = args.available_model
+    return options
+
+
+def _prompt(args, working_dir: Path, active: Path) -> dict:
+    options = _model_host_options(args)
+    if args.scope != "auto":
+        options["scope"] = args.scope
     return native.role_prompt(
         working_dir,
         active,
@@ -504,7 +516,9 @@ _ORCHESTRATE_HANDLERS = {
     "triage": lambda mod, args, wd, active: mod.triage(
         wd, args.orch_id, args.task_id, _resolve(args.file, active)
     ),
-    "review": lambda mod, args, wd, active: mod.review(wd, args.orch_id),
+    "review": lambda mod, args, wd, active: mod.review(
+        wd, args.orch_id, **_model_host_options(args)
+    ),
     "review-result": lambda mod, args, wd, active: mod.review_result(
         wd, args.orch_id, _resolve(args.file, active)
     ),
@@ -553,7 +567,9 @@ _HANDLERS = {
     "knowledge-create": lambda args, wd, active: native.knowledge_create(
         active, args.finding, overwrite=args.overwrite
     ),
-    "custom": lambda args, wd, active: native.custom(wd, active, args.role),
+    "custom": lambda args, wd, active: native.custom(
+        wd, active, args.role, **_model_host_options(args)
+    ),
     "onboard-status": lambda args, wd, active: native.onboard_status(active),
     "shape-assess": lambda args, wd, active: native.shape_assess(args.request),
     "shape-create": lambda args, wd, active: native.shape_create(
