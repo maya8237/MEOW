@@ -25,8 +25,14 @@ irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | i
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 ```
 
-Run `meow --update` to update an existing installation. Public commands and
-`/meow:*` skills warn when a newer version is available.
+The installer downloads the latest published release into `~/.meow`, including
+its Python runtime and Claude plugin. It adds `~/.meow/bin` to your user `PATH`;
+no MEOW checkout, system Python, or package installation is needed. On Windows,
+`~` is your user profile. Open a new terminal after installation if necessary.
+
+Run `meow --update` or `meow -u` to install the latest published release.
+Public commands and `/meow:*` skills warn when a newer release is available.
+Use `-a` / `--auto` on feature runs for unattended execution.
 
 ## Run
 
@@ -44,6 +50,11 @@ meow run "Add CSV export" --name csv-export
 
 Projects are set up automatically on first use. Use `/meow:onboard` to configure
 integrations and optional features.
+
+To start a session in the browser, run `meow ui`, open **Sessions**, and choose
+**New session**. Enter your request, preview the command, then select **Launch session**.
+
+![Starting a new MEOW UI session with a CSV export request and command preview](docs/images/meow-ui-new-session.png)
 
 ## Common commands
 

@@ -313,8 +313,15 @@ def _validate_mode_command(mode: object, command: str) -> None:
 
 
 def _builtin_skill_names() -> set[str]:
-    skill_root = Path(__file__).resolve().parents[3] / "skills"
-    if not skill_root.is_dir():
+    source = Path(__file__).resolve()
+    roots = [source.parents[3] / "skills"]
+    roots.extend(
+        parent.parent / "plugin" / "skills"
+        for parent in source.parents
+        if parent.name == "runtime"
+    )
+    skill_root = next((root for root in roots if root.is_dir()), None)
+    if skill_root is None:
         return set()
     return {
         directory.name
@@ -485,7 +492,7 @@ def _run_cli_options(recipe: Recipe) -> list[str]:
         for key, value in recipe.inputs.items()
         for token in ("--input", f"{key}={value}")
     ]
-    options.append("--unattended")
+    options.append("--auto")
     return options
 
 

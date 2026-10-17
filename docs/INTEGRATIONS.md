@@ -411,7 +411,7 @@ meow schedule cancel <schedule-id> --work-dir /path/to/project
 
 `HH:MM` means the next occurrence in the machine's local timezone; ISO
 timestamps can specify an explicit offset. Each schedule runs once. Scheduling
-adds `--unattended`, validates the arguments, and rejects interactive approval,
+adds `--auto`, validates the arguments, and rejects interactive approval,
 lint-fix, background mode, source-branch selection, and disabling worktree
 isolation. The normal plan, implementation, verification, review, and delivery
 policy applies when the run starts. See [CLI.md](CLI.md#scheduling-a-run).
@@ -450,7 +450,7 @@ the account's persistent environment or the integration's supported credential
 configuration. `MEOW_LOG_FILE` can provide an additional persistent log.
 
 For recurring jobs, an external recurring Task Scheduler, cron, systemd, or CI
-configuration can invoke `meow run --unattended` with absolute executable and
+configuration can invoke `meow run --auto` with absolute executable and
 project paths. MEOW's built-in schedules are one-shot.
 
 ---

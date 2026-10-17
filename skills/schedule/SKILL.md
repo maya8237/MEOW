@@ -37,7 +37,7 @@ native sprint now when the user's request is to execute it later.
 
    For a Jira issue, replace the request/name with `run --jira "<KEY>"`.
    Preserve requested `--workflow`, `--input`, `--plan`, and `--test` flags.
-   Scheduling adds `--unattended`; it requires an isolated worktree and rejects
+   Scheduling adds `--auto`; it requires an isolated worktree and rejects
    manual approval, lint-fix, `--background`, and `--from`. It follows the
    project's normal verification and delivery policy when it runs.
 3. Check the exit status. Only report a schedule as created when the command

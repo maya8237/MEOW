@@ -87,9 +87,7 @@ def _invocation_kind(
     if args.command == "_orchestrator-task":
         return "orchestrator-task"
     if args.command != "run" or not args.unattended or not args.background:
-        raise BackgroundError(
-            "Background execution requires run --unattended --background"
-        )
+        raise BackgroundError("Background execution requires run --auto --background")
     if args.lint_fix or args.manually_approve_plan:
         raise BackgroundError("Background execution cannot prompt or run lint-fix")
     return "run"
@@ -127,7 +125,7 @@ def launch_background(
 ) -> str:
     """Checkpoint an unattended invocation and start one detached worker.
 
-    `run --unattended --background` creates its own run record. The internal
+    `run --auto --background` creates its own run record. The internal
     `_orchestrator-task` invocation needs a `seed` describing the run record.
     """
     from meow.cli.parser import _build_arg_parser

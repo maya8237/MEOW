@@ -183,8 +183,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     updates = parser.add_mutually_exclusive_group()
     updates.add_argument(
         "--update",
+        "-u",
+        dest="update",
         action="store_true",
-        help="Check origin/main and update MEOW, then rerun installer setup.",
+        help="Install the latest published MEOW release.",
     )
     updates.add_argument(
         "--check-update",
@@ -385,8 +387,9 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     run_parser.add_argument(
-        "-u",
-        "--unattended",
+        "-a",
+        "--auto",
+        dest="unattended",
         action="store_true",
         help=(
             "Deliver a verified isolated-worktree run without interactive "

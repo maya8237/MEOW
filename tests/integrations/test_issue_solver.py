@@ -233,7 +233,7 @@ class UnattendedForwardingTests(unittest.IsolatedAsyncioTestCase):
             patch(
                 "meow.cli.dispatch.run_issue_solver", new_callable=AsyncMock
             ) as solver,
-            patch("sys.argv", ["meow", "run", "--jira", "PROJ-1", "--unattended"]),
+            patch("sys.argv", ["meow", "run", "--jira", "PROJ-1", "--auto"]),
         ):
             solver.return_value = {"issue": "PROJ-1", "branch": "issue/PROJ-1"}
             cli.cli_main()

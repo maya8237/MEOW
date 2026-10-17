@@ -73,7 +73,7 @@ def _run_argv(repo: Path, argv: list[str]) -> list[str]:
     argv = argv[1:] if argv[:1] == ["--"] else list(argv)
     if not argv or argv[0] != "run":
         raise ValueError("Schedule a run: meow schedule add --at TIME -- run ...")
-    argv = ["run", "--unattended", "--work-dir", str(repo), *argv[1:]]
+    argv = ["run", "--auto", "--work-dir", str(repo), *argv[1:]]
     _validate_run(repo, argv)
     return [sys.executable, "-u", "-m", "meow", *argv]
 
@@ -92,9 +92,7 @@ def _validate_run(repo: Path, argv: list[str]) -> None:
         raise ValueError("Invalid scheduled run arguments") from exc
     validator = _ScheduleParser()
     if Path(args.working_dir).resolve() != repo or not args.unattended:
-        raise ValueError(
-            "Scheduled runs require --unattended and the selected work-dir"
-        )
+        raise ValueError("Scheduled runs require --auto and the selected work-dir")
     _validate_run_flags(validator, args)
     _validate_feature_name_requirement(validator, args, repo)
     if args.background or args.source_branch:

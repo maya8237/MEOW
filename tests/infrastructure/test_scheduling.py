@@ -54,7 +54,7 @@ def test_register_list_cancel_preserves_request(  # ruff: ignore[too-many-statem
     )
     assert job["state"] == "scheduled"
     assert request in job["argv"]
-    assert "--unattended" in job["argv"]
+    assert "--auto" in job["argv"]
     assert str(tmp_path.resolve()) in job["argv"]
     assert scheduling.list_schedules(tmp_path)[0]["id"] == job["id"]
     if platform == "win32":

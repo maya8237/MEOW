@@ -33,6 +33,21 @@ def valid_payload(**overrides):
     return payload
 
 
+@pytest.mark.parametrize("library", ["Lib", "lib/python3.12"])
+def test_builtin_slash_skills_resolve_from_portable_release(
+    tmp_path, monkeypatch, library
+):
+    release = tmp_path / "versions/v0.1.4"
+    source = release / "runtime" / library / "site-packages/meow/ui/sessions.py"
+    source.parent.mkdir(parents=True)
+    source.touch()
+    skill = release / "plugin/skills/run/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("Run a feature")
+    monkeypatch.setattr(sessions, "__file__", str(source))
+    assert sessions._builtin_skill_names() == {"run"}
+
+
 def test_feature_recipe_builds_unattended_isolated_cli_argv(tmp_path):
     recipe = validate_recipe(
         tmp_path,
@@ -55,7 +70,7 @@ def test_feature_recipe_builds_unattended_isolated_cli_argv(tmp_path):
         "meow-custom:quick",
         "--input",
         "scope=users",
-        "--unattended",
+        "--auto",
         "--",
         "Add an API endpoint",
     ]
@@ -169,14 +184,14 @@ def test_cli_recipe_uses_parser_to_reject_unknown_and_invalid_options(tmp_path):
     )
     argv = command_for(in_place)
     assert "--no-worktree" in argv
-    assert "--unattended" not in argv
+    assert "--auto" not in argv
 
 
 @pytest.mark.parametrize(
     "options", [{"no_worktree": True}, {"no_worktree": True, "unattended": False}]
 )
 def test_no_worktree_does_not_silently_disable_default_unattended(tmp_path, options):
-    with pytest.raises(RecipeError, match="--unattended requires an isolated worktree"):
+    with pytest.raises(RecipeError, match="--auto requires an isolated worktree"):
         validate_recipe(
             tmp_path,
             valid_payload(options=options),
@@ -189,7 +204,7 @@ def test_legacy_interactive_ui_run_is_always_unattended(tmp_path):
         valid_payload(options={"unattended": False}),
     )
     assert recipe.options["unattended"] is True
-    assert "--unattended" in command_for(recipe)
+    assert "--auto" in command_for(recipe)
 
 
 def test_cli_recipe_rejects_duplicate_singleton_flags(tmp_path):
@@ -206,7 +221,7 @@ def test_plan_recipe_does_not_receive_unattended_flag(tmp_path):
         valid_payload(command="plan", name="Plan API", repo=str(tmp_path)),
     )
 
-    assert "--unattended" not in command_for(recipe)
+    assert "--auto" not in command_for(recipe)
 
 
 def test_review_recipe_allows_only_headless_review_form(tmp_path):
