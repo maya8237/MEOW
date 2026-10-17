@@ -93,7 +93,7 @@ def test_unattended_source_branch_delivers_to_separate_branch(
             "feature",
             "--name",
             "feature",
-            "--unattended",
+            "--auto",
             source_flag,
             "release/test",
         ]
@@ -157,8 +157,8 @@ def test_unattended_flag_rejects_non_build_and_interactive_modes():
 
     parser = cli._build_arg_parser()
     for argv in (
-        ["run", "--lint-fix", "--unattended"],
-        ["run", "feature", "--unattended", "--manually-approve-plan"],
+        ["run", "--lint-fix", "--auto"],
+        ["run", "feature", "--auto", "--manually-approve-plan"],
     ):
         with pytest.raises(SystemExit):
             cli._validate_run_flags(parser, parser.parse_args(argv))

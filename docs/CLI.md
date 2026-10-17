@@ -24,17 +24,33 @@ and GitLab/GitHub configuration, scheduled runs, and error details, see
 
 ## User commands
 
-Run `meow --update` (or `mw --update`) from any directory to check the
-version on MEOW's `origin/main`. If a newer release exists, MEOW fast-forwards
-its installation checkout, reinstalls the editable package with the running
-Python interpreter, and reruns the shared installer setup: Claude plugin
-registration, optional Bun shared storage/migration, and project onboarding
-prompts. Equal or newer local versions are left alone. Network, Git, and
-installation failures return a nonzero exit code. Commit or stash checkout
-changes and switch to `main` before upgrading; upgrades never reset local
-commits. If installation or setup fails after the source update, rerun
-`meow --update` to finish it. The command also repairs stale editable-package
-metadata. `--update` cannot be combined with a project command.
+Run `meow --update` or `meow -u` (also available through `mw`) from any
+directory to install the latest published stable GitHub Release. Installation,
+updates, and version warnings use release tags, never `main` or its latest
+commit. Equal or newer installed versions are left alone. `--update` cannot
+be combined with a project command; there is no `--upgrade` option.
+
+Release archives include Python, MEOW's dependencies, the CLI launcher, the
+local UI, built-in definitions, and Claude plugin files. The installer verifies
+the archive's SHA-256 checksum and installs under `~/.meow/versions/<tag>`
+(`%USERPROFILE%\\.meow` on Windows). `~/.meow/bin` contains the stable `meow`
+and `mw` launchers and is added to the user's `PATH`. Configuration, caches,
+and registered projects are preserved. The plugin is registered before the
+launcher switches to the new release. Previous versions remain available to
+running workers and existing scheduled jobs; do not delete versions still in
+use. Updates return nonzero on download, checksum, or activation failure.
+
+No system Python, pip, or MEOW source clone is required. Git and your project
+tools are still needed for workflows that use them. Initial installation
+offers the existing Bun and project onboarding prompts; updates preserve
+settings without prompting again. Rerun the install script to repeat setup
+or migrate an old editable installation. The installer puts `~/.meow/bin`
+first in the user PATH; remove obsolete MEOW launchers from an active virtual
+environment if they take precedence in your current shell.
+
+For unattended feature execution use `meow run --auto` or `meow run -a`.
+`-u` is reserved for updating
+MEOW and is used before the command, as `meow -u`.
 
 Every public CLI invocation checks for newer versions and warns on stderr
 with `meow --update` when one is available. This best-effort check has a short
@@ -92,7 +108,7 @@ or a Linux systemd user timer, even after the CLI or UI closes. Windows requires
 the user to be logged in; Linux requires a working systemd user manager, with
 lingering enabled separately for execution while logged out.
 
-The command after `--` must be `run`. MEOW adds `--unattended` and the selected
+The command after `--` must be `run`. MEOW adds `--auto` and the selected
 project directory, validates the run flags, and rejects manual approval,
 `--no-worktree`, `--lint-fix`, `--background`, and `--from`. Requests and arguments
 are saved as data under `.meow/schedules/`, with the run's output in the matching
@@ -165,7 +181,7 @@ branch after final review, including when `--no-pr` is selected.
 Feature runs always use unattended execution in an isolated worktree; the UI cannot answer approval prompts. Existing
 verified unattended delivery policy still applies: a successful run can commit
 and push its worktree branch. Running the UI locally does not turn that delivery
-behavior off. Commands that do not accept `--unattended` still run headlessly,
+behavior off. Commands that do not accept `--auto` still run headlessly,
 without receiving that unsupported flag.
 
 Claude sessions use the installed Claude executable and a noninteractive
@@ -238,7 +254,7 @@ MEOW Claude Code hook by comparing the local installation manifest with Claude
 settings. It only reads files. `meow hooks install claude --only lint` installs
 an accepted subset; repeat `--only` for more hooks. Onboarding shows each hook's
 host event, exact command, and effect before installation. Editor hooks are
-optional: `meow run`, including `--unattended`, works without them. Lint
+optional: `meow run`, including `--auto`, works without them. Lint
 failures and shaping advisories reach Claude as PostToolUse
 `additionalContext`; plan advisories appear as a Stop `systemMessage`.
 
@@ -280,7 +296,7 @@ When a request needs design choices, they shape the requirements and may map
 complex UI or cross-component work as a breadboard. Clear requests proceed
 directly to planning. These phases run automatically and require no separate
 command. An unresolved product choice stops with a checkpoint, including with
-`--unattended`; unattended runs never wait for input. Feature runs do not
+`--auto`; unattended runs never wait for input. Feature runs do not
 suggest or edit prose documentation. Onboarding uses the same project audit
 internally and can create selected knowledge documents as part of setup.
 
@@ -328,14 +344,14 @@ onboarding failure never fails the command. `/meow:onboard` is for add-ons.
 
 After required checks and review pass, a feature run in a separate linked
 worktree commits and pushes its branch to `origin`. A detached feature worktree
-receives a `meow/RUN_ID` branch at delivery. `--unattended` opts into the same
+receives a `meow/RUN_ID` branch at delivery. `--auto` opts into the same
 non-interactive delivery path and is required for `--background`; it still
 requires an isolated worktree. An in-place `--no-worktree` run does not
 automatically commit or push. A missing remote or failed push leaves the
-worktree and checkpoint for recovery. `--unattended` supports `--from BRANCH`
+worktree and checkpoint for recovery. `--auto` supports `--from BRANCH`
 (also `-b`), including with `--background`; the source branch supplies the
 starting commit, and delivery pushes a separate `meow/RUN_ID` branch.
-`--unattended` cannot be combined with `--no-worktree`, manual plan approval,
+`--auto` cannot be combined with `--no-worktree`, manual plan approval,
 resume-at-review, or lint-fix mode.
 
 `run --manually-approve-plan` (also `-m`) displays the plan and waits for
@@ -398,12 +414,12 @@ It stops those tasks, keeps the worktree and checkpoint, and records a
 resumption validates the checkout and reviews existing edits first when a
 generator had started. Cancellation does not signal an unrelated process ID.
 
-Use `meow run "REQUEST" --name NAME --unattended --background` to detach a
+Use `meow run "REQUEST" --name NAME --auto --background` to detach a
 local feature run from its launching terminal. The command returns a run ID
 immediately. `meow status RUN_ID` shows the worker state and its run-owned log
 path; `meow cancel RUN_ID` requests a cooperative stop. If a worker disappears,
 status marks the run interrupted and shows the resume command. Background
-execution requires `--unattended` and cannot wait for plan approval.
+execution requires `--auto` and cannot wait for plan approval.
 
 An optional `[background]` table can set `notify_command` to a literal
 argument array, for example `notify_command = ["notify-meow"]`. MEOW appends
@@ -693,7 +709,7 @@ comparing or auditing MEOW runs, not for building, reviewing, or resuming
 project work.
 
 `meow _worker` is a private implementation detail used by
-`meow run --unattended --background` to start the detached local worker. Humans
+`meow run --auto --background` to start the detached local worker. Humans
 should not invoke it directly; use `meow status`, `meow cancel`, and
 `meow resume` to interact with background runs.
 

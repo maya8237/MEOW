@@ -69,15 +69,15 @@ def _validate_run_flags(parser: argparse.ArgumentParser, args) -> None:
         return
     _validate_workflow_flags(parser, args)
     if args.background and not args.unattended:
-        parser.error("--background requires --unattended")
+        parser.error("--background requires --auto")
     if args.unattended and args.manually_approve_plan:
-        parser.error("--unattended cannot wait for manual plan approval")
+        parser.error("--auto cannot wait for manual plan approval")
     if args.unattended and args.lint_fix:
-        parser.error("--unattended requires a feature run")
+        parser.error("--auto requires a feature run")
     if args.unattended and args.no_worktree:
-        parser.error("--unattended requires an isolated worktree")
+        parser.error("--auto requires an isolated worktree")
     if args.unattended and args.resume_at != "generate":
-        parser.error("--unattended cannot resume at review")
+        parser.error("--auto cannot resume at review")
     if args.report_only and not args.lint_fix:
         parser.error("--report-only only makes sense with --lint-fix")
     if args.lint_fix:

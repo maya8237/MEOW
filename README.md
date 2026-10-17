@@ -25,8 +25,14 @@ irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | i
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 ```
 
-Run `meow --update` to update an existing installation. Public commands and
-`/meow:*` skills warn when a newer version is available.
+The installer downloads the latest published release into `~/.meow`, including
+its Python runtime and Claude plugin. It adds `~/.meow/bin` to your user `PATH`;
+no MEOW checkout, system Python, or package installation is needed. On Windows,
+`~` is your user profile. Open a new terminal after installation if necessary.
+
+Run `meow --update` or `meow -u` to install the latest published release.
+Public commands and `/meow:*` skills warn when a newer release is available.
+Use `meow run -a` / `--auto` for unattended execution.
 
 ## Run
 

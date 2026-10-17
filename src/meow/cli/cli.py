@@ -105,9 +105,12 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
 
     effective_argv = expand_shortcuts(list(sys.argv[1:] if argv is None else argv))
     first = effective_argv[0] if effective_argv else "ipython"
-    if first not in {"native", "--update", "--check-update"} and not first.startswith(
-        "_"
-    ):
+    if first not in {
+        "native",
+        "-u",
+        "--update",
+        "--check-update",
+    } and not first.startswith("_"):
         check_for_updates()
     if argv is None and len(sys.argv) == 1:
         start_ipython()
