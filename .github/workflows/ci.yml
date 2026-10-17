@@ -56,7 +56,7 @@ jobs:
       - name: Run the test suite
         id: test-suite
         shell: bash
-        run: python -m pytest -q -p no:cacheprovider 2>&1 | tee test-output.log
+        run: python -m pytest -q -p no:cacheprovider --durations=30 --durations-min=0.1 2>&1 | tee test-output.log
       # Job logs need sign-in; annotations are public, so surface the tail
       # of the captured output there on failure.
       - name: Surface test-suite failures as an annotation
