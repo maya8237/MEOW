@@ -2,12 +2,33 @@ import hashlib
 import io
 import json
 import os
+import subprocess
+import sys
 import zipfile
+from pathlib import Path
 
 import pytest
 
 from meow.cli.parser import _build_arg_parser
 from meow.installer import maintenance
+
+
+@pytest.mark.parametrize("script", ["build_release.py", "smoke_release.py"])
+def test_release_tools_import_without_installed_dependencies(script):
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            "-c",
+            f"import runpy; runpy.run_path('scripts/{script}', "
+            "run_name='import_check')",
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_update_flags_and_auto_do_not_conflict():

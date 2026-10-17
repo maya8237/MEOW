@@ -52,7 +52,7 @@ def build_runtime(bundle: Path, temporary: Path) -> None:
         "3.12",
         "--no-progress",
         "--no-bin",
-        "--no-registry",
+        *(["--no-registry"] if os.name == "nt" else []),
         env=env,
     )
     python = Path(
