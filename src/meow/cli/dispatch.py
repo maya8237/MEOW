@@ -38,7 +38,7 @@ def _dispatch_jira_build(args, working_dir: Path) -> None:
                 **({"test": True} if args.test else {}),
                 **({"workflow": args.workflow} if args.workflow else {}),
                 **({"inputs": parse_inputs(args.input)} if args.input else {}),
-                **({"unattended": True} if args.unattended else {}),
+                **({"auto": True} if args.auto else {}),
             )
         )
     except IssueUnresolvedError as exc:
@@ -63,7 +63,7 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
                 resume_at=args.resume_at,
                 **({"workflow": args.workflow} if args.workflow else {}),
                 **({"inputs": parse_inputs(args.input)} if args.input else {}),
-                **({"unattended": True} if args.unattended else {}),
+                **({"auto": True} if args.auto else {}),
                 **({"test": True} if args.test else {}),
             )
         )

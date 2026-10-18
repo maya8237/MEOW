@@ -199,8 +199,8 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
         mock_fetch.assert_not_awaited()
 
 
-class UnattendedForwardingTests(unittest.IsolatedAsyncioTestCase):
-    async def test_foreground_unattended_flag_reaches_the_sprint(self):
+class AutoForwardingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_foreground_auto_flag_reaches_the_sprint(self):
         config = {
             "jira": {"project_key": "PROJ", "mcp": {"command": "uvx", "args": []}}
         }
@@ -219,12 +219,10 @@ class UnattendedForwardingTests(unittest.IsolatedAsyncioTestCase):
                 "meow.integrations.issue_solver.run_sprint", new=AsyncMock()
             ) as sprint,
         ):
-            await issue_solver.run_issue_solver(
-                Path("/project"), "PROJ-1", unattended=True
-            )
-        self.assertTrue(sprint.await_args.kwargs["unattended"])
+            await issue_solver.run_issue_solver(Path("/project"), "PROJ-1", auto=True)
+        self.assertTrue(sprint.await_args.kwargs["auto"])
 
-    def test_cli_forwards_unattended_to_the_jira_flow(self):
+    def test_cli_forwards_auto_to_the_jira_flow(self):
         from meow.cli import cli
 
         with (
@@ -237,4 +235,4 @@ class UnattendedForwardingTests(unittest.IsolatedAsyncioTestCase):
         ):
             solver.return_value = {"issue": "PROJ-1", "branch": "issue/PROJ-1"}
             cli.cli_main()
-        self.assertTrue(solver.await_args.kwargs["unattended"])
+        self.assertTrue(solver.await_args.kwargs["auto"])

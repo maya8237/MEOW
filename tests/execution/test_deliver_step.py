@@ -39,14 +39,14 @@ def run_deliver_step(tmp_path, monkeypatch, delivery):
 
 def test_deliver_step_honours_journal_push_flag(tmp_path, monkeypatch):
     run_id, calls = run_deliver_step(
-        tmp_path, monkeypatch, {"unattended": True, "push": False}
+        tmp_path, monkeypatch, {"auto": True, "push": False}
     )
 
-    assert calls == [(run_id, {"unattended": True, "push": False})]
+    assert calls == [(run_id, {"auto": True, "push": False})]
 
 
-@pytest.mark.parametrize("delivery", [{}, {"unattended": False}])
+@pytest.mark.parametrize("delivery", [{}, {"auto": False}])
 def test_deliver_step_defaults_to_pushing(tmp_path, monkeypatch, delivery):
     run_id, calls = run_deliver_step(tmp_path, monkeypatch, delivery)
 
-    assert calls == [(run_id, {"unattended": False, "push": True})]
+    assert calls == [(run_id, {"auto": False, "push": True})]

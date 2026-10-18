@@ -9,7 +9,7 @@ First follow [the shared update check](../_shared/update-check.md).
 
 If the user asks to run at a future time, follow
 [`../schedule/SKILL.md`](../schedule/SKILL.md) before either execution mode.
-Register the scheduled unattended run now and report the returned schedule;
+Register the scheduled automatic run now and report the returned schedule;
 do not begin the sprint or hold this session open until the time arrives.
 
 Plan -> implement -> review, in a loop, for one feature request -- either

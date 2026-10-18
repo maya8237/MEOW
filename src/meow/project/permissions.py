@@ -188,7 +188,7 @@ def parse_policy(  # ruff: ignore[complex-structure, too-many-branches, too-many
 
 
 def make_permission_callback(
-    policy: RolePolicy, *, unattended: bool, project_root: Path | None = None
+    policy: RolePolicy, *, auto: bool, project_root: Path | None = None
 ):
     """Return an SDK callback; the SDK remains the tool executor."""
 
@@ -201,8 +201,8 @@ def make_permission_callback(
         reason = "Project policy denied this action"
         if decision == "ask":
             reason = "Project policy requires approval for this action"
-            if unattended:
-                reason += "; unattended run stopped"
+            if auto:
+                reason += "; automatic run stopped"
         return PermissionResultDeny(message=reason, interrupt=decision == "ask")
 
     return can_use_tool

@@ -6,7 +6,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 
-// The stable launcher stays outside versioned runtimes so upgrades never
+// The stable launcher stays outside versioned runtimes so updates never
 // replace a running executable. Child processes inherit this console and IO.
 class Launcher
 {

@@ -74,7 +74,7 @@ def test_separate_feature_worktree_commits_and_pushes(tmp_path):
 
 @pytest.mark.parametrize("source_flag", ["--from", "-b"])
 @pytest.mark.parametrize("background", [False, True])
-def test_unattended_source_branch_delivers_to_separate_branch(
+def test_auto_source_branch_delivers_to_separate_branch(
     tmp_path, source_flag, background
 ):
     from meow.cli import cli
@@ -107,7 +107,7 @@ def test_unattended_source_branch_delivers_to_separate_branch(
     (active / "file.txt").write_text("after", encoding="utf-8")
     store, run_id = record_for(repo, active)
 
-    assert deliver_verified_run(store, run_id, unattended=args.unattended) is True
+    assert deliver_verified_run(store, run_id, auto=args.auto) is True
 
     assert git(remote, "show", f"meow/{run_id}:file.txt") == "after"
     assert git(active, "rev-parse", "HEAD^") == git(repo, "rev-parse", "release/test")
@@ -115,14 +115,14 @@ def test_unattended_source_branch_delivers_to_separate_branch(
     assert (repo / "file.txt").read_text(encoding="utf-8") == "uncommitted main changes"
 
 
-def test_in_place_requires_unattended(tmp_path):
+def test_in_place_requires_auto(tmp_path):
     repo, remote = repository(tmp_path)
     (repo / "file.txt").write_text("after", encoding="utf-8")
     store, run_id = record_for(repo, repo)
 
     assert deliver_verified_run(store, run_id) is False
     assert git(repo, "status", "--porcelain") == "M file.txt"
-    assert deliver_verified_run(store, run_id, unattended=True) is True
+    assert deliver_verified_run(store, run_id, auto=True) is True
     assert git(remote, "rev-parse", "HEAD") == git(repo, "rev-parse", "HEAD")
 
 
@@ -133,7 +133,7 @@ def test_delivery_keeps_shared_config_outside_runtime_state(tmp_path):
     (meow / "config.toml").write_text("max_rounds = 4\n", encoding="utf-8")
     store, run_id = record_for(repo, repo)
 
-    assert deliver_verified_run(store, run_id, unattended=True) is True
+    assert deliver_verified_run(store, run_id, auto=True) is True
 
     tree = git(remote, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
     assert ".meow/config.toml" in tree
@@ -147,12 +147,12 @@ def test_missing_remote_preserves_verified_work(tmp_path):
     store, run_id = record_for(repo, repo)
 
     with pytest.raises(RuntimeError, match="origin"):
-        deliver_verified_run(store, run_id, unattended=True)
+        deliver_verified_run(store, run_id, auto=True)
     assert store.load(run_id).phase == "delivery_failed"
     assert git(repo, "status", "--porcelain") == "M file.txt"
 
 
-def test_unattended_flag_rejects_non_build_and_interactive_modes():
+def test_auto_flag_rejects_non_build_and_interactive_modes():
     from meow.cli import cli
 
     parser = cli._build_arg_parser()
@@ -246,7 +246,7 @@ def test_push_false_commits_without_pushing(tmp_path):
     (active / "file.txt").write_text("after", encoding="utf-8")
     store, run_id = record_for(repo, active)
 
-    assert deliver_verified_run(store, run_id, unattended=True, push=False) is True
+    assert deliver_verified_run(store, run_id, auto=True, push=False) is True
 
     record = store.load(run_id)
     assert record.phase == "committed"
@@ -267,7 +267,7 @@ def test_push_false_needs_no_origin(tmp_path):
     (active / "file.txt").write_text("after", encoding="utf-8")
     store, run_id = record_for(repo, active)
 
-    assert deliver_verified_run(store, run_id, unattended=True, push=False) is True
+    assert deliver_verified_run(store, run_id, auto=True, push=False) is True
 
     record = store.load(run_id)
     assert record.phase == "committed"
@@ -294,7 +294,7 @@ def test_default_delivery_still_pushes(tmp_path):
     (active / "file.txt").write_text("after", encoding="utf-8")
     store, run_id = record_for(repo, active)
 
-    assert deliver_verified_run(store, run_id, unattended=True) is True
+    assert deliver_verified_run(store, run_id, auto=True) is True
 
     record = store.load(run_id)
     assert record.phase == "delivered"

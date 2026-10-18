@@ -37,7 +37,7 @@ const defaults = (repo: string): Recipe => ({
   workflow: null,
   inputs: {},
   arguments: [],
-  options: { unattended: true, no_worktree: false },
+  options: { auto: true, no_worktree: false },
 });
 
 export default function SessionLauncher({
@@ -83,7 +83,7 @@ export default function SessionLauncher({
     if (value.mode === "cli" && value.command === "run") {
       value.options = {
         ...value.options,
-        unattended: true,
+        auto: true,
         no_worktree: false,
       };
     }
@@ -226,7 +226,7 @@ export default function SessionLauncher({
       arguments: mode === "cli" ? draft.arguments : [],
       options:
         mode === "cli"
-          ? { unattended: true, no_worktree: false }
+          ? { auto: true, no_worktree: false }
           : {
               permission_policy: "default",
               ...(catalogItem?.kind === "agent"
@@ -361,7 +361,7 @@ export default function SessionLauncher({
                       ? {
                           options:
                             event.target.value === "run"
-                              ? { unattended: true, no_worktree: false }
+                              ? { auto: true, no_worktree: false }
                               : event.target.value === "plan"
                                 ? { no_worktree: false }
                                 : {},
@@ -608,7 +608,7 @@ export default function SessionLauncher({
           )}
           {draft.mode === "cli" && draft.command === "run" && (
             <p className="session-note">
-              UI feature runs execute unattended in an isolated worktree and
+              UI feature runs execute automatically in an isolated worktree and
               follow the repository delivery policy. They may commit and push
               verified work in their worktree.
             </p>

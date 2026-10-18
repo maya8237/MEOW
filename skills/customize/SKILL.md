@@ -42,7 +42,7 @@ meow workflows eject quick --scope local
 
 Eject copies the shipped file even when an override exists elsewhere and
 refuses to overwrite. It records its shipped origin hash. Explain any override
-the new file will create. Upgrade drift is reported by `show` and workflow
+the new file will create. Update drift is reported by `show` and workflow
 `validate`; use `meow agents diff NAME` to inspect agent differences.
 
 ## 3. Write the definition

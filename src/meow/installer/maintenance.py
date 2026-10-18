@@ -1,4 +1,4 @@
-"""Published-release discovery and upgrades; never update from a branch tip."""
+"""Published-release discovery and updates; never update from a branch tip."""
 
 import json
 import sys
@@ -54,5 +54,5 @@ def update() -> int:
         return 0
     print(f"Upgrading MEOW {current} to release v{latest}...")
     install_release(f"v{latest}")
-    print(f"MEOW upgraded successfully to v{latest}.")
+    print(f"MEOW updated successfully to v{latest}.")
     return 0

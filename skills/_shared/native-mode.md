@@ -28,7 +28,7 @@ guidance/configuration flows, not alternate execution engines.
 
 Future-time requests use `/meow:schedule` in either mode. Register them with
 `meow schedule add --at TIME -- run REQUEST --name NAME` before starting any
-work. The OS trigger starts an unattended CLI run later; this session does not
+work. The OS trigger starts an automatic CLI run later; this session does not
 wait or execute a native sprint immediately. Inspect, edit, and cancel through
 `meow schedule list`, `meow schedule edit ID --at TIME`, and
 `meow schedule cancel ID`. See
@@ -97,7 +97,7 @@ architecture files are optional context.
 ## The orchestrate helpers
 
 `meow native orchestrate COMMAND` supervises one orchestrator (see the
-`orchestrate` skill): a graph of tasks, each an unattended `meow run` sprint in
+`orchestrate` skill): a graph of tasks, each an automatic `meow run` sprint in
 its own detached child process, merged into the branch `orchestrator/ID` and
 delivered as one pull request. The helpers call the same functions as
 `meow orchestrate`, print one JSON document, and start no agents; the session

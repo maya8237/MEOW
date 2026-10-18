@@ -99,7 +99,7 @@ def _install_launcher(source: Path, bin_dir: Path) -> None:
     for name in (source.name, "mw.exe" if os.name == "nt" else "mw"):
         target = bin_dir / name
         # Windows locks the running launcher. It only reads current-version;
-        # changing that pointer upgrades the application without replacing it.
+        # changing that pointer updates the application without replacing it.
         if os.name != "nt" or not target.exists():
             temporary = target.with_suffix(".new")
             shutil.copy2(source, temporary)

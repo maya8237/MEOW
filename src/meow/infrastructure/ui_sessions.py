@@ -386,8 +386,8 @@ def _imported_resume_recipe(
         inputs=inputs if isinstance(inputs, dict) else {},
         arguments=[],
         options={
-            "unattended": bool(
-                record.delivery.get("unattended", False)
+            "auto": bool(
+                record.delivery.get("auto", False)
                 if isinstance(record.delivery, dict)
                 else False
             )
@@ -547,7 +547,7 @@ def resume_argv(
             attempt.claude_session_id,
             *argv[1:prompt_index],
             "--",
-            prompt + "\n\nWork unattended. Do not wait for human input.",
+            prompt + "\n\nWork autonomously. Do not wait for human input.",
         ]
     del repo, request, repair
     raise SessionError("Attempt has no resumable MEOW run or Claude session")

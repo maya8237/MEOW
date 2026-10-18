@@ -98,7 +98,7 @@ def test_conflicting_product_choices_stop_without_question(tmp_path):
     result = prepare_preplan(
         tmp_path,
         "Choose between deleting accounts or retaining them forever",
-        unattended=True,
+        auto=True,
     )
     assert result.decision.mode == "needs_user_decision"
     assert result.shape is None
@@ -146,7 +146,7 @@ def test_unexpected_failure_before_planning_marks_the_run_failed(tmp_path):
     ],
 )
 def test_case_lists_are_not_product_decisions(tmp_path, request_text):
-    result = prepare_preplan(tmp_path, request_text, unattended=True)
+    result = prepare_preplan(tmp_path, request_text, auto=True)
     assert result.decision.mode != "needs_user_decision"
 
 
@@ -204,7 +204,7 @@ def test_plan_command_prepares_project_context_behind_the_scenes(tmp_path):
     planner.assert_awaited_once()
 
 
-def test_unattended_product_choice_stops_before_planning(tmp_path):
+def test_auto_product_choice_stops_before_planning(tmp_path):
     from meow.execution.sprint import Sprint
 
     sprint = Sprint(
@@ -234,7 +234,7 @@ def test_unattended_product_choice_stops_before_planning(tmp_path):
                 "x",
                 "Choose between deleting all accounts or retaining them forever",
                 use_worktree=False,
-                unattended=True,
+                auto=True,
             )
         )
     planner.assert_not_called()

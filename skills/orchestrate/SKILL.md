@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Split an objective, a set of Jira issues, a JQL query, or a task file into a graph of tasks, run each one as its own unattended MEOW sprint in parallel, merge every passing task into one integration branch, review the whole result against the objective, and open a single pull request -- or stop with nothing pushed and a precise report. Runs natively in this Claude Code session by default, where you supervise; CLI mode runs the same engine headless.
+description: Split an objective, a set of Jira issues, a JQL query, or a task file into a graph of tasks, run each one as its own automatic MEOW sprint in parallel, merge every passing task into one integration branch, review the whole result against the objective, and open a single pull request -- or stop with nothing pushed and a precise report. Runs natively in this Claude Code session by default, where you supervise; CLI mode runs the same engine headless.
 ---
 
 # orchestrate
@@ -8,7 +8,7 @@ description: Split an objective, a set of Jira issues, a JQL query, or a task fi
 First follow [the shared update check](../_shared/update-check.md).
 
 One objective in, one reviewed branch and one pull request out. The orchestrator
-decomposes the work into tasks, runs every task as an ordinary unattended
+decomposes the work into tasks, runs every task as an ordinary automatic
 sprint in its own worktree (detached CLI child processes, up to `max_parallel`
 at a time), merges each passing task into the integration branch
 `orchestrator/<id>`, recovers failed tasks through triage (at most three cycles

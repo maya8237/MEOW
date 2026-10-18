@@ -120,7 +120,7 @@ test.each(["skill", "agent"] as const)(
         const valid =
           recipe.mode === "claude" &&
           recipe.options.permission_policy === "default" &&
-          !Object.hasOwn(recipe.options, "unattended") &&
+          !Object.hasOwn(recipe.options, "auto") &&
           !Object.hasOwn(recipe.options, "no_worktree") &&
           (kind !== "agent" || recipe.options.agent === "helper");
         return new Response(
@@ -268,11 +268,11 @@ test("scheduling sends a timestamp and never launches immediately", async () => 
   expect(calls.some((url) => url.endsWith("/launch"))).toBe(false);
 });
 
-test("CLI draft defaults to unattended and cannot launch before its preview", async () => {
+test("CLI draft defaults to auto and cannot launch before its preview", async () => {
   const user = userEvent.setup();
   render(<SessionLauncher {...props()} />);
   expect(
-    screen.queryByRole("checkbox", { name: "Unattended execution" }),
+    screen.queryByRole("checkbox", { name: "Automatic execution" }),
   ).not.toBeInTheDocument();
   const launch = screen.getByRole("button", { name: "Launch session" });
   expect(launch).toBeDisabled();
@@ -485,7 +485,7 @@ test("editing keeps the saved repository as the update owner", async () => {
         workflow: null,
         inputs: {},
         arguments: [],
-        options: { unattended: true, no_worktree: false },
+        options: { auto: true, no_worktree: false },
       }}
       sessionId={id}
       editOnly
@@ -568,7 +568,7 @@ test("imported recipe can be saved as an editable draft with unknown flags calle
         workflow: "quick",
         inputs: { area: "ui" },
         arguments: [],
-        options: { unattended: true, no_worktree: false },
+        options: { auto: true, no_worktree: false },
       }}
       onSaved={onSaved}
     />,

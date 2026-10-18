@@ -13,12 +13,12 @@ from meow.execution.run_state import RunStore
 from meow.infrastructure import background
 
 
-def test_background_requires_unattended(tmp_path):
+def test_background_requires_auto(tmp_path):
     with pytest.raises(background.BackgroundError):
         background.launch_background(tmp_path, ["run", "feature", "--name", "x"])
 
 
-def test_background_cli_requires_unattended(tmp_path, monkeypatch):
+def test_background_cli_requires_auto(tmp_path, monkeypatch):
     usage_error = 2
     monkeypatch.setattr(
         sys,
@@ -270,7 +270,7 @@ def test_run_launch_with_a_seed_is_rejected(tmp_path):
         background.launch_background(tmp_path, argv, seed=seed)
 
 
-def test_run_without_unattended_is_still_rejected(tmp_path):
+def test_run_without_auto_is_still_rejected(tmp_path):
     with pytest.raises(background.BackgroundError, match="run --auto --background"):
         background.launch_background(
             tmp_path, ["run", "x", "--name", "y", "--background"]

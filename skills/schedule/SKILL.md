@@ -10,13 +10,13 @@ First follow [the shared update check](../_shared/update-check.md).
 When the user asks MEOW to run at a future time, register the schedule now;
 do not run the work immediately, sleep in the session, or use host-specific
 cron/Task Scheduler commands yourself. Both CLI and native sessions use the
-same deterministic helper. The future work runs through the unattended CLI,
+same deterministic helper. The future work runs through the automatic CLI,
 outside the current conversation.
 
 ## Native mode
 
 Use the CLI mode steps below from the current session too. Scheduling itself
-starts no agents; the registered trigger starts the unattended CLI later.
+starts no agents; the registered trigger starts the automatic CLI later.
 For context about other native workflows, see
 [`../_shared/native-mode.md`](../_shared/native-mode.md). Do not execute the
 native sprint now when the user's request is to execute it later.

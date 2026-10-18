@@ -28,7 +28,7 @@ Run `meow --update` or `meow -u` (also available through `mw`) from any
 directory to install the latest published stable GitHub Release. Installation,
 updates, and version warnings use release tags, never `main` or its latest
 commit. Equal or newer installed versions are left alone. `--update` cannot
-be combined with a project command; there is no `--upgrade` option.
+be combined with a project command.
 
 Release archives include Python, MEOW's dependencies, the CLI launcher, the
 local UI, built-in definitions, and Claude plugin files. The installer verifies
@@ -48,7 +48,7 @@ or migrate an old editable installation. The installer puts `~/.meow/bin`
 first in the user PATH; remove obsolete MEOW launchers from an active virtual
 environment if they take precedence in your current shell.
 
-For unattended feature execution use `meow run --auto` or `meow run -a`.
+For automatic feature execution use `meow run --auto` or `meow run -a`.
 `-u` is reserved for updating
 MEOW and is used before the command, as `meow -u`.
 
@@ -75,7 +75,7 @@ These are the commands meant for normal project work:
 | `meow workflows` | List, show, validate, or eject workflow definitions. |
 | `meow agents` | List, show, eject, or diff agent definitions. |
 | `meow ui` | Open the local catalog and manage command sessions for registered repositories. |
-| `meow schedule` | Schedule an unattended run for later, list or edit schedules, or cancel a trigger. |
+| `meow schedule` | Schedule an automatic run for later, list or edit schedules, or cancel a trigger. |
 | `meow hooks` | Manage optional host hooks after reviewing what they install. |
 | `meow ipython` | Open the interactive MEOW IPython session. |
 
@@ -178,8 +178,8 @@ and add options such as `--from`, `--max-parallel`, `--dry-run`, `--test`, and
 `meow orchestrate status`, `resume`, or `cancel` in a terminal for its lifecycle
 controls. Orchestration always owns its worktrees and may push its integration
 branch after final review, including when `--no-pr` is selected.
-Feature runs always use unattended execution in an isolated worktree; the UI cannot answer approval prompts. Existing
-verified unattended delivery policy still applies: a successful run can commit
+Feature runs always use automatic execution in an isolated worktree; the UI cannot answer approval prompts. Existing
+verified automatic delivery policy still applies: a successful run can commit
 and push its worktree branch. Running the UI locally does not turn that delivery
 behavior off. Commands that do not accept `--auto` still run headlessly,
 without receiving that unsupported flag.
@@ -210,7 +210,7 @@ The launcher's Advanced arguments panel derives the chosen command's flags,
 aliases, descriptions, value types, and choices from MEOW's CLI parser. Select
 flags using checkboxes and edit their values in the provided controls; Remove
 clears the whole flag and its values. Flags managed elsewhere in the launcher
-or incompatible with unattended feature runs remain visible with an explanation.
+or incompatible with automatic feature runs remain visible with an explanation.
 Review and orchestration recipes may leave Request empty when a source option
 such as `--branch`, `--jira`, or `--tasks` supplies the work. The command preview
 checks all combinations before launch.
@@ -296,7 +296,7 @@ When a request needs design choices, they shape the requirements and may map
 complex UI or cross-component work as a breadboard. Clear requests proceed
 directly to planning. These phases run automatically and require no separate
 command. An unresolved product choice stops with a checkpoint, including with
-`--auto`; unattended runs never wait for input. Feature runs do not
+`--auto`; automatic runs never wait for input. Feature runs do not
 suggest or edit prose documentation. Onboarding uses the same project audit
 internally and can create selected knowledge documents as part of setup.
 
@@ -444,7 +444,7 @@ in-place runs; installation commands obey the `setup` permission role. See
 [worktree setup and Bun shared storage](INTEGRATIONS.md#new-worktree-setup).
 Each configured command is approved as an exact argument array during
 onboarding. A `[permissions]` rule for the `setup` role and `WorktreeSetup`
-tool can further deny it or require approval; unattended runs stop in either
+tool can further deny it or require approval; automatic runs stop in either
 case.
 
 ### Jira issue run
@@ -462,7 +462,7 @@ branch, and prints a JSON result on success. Configure `[jira]` and
 The Jira mode always creates its own worktree and branch, so it rejects
 `--name`, `--no-worktree`, `--from`, `--resume-at`, and `--plan`.
 It accepts `--manually-approve-plan` for interactive runs; do not use that
-option for unattended scheduled runs.
+option for automatic scheduled runs.
 
 ### Lint fix
 
@@ -483,7 +483,7 @@ calling session.
 
 `meow orchestrate` turns one objective into one reviewed branch and one pull
 request. It splits the work into a graph of tasks, runs every task as its own
-unattended `meow run` sprint in a detached worker and worktree (up to
+automatic `meow run` sprint in a detached worker and worktree (up to
 `--max-parallel` at a time), merges each passing task into the integration
 branch `orchestrator/ID`, recovers failed tasks through triage, reviews the
 combined branch against the objective, pushes it, and opens a pull or merge
@@ -673,7 +673,7 @@ is `.meow/config.local.toml`, project `.meow/config.toml`, user
 `~/.meow/config.toml`, then built-in defaults. `agent_skills.default` and
 `agent_skills.<role>` are the exception: their lists append across all config
 layers. The CLI is the option for
-unattended terminal or scheduled runs. See the shared
+automatic terminal or scheduled runs. See the shared
 [native mode protocol](../skills/_shared/native-mode.md).
 
 Custom skills and agents from `[custom]` apply in both modes: the CLI loads

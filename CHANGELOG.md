@@ -14,7 +14,7 @@ All notable changes to MEOW will be documented here.
 
 - `meow orchestrate` and `/meow:orchestrate`: split an objective, Jira issues,
   a JQL query, or a task file into a graph of tasks, run each as its own
-  unattended sprint in parallel, recover failures through triage, merge every
+  automatic sprint in parallel, recover failures through triage, merge every
   passing task into one `orchestrator/<id>` branch, review it against the
   objective, push it, and open a pull or merge request. A new `[orchestrator]`
   config table sets the limits; `meow worktree clean <id>` removes a delivered

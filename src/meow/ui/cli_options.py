@@ -23,13 +23,13 @@ def _controlled(action: argparse.Action, command: str) -> str | None:
         return f"Set using {fields[action.dest]} in the launcher."
     unavailable = {
         "help": "Help is shown here; this flag does not start a session.",
-        "unattended": "Enabled automatically for UI feature runs.",
+        "auto": "Enabled automatically for UI feature runs.",
     }
     if command == "run":
         unavailable.update(
             dict.fromkeys(
                 ("no_worktree", "lint_fix", "report_only", "resume_at", "jira"),
-                "UI feature runs start from a request and execute unattended in an "
+                "UI feature runs start from a request and execute automatically in an "
                 "isolated worktree. Use the CLI for this mode, or Resume a saved run.",
             )
         )

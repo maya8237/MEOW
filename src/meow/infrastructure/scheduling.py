@@ -91,7 +91,7 @@ def _validate_run(repo: Path, argv: list[str]) -> None:
     except SystemExit as exc:
         raise ValueError("Invalid scheduled run arguments") from exc
     validator = _ScheduleParser()
-    if Path(args.working_dir).resolve() != repo or not args.unattended:
+    if Path(args.working_dir).resolve() != repo or not args.auto:
         raise ValueError("Scheduled runs require --auto and the selected work-dir")
     _validate_run_flags(validator, args)
     _validate_feature_name_requirement(validator, args, repo)

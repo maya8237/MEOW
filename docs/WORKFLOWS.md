@@ -80,7 +80,7 @@ even if a higher scope already overrides it, and refuses to overwrite a file
 in the chosen scope. Default scope is `project`; `local` and `user` are also
 available. The copy records `ejected_from = "builtin:name@<sha256>"`.
 `show` and workflow `validate` warn about drift when the shipped origin changes.
-Compare the files and update your copy deliberately; upgrades do not merge it.
+Compare the files and update your copy deliberately; updates do not merge it.
 
 ## Agents
 
@@ -146,7 +146,7 @@ values or list/code structure.
 
 | Available values | Meaning |
 |---|---|
-| `plan_given`, `resume_review`, `review_first`, `parallel`, `test`, `bug_mode`, `unattended`, `checks_configured` | Run flags; `review_first` is resume-review or a parallel task run |
+| `plan_given`, `resume_review`, `review_first`, `parallel`, `test`, `bug_mode`, `auto`, `checks_configured` | Run flags; `review_first` is resume-review or a parallel task run |
 | `round`, `feedback`, `steps.<id>.status`, `inputs.<name>` | Loop round/failed gate feedback, step outcomes (`PASS`, `FAIL`, `done`, `skipped`), supplied strings |
 | `active_dir`, `docs_dir`, `request`, `feature_name`, `check_worktree_hygiene` | Project/run context |
 | `plan_file`, `review_file`, `report_file`, `output_file` | Paths appropriate to the invocation |

@@ -32,7 +32,7 @@ no MEOW checkout, system Python, or package installation is needed. On Windows,
 
 Run `meow --update` or `meow -u` to install the latest published release.
 Public commands and `/meow:*` skills warn when a newer release is available.
-Use `-a` / `--auto` on feature runs for unattended execution.
+Use `-a` / `--auto` on feature runs for automatic execution.
 
 ## Run
 

@@ -111,7 +111,7 @@ project checkout. `commands` are literal argument arrays, run in the new
 worktree with a 300-second timeout. Paths containing `..`, absolute paths,
 links, or secret-like names are rejected. Onboarding previews each command;
 the `setup` permission role can deny or require approval. An approval request
-stops an unattended run rather than prompting indefinitely.
+stops an automatic run rather than prompting indefinitely.
 
 Failed setup retains its worktree and a `.meow/worktree-setup.pending` marker.
 Preparing that worktree again retries setup; successful setup is not repeated
@@ -175,7 +175,7 @@ action = "deny"
 `allow`, `deny`, or `ask`. A `path` can scope `Read`, `Write`, `Edit`, or
 `NotebookEdit` rules to a repository-relative path. Path-scoped rules require
 both `Bash` and `Agent` to be denied for that role; path values cannot escape
-the project. In unattended mode, an `ask` decision stops the run.
+the project. In auto mode, an `ask` decision stops the run.
 
 ### Browser tester providers
 
@@ -396,7 +396,7 @@ with the GitHub or GitLab tools already connected to the session.
 
 ---
 
-## Scheduling unattended runs
+## Scheduling automatic runs
 
 MEOW registers one-shot runs with Windows Task Scheduler or Linux systemd user
 timers. The CLI, `/meow:schedule` skill, and UI use the same scheduling helper:

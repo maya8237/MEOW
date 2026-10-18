@@ -55,12 +55,12 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         with self.assertRaises(SystemExit):
             parser.parse_args(["resume", "run-123", "--auto-resume"])
 
-    def test_unattended_flag_accepts_short_alias(self):
+    def test_auto_flag_accepts_short_alias(self):
         parser = cli._build_arg_parser()
 
-        self.assertTrue(parser.parse_args(["run", "feature", "--auto"]).unattended)
-        self.assertTrue(parser.parse_args(["run", "feature", "-a"]).unattended)
-        self.assertTrue(parser.parse_args(["run", "feature", "--auto"]).unattended)
+        self.assertTrue(parser.parse_args(["run", "feature", "--auto"]).auto)
+        self.assertTrue(parser.parse_args(["run", "feature", "-a"]).auto)
+        self.assertTrue(parser.parse_args(["run", "feature", "--auto"]).auto)
 
     def test_hidden_top_level_commands_remain_parseable(self):
         parser = cli._build_arg_parser()

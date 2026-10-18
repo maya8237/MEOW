@@ -164,7 +164,7 @@ def test_ui_execution_uses_frozen_recipe_after_edit(tmp_path, monkeypatch, backe
         workflow=None,
         inputs={},
         arguments=[],
-        options={"unattended": True},
+        options={"auto": True},
     )
     store = SessionStore(tmp_path)
     store.save_recipe(frozen)

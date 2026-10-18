@@ -1,4 +1,4 @@
-"""A child process runs one task attempt as an unattended, push-free sprint."""
+"""A child process runs one task attempt as an automatic, push-free sprint."""
 
 import asyncio
 
@@ -35,7 +35,7 @@ def capture_sprint(monkeypatch):
     return captured
 
 
-def test_task_attempt_runs_sprint_unattended_without_push(tmp_path, monkeypatch):
+def test_task_attempt_runs_sprint_auto_without_push(tmp_path, monkeypatch):
     worktree, run_id = seeded_run(tmp_path)
     captured = capture_sprint(monkeypatch)
     args = _build_arg_parser().parse_args(["_orchestrator-task", ORCHESTRATOR_ID, "t1"])
@@ -49,7 +49,7 @@ def test_task_attempt_runs_sprint_unattended_without_push(tmp_path, monkeypatch)
     assert captured["record_root"] == tmp_path
     assert captured["source"] == "orchestrator"
     assert captured["use_worktree"] is False
-    assert captured["unattended"] is True
+    assert captured["auto"] is True
     assert captured["push"] is False
     assert captured["test"] is False
     assert captured["resume_at"] == "generate"
