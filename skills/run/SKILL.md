@@ -161,7 +161,7 @@ applicable to `--jira`, which always uses its own pushable-branch worktree).
 Use `-a` / `--auto` for non-interactive delivery or `--background`
 (`meow -u` updates MEOW); it requires
 an isolated worktree and cannot be combined with `--no-worktree`, manual plan
-approval, `--from`, `--resume-at review`, or `--lint-fix`. An in-place
+approval, `--resume-at review`, or `--lint-fix`. An in-place
 `--no-worktree` run does not automatically commit or push.
 Stream its progress (`[planner]`, `[generator]`,
 `[reviewer]`) to the user. Report the plan and review file paths on success
