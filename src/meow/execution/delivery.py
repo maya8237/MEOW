@@ -10,7 +10,7 @@ from meow.infrastructure.worktree import _is_linked_worktree, _run_git
 from meow.infrastructure.worktree_setup import is_secret_like
 from meow.project.config_files import SHARED_PROJECT_PATHS
 
-# An unattended run must fail a stuck push (credential prompt, hook, network)
+# An automatic run must fail a stuck push (credential prompt, hook, network)
 # rather than wait on it forever.
 _GIT_TIMEOUT = 600
 _FALLBACK_IDENTITY = ("-c", "user.name=MEOW", "-c", "user.email=meow@local")
@@ -95,17 +95,17 @@ def commit_worktree(active: Path, message: list[str]) -> str:
 
 
 def deliver_verified_run(
-    store: RunStore, run_id: str, *, unattended: bool = False, push: bool = True
+    store: RunStore, run_id: str, *, auto: bool = False, push: bool = True
 ) -> bool:
     """Hold the run's delivery lock until commit/push has finished."""
     with delivery_lock(store, run_id):
-        return _deliver_verified_run(store, run_id, unattended=unattended, push=push)
+        return _deliver_verified_run(store, run_id, auto=auto, push=push)
 
 
 def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches]
-    store: RunStore, run_id: str, *, unattended: bool = False, push: bool = True
+    store: RunStore, run_id: str, *, auto: bool = False, push: bool = True
 ) -> bool:
-    """Deliver after verified checks, from a linked worktree or unattended run.
+    """Deliver after verified checks, from a linked worktree or automatic run.
 
     Return False when delivery was not requested for an in-place run. A Git
     failure keeps the checkout and journal for manual recovery.
@@ -114,7 +114,7 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
     if record.phase != "checks_finished":
         raise ValueError("Delivery requires current passing checks")
     active = Path(record.worktree)
-    if not (unattended or _is_linked_worktree(active)):
+    if not (auto or _is_linked_worktree(active)):
         return False
     try:
         check_cancel(store, run_id)

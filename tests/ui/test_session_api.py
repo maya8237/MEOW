@@ -81,7 +81,7 @@ def recipe(repo, **changes):
         "workflow": None,
         "inputs": {},
         "arguments": [],
-        "options": {"unattended": True},
+        "options": {"auto": True},
     }
     return {**value, **changes}
 

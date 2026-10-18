@@ -1,4 +1,4 @@
-"""Local detached workers for unattended feature runs."""
+"""Local detached workers for automatic feature runs."""
 
 import argparse
 import asyncio
@@ -86,7 +86,7 @@ def _invocation_kind(
     """Classify a background invocation; reject anything else."""
     if args.command == "_orchestrator-task":
         return "orchestrator-task"
-    if args.command != "run" or not args.unattended or not args.background:
+    if args.command != "run" or not args.auto or not args.background:
         raise BackgroundError("Background execution requires run --auto --background")
     if args.lint_fix or args.manually_approve_plan:
         raise BackgroundError("Background execution cannot prompt or run lint-fix")
@@ -123,7 +123,7 @@ def _create_run(
 def launch_background(
     repo: Path, argv: list[str], *, seed: RunSeed | None = None
 ) -> str:
-    """Checkpoint an unattended invocation and start one detached worker.
+    """Checkpoint an automatic invocation and start one detached worker.
 
     `run --auto --background` creates its own run record. The internal
     `_orchestrator-task` invocation needs a `seed` describing the run record.
@@ -338,7 +338,7 @@ def worker_main(  # ruff: ignore[too-many-statements]
                     test=args.test,
                     run_id=run_id,
                     record_root=repo,
-                    unattended=True,
+                    auto=True,
                     **({"workflow": args.workflow} if args.workflow else {}),
                     **({"inputs": parse_inputs(args.input)} if args.input else {}),
                 )

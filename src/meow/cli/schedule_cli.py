@@ -5,7 +5,7 @@ import json
 
 
 def add_schedule_parser(subparsers) -> None:
-    parser = subparsers.add_parser("schedule", help="Schedule a future unattended run.")
+    parser = subparsers.add_parser("schedule", help="Schedule a future automatic run.")
     commands = parser.add_subparsers(dest="schedule_command", required=True)
     add = commands.add_parser(
         "add", help="Register a one-shot run with the OS scheduler."

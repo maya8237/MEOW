@@ -8,7 +8,7 @@ from meow.execution.sprint_runner import run_sprint
 
 
 async def run_task_attempt(repo: Path, run_id: str, args: argparse.Namespace) -> None:
-    """Run the task's sprint unattended in its worktree, committing but never pushing.
+    """Run the task's sprint auto in its worktree, committing but never pushing.
 
     The run record (created by the orchestrator before launch) supplies the
     request and the task worktree; `args` is the parsed `_orchestrator-task`
@@ -23,7 +23,7 @@ async def run_task_attempt(repo: Path, run_id: str, args: argparse.Namespace) ->
         record_root=repo,
         source="orchestrator",
         use_worktree=False,
-        unattended=True,
+        auto=True,
         push=False,
         test=args.test,
         resume_at=args.resume_at,

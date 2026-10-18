@@ -282,15 +282,15 @@ def _validated_claude_options(options: dict) -> dict[str, bool | str]:
 
 
 def _validated_cli_options(options: dict, command: str) -> dict[str, bool | str]:
-    if set(options) - {"no_worktree", "unattended"}:
+    if set(options) - {"no_worktree", "auto"}:
         raise RecipeError("Unsupported CLI options: " + ", ".join(sorted(options)))
     if any(not isinstance(item, bool) for item in options.values()):
         raise RecipeError("CLI options must be boolean")
     if command not in {"run", "plan"} and "no_worktree" in options:
         raise RecipeError("no_worktree is available only for run and plan recipes")
-    if command != "run" and "unattended" in options:
-        raise RecipeError("unattended is available only for run recipes")
-    return {**options, "unattended": True} if command == "run" else options
+    if command != "run" and "auto" in options:
+        raise RecipeError("auto is available only for run recipes")
+    return {**options, "auto": True} if command == "run" else options
 
 
 def _validated_options(mode: str, command: str, value: object) -> dict[str, bool | str]:
@@ -645,7 +645,7 @@ def command_for(recipe: Recipe, python: str = sys.executable) -> list[str]:  # r
         if recipe.command.startswith("/")
         else recipe.request
     )
-    argv.extend(["--", prompt + "\n\nWork unattended. Do not wait for human input."])
+    argv.extend(["--", prompt + "\n\nWork autonomously. Do not wait for human input."])
     return argv
 
 

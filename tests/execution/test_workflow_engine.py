@@ -199,14 +199,14 @@ def test_agent_prompt_receives_workflow_flags_and_stdout_is_retained(tmp_path):
     directory.mkdir(parents=True)
     (directory / "reporter.toml").write_text(
         'description="Report"\ntools=["Read"]\n'
-        'prompt="{{#if unattended}}Unattended{{/if}} {{inputs.topic}}"',
+        'prompt="{{#if auto}}Auto{{/if}} {{inputs.topic}}"',
         encoding="utf-8",
     )
     state = state_for(tmp_path)
-    state.flags.update(unattended=True, inputs={"topic": "API"})
+    state.flags.update(auto=True, inputs={"topic": "API"})
 
     async def query(*, prompt, options):  # ruff: ignore[unused-async] -- SDK async iterator double
-        assert options.system_prompt == "Unattended API"
+        assert options.system_prompt == "Auto API"
         yield AssistantMessage(
             content=[TextBlock(text="Found API boundaries")], model="x"
         )

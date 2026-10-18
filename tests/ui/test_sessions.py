@@ -48,7 +48,7 @@ def test_builtin_slash_skills_resolve_from_portable_release(
     assert sessions._builtin_skill_names() == {"run"}
 
 
-def test_feature_recipe_builds_unattended_isolated_cli_argv(tmp_path):
+def test_feature_recipe_builds_auto_isolated_cli_argv(tmp_path):
     recipe = validate_recipe(
         tmp_path,
         valid_payload(
@@ -188,9 +188,9 @@ def test_cli_recipe_uses_parser_to_reject_unknown_and_invalid_options(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "options", [{"no_worktree": True}, {"no_worktree": True, "unattended": False}]
+    "options", [{"no_worktree": True}, {"no_worktree": True, "auto": False}]
 )
-def test_no_worktree_does_not_silently_disable_default_unattended(tmp_path, options):
+def test_no_worktree_does_not_silently_disable_default_auto(tmp_path, options):
     with pytest.raises(RecipeError, match="--auto requires an isolated worktree"):
         validate_recipe(
             tmp_path,
@@ -198,12 +198,12 @@ def test_no_worktree_does_not_silently_disable_default_unattended(tmp_path, opti
         )
 
 
-def test_legacy_interactive_ui_run_is_always_unattended(tmp_path):
+def test_legacy_interactive_ui_run_is_always_auto(tmp_path):
     recipe = validate_recipe(
         tmp_path,
-        valid_payload(options={"unattended": False}),
+        valid_payload(options={"auto": False}),
     )
-    assert recipe.options["unattended"] is True
+    assert recipe.options["auto"] is True
     assert "--auto" in command_for(recipe)
 
 
@@ -215,7 +215,7 @@ def test_cli_recipe_rejects_duplicate_singleton_flags(tmp_path):
         )
 
 
-def test_plan_recipe_does_not_receive_unattended_flag(tmp_path):
+def test_plan_recipe_does_not_receive_auto_flag(tmp_path):
     recipe = validate_recipe(
         tmp_path,
         valid_payload(command="plan", name="Plan API", repo=str(tmp_path)),

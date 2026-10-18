@@ -118,7 +118,7 @@ def test_run_records_planning_and_completion(tmp_path):
     deliver.assert_called_once()
     assert deliver.call_args.args[0].directory == RunStore(tmp_path).directory
     assert deliver.call_args.args[1] == record.id
-    assert deliver.call_args.kwargs == {"unattended": False, "push": True}
+    assert deliver.call_args.kwargs == {"auto": False, "push": True}
     assert "planning" in [item["phase"] for item in record.transitions]
 
 
@@ -168,13 +168,13 @@ def test_run_sprint_persists_push_false_for_delivery(tmp_path):
                 "x",
                 "request",
                 use_worktree=False,
-                unattended=True,
+                auto=True,
                 push=False,
             )
         )
     record = RunStore(tmp_path).latest()
-    assert record.delivery == {"unattended": True, "push": False}
-    assert deliver.call_args.kwargs == {"unattended": True, "push": False}
+    assert record.delivery == {"auto": True, "push": False}
+    assert deliver.call_args.kwargs == {"auto": True, "push": False}
 
 
 def test_multitask_plan_uses_isolated_executor_then_final_review(tmp_path):

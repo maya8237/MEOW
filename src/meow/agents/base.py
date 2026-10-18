@@ -429,7 +429,7 @@ class Agent:
             return allowed_tools
         extra_options["can_use_tool"] = make_permission_callback(
             role_policy,
-            unattended=bool(self.context.config.get("_unattended", False)),
+            auto=bool(self.context.config.get("_auto", False)),
             project_root=self.context.active_working_dir(),
         )
         # dontAsk pre-approves tools without consulting the callback, so the
@@ -587,7 +587,7 @@ class SessionAgent(Agent):
 
     When the session nears the context limit (or a turn fails because it hit
     it), the client is rebuilt and the turn is replayed with a recap, so a long
-    unattended run never dies on a full context window."""
+    automatic run never dies on a full context window."""
 
     role = ""
     _entered = False

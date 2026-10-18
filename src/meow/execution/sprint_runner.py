@@ -188,7 +188,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     resume_at: str = "generate",
     test: bool = False,
     record_root: Path | None = None,
-    unattended: bool = False,
+    auto: bool = False,
     push: bool | None = None,
     worktree_preexisting: bool = False,
     required_session_roles: set[str] | None = None,
@@ -249,7 +249,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     )
     branch = current_branch(active_dir)
     sprint.config["_run_journal"] = (store, record.id)
-    sprint.config["_unattended"] = unattended
+    sprint.config["_auto"] = auto
     sprint.config["_bug_mode"] = is_bug_request(request)
     if required_session_roles:
         sprint.config["_resume_required_roles"] = set(required_session_roles)
@@ -259,7 +259,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
         worktree=str(active_dir),
         branch=branch,
         delivery={
-            "unattended": unattended or record.delivery.get("unattended", False),
+            "auto": auto or record.delivery.get("auto", False),
             "push": record.delivery.get("push", True) if push is None else push,
         },
         results={"feature_name": effective_name} if effective_name else {},

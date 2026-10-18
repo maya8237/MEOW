@@ -389,7 +389,6 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
     run_parser.add_argument(
         "-a",
         "--auto",
-        dest="unattended",
         action="store_true",
         help=(
             "Deliver a verified isolated-worktree run without interactive "
@@ -403,7 +402,7 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
     run_parser.add_argument(
         "--background",
         action="store_true",
-        help="Continue an unattended run in a detached local worker.",
+        help="Continue an automatic run in a detached local worker.",
     )
     run_parser.add_argument(
         "--test",

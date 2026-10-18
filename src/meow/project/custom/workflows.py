@@ -37,7 +37,7 @@ RUN_VARIABLES = frozenset({
     "parallel",
     "test",
     "bug_mode",
-    "unattended",
+    "auto",
     "round",
     "checks_configured",
     "steps",

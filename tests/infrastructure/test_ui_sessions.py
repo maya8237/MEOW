@@ -21,7 +21,7 @@ def valid_recipe(repo: Path) -> Recipe:
         workflow=None,
         inputs={},
         arguments=[],
-        options={"unattended": True},
+        options={"auto": True},
     )
 
 
@@ -660,7 +660,7 @@ def test_claude_resume_keeps_server_owned_permission_flags(tmp_path, monkeypatch
     )
 
     assert argv[:3] == ["claude", "--resume", "saved-session"]
-    assert argv[-1] == "new prompt\n\nWork unattended. Do not wait for human input."
+    assert argv[-1] == "new prompt\n\nWork autonomously. Do not wait for human input."
     assert argv[argv.index("--permission-prompts") + 1] == "none"
 
 
