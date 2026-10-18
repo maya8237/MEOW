@@ -127,6 +127,18 @@ def _snapshot(repo: Path) -> tuple[str, str, str]:
             repo, "diff", "--no-ext-diff", "--no-textconv", "--binary", "HEAD", *paths
         )
     )
+    digest.update(
+        _git_bytes(
+            repo,
+            "diff",
+            "--cached",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--binary",
+            "HEAD",
+            *paths,
+        )
+    )
     untracked = _git_bytes(
         repo, "ls-files", "--others", "--exclude-standard", "-z", *paths
     )

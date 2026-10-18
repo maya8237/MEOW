@@ -275,3 +275,32 @@ def test_rewriting_already_dirty_file_invalidates_pass(checkout, filename):
         )
     assert result.verdict == "UNVERIFIED"
     assert "checkout HEAD or files changed" in result.report_path.read_text()
+
+
+def test_rewriting_dirty_index_without_worktree_change_invalidates_pass(checkout):
+    repo, _, _, env = checkout
+    changed = repo / "file.txt"
+    changed.write_text("staged before review\n")
+    git(repo, "add", "file.txt")
+    working_content = "unchanged working tree\n"
+    changed.write_text(working_content)
+    initial_status = git(repo, "status", "--porcelain", "--", "file.txt")
+
+    async def rewrites_index(_self, _context):  # ruff: ignore[unused-async] -- SDK seam
+        changed.write_text("staged during review\n")
+        git(repo, "add", "file.txt")
+        changed.write_text(working_content)
+        return "PASS", "SUMMARY: Fine\nSTATUS: PASS"
+
+    with patch(
+        "meow.integrations.ci_review.ReviewerAgent.review_ci_branch", rewrites_index
+    ):
+        result = run_ci_review(
+            repo, {}, env, "dev", repo / ".meow" / "ci-artifacts", None
+        )
+
+    assert git(repo, "status", "--porcelain", "--", "file.txt") == initial_status
+    assert changed.read_text() == working_content
+    assert git(repo, "show", ":file.txt") == "staged during review"
+    assert result.verdict == "UNVERIFIED"
+    assert "checkout HEAD or files changed" in result.report_path.read_text()
