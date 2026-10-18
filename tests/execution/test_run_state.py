@@ -7,6 +7,33 @@ import pytest
 from meow.execution.run_state import MAX_OUTPUT, RunStateError, RunStore
 
 
+@pytest.mark.parametrize(
+    ("delivery", "expected"),
+    [
+        ({"unattended": True}, {"unattended": True, "auto": True}),
+        ({"unattended": False}, {"unattended": False, "auto": False}),
+        ({"unattended": True, "auto": False}, {"unattended": True, "auto": False}),
+        ({"unattended": False, "auto": True}, {"unattended": False, "auto": True}),
+        ({"push": False}, {"push": False}),
+    ],
+)
+def test_load_preserves_legacy_automatic_delivery_policy(tmp_path, delivery, expected):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    path = store.directory / f"{record.id}.json"
+    raw = json.loads(path.read_text())
+    raw["delivery"] = delivery
+    path.write_text(json.dumps(raw))
+    before = path.read_bytes()
+
+    assert store.load(record.id).delivery == expected
+    assert path.read_bytes() == before
+    assert store.update_results(record.id, resumed=True).delivery == expected
+    assert json.loads(path.read_text())["delivery"] == expected
+
+
 def test_create_transition_and_latest(tmp_path):
     store = RunStore(tmp_path)
     first = store.create(

@@ -267,6 +267,11 @@ class RunStore:
                 for role, session_id in raw["sessions"].items()
             ):
                 raise ValueError("invalid sessions")
+            # Old journals retain their automatic delivery policy after the
+            # public terminology rename; an explicit new value takes priority.
+            delivery = raw.get("delivery")
+            if isinstance(delivery, dict) and "unattended" in delivery:
+                delivery.setdefault("auto", delivery["unattended"])
             record = RunRecord(**raw)
             fields = (record.phase, record.repo, record.worktree, record.branch)
             if record.id != run_id:

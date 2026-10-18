@@ -270,8 +270,11 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
 
 class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
         self.context = FakeProjectContext()
-        self.context.project_dir = Path.cwd()
+        self.context.project_dir = Path(temporary.name)
+        self.context.repo_dir = self.context.project_dir
 
     def test_explorer_definition_preserves_role_configuration(self):
         definition = ExplorerAgent(self.context).definition()
@@ -477,8 +480,10 @@ class RoleAgentTests(unittest.IsolatedAsyncioTestCase):
 
 class ReviewerAgentTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
         self.context = FakeProjectContext()
-        self.context.project_dir = Path.cwd()
+        self.context.project_dir = Path(temporary.name)
         self.context.repo_dir = self.context.project_dir
         self.lint_patch = patch.object(
             ReviewerAgent,

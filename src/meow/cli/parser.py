@@ -397,7 +397,7 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     # Durable schedules and workers created before --auto retain their argv.
     run_parser.add_argument(
-        "--unattended", dest="unattended", action="store_true", help=argparse.SUPPRESS
+        "--unattended", dest="auto", action="store_true", help=argparse.SUPPRESS
     )
     run_parser.add_argument(
         "--background",

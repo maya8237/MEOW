@@ -12,6 +12,7 @@ from unittest.mock import patch
 from meow.cli import cli
 from meow.execution.orchestration.store import OrchestratorStore
 from meow.native import native
+from meow.native.native_review import bind_review_checks, review_checks
 from tests.native.test_native import TOML, git, make_repo
 
 
@@ -231,6 +232,10 @@ class NativeCliTests(unittest.TestCase):  # ruff: ignore[too-many-public-methods
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
             review = root / "docs" / "plans" / "feat-review.md"
+            review_checks(root, root)
+            bind_review_checks(
+                review, root, root, plan_file=review.with_name("feat.md")
+            )
             review.write_text("SUMMARY: ok\nSTATUS: PASS\n")
 
             verdict = json.loads(run_native("verdict", str(review), "-d", str(root))[1])
