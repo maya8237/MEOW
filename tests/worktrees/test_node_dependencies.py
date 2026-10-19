@@ -159,6 +159,45 @@ def test_nested_projects_and_workspaces(tmp_path, monkeypatch):
     assert calls == [(["npm", "install"], app)]
 
 
+def test_successful_but_incomplete_bun_install_is_repaired_once(tmp_path, monkeypatch):
+    (tmp_path / "package.json").write_text(
+        '{"packageManager":"bun@1.4.0","dependencies":{"x":"1"}}'
+    )
+    (tmp_path / "bun.lock").touch()
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+    calls = []
+
+    def install(argv, cwd, _env, _timeout):
+        calls.append(argv)
+        (cwd / "node_modules").mkdir(exist_ok=True)
+        if "--force" in argv:
+            (cwd / "node_modules/x").mkdir()
+        return 0, "", False
+
+    monkeypatch.setattr(node, "run_captured", install)
+    node.ensure_node_dependencies(tmp_path)
+    assert (tmp_path / "node_modules/x").is_dir()
+    node.ensure_node_dependencies(tmp_path)
+    assert calls == [
+        ["bun", "install", "--frozen-lockfile"],
+        ["bun", "install", "--frozen-lockfile", "--force"],
+    ]
+
+
+def test_bun_install_fails_if_force_still_leaves_missing_modules(tmp_path, monkeypatch):
+    (tmp_path / "package.json").write_text(
+        '{"packageManager":"bun@1.4.0","dependencies":{"x":"1"}}'
+    )
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+    calls = []
+    monkeypatch.setattr(
+        node, "run_captured", lambda argv, *_args: (calls.append(argv) or 0, "", False)
+    )
+    with pytest.raises(WorktreeSetupError, match="still incomplete"):
+        node.ensure_node_dependencies(tmp_path)
+    assert calls == [["bun", "install"], ["bun", "install", "--force"]]
+
+
 def test_policy_blocks_automatic_install_and_missing_tool_is_actionable(
     tmp_path, monkeypatch
 ):

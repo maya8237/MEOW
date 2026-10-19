@@ -165,6 +165,9 @@ The shared store contains live dependencies, not just disposable downloads.
 `bun install` runs again. MEOW checks Bun's local store links, including transitive
 packages, and reinstalls when a link target is missing. A fresh worktree still
 needs its own install to create links even when all package files are cached.
+MEOW also checks the links after a Bun install reports success. If dependencies
+are still missing, it retries once with `--force` under the same setup policy and
+fails clearly if the repair is incomplete. Healthy worktrees skip installation.
 The isolated linker also changes dependency resolution; packages importing
 undeclared dependencies can fail with the global store enabled. For those
 projects, fix the dependency declaration or set `globalStore = false` in the

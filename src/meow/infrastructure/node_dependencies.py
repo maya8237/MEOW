@@ -207,12 +207,26 @@ def ensure_node_dependencies(
         pending = directory / ".meow" / "node-install.pending"
         if not pending.exists() and _modules_ready(directory, data):
             continue
+        argv = install_command(directory, data)
         run_node_install(
             directory,
-            install_command(directory, data),
+            argv,
             command_decision=command_decision,
             record_action=record_action,
         )
+        if argv[0] == "bun" and not _modules_ready(directory, data):
+            _LOGGER.warning("bun_incomplete_install_retry", cwd=str(directory))
+            run_node_install(
+                directory,
+                [*argv, "--force"],
+                command_decision=command_decision,
+                record_action=record_action,
+            )
+            if not _modules_ready(directory, data):
+                raise WorktreeSetupError(
+                    f"Bun dependencies are still incomplete in {directory} "
+                    "after a forced install; inspect Bun's store links and config."
+                )
 
 
 def _modules_ready(root: Path, data: dict) -> bool:
