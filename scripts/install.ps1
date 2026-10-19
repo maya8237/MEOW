@@ -23,7 +23,7 @@
         if ($env:MEOW_RELEASE_MANIFEST_URL) { $manifestUrl = $env:MEOW_RELEASE_MANIFEST_URL }
         $release = Invoke-RestMethod $manifestUrl
         $tag = $release.tag_name
-        if ($tag -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'No published stable MEOW release was found.' }
+        if ($tag -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'No published stable MEOW release was found.' }
         $asset = "meow-windows-$architecture.zip"
         $versions = Join-Path $root 'versions'
         $destination = Join-Path $versions $tag

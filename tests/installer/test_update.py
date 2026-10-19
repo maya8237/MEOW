@@ -6,10 +6,10 @@ from meow.installer import maintenance, releases
 @pytest.mark.parametrize(
     "current,latest,installs",
     [
-        ("0.1.2", "0.2.0", ["v0.2.0"]),
+        ("0.1.2", "0.2.0", ["0.2.0"]),
         ("0.2.0", "0.2.0", []),
         ("0.3.0", "0.2.0", []),
-        ("0.1.9", "0.1.10", ["v0.1.10"]),
+        ("0.1.9", "0.1.10", ["0.1.10"]),
     ],
 )
 def test_update_selects_newer_published_release(monkeypatch, current, latest, installs):

@@ -100,11 +100,9 @@ def check_version() -> str:
     version = tomllib.loads(project.read_text())["project"]["version"]
     tag = os.environ.get("GITHUB_REF_NAME")
     if tag:
-        if not re.fullmatch(
-            r"v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag
-        ):
+        if not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
             raise ValueError(f"Expected a three-part release tag, got {tag!r}")
-        version = tag.removeprefix("v")
+        version = tag
         project.write_text(
             re.sub(
                 r"(?m)^version = .*$",

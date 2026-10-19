@@ -77,7 +77,7 @@ def release_python(release: Path) -> Path:
 def activate(release: Path) -> None:
     """Register the plugin, then atomically select this immutable release."""
     release = release.resolve()
-    maintenance._version_parts(release.name.removeprefix("v"))
+    maintenance._version_parts(release.name)
     root = release.parent.parent
     if release.parent.name != "versions":
         raise ValueError("MEOW releases must be installed under .meow/versions")
@@ -161,7 +161,7 @@ def _download(url: str, destination: Path) -> None:
 
 
 def install_release(tag: str) -> None:
-    maintenance._version_parts(tag.removeprefix("v"))
+    maintenance._version_parts(tag)
     root = Path.home() / ".meow"
     destination = root / "versions" / tag
     asset = asset_name()
@@ -198,7 +198,7 @@ def _validate_release(release: Path, tag: str) -> None:
         capture_output=True,
         text=True,
     )
-    if result.stdout.strip() != tag.removeprefix("v"):
+    if result.stdout.strip() != tag:
         raise ValueError("MEOW release package version does not match its tag")
 
 

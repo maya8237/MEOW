@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ['[0-9]*.[0-9]*.[0-9]*', 'v[0-9]*.[0-9]*.[0-9]*']
+    tags: ['[0-9]*.[0-9]*.[0-9]*']
   pull_request:
     paths:
       - 'scripts/**'
@@ -74,8 +74,6 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
     steps:
-      - name: Keep release names compatible with installed updaters
-        run: echo "TAG=v${TAG#v}" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -91,7 +89,8 @@ jobs:
             git fetch origin release-channel
             git checkout -B release-channel FETCH_HEAD
           fi
-          current=$(jq -r '.tag_name' latest.json 2>/dev/null || echo v0.0.0)
+          current=$(jq -r '.tag_name' latest.json 2>/dev/null || echo 0.0.0)
+          current=${current#v}
           newest=$(printf '%s\n%s\n' "$current" "$TAG" | sort -V | tail -1)
           if [ "$newest" = "$TAG" ]; then
             echo 'ADVANCE_CHANNEL=true' >> "$GITHUB_ENV"
@@ -101,7 +100,7 @@ jobs:
       - name: Publish a complete release after every platform passes
         run: |
           if ! gh release view "$TAG" > /dev/null 2>&1; then
-            gh release create "$TAG" --target "$GITHUB_SHA" --draft --generate-notes --title "MEOW $TAG"
+            gh release create "$TAG" --verify-tag --draft --generate-notes --title "MEOW $TAG"
           fi
           gh release view "$TAG" --json isDraft,isPrerelease,assets > published.json
           if jq -e '.isDraft' published.json > /dev/null; then

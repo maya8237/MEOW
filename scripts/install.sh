@@ -29,8 +29,8 @@ esac
 # Only the publishing workflow advances this manifest, after all assets exist.
 manifest_url=${MEOW_RELEASE_MANIFEST_URL:-https://raw.githubusercontent.com/maya8237/MEOW/release-channel/latest.json}
 manifest=$(curl -fsSL --retry 3 "$manifest_url")
-tag=$(printf '%s\n' "$manifest" | sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"(v[0-9]+\.[0-9]+\.[0-9]+)"[,]?[[:space:]]*$/\1/p')
-if ! printf '%s\n' "$tag" | LC_ALL=C grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+tag=$(printf '%s\n' "$manifest" | sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+)"[,]?[[:space:]]*$/\1/p')
+if ! printf '%s\n' "$tag" | LC_ALL=C grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
     printf '%s\n' 'No published stable MEOW release was found.' >&2
     exit 1
 fi

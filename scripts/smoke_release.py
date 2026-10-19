@@ -70,7 +70,7 @@ def check_install(home: Path, env: dict, version: str) -> None:
     assert "--auto" in run([str(executable), "run", "--help"], env)
     alias = executable.with_name("mw.exe" if os.name == "nt" else "mw")
     assert run([str(alias), "--version"], env).strip() == f"meow {version}"
-    release = home / ".meow/versions" / f"v{version}"
+    release = home / ".meow/versions" / version
     python = release / "runtime" / ("python.exe" if os.name == "nt" else "bin/python3")
     probe = (
         "import subprocess,sys; import meow.agents.base; import meow.ui.server; "
@@ -91,7 +91,7 @@ def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
         temporary = Path(directory)
         home = temporary / "user with spaces"
         home.mkdir()
-        fixtures = temporary / "server/download" / f"v{version}"
+        fixtures = temporary / "server/download" / version
         fixtures.mkdir(parents=True)
         archive = ROOT / "dist" / asset_name()
         shutil.copy2(archive, fixtures)
@@ -100,7 +100,7 @@ def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
             ("127.0.0.1", 0),
             functools.partial(ReleaseServer, directory=str(temporary / "server")),
         )
-        server.tag = f"v{version}"
+        server.tag = version
         threading.Thread(target=server.serve_forever, daemon=True).start()
         # Test-only startup patch: never modify the developer's real Windows
         # registry PATH or contact GitHub while exercising a local fixture.
@@ -142,7 +142,7 @@ def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
             assert config.read_text() == "# preserved user configuration\n"
             check_install(home, env, version)
             check_update(home, env, version)
-            assert (home / ".meow/current-version").read_text().strip() == f"v{version}"
+            assert (home / ".meow/current-version").read_text().strip() == version
         finally:
             server.shutdown()
             server.server_close()
@@ -181,13 +181,13 @@ def check_launcher_arguments(home: Path, env: dict, temporary: Path) -> None:
 def check_update(home: Path, env: dict, version: str) -> None:
     """Make the installed runtime older, then update through the real launcher."""
     versions = home / ".meow/versions"
-    previous = versions / "v0.0.0"
-    (versions / f"v{version}").rename(previous)
+    previous = versions / "0.0.0"
+    (versions / version).rename(previous)
     metadata = next((previous / "runtime").rglob("meow-*.dist-info/METADATA"))
     metadata.write_text(
         metadata.read_text().replace(f"Version: {version}", "Version: 0.0.0")
     )
-    (home / ".meow/current-version").write_text("v0.0.0\n")
+    (home / ".meow/current-version").write_text("0.0.0\n")
     executable = home / ".meow/bin" / ("meow.exe" if os.name == "nt" else "meow")
     assert run([str(executable), "--version"], env).strip() == "meow 0.0.0"
     run([str(executable), "-u"], env)

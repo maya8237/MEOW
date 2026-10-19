@@ -9,10 +9,8 @@ git push origin 0.1.6
 
 That is the release process. CI stamps the tag's version into the Python package
 and both plugin manifests, runs tests and lint, builds all platforms, and
-publishes the release. No manual version edits are needed. Existing `vX.Y.Z`
-tags also work. Published releases retain the `v` prefix for compatibility with
-installed updaters; a numeric trigger automatically creates that release tag at
-the same commit. Commits to `main` alone do not update users.
+publishes the release under that exact numeric tag. No prefix, alias tag, or
+manual version edits are needed. Commits to `main` alone do not update users.
 
 When dependencies change, regenerate the pinned runtime requirements before
 committing:

@@ -7,7 +7,7 @@ All notable changes to MEOW will be documented here.
 ## 0.1.6 - 2026-10-19
 
 - Release by pushing a plain `X.Y.Z` tag; CI sets package/plugin versions and
-  publishes compatible releases automatically.
+  publishes under that same tag, with no prefix or alias.
 - Reduce skill/reference wording by 21% and project instructions by 30%;
   consolidate native verification, setup, and scheduling guidance.
 - Load native-run instructions only when native execution is requested.

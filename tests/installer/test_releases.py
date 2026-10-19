@@ -14,7 +14,7 @@ from meow.cli.parser import _build_arg_parser
 from meow.installer import maintenance
 
 
-@pytest.mark.parametrize("tag", ["1.2.3", "v1.2.3"])
+@pytest.mark.parametrize("tag", ["1.2.3", "2.0.0"])
 def test_release_tag_sets_package_and_plugin_versions(tmp_path, monkeypatch, tag):
     root = Path(__file__).resolve().parents[2]
     script = runpy.run_path(str(root / "scripts/build_release.py"))
@@ -29,14 +29,14 @@ def test_release_tag_sets_package_and_plugin_versions(tmp_path, monkeypatch, tag
         '{"plugins":[{"name":"meow","version":"0.0.2"}]}'
     )
 
-    assert script["check_version"]() == "1.2.3"
-    assert 'version = "1.2.3"' in project.read_text()
-    assert json.loads((manifests / "plugin.json").read_text())["version"] == "1.2.3"
+    assert script["check_version"]() == tag
+    assert f'version = "{tag}"' in project.read_text()
+    assert json.loads((manifests / "plugin.json").read_text())["version"] == tag
     assert (
         json.loads((manifests / "marketplace.json").read_text())["plugins"][0][
             "version"
         ]
-        == "1.2.3"
+        == tag
     )
 
 
@@ -73,7 +73,7 @@ def test_latest_version_comes_from_published_release(monkeypatch):
 
     def fetch(url, **kwargs):
         urls.append(url)
-        return io.BytesIO(json.dumps({"tag_name": "v0.2.0"}).encode())
+        return io.BytesIO(json.dumps({"tag_name": "0.2.0"}).encode())
 
     monkeypatch.setattr(maintenance, "urlopen", fetch)
     assert maintenance.latest_version() == "0.2.0"
@@ -90,7 +90,7 @@ def test_install_archive_checks_digest_and_preserves_config(tmp_path):
         bundle.writestr("runtime/python.exe", b"python")
         bundle.writestr("plugin/skills/run/SKILL.md", b"skill")
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    destination = tmp_path / ".meow" / "versions" / "v0.2.0"
+    destination = tmp_path / ".meow" / "versions" / "0.2.0"
     config = tmp_path / ".meow" / "config.toml"
     config.parent.mkdir()
     config.write_text("keep me")
@@ -118,7 +118,7 @@ def test_activation_switches_launcher_after_plugin_registration(tmp_path, monkey
     from meow.installer.releases import activate
 
     root = tmp_path / ".meow"
-    release = root / "versions" / "v0.2.0"
+    release = root / "versions" / "0.2.0"
     (release / "bin").mkdir(parents=True)
     executable = "meow.exe" if os.name == "nt" else "meow"
     (release / "bin" / executable).write_bytes(b"launcher")
@@ -126,12 +126,12 @@ def test_activation_switches_launcher_after_plugin_registration(tmp_path, monkey
     (release / "plugin" / ".claude-plugin" / "marketplace.json").write_text(
         '{"name":"meow"}'
     )
-    (root / "current-version").write_text("v0.1.3")
+    (root / "current-version").write_text("0.1.3")
     settings = tmp_path / "settings.json"
     monkeypatch.setattr("meow.installer.releases.settings_path", lambda: settings)
     monkeypatch.setattr("meow.installer.releases._add_to_path", lambda path: None)
     activate(release)
-    assert (root / "current-version").read_text().strip() == "v0.2.0"
+    assert (root / "current-version").read_text().strip() == "0.2.0"
     assert (root / "bin" / executable).read_bytes() == b"launcher"
     data = json.loads(settings.read_text())
     assert data["extraKnownMarketplaces"]["meow"]["source"]["path"] == str(
@@ -143,12 +143,12 @@ def test_failed_activation_keeps_previous_release(tmp_path, monkeypatch):
     from meow.installer.releases import activate
 
     root = tmp_path / ".meow"
-    release = root / "versions" / "v0.2.0"
+    release = root / "versions" / "0.2.0"
     release.mkdir(parents=True)
-    (root / "current-version").write_text("v0.1.3")
+    (root / "current-version").write_text("0.1.3")
     settings = tmp_path / "settings.json"
     settings.write_text("malformed")
     monkeypatch.setattr("meow.installer.releases.settings_path", lambda: settings)
     with pytest.raises((ValueError, FileNotFoundError)):
         activate(release)
-    assert (root / "current-version").read_text() == "v0.1.3"
+    assert (root / "current-version").read_text() == "0.1.3"

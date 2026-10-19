@@ -31,7 +31,7 @@ class Launcher
             string root = Path.GetDirectoryName(Path.GetDirectoryName(
                 Assembly.GetExecutingAssembly().Location));
             string tag = File.ReadAllText(Path.Combine(root, "current-version")).Trim();
-            if (!Regex.IsMatch(tag, @"\Av[0-9]+\.[0-9]+\.[0-9]+\z"))
+            if (!Regex.IsMatch(tag, @"\A[0-9]+\.[0-9]+\.[0-9]+\z"))
                 throw new Exception("Invalid release pointer; rerun the installer.");
             var start = new ProcessStartInfo {
                 FileName = Path.Combine(root, "versions", tag, "runtime", "python.exe"),

@@ -23,11 +23,10 @@ def _version_parts(value: str) -> tuple[int, ...]:
 def latest_version(*, timeout: float = 10) -> str:
     with urlopen(RELEASE_URL, timeout=timeout) as response:
         tag = json.load(response)["tag_name"]
-    if not isinstance(tag, str) or not tag.startswith("v"):
-        raise ValueError("Expected a published MEOW vX.Y.Z release tag")
-    result = tag[1:]
-    _version_parts(result)
-    return result
+    if not isinstance(tag, str):
+        raise ValueError("Expected a published MEOW X.Y.Z release tag")
+    _version_parts(tag)
+    return tag
 
 
 def check_for_updates() -> None:
@@ -50,9 +49,9 @@ def update() -> int:
 
     current, latest = version("meow"), latest_version()
     if _version_parts(current) >= _version_parts(latest):
-        print(f"MEOW {current} is up to date (latest release: v{latest}).")
+        print(f"MEOW {current} is up to date (latest release: {latest}).")
         return 0
-    print(f"Upgrading MEOW {current} to release v{latest}...")
-    install_release(f"v{latest}")
-    print(f"MEOW updated successfully to v{latest}.")
+    print(f"Upgrading MEOW {current} to release {latest}...")
+    install_release(latest)
+    print(f"MEOW updated successfully to {latest}.")
     return 0
