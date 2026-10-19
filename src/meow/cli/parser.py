@@ -454,6 +454,11 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Review the exact GitLab pipeline checkout and emit CI artifacts.",
     )
     review_parser.add_argument(
+        "--post-comments",
+        choices=("github", "gitlab"),
+        help="CI only: post findings using MEOW_GITHUB_TOKEN or MEOW_GITLAB_TOKEN.",
+    )
+    review_parser.add_argument(
         "--target-ref",
         default=None,
         help=(

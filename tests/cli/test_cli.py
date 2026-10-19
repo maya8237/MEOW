@@ -123,6 +123,14 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             with self.assertRaises(SystemExit):
                 cli._validate_ci_flags(parser, args)
 
+    def test_inline_comments_require_ci(self):
+        parser = cli._build_arg_parser()
+        args = parser.parse_args(["review", "--post-comments", "github"])
+        with self.assertRaises(SystemExit):
+            cli._validate_ci_flags(parser, args)
+        args = parser.parse_args(["review", "--ci", "--post-comments", "gitlab"])
+        cli._validate_ci_flags(parser, args)
+
     @patch("meow.cli.cli._boot_repo")
     @patch("meow.cli.cli.run_ci_review")
     def test_ci_dispatch_skips_boot_and_uses_result_status(self, mock_run, mock_boot):

@@ -1,12 +1,12 @@
 ---
 name: integrate-ci-review
-description: Use when adding or configuring MEOW's report-only review job in GitHub Actions or GitLab CI, including repositories without CI yet.
+description: Use when adding or configuring MEOW's CI review job in GitHub Actions or GitLab CI, with optional inline PR/MR comments.
 ---
 
 # Integrate CI review
 
 Add `meow review --ci` to the repository's CI configuration. It reviews the
-exact checkout and writes artifacts; it is **report-only**. Edit CI files only,
+exact checkout and writes artifacts; it defaults to **report-only**. Edit CI files only,
 never application code, and do not use `--fix` or `meow run` in the job.
 
 ## Detect the CI provider
@@ -135,6 +135,28 @@ between the current project and the shipped template and ask before making a
 broader runtime change.
 
 ## Configure and verify
+
+### Optional inline review notes
+
+When requested, add `--post-comments github` or `--post-comments gitlab` to
+`meow review --ci`. Keep the fixed install command `python -m pip install meow`;
+do not add an install-spec variable or ask the user to choose the package.
+
+- GitHub: set `MEOW_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` on the review step and
+  grant the job `pull-requests: write` alongside `contents: read`. Actions supplies
+  `GITHUB_EVENT_PATH`, `GITHUB_REPOSITORY`, and `GITHUB_API_URL`. Preserve the
+  `CI_*` mappings above. Use a token with Pull requests write permission when
+  supplying a personal access token instead. Fork PR tokens may be read-only.
+- GitLab: supply a masked `MEOW_GITLAB_TOKEN` access token with `api` scope and
+  permission to comment on the target project. GitLab supplies the API URL,
+  target project ID, and MR IID automatically.
+- Enable posting only for PR/MR events; push jobs keep the report-only command.
+  Never expose secrets by switching to `pull_request_target`.
+
+Findings become inline code discussions on added/deleted lines. The CLI checks
+locations and remote revisions before posting; missing tokens, malformed findings,
+or publishing failures exit 2 and retain local artifacts. Reruns can add duplicate
+notes; a failed multi-note publish can leave earlier notes posted.
 
 1. Make the smallest edit that fits the existing CI layout. Preserve comments,
    anchors, includes, matrices, and unrelated jobs.

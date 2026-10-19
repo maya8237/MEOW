@@ -317,7 +317,11 @@ class ReviewerAgent(Agent):
         options = self.definition_options(
             agent,
             system_prompt=ci_review_prompt(
-                context.source_sha, context.target_sha, context.merge_base, agent=agent
+                context.source_sha,
+                context.target_sha,
+                context.merge_base,
+                agent=agent,
+                post_comments=context.post_comments,
             ),
             allowed_tools=tools,
             tools=tools,
@@ -357,7 +361,10 @@ class ReviewerAgent(Agent):
             raise RuntimeError("CI reviewer returned no completion result")
         response = "\n".join(parts)
         statuses = re.findall(r"^STATUS: (PASS|FAIL)\s*$", response, re.MULTILINE)
-        return (statuses[0] if len(statuses) == 1 else "UNVERIFIED", response)
+        return (
+            _verdict_status(response) if len(statuses) == 1 else "UNVERIFIED",
+            response,
+        )
 
     async def _lint_evidence(self, *, retry_failed=True) -> LintGateEvidence:
         from meow.infrastructure.review_verification import review_evidence

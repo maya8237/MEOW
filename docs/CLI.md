@@ -167,21 +167,25 @@ returns evidence/log paths. `native verdict` enforces checks and scope coverage.
 host) and repeated `--available-model ID`. Unsupported models return null to
 inherit the host model, with fallback metadata. See the [native protocol](../skills/_shared/native-mode.md).
 
-## GitLab CI review
+## CI review
 
 `meow review --ci` reviews a detached checkout matching `CI_COMMIT_SHA` against
 `refs/remotes/origin/<target>` (`[delivery].target_branch`, default `dev`).
-It is report-only, uses local history without MCP, and rejects other sources,
-`--fix`, `--test`, and `--no-worktree`.
-Use [the template](../templates/gitlab-ci-review.yml) for detached MR pipelines
-targeting that branch and pushes on other branches; merged-result/tag/other
-pipelines are rejected. Fetch full history and the target without moving HEAD.
-MR descriptions are the brief (truncated/flagged beyond 2,700 characters);
-pushes review the diff. Supply masked SDK credentials.
+Review uses local Git history without MCP and defaults to report-only.
+Use [the template](../templates/gitlab-ci-review.yml) for detached MR pipelines and
+non-target branch pushes. Fetch full history and the target without moving HEAD.
+Merged-result/tag/other pipelines, `--fix`, `--test`, and `--no-worktree` are rejected.
+MR descriptions supply the brief; pushes review the diff. Supply masked SDK credentials.
 `--target-ref REF`, `--artifact-dir PATH`, and an existing `--plan PATH` are supported.
 Upload `.meow/ci-artifacts/review.md` and `verdict.json` even on failure.
-Artifacts record SHAs, merge base, verdict, and cause. Exit: 0 PASS, 1 FAIL,
-2 infrastructure/unverified. No worktree or root GitLab CI file is required.
+Exit: 0 PASS, 1 FAIL, 2 infrastructure/unverified.
+
+Add `--post-comments gitlab` with masked `MEOW_GITLAB_TOKEN` (`api` scope and comment
+access), or `--post-comments github` with `MEOW_GITHUB_TOKEN` (Pull requests write). See
+[the integration skill](../skills/integrate-ci-review/SKILL.md) for CI variables.
+Posting mode requires a PR/MR event and validates added/deleted-line locations
+and remote revisions. Failures exit 2 with artifacts. Notes use the token's
+identity; reruns may duplicate notes and API failures can leave partial results.
 
 ## Maintainer and internal commands
 

@@ -442,15 +442,27 @@ def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
     )
 
 
-def ci_review_prompt(
+def ci_review_prompt(  # ruff: ignore[too-many-arguments] -- immutable revisions plus output mode
     source_sha: str,
     target_sha: str,
     merge_base: str,
     *,
     agent: CustomAgent | None = None,
+    post_comments: bool = False,
 ) -> str:
-    return render_agent(
+    prompt = render_agent(
         _agent(agent, "reviewer"),
         {"source_sha": source_sha, "target_sha": target_sha, "merge_base": merge_base},
         variant="ci",
     )
+    if post_comments:
+        prompt += (
+            "\nAppend exactly one fenced block labeled meow-comments containing a "
+            'JSON array of findings: [{"path":"repo/relative.py","line":12,'
+            '"side":"RIGHT","body":"Explain the concrete bug and impact."}]. '
+            "Use RIGHT for added lines, LEFT for deleted lines, with line numbers "
+            "on that side of the supplied diff. Only cite added or deleted lines. "
+            "Use [] when there are no inline findings. Do not post anything "
+            "yourself; the CLI validates and publishes these findings."
+        )
+    return prompt

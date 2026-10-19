@@ -2,6 +2,8 @@
 #
 # Required project-level CI/CD variable (set in GitLab, masked; do not commit it):
 #   ANTHROPIC_API_KEY - Claude API key used by the Claude Agent SDK.
+# Optional MR inline notes: supply masked MEOW_GITLAB_TOKEN (api scope), then add
+# --post-comments gitlab to the review command for MR pipelines only.
 meow_review:
   image: python:3.12
   stage: test
@@ -13,9 +15,8 @@ meow_review:
     - when: never
   variables:
     GIT_DEPTH: "0"
-    MEOW_INSTALL_SPEC: "meow"
   before_script:
-    - python -m pip install "$MEOW_INSTALL_SPEC"
+    - python -m pip install meow
     - git fetch --no-tags origin refs/heads/dev:refs/remotes/origin/dev
   script:
     - meow review --ci --artifact-dir "$CI_PROJECT_DIR/.meow/ci-artifacts"

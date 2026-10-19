@@ -1,4 +1,4 @@
-"""Immutable, report-only review of a GitLab pipeline checkout."""
+"""Immutable CI checkout review with optional inline comments."""
 
 import asyncio
 import hashlib
@@ -33,6 +33,7 @@ class CiReviewContext:
     plan_text: str = ""
     mr_description: str = ""
     mr_description_truncated: bool = False
+    post_comments: bool = False
 
 
 @dataclass(frozen=True)
@@ -158,22 +159,26 @@ def _atomic_write(path: Path, content: str) -> None:
     temporary.replace(path)
 
 
-def _safe_text(value: str, env: Mapping[str, str]) -> str:
+def _safe_text(
+    value: str, env: Mapping[str, str], *, limit: int | None = MAX_REPORT
+) -> str:
     for key, secret in env.items():
         if secret and (
             "TOKEN" in key or "KEY" in key or "SECRET" in key or "PASSWORD" in key
         ):
             value = value.replace(secret, "[REDACTED]")
-    return value[:MAX_REPORT]
+    return value[:limit]
 
 
-def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-many-positional-arguments, too-many-statements] -- public interface prescribed by release plan
+def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-many-positional-arguments, too-many-statements, too-many-branches] -- public CI entry point
     repo: Path,
     config: dict,
     env: Mapping[str, str],
     target_ref: str,
     artifact_dir: Path,
     plan_file: Path | None,
+    *,
+    post_comments: str | None = None,
 ) -> CiReviewResult:
     repo = repo.resolve()
     artifact_dir = artifact_dir.resolve()
@@ -186,6 +191,7 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
     verdict = "UNVERIFIED"
     response = ""
     reason = None
+    comments_posted = 0
     try:
         context = prepare_ci_review(
             repo,
@@ -193,6 +199,8 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
             target_ref,
             target_branch=config.get("delivery", {}).get("target_branch", "dev"),
         )
+        if post_comments:
+            context = CiReviewContext(**{**context.__dict__, "post_comments": True})
         before = _snapshot(repo)
         if plan_file is not None:
             if not plan_file.is_file():
@@ -208,6 +216,14 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
             raise CiReviewError("checkout HEAD or files changed during review")
         if verdict not in {"PASS", "FAIL"}:
             raise CiReviewError("reviewer returned no unambiguous verdict")
+        if post_comments:
+            from meow.integrations.ci_comments import post_review_comments
+
+            # A failed multi-note publish may have created some notes remotely.
+            comments_posted = None
+            comments_posted = post_review_comments(
+                post_comments, context, _safe_text(response, env, limit=None), env
+            )
     except Exception as exc:
         verdict = "UNVERIFIED"
         reason = _safe_text(str(exc), env)[:1000]
@@ -226,9 +242,10 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
         "verdict": verdict,
         "report_path": str(report_path),
         "failure_reason": reason,
+        "comments_posted": comments_posted,
     }
     report = (
-        "# GitLab CI review\n\n"
+        "# CI review\n\n"
         f"Source: {payload['source_ref']} ({payload['source_sha']})\n\n"
         f"Target: {target_ref} ({payload['target_sha']})\n\n"
         f"Merge base: {payload['merge_base']}\n\n"

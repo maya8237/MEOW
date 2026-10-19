@@ -114,8 +114,10 @@ def validate_workflow_args(args, working_dir):
 
 def _validate_ci_flags(parser: argparse.ArgumentParser, args) -> None:
     if not args.ci:
-        if args.target_ref or args.artifact_dir:
-            parser.error("--target-ref and --artifact-dir require --ci")
+        if args.target_ref or args.artifact_dir or args.post_comments:
+            parser.error(
+                "--target-ref, --artifact-dir and --post-comments require --ci"
+            )
         return
     incompatible = [
         name

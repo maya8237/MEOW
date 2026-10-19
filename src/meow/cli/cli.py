@@ -293,6 +293,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
                     args.target_ref or f"refs/remotes/origin/{target}",
                     artifact_dir,
                     plan_file,
+                    post_comments=args.post_comments,
                 )
             except (CiReviewError, ValueError, OSError) as exc:
                 print(f"CI review failed: {exc}", file=sys.stderr)

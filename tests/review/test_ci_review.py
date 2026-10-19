@@ -127,7 +127,8 @@ def test_example_job_runs_for_merge_request_pipelines():
     assert 'CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"' in example
     assert "- when: never" in example
     assert "image: python:3.12" in example
-    assert 'python -m pip install "$MEOW_INSTALL_SPEC"' in example
+    assert "python -m pip install meow" in example
+    assert "MEOW_INSTALL_SPEC" not in example
 
 
 @pytest.mark.parametrize(
