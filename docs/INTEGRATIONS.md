@@ -160,6 +160,16 @@ requires a local install to create each worktree's links. With the option off,
 MEOW uses the package manager's normal cache/install behavior instead. See
 [Bun's global store documentation](https://bun.com/docs/pm/global-store).
 
+The shared store contains live dependencies, not just disposable downloads.
+`bun pm cache rm` removes it and breaks links in every project using it until
+`bun install` runs again. MEOW checks Bun's local store links, including transitive
+packages, and reinstalls when a link target is missing. A fresh worktree still
+needs its own install to create links even when all package files are cached.
+The isolated linker also changes dependency resolution; packages importing
+undeclared dependencies can fail with the global store enabled. For those
+projects, fix the dependency declaration or set `globalStore = false` in the
+project's `bunfig.toml` and reinstall.
+
 ### Role permissions
 
 Use repeated `[[permissions.rule]]` tables to constrain a role's tool use:

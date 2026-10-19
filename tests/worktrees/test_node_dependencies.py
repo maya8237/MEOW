@@ -1,4 +1,6 @@
 import json
+import os
+import subprocess
 
 import pytest
 
@@ -176,6 +178,37 @@ def test_install_failure_includes_diagnostics(tmp_path, monkeypatch):
     )
     with pytest.raises(WorktreeSetupError, match="registry unavailable"):
         node.ensure_node_dependencies(tmp_path)
+
+
+def test_broken_transitive_bun_store_link_triggers_repair(tmp_path, monkeypatch):
+    (tmp_path / "package.json").write_text(
+        '{"packageManager":"bun@1.4.0","dependencies":{"direct":"1"}}'
+    )
+    modules = tmp_path / "node_modules"
+    (modules / "direct").mkdir(parents=True)
+    store = modules / ".bun"
+    store.mkdir()
+    target = tmp_path / "cache" / "transitive"
+    target.mkdir(parents=True)
+    link = store / "transitive@1"
+    if os.name == "nt":
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            check=True,
+            capture_output=True,
+        )
+    else:
+        link.symlink_to(target, target_is_directory=True)
+    target.rmdir()
+
+    def repair(directory, argv, **_kwargs):
+        assert directory == tmp_path
+        assert argv == ["bun", "install"]
+        target.mkdir()
+
+    monkeypatch.setattr(node, "run_node_install", repair)
+    node.ensure_node_dependencies(tmp_path)
+    assert link.is_dir()
 
 
 def test_empty_or_failed_partial_install_is_repaired(tmp_path, monkeypatch):

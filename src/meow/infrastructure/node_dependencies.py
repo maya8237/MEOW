@@ -219,6 +219,10 @@ def _modules_ready(root: Path, data: dict) -> bool:
     modules = root / "node_modules"
     if not modules.is_dir() or not any(modules.iterdir()):
         return False
+    # Direct packages can survive while a transitive global-store link is broken.
+    store = modules / ".bun"
+    if store.is_dir() and any(not entry.exists() for entry in store.iterdir()):
+        return False
     workspace = data.get("workspaces") or (root / "pnpm-workspace.yaml").is_file()
     projects = (
         node_projects(root, include_members=True) if workspace else [(root, data)]
