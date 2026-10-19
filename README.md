@@ -28,10 +28,8 @@ irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | i
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 ```
 
-The installer downloads the latest published release into `~/.meow`, including
-its Python runtime and Claude plugin. It adds `~/.meow/bin` to your user `PATH`;
-no MEOW checkout, system Python, or package installation is needed. On Windows,
-`~` is your user profile. Open a new terminal after installation if necessary.
+The installer puts MEOW in `~/.meow`, adds the `meow` command to your PATH,
+and sets up its skills in Claude Code. Open a new terminal to get started.
 
 Run `meow --update` or `meow -u` to install the latest published release.
 Public commands and `/meow:*` skills warn when a newer release is available.
