@@ -90,11 +90,11 @@ def test_cli_options_are_derived_from_the_command_parsers(running):
     status, _, _, body = get(running.server_port, "/api/cli-options")
     assert status == HTTPStatus.OK
     commands = json.loads(body)["commands"]
-    assert set(commands) == {"run", "plan", "review", "orchestrate"}
+    assert set(commands) == {"run", "plan", "review"}
     run = {item["flag"]: item for item in commands["run"]}
     assert run["--test"]["kind"] == "switch"
     assert run["--resume-at"]["choices"] == ["generate", "review"]
-    assert run["--jira"]["nargs"] == "?"
+    assert run["--jira"]["nargs"] == "*"
     assert run["--from"]["aliases"] == ["--from", "-b"]
     assert run["--work-dir"]["controlled"]
     assert run["--background"]["controlled"]
@@ -102,9 +102,10 @@ def test_cli_options_are_derived_from_the_command_parsers(running):
     assert run["--no-worktree"]["controlled"]
     assert run["--lint-fix"]["controlled"]
     assert run["--resume-at"]["controlled"]
-    orchestrate = {item["flag"]: item for item in commands["orchestrate"]}
+    assert run["--jira"]["controlled"] is None
+    orchestrate = run
     assert orchestrate["--max-parallel"]["kind"] == "number"
-    assert orchestrate["--jira"]["nargs"] == "+"
+    assert orchestrate["--orchestrate"]["aliases"] == ["--orchestrate", "-o"]
     assert orchestrate["--dry-run"]["help"]
 
 
@@ -129,15 +130,23 @@ def test_orchestrate_preview_builds_cli_and_warns_about_delivery(running, projec
             "repo": str(project),
             "recipe": recipe(
                 project,
-                command="orchestrate",
+                command="run",
                 options={},
-                arguments=["--max-parallel", "2", "--dry-run", "--no-pr"],
+                arguments=[
+                    "--orchestrate",
+                    "--max-parallel",
+                    "2",
+                    "--dry-run",
+                    "--no-pr",
+                ],
             ),
         },
     )
     assert status == HTTPStatus.OK, body
     assert body["argv"][4:] == [
-        "orchestrate",
+        "run",
+        "--auto",
+        "--orchestrate",
         "--max-parallel",
         "2",
         "--dry-run",

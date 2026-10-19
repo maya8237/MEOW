@@ -9,7 +9,7 @@ from tests.native.test_native_cli import run_native
     "command,target",
     [
         (["custom", "--role", "reviewer"], "meow.native.native.custom"),
-        (["orchestrate", "review", "abc123"], "meow.native.native_orchestrate.review"),
+        (["run", "review", "abc123"], "meow.native.native_orchestrate.review"),
     ],
 )
 def test_native_dispatch_preserves_host_capabilities(tmp_path, command, target):
@@ -36,7 +36,7 @@ def test_native_dispatch_preserves_host_capabilities(tmp_path, command, target):
     "command,target",
     [
         (["custom", "--role", "reviewer"], "meow.native.native.custom"),
-        (["orchestrate", "review", "abc123"], "meow.native.native_orchestrate.review"),
+        (["run", "review", "abc123"], "meow.native.native_orchestrate.review"),
     ],
 )
 def test_native_dispatch_keeps_legacy_defaults(tmp_path, command, target):

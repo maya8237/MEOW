@@ -14,7 +14,7 @@ top-level alias or compatibility modules.
 - `cli/`: the public command surface and dispatch for `run`, `plan`, `review`
   (`review_cli.py`), status/recovery, queues, hooks, IPython, and hidden
   maintenance commands. `catalog_cli.py` owns workflow/agent inspection and ejection;
-  `orchestrate_cli.py` owns `meow orchestrate`.
+  `orchestration_cli.py` owns multi-sprint execution behind `meow run`.
 - `execution/`: sprint orchestration, delivery, plan approval, queue/run
   policy, and the durable run journal. `orchestrator.py` owns round loops,
   `sprint_runner.py` run/plan flows, and `run_state.py` the journal.
@@ -32,7 +32,7 @@ top-level alias or compatibility modules.
 - `integrations/`: Jira issue solving, GitLab/GitHub/CI review, documentation
   updates, and knowledge documents.
 - `native/`: deterministic helpers behind `meow native ...` for in-session
-  skills, including `native_orchestrate.py` for `/meow:orchestrate`.
+  skills, including `native_orchestrate.py` for `/meow:run --orchestrate`.
 - `project/`: config models/schema, custom skill and agent discovery
   (`project/custom/`), onboarding, permissions, plan files/state, pre-plan
   shaping, prompts, and command policy. `project/custom/` owns scoped agent

@@ -43,11 +43,7 @@ function Harness() {
   ]);
   return (
     <>
-      <AdvancedOptions
-        command="orchestrate"
-        arguments={args}
-        onChange={setArgs}
-      />
+      <AdvancedOptions command="run" arguments={args} onChange={setArgs} />
       <output aria-label="Selected arguments">{JSON.stringify(args)}</output>
     </>
   );
@@ -57,8 +53,7 @@ test("numeric and multiple values remain grouped when another option is removed"
   vi.stubGlobal(
     "fetch",
     vi.fn(
-      async () =>
-        new Response(JSON.stringify({ commands: { orchestrate: options } })),
+      async () => new Response(JSON.stringify({ commands: { run: options } })),
     ),
   );
   const user = userEvent.setup();
@@ -113,7 +108,7 @@ test("failed flag discovery can be retried", async () => {
         }),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ commands: { orchestrate: options } })),
+        new Response(JSON.stringify({ commands: { run: options } })),
       ),
   );
   const user = userEvent.setup();

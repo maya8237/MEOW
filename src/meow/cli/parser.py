@@ -13,7 +13,6 @@ _VISIBLE_COMMANDS = (
     "run",
     "review",
     "plan",
-    "orchestrate",
     "status",
     "cancel",
     "worktree",
@@ -32,7 +31,6 @@ _VISIBLE_COMMANDS = (
 _SHORTCUTS = {
     "r": ("run",),
     "p": ("plan",),
-    "o": ("orchestrate",),
     "rv": ("review",),
     "l": ("run", "--lint-fix"),
     "s": ("status",),
@@ -94,6 +92,15 @@ class _MeowParser(argparse.ArgumentParser):
         return parsed, rest
 
 
+class _JiraSources(argparse.Action):
+    """Keep single-issue runs scalar; multiple keys select the supervisor."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(
+            namespace, self.dest, values if len(values) > 1 else next(iter(values), "")
+        )
+
+
 def _add_common_args(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--work-dir",
@@ -114,7 +121,7 @@ def _add_feature_args(parser: argparse.ArgumentParser):
             "Feature name used for generated files and as the worktree name "
             "when worktrees are enabled. Required for plain build mode "
             "unless --no-worktree/-n is supplied; meaningless (and "
-            "rejected) with --jira/--lint-fix, which derive their own "
+            "rejected) with --jira/--lint-fix/--orchestrate, which derive their own "
             "worktree names."
         ),
     )
@@ -139,7 +146,7 @@ def _add_feature_args(parser: argparse.ArgumentParser):
             "worktree mode (i.e. not --no-worktree) -- the new worktree is "
             "built from this branch, not the main checkout's current "
             "state, so its own uncommitted changes don't apply to it. "
-            "Plain build mode only."
+            "Orchestration uses this as its base and always requires a clean checkout."
         ),
     )
 
@@ -231,7 +238,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     _add_common_args(orchestrator_task_parser)
     _add_review_parser(subparsers)
     _add_plan_parser(subparsers)
-    _add_orchestrate_parser(subparsers)
     status_parser = subparsers.add_parser("status", help="Inspect a saved run.")
     status_parser.add_argument("run_id", nargs="?")
     status_parser.add_argument("--verbose", "-v", action="store_true")
@@ -266,11 +272,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     resume_parser.add_argument("run_id", nargs="?")
     resume_parser.add_argument("--continue", dest="continue_run", action="store_true")
     resume_parser.add_argument(
+        "--task",
+        dest="task_id",
+        help="Blocked orchestration task to reset; requires --continue.",
+    )
+    resume_parser.add_argument(
         "--request",
         metavar="TEXT",
         help=(
             "Clarified request for a run paused for a product decision "
-            "before planning; requires --continue."
+            "before planning, or a blocked orchestration task; requires --continue."
         ),
     )
     resume_parser.add_argument(
@@ -329,9 +340,9 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
     run_parser = subparsers.add_parser(
         "run",
         help=(
-            "Plan, implement, and review a feature request end to end -- "
-            "or, with --jira/--lint-fix, build from a Jira issue or fix "
-            "lint instead."
+            "Plan, implement, and review a request. Use --orchestrate/-o for "
+            "complete sprints delivered in one PR, --jira for issues, or "
+            "--lint-fix for lint."
         ),
     )
     run_parser.add_argument(
@@ -348,7 +359,7 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         "request",
         nargs="?",
         default=None,
-        help="Feature request text (required unless --jira is given).",
+        help="Request text (or select --jira, --jql, or --tasks as the source).",
     )
     run_parser.add_argument(
         "--plan",
@@ -376,14 +387,14 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     run_parser.add_argument(
         "--jira",
-        nargs="?",
-        const="",
+        nargs="*",
+        action=_JiraSources,
         default=None,
         metavar="KEY",
         help=(
             "Fetch this Jira issue (omit KEY for the latest in "
             "[jira].project_key) and build it end to end in a pushed "
-            "worktree branch."
+            "worktree branch. Multiple keys select orchestration."
         ),
     )
     run_parser.add_argument(
@@ -407,7 +418,7 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
     run_parser.add_argument(
         "--test",
         action="store_true",
-        help="Run configured tests and exploratory testing after a passing review.",
+        help="Run tests after review, in each sprint when orchestrating.",
     )
     run_parser.add_argument(
         "--lint-fix",
@@ -429,6 +440,7 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
     _add_common_args(run_parser)
     _add_feature_args(run_parser)
     _add_manual_approval_arg(run_parser)
+    _add_orchestration_args(run_parser)
 
 
 def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -594,30 +606,12 @@ def _positive_int(value: str) -> int:
     return number
 
 
-def _add_orchestrate_parser(subparsers: argparse._SubParsersAction) -> None:
-    parser = subparsers.add_parser(
-        "orchestrate",
-        help=(
-            "Split an objective into tasks, run them in parallel, merge them "
-            "into one branch, review it, and open a pull request."
-        ),
-    )
+def _add_orchestration_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "words",
-        nargs="*",
-        metavar="WORDS",
-        help=(
-            "The objective text, or an action: 'status [ID]', 'resume ID', "
-            "'cancel ID'. Give exactly one of the objective, --jira, --jql, "
-            "or --tasks to start."
-        ),
-    )
-    parser.add_argument(
-        "--jira",
-        nargs="+",
-        default=None,
-        metavar="KEY",
-        help="Resolve these Jira issues (read-only; needs [jira] and [jira.mcp]).",
+        "--orchestrate",
+        "-o",
+        action="store_true",
+        help="Coordinate full sprints and deliver one reviewed branch and PR.",
     )
     parser.add_argument(
         "--jql",
@@ -633,48 +627,22 @@ def _add_orchestrate_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Run the tasks listed in this TOML or JSON file; no decomposition.",
     )
     parser.add_argument(
-        "--from",
-        dest="source_branch",
-        default=None,
-        metavar="BRANCH",
-        help="Base branch for the integration branch (default: the current branch).",
-    )
-    parser.add_argument(
         "--max-parallel",
         dest="max_parallel",
         type=_positive_int,
         default=None,
         metavar="N",
-        help="Tasks to run at once (default: [orchestrator].max_parallel).",
+        help="Orchestration sprints at once (default: [orchestrator].max_parallel).",
     )
     parser.add_argument(
         "--dry-run",
         dest="dry_run",
         action="store_true",
-        help="Stop after decomposition and print the task graph.",
-    )
-    parser.add_argument(
-        "--test",
-        action="store_true",
-        help="Run configured tests and exploratory testing in every task.",
+        help="Orchestration only: save decomposition without executing sprints.",
     )
     parser.add_argument(
         "--no-pr",
         dest="no_pr",
         action="store_true",
-        help="Push the integration branch but do not open a pull request.",
+        help="Orchestration only: push the integration branch without opening a PR.",
     )
-    parser.add_argument(
-        "--task",
-        dest="task_id",
-        default=None,
-        metavar="TASK",
-        help="resume only: the blocked task to reset (default: the blocker's task).",
-    )
-    parser.add_argument(
-        "--request",
-        default=None,
-        metavar="TEXT",
-        help="resume only: replacement request text for that task.",
-    )
-    _add_common_args(parser)

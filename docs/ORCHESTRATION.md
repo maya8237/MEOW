@@ -1,18 +1,18 @@
 # Orchestrating parallel sprints
 
-`meow orchestrate` decomposes one objective or Jira set into tasks, runs each
+`meow run --orchestrate` decomposes one objective or Jira set into tasks, runs each
 as an automatic detached sprint in its own worktree, merges passing tasks,
 reviews the combined objective, then pushes one branch and opens one PR/MR.
 Unrecoverable tasks or exhausted review rounds stop with nothing pushed.
 
-Use [CLI.md](CLI.md#orchestrate) for commands; `/meow:orchestrate` supervises
-the same engine natively. Configuration is under [orchestrator](INTEGRATIONS.md#orchestrator).
+Use [CLI.md](CLI.md#multi-sprint-runs) for commands; `/meow:run` selects this mode for independent deliverables.
+Explicit native supervision uses the same engine. Configuration is under [orchestrator](INTEGRATIONS.md#orchestrator).
 
 ## Input and flags
 
 Choose one objective, `--jira KEY...`, `--jql QUERY`, or `--tasks FILE`.
-Quote an objective beginning with `status`, `resume`, or `cancel` to avoid
-selecting a lifecycle action. Starts require a clean checkout except
+Select orchestration with `--orchestrate` (`-o`); task files, JQL, and multiple
+Jira keys also select it. Starts require a clean checkout except
 `.gitignore`/`.meow/`.
 
 | Flag | Meaning |
@@ -22,7 +22,7 @@ selecting a lifecycle action. Starts require a clean checkout except
 | `--dry-run` | Save decomposition and stop; resume continues it |
 | `--test` | Configured/exploratory testing in each task |
 | `--no-pr` | Push without opening a PR |
-| `resume --task T --request TEXT` | Reset a blocked task (default blocker task), optionally replace request |
+| `meow resume ID --continue --task T --request TEXT` | Reset a blocked task (default blocker task), optionally replace request |
 
 Jira is read-only and requires `[jira]`/`[jira.mcp]` in CLI mode.
 Each issue stays one task; the decomposer may add only dependencies/paths.
@@ -80,7 +80,7 @@ Atomic state, tasks, report, cancel marker, and driver lock live under
 blocker, and PR. `meow status` adds an active-orchestrator roll-up and child
 runs with source `orchestrator`; individual runs can use `meow resume`.
 
-Resume preserves merged tasks, reattaches live children, rolls back an
+`meow resume ID` inspects; add `--continue` to execute. Resume preserves merged tasks, reattaches live children, rolls back an
 interrupted merge, and retries failed delivery. A delivered run with a failed
 PR retries only PR creation. Resolve blockers or reset the blocked request
 with `--task`/`--request`. Cancel stops live children and records cancelled

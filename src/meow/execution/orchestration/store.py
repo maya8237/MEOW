@@ -68,8 +68,7 @@ class OrchestratorStore:
     def dir_for(self, orch_id: str) -> Path:
         if not is_orchestrator_id(orch_id):
             raise OrchestratorStateError(
-                f"Unknown orchestrator ID {orch_id!r}. Inspect with "
-                "meow orchestrate status."
+                f"Unknown orchestrator ID {orch_id!r}. Inspect with meow status."
             )
         return self.directory / orch_id
 
@@ -131,8 +130,7 @@ class OrchestratorStore:
         path = self.dir_for(orch_id) / STATE_FILE
         if not path.is_file():
             raise OrchestratorStateError(
-                f"Orchestrator {orch_id} is missing. Inspect with "
-                "meow orchestrate status."
+                f"Orchestrator {orch_id} is missing. Inspect with meow status."
             )
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
@@ -173,7 +171,7 @@ class OrchestratorStore:
         records = self.records()
         if not records:
             raise OrchestratorStateError(
-                "No orchestrators found. Start one with meow orchestrate."
+                "No orchestrators found. Start one with meow run --orchestrate."
             )
         return max(records, key=lambda record: record.updated_at)
 

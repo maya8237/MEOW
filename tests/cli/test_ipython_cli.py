@@ -28,19 +28,17 @@ class DispatchLineTests(unittest.TestCase):
         for name in ("r", "p", "rv", "l", "pounce"):
             self.assertIn(name, names)
 
-    def test_magic_names_include_orchestrate(self):
+    def test_magic_names_exclude_removed_orchestrate(self):
         names = _magic_names()
 
-        self.assertIn("orchestrate", names)
-        self.assertIn("o", names)
+        self.assertNotIn("orchestrate", names)
+        self.assertNotIn("o", names)
 
     def test_completes_orchestrate_flags(self):
         parser = cli._build_arg_parser()
 
-        self.assertIn(
-            "--max-parallel", complete_words(parser, ["orchestrate"], "--max")
-        )
-        self.assertIn("--dry-run", complete_words(parser, ["o"], "--dry"))
+        self.assertIn("--max-parallel", complete_words(parser, ["run"], "--max"))
+        self.assertIn("--dry-run", complete_words(parser, ["r"], "--dry"))
 
     def test_magic_names_leave_out_ipython_aliases(self):
         names = _magic_names()

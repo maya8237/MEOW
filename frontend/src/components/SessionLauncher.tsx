@@ -114,7 +114,7 @@ export default function SessionLauncher({
     Number.isFinite(scheduleTime.getTime()) &&
     scheduleTime.getTime() > Date.now();
   const requestRequired =
-    draft.mode !== "cli" || !["review", "orchestrate"].includes(draft.command);
+    draft.mode !== "cli" || !["review", "run"].includes(draft.command);
   const itemCanRun =
     catalogItem?.kind !== "agent" || catalogItem.item.claude_resolvable;
   const modeError =
@@ -378,7 +378,6 @@ export default function SessionLauncher({
                     <option value="run">run</option>
                     <option value="plan">plan</option>
                     <option value="review">review</option>
-                    <option value="orchestrate">orchestrate</option>
                   </>
                 ) : draft.command.startsWith("/") ? (
                   <option value={draft.command}>{draft.command}</option>

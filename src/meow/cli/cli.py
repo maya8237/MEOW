@@ -13,7 +13,7 @@ from claude_agent_sdk import ProcessError
 from meow.cli.catalog_cli import catalog_command
 from meow.cli.dispatch import _dispatch
 from meow.cli.ipython_cli import start_ipython
-from meow.cli.orchestrate_cli import orchestrate_command
+from meow.cli.orchestration_cli import run_orchestration
 from meow.cli.parser import _build_arg_parser, expand_shortcuts
 from meow.cli.resume_cli import resume
 from meow.cli.status_cli import status
@@ -27,12 +27,14 @@ from meow.cli.validation import (
 from meow.evaluation import evaluate_run
 from meow.execution.orchestration.cleanup import clean_orchestrator
 from meow.execution.orchestration.model import is_orchestrator_id
+from meow.execution.orchestration.runner import cancel_orchestrator
 from meow.execution.orchestration.store import OrchestratorStateError
 from meow.execution.orchestrator import log_working_directory
 from meow.execution.run_policy import (
     _creates_a_worktree,
     _should_use_worktree,
     check_clean_tree,
+    uses_orchestration,
 )
 from meow.execution.run_state import RunStateError, RunStore
 from meow.infrastructure.background import (
@@ -187,7 +189,10 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         raise SystemExit(status(working_dir, args.run_id, args.verbose))
     if args.command == "cancel":
         try:
-            request_cancel(RunStore(working_dir), args.run_id)
+            if is_orchestrator_id(args.run_id):
+                cancel_orchestrator(working_dir, args.run_id)
+            else:
+                request_cancel(RunStore(working_dir), args.run_id)
         except (RunStateError, ValueError, OSError, TimeoutError) as exc:
             print(f"Cancel failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc
@@ -244,15 +249,17 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
                     continue_run=args.continue_run,
                     request=args.request,
                     repair=args.repair,
+                    **({"task_id": args.task_id} if args.task_id is not None else {}),
                 )
             )
         except _EXPECTED_FAILURES as exc:
             print(f"\n{_describe_failure(exc)}", file=sys.stderr)
             raise SystemExit(1) from exc
         raise SystemExit(code)
-    if args.command == "orchestrate":
+    if uses_orchestration(args):
+        _validate_run_flags(parser, args)
         try:
-            code = orchestrate_command(args, working_dir)
+            code = run_orchestration(args, working_dir)
         except _EXPECTED_FAILURES as exc:
             print(f"\n{_describe_failure(exc)}", file=sys.stderr)
             raise SystemExit(1) from exc

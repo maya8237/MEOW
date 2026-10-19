@@ -231,7 +231,7 @@ def make_orchestrator(repo, phase, merged, total):
     return store.update(created.id, mutate)
 
 
-def test_status_lists_active_orchestrator_rollup(tmp_path, capsys):
+def test_status_selects_latest_parent_and_shows_its_tasks(tmp_path, capsys):
     RunStore(tmp_path).create(
         source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
     )
@@ -240,7 +240,9 @@ def test_status_lists_active_orchestrator_rollup(tmp_path, capsys):
     assert status(tmp_path) == 0
 
     output = capsys.readouterr().out
-    assert f"orchestrator {orchestrator.id} running 1/2 merged" in output
+    assert f"Orchestrator {orchestrator.id}" in output
+    assert "Phase: running" in output
+    assert "Tasks: 1/2 merged" in output
 
 
 def test_status_with_run_id_also_lists_the_rollup(tmp_path, capsys):
@@ -257,13 +259,13 @@ def test_status_with_run_id_also_lists_the_rollup(tmp_path, capsys):
 
 
 def test_status_hides_finished_orchestrators(tmp_path, capsys):
-    RunStore(tmp_path).create(
+    run = RunStore(tmp_path).create(
         source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
     )
     for phase in ("delivered", "failed", "cancelled"):
         make_orchestrator(tmp_path, phase, merged=1, total=1)
 
-    assert status(tmp_path) == 0
+    assert status(tmp_path, run.id) == 0
 
     assert "orchestrator " not in capsys.readouterr().out
 
@@ -273,9 +275,10 @@ def test_status_without_runs_still_shows_active_orchestrators(tmp_path, capsys):
 
     assert status(tmp_path) == 0
 
-    assert (
-        f"orchestrator {orchestrator.id} blocked 0/3 merged" in capsys.readouterr().out
-    )
+    output = capsys.readouterr().out
+    assert f"Orchestrator {orchestrator.id}" in output
+    assert "Phase: blocked" in output
+    assert "Tasks: 0/3 merged" in output
 
 
 def test_status_of_unknown_run_still_fails_with_orchestrators_present(tmp_path, capsys):

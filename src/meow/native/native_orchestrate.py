@@ -1,4 +1,4 @@
-"""`meow native orchestrate ...`: the agent-free helpers behind /meow:orchestrate.
+"""`meow native run ...`: agent-free helpers for /meow:run --orchestrate.
 
 The session plays the judgement roles (decomposer, triage, conflict resolver,
 objective reviewer). Everything deterministic goes through the same functions
@@ -106,7 +106,7 @@ def _take_lock(store: OrchestratorStore, orch_id: str) -> DriverLock:
         raise DriverBusyError(
             f"orchestrator {orch_id} is driven by a live "
             f"{holder.get('mode', 'unknown')} driver; wait for it to finish, or "
-            f"stop it with `meow orchestrate cancel {orch_id}`"
+            f"stop it with `meow cancel {orch_id}`"
         )
     return lock
 
@@ -825,7 +825,7 @@ def release(repo: Path, orch_id: str) -> dict:
     if not lock.acquire():
         raise DriverBusyError(
             f"orchestrator {orch_id} is driven by a live CLI driver; "
-            f"stop it with `meow orchestrate cancel {orch_id}`"
+            f"stop it with `meow cancel {orch_id}`"
         )
     lock.release()
     return {"id": orch_id, "released": True}

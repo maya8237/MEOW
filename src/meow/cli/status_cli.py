@@ -8,8 +8,11 @@ from pathlib import Path
 from meow.execution.orchestration.model import (
     TERMINAL_PHASES as ORCHESTRATOR_TERMINAL_PHASES,
 )
-from meow.execution.orchestration.report import rollup_line
-from meow.execution.orchestration.store import OrchestratorStore
+from meow.execution.orchestration.model import (
+    is_orchestrator_id,
+)
+from meow.execution.orchestration.report import render_status, rollup_line
+from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
 from meow.execution.run_state import (
     TERMINAL_PHASES,
     RunRecord,
@@ -200,7 +203,29 @@ def active_orchestrator_lines(working_dir: Path) -> list[str]:
     ]
 
 
+def saved_run_id(working_dir: Path, run_id: str | None) -> str | None:
+    """Resolve the latest execution across both engines, preferring a child's parent."""
+    if run_id is not None:
+        return run_id
+    parents = OrchestratorStore(working_dir).records()
+    if not parents:
+        return None
+    try:
+        latest = RunStore(working_dir).latest()
+    except RunStateError:
+        latest = None
+    candidates = list(parents)
+    if latest is not None and not any(
+        latest.id in task.run_ids for parent in parents for task in parent.tasks
+    ):
+        candidates.append(latest)
+    return max(candidates, key=lambda record: record.updated_at).id
+
+
 def status(working_dir: Path, run_id: str | None = None, verbose: bool = False) -> int:
+    run_id = saved_run_id(working_dir, run_id)
+    if run_id is not None and is_orchestrator_id(run_id):
+        return _orchestration_status(working_dir, run_id)
     store = RunStore(working_dir)
     rollups = active_orchestrator_lines(working_dir)
     try:
@@ -209,9 +234,6 @@ def status(working_dir: Path, run_id: str | None = None, verbose: bool = False) 
             reconcile_worker(store, record.id)
             record = store.load(record.id)
     except RunStateError as exc:
-        if rollups and run_id is None:
-            print("\n".join(rollups))
-            return 0
         print(str(exc), file=sys.stderr)
         return 1
     try:
@@ -226,4 +248,13 @@ def status(working_dir: Path, run_id: str | None = None, verbose: bool = False) 
     print(render(record, verbose=verbose, concerns=concerns))
     if rollups:
         print("\n".join(rollups))
+    return 0
+
+
+def _orchestration_status(working_dir: Path, run_id: str) -> int:
+    try:
+        print(render_status(OrchestratorStore(working_dir).load(run_id)))
+    except (OrchestratorStateError, OSError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     return 0

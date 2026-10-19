@@ -12,21 +12,18 @@ def _read(*parts: str) -> str:
 def test_cli_doc_covers_orchestrate():
     text = _read("docs", "CLI.md")
     for needle in (
-        "meow orchestrate",
+        "meow run --orchestrate",
         "--jql",
         "--jira",
         "--tasks",
         "--max-parallel",
         "--no-pr",
         "--dry-run",
-        "meow orchestrate resume",
-        "meow orchestrate cancel",
-        "meow orchestrate status",
-        "exit code 3",
+        "meow resume ID --continue",
+        "Exit code 3",
         "PR not opened",
-        "meow worktree clean",
-        "`o` orchestrate",
-        "/meow:orchestrate",
+        "`-o`",
+        "/meow:run",
     ):
         assert needle in text, needle
 
@@ -36,7 +33,7 @@ def test_cli_doc_keeps_the_orchestrator_worker_internal():
     assert text.index("## Maintainer and internal commands") < text.index(
         "`meow _orchestrator-task`"
     )
-    assert text.index("## Orchestrate") < text.index("## Review")
+    assert text.index("## Multi-sprint runs") < text.index("## Review")
 
 
 def test_integrations_doc_covers_the_orchestrator_table():
@@ -74,13 +71,11 @@ def test_architecture_doc_names_the_orchestrator_packages():
 
 def test_agents_file_lists_the_orchestrate_skill_and_package():
     text = _read("AGENTS.md")
-    assert "/meow:orchestrate" in text
+    assert "Run defaults to CLI" in text
     assert "orchestration/" in text
 
 
-def test_readme_shows_orchestrate_without_a_second_run_example():
+def test_readme_shows_multi_sprint_run():
     text = _read("README.md")
-    assert "meow orchestrate" in text
-    assert "/meow:orchestrate" in text
-    assert text.count("/meow:run") == 1
-    assert text.count("meow run") == 1
+    assert "meow run --orchestrate" in text
+    assert "/meow:run" in text

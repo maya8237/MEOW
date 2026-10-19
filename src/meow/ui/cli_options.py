@@ -28,16 +28,9 @@ def _controlled(action: argparse.Action, command: str) -> str | None:
     if command == "run":
         unavailable.update(
             dict.fromkeys(
-                ("no_worktree", "lint_fix", "report_only", "resume_at", "jira"),
+                ("no_worktree", "lint_fix", "report_only", "resume_at"),
                 "UI feature runs start from a request and execute automatically in an "
                 "isolated worktree. Use the CLI for this mode, or Resume a saved run.",
-            )
-        )
-    if command == "orchestrate":
-        unavailable.update(
-            dict.fromkeys(
-                ("task_id", "request"),
-                "Available when resuming an orchestration, not starting one.",
             )
         )
     return unavailable.get(action.dest)

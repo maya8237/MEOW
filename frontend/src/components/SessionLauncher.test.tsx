@@ -103,11 +103,10 @@ test("advanced flags use parser choices and remove the entire saved option", asy
   expect(screen.queryByText("meow run")).toBeNull();
 });
 
-test("CLI launcher offers orchestration without inheriting run options", async () => {
-  const user = userEvent.setup();
+test("CLI launcher uses run as the sole implementation command", () => {
   render(<SessionLauncher {...props()} />);
-  await user.selectOptions(screen.getByLabelText("Command"), "orchestrate");
-  expect(screen.getByLabelText("Command")).toHaveValue("orchestrate");
+  expect(screen.getByLabelText("Command")).toHaveValue("run");
+  expect(screen.queryByRole("option", { name: "orchestrate" })).toBeNull();
 });
 
 test.each(["skill", "agent"] as const)(

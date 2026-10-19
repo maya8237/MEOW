@@ -78,17 +78,18 @@ def test_feature_recipe_builds_auto_isolated_cli_argv(tmp_path):
 
 def test_orchestrate_recipe_preserves_objective_and_options(tmp_path):
     objective = "Build a ledger with CSV import and monthly budgets"
-    arguments = ["--from", "main", "--max-parallel", "2", "--test", "--no-pr"]
+    arguments = ["-o", "--from", "main", "--max-parallel", "2", "--test", "--no-pr"]
     recipe = validate_recipe(
         tmp_path,
-        valid_payload(command="orchestrate", request=objective, arguments=arguments),
+        valid_payload(command="run", request=objective, arguments=arguments),
     )
     assert command_for(recipe, python="python-test") == [
         "python-test",
         "-u",
         "-m",
         "meow",
-        "orchestrate",
+        "run",
+        "--auto",
         *arguments,
         "--",
         objective,
@@ -96,11 +97,16 @@ def test_orchestrate_recipe_preserves_objective_and_options(tmp_path):
 
 
 @pytest.mark.parametrize("objective", ["status", "resume", "cancel"])
-def test_orchestrate_recipe_cannot_turn_objective_into_action(tmp_path, objective):
+def test_orchestration_recipe_keeps_action_words_as_requests(tmp_path, objective):
+    recipe = validate_recipe(
+        tmp_path, valid_payload(request=objective, arguments=["-o"])
+    )
+    assert command_for(recipe)[-2:] == ["--", objective]
+
+
+def test_removed_orchestrate_recipe_is_rejected(tmp_path):
     with pytest.raises(RecipeError):
-        validate_recipe(
-            tmp_path, valid_payload(command="orchestrate", request=objective)
-        )
+        validate_recipe(tmp_path, valid_payload(command="orchestrate"))
 
 
 def test_leading_hyphen_request_is_separated_in_generated_argv(tmp_path):
@@ -120,8 +126,9 @@ def test_leading_hyphen_request_is_separated_in_generated_argv(tmp_path):
     [
         ("review", ["--jira"]),
         ("review", ["--branch", "feature", "--target", "main"]),
-        ("orchestrate", ["--jira", "ABC-1", "ABC-2"]),
-        ("orchestrate", ["--tasks", "tasks.toml"]),
+        ("run", ["--jira", "ABC-1", "ABC-2"]),
+        ("run", ["--jira", "ABC-1"]),
+        ("run", ["--tasks", "tasks.toml"]),
     ],
 )
 def test_source_flags_can_supply_work_without_request(tmp_path, command, arguments):
@@ -129,7 +136,7 @@ def test_source_flags_can_supply_work_without_request(tmp_path, command, argumen
         tmp_path, valid_payload(command=command, request="", arguments=arguments)
     )
     argv = command_for(recipe)
-    assert argv[4:] == [command, *arguments]
+    assert argv[4:] == [command, *(["--auto"] if command == "run" else []), *arguments]
 
 
 def test_optional_flag_cannot_consume_the_request():

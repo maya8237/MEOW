@@ -354,9 +354,9 @@ def _add_orchestrate_options(commands) -> None:
 
 def _add_orchestrate(sub) -> None:
     group = sub.add_parser(
-        "orchestrate", help="Helpers behind /meow:orchestrate (JSON out)."
+        "run", help="Helpers for /meow:run --orchestrate (JSON out)."
     )
-    commands = group.add_subparsers(dest="orchestrate_command", required=True)
+    commands = group.add_subparsers(dest="run_command", required=True)
     _add_orchestrate_init(commands)
     _add_orchestrate_simple(commands)
     _add_orchestrate_options(commands)
@@ -540,7 +540,7 @@ def _orchestrate(args, working_dir: Path, active: Path) -> dict:
     # orchestrator's heavier imports.
     from meow.native import native_orchestrate
 
-    handler = _ORCHESTRATE_HANDLERS[args.orchestrate_command]
+    handler = _ORCHESTRATE_HANDLERS[args.run_command]
     return handler(native_orchestrate, args, working_dir, active)
 
 
@@ -579,7 +579,7 @@ _HANDLERS = {
         _resolve(args.path, active)
     ),
     "hook": lambda args, wd, active: HANDLERS[args.name](json.load(sys.stdin)),
-    "orchestrate": _orchestrate,
+    "run": _orchestrate,
 }
 
 

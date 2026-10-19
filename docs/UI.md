@@ -31,7 +31,7 @@ headlessly without receiving unsupported `--auto`.
 Advanced arguments derive flags, aliases, types, choices, and descriptions from
 the CLI parser. Check a flag and supply values; Remove clears the flag and values.
 Managed/incompatible flags remain visible with an explanation.
-Review/orchestrate requests can be empty when source flags supply the work.
+Review/run requests can be empty when source flags supply the work.
 
 For orchestration, enter the objective in Request and options such as `--from`,
 `--max-parallel`, `--dry-run`, `--test`, `--no-pr` as argument tokens.

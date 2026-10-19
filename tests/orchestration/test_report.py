@@ -76,8 +76,7 @@ def test_blocked_report_leads_with_blocker_and_resume_commands(tmp_path):
     assert "Cause: needs-human" in text
     assert "Evidence: /tmp/a.json" in text
     assert "Needed: Provide the staging credentials" in text
-    assert f"meow orchestrate resume {record.id}" in text
-    assert f"/meow:orchestrate resume {record.id}" in text
+    assert f"meow resume {record.id} --continue" in text
 
 
 def test_report_lists_tasks_with_keys_cycles_runs_history_and_usage(tmp_path):
@@ -208,7 +207,6 @@ def test_status_and_rollup(tmp_path):
     assert "  a: merged, cycles 1, branch orchestrator/x-a, run -" in status
     assert "  b: blocked, cycles 0, branch -, run r2" in status
     assert "Needed: A call" in status
-    assert f"/meow:orchestrate resume {record.id}" in status
 
 
 @pytest.mark.parametrize(

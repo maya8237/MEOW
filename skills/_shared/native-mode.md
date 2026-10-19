@@ -1,6 +1,6 @@
 # Native mode: shared protocol
 
-Read this for native execution. `plan`, `review`, `lint`, and `orchestrate`
+Read this for native execution. `plan`, `review`, and `lint`
 default to native; `run` defaults to CLI. You execute native roles in this
 session or fresh subagents. Orchestrator task sprints remain detached CLI
 workers. Custom workflow trees execute through `meow run --workflow NAME`.
@@ -37,7 +37,7 @@ these directories consistent across calls.
 | `knowledge-audit` / `knowledge-check` / `knowledge-create` | Audit, validate, or create selected project knowledge |
 | `shape-assess` / `shape-create` / `shape-reflect` | Requirements shaping artifacts |
 | `hook NAME` | Claude hook handlers: `lint_after_edit`, `shaping_ripple`, `capture_completed_plan` (PostToolUse `Write|Edit`), `validate_plan_stop` (Stop) |
-| `orchestrate COMMAND` | Supervisor helpers; see below |
+| `run COMMAND` | Supervisor helpers; see below |
 
 `prepare` applies setup before returning. Failed setup retains the worktree for
 retry; successful setup is not repeated on reuse. Missing Node dependencies are
@@ -58,7 +58,7 @@ the parent's tools. Whole-file scoped overrides cannot bypass code-owned gates
 or permissions.
 
 Pass the actual `--host` (for example `--host codex`) to `prompt`, `custom`,
-and `orchestrate review` on non-Claude hosts. Repeat `--available-model ID`
+and `run review` on non-Claude hosts. Repeat `--available-model ID`
 only for exact supported IDs. Use returned `model` when non-null; null inherits
 the host model. Surface `model_fallback_reason`; never guess provider model
 mappings. Use the host's subagent API when tool names differ.
@@ -150,9 +150,10 @@ files under `docs_dir`.
 Only cancel processes whose recorded run ID or handle proves exclusive ownership
 by the current run. Never kill by name/pattern; leave uncertain ownership alone.
 
-## The orchestrate helpers
+## The multi-sprint run helpers
 
-Load [orchestrate](../orchestrate/SKILL.md) only when supervising a task graph;
+Load [the run supervisor procedure](../run/references/orchestration.md)
+only for explicitly requested native multi-sprint supervision;
 it defines the sequence, returned fields, and state transitions.
 Commands take `--work-dir`. Mutations refresh the native driver lock;
 `status` is read-only. A live CLI driver blocks native mutations; a native

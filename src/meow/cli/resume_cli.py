@@ -5,7 +5,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-from meow.cli.status_cli import RESUMABLE_SOURCES, recovery_command, render
+from meow.cli.orchestration_cli import resume_orchestration
+from meow.cli.status_cli import (
+    RESUMABLE_SOURCES,
+    recovery_command,
+    render,
+    saved_run_id,
+)
+from meow.execution.orchestration.model import is_orchestrator_id
+from meow.execution.orchestration.report import render_status
+from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
 from meow.execution.run_state import RunRecord, RunStateError, RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.background import inspect_worker
@@ -238,7 +247,21 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
     continue_run: bool = False,
     request: str | None = None,
     repair: bool = False,
+    task_id: str | None = None,
 ) -> int:
+    run_id = saved_run_id(working_dir, run_id)
+    if run_id is not None and is_orchestrator_id(run_id):
+        return await _resume_orchestration(
+            working_dir,
+            run_id,
+            continue_run=continue_run,
+            request=request,
+            repair=repair,
+            task_id=task_id,
+        )
+    if task_id is not None:
+        print("--task requires an orchestration ID and --continue.", file=sys.stderr)
+        return 1
     store = RunStore(working_dir)
     try:
         record = store.load(run_id) if run_id else store.latest()
@@ -330,3 +353,33 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
         auto=bool(record.delivery.get("auto", False)),
     )
     return 0
+
+
+async def _resume_orchestration(  # ruff: ignore[too-many-arguments] -- explicit lifecycle options
+    working_dir: Path,
+    run_id: str,
+    *,
+    continue_run: bool,
+    request: str | None,
+    repair: bool,
+    task_id: str | None,
+) -> int:
+    problem = None
+    if repair:
+        problem = "--repair is only available for ordinary sprint runs."
+    elif not continue_run and (task_id is not None or request is not None):
+        problem = "--task and --request require --continue."
+    if problem:
+        print(problem, file=sys.stderr)
+        return 1
+    try:
+        record = OrchestratorStore(working_dir).load(run_id)
+    except (OrchestratorStateError, OSError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(render_status(record))
+    if not continue_run:
+        return 0
+    return await resume_orchestration(
+        working_dir, run_id, task_id=task_id, request=request
+    )

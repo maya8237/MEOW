@@ -424,10 +424,10 @@ class NativeOrchestrateCliTests(unittest.TestCase):
     def test_orchestrate_group_registered(self):
         parser = cli._build_arg_parser()
 
-        args = parser.parse_args(["native", "orchestrate", "tick", ORCHESTRATOR_ID])
+        args = parser.parse_args(["native", "run", "tick", ORCHESTRATOR_ID])
 
-        self.assertEqual(args.native_command, "orchestrate")
-        self.assertEqual(args.orchestrate_command, "tick")
+        self.assertEqual(args.native_command, "run")
+        self.assertEqual(args.run_command, "tick")
         self.assertEqual(args.orch_id, ORCHESTRATOR_ID)
 
     def test_every_documented_form_parses(self):
@@ -435,9 +435,9 @@ class NativeOrchestrateCliTests(unittest.TestCase):
 
         for form in ORCHESTRATE_FORMS:
             with self.subTest(form=form):
-                args = parser.parse_args(["native", "orchestrate", *form])
+                args = parser.parse_args(["native", "run", *form])
 
-                self.assertEqual(args.orchestrate_command, form[0])
+                self.assertEqual(args.run_command, form[0])
 
     def test_pr_needs_exactly_one_outcome(self):
         parser = cli._build_arg_parser()
@@ -450,7 +450,7 @@ class NativeOrchestrateCliTests(unittest.TestCase):
             ):
                 parser.parse_args([
                     "native",
-                    "orchestrate",
+                    "run",
                     "pr",
                     ORCHESTRATOR_ID,
                     *extra,
@@ -467,9 +467,7 @@ class NativeOrchestrateCliTests(unittest.TestCase):
                 options={"test": False, "pr": True},
             )
 
-            code, out, _err = run_native(
-                "orchestrate", "status", record.id, "--work-dir", tmp
-            )
+            code, out, _err = run_native("run", "status", record.id, "--work-dir", tmp)
 
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["id"], record.id)
@@ -477,9 +475,9 @@ class NativeOrchestrateCliTests(unittest.TestCase):
     def test_failures_exit_one_with_a_message_on_stderr(self):
         with tempfile.TemporaryDirectory() as tmp:
             code, out, err = run_native(
-                "orchestrate", "status", ORCHESTRATOR_ID, "--work-dir", tmp
+                "run", "status", ORCHESTRATOR_ID, "--work-dir", tmp
             )
 
         self.assertEqual(code, 1)
         self.assertEqual(out, "")
-        self.assertIn("meow native orchestrate", err)
+        self.assertIn("meow native run", err)

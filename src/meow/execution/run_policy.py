@@ -8,10 +8,25 @@ from meow.infrastructure.worktree import DirtyWorkingTreeError, _ensure_clean_tr
 logger = get_logger(__name__)
 
 
+def uses_orchestration(args) -> bool:
+    """Select the supervisor only for explicit orchestration or collection sources."""
+    return args.command == "run" and bool(
+        getattr(args, "orchestrate", False)
+        or getattr(args, "tasks_file", None)
+        or getattr(args, "jql", None) is not None
+        or (isinstance(args.jira, list) and len(args.jira) > 1)
+    )
+
+
 def _is_plain_build(args) -> bool:
     """True for `run` with neither --lint-fix nor --jira -- the only mode
     that still plans+implements a brand new feature the original way."""
-    return args.command == "run" and not args.lint_fix and args.jira is None
+    return (
+        args.command == "run"
+        and not args.lint_fix
+        and args.jira is None
+        and not uses_orchestration(args)
+    )
 
 
 _MISUSE_CHECKS = (

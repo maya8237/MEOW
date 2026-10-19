@@ -72,8 +72,7 @@ def pull_request_lines(record: OrchestratorRecord) -> list[str]:
 def resume_lines(orch_id: str) -> list[str]:
     return [
         "Resume with either:",
-        f"    meow orchestrate resume {orch_id}",
-        f"    /meow:orchestrate resume {orch_id}",
+        f"    meow resume {orch_id} --continue",
     ]
 
 
@@ -205,7 +204,7 @@ def write_report(repo: Path, record: OrchestratorRecord) -> Path:
 
 
 def render_status(record: OrchestratorRecord) -> str:
-    """The `meow orchestrate status` output."""
+    """The `meow status` output."""
     lines = [
         f"Orchestrator {record.id}",
         f"Phase: {record.phase}",

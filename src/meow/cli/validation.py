@@ -5,7 +5,12 @@ import argparse
 import re
 from pathlib import Path
 
-from meow.execution.run_policy import _MISUSE_CHECKS, _is_plain_build, _misused_flags
+from meow.execution.run_policy import (
+    _MISUSE_CHECKS,
+    _is_plain_build,
+    _misused_flags,
+    uses_orchestration,
+)
 from meow.infrastructure.worktree import _is_linked_worktree
 
 
@@ -56,6 +61,11 @@ def _validate_build_flags(parser: argparse.ArgumentParser, args) -> None:
 
 
 def _validate_workflow_flags(parser, args):
+    if args.max_parallel is not None or args.dry_run or args.no_pr:
+        parser.error(
+            "--max-parallel, --dry-run and --no-pr require --orchestrate "
+            "or a collection source"
+        )
     try:
         parse_inputs(args.input)
     except ValueError as exc:
@@ -66,6 +76,9 @@ def _validate_workflow_flags(parser, args):
 
 def _validate_run_flags(parser: argparse.ArgumentParser, args) -> None:
     if args.command != "run":
+        return
+    if uses_orchestration(args):
+        _validate_orchestration_flags(parser, args)
         return
     _validate_workflow_flags(parser, args)
     if args.background and not args.auto:
@@ -84,6 +97,32 @@ def _validate_run_flags(parser: argparse.ArgumentParser, args) -> None:
         _validate_lint_fix_flags(parser, args)
     else:
         _validate_build_flags(parser, args)
+
+
+def _validate_orchestration_flags(parser, args):
+    sources = (
+        bool(args.request),
+        args.jira is not None,
+        args.jql is not None,
+        args.tasks_file is not None,
+    )
+    if sum(sources) != 1:
+        parser.error(
+            "give exactly one of: a request, --jira KEY ..., --jql QUERY, --tasks FILE"
+        )
+    if args.jira == "":
+        parser.error("orchestration --jira requires at least one issue key")
+    checks = (
+        *(_MISUSE_CHECKS[:1] + _MISUSE_CHECKS[2:]),
+        ("--workflow", lambda a: a.workflow is not None),
+        ("--input", lambda a: bool(a.input)),
+        ("--manually-approve-plan", lambda a: a.manually_approve_plan),
+        ("--background", lambda a: a.background),
+        ("--lint-fix", lambda a: a.lint_fix),
+        ("--report-only", lambda a: a.report_only),
+    )
+    if misused := _misused_flags(args, checks):
+        parser.error("orchestration does not support " + ", ".join(misused))
 
 
 def _resolve_input_path(path: str | None, working_dir: Path) -> Path | None:

@@ -18,7 +18,6 @@ CLI_FALLBACKS = {
     "plan": "meow plan",
     "review": "meow review",
     "lint": "meow run --lint-fix --report-only",
-    "orchestrate": "meow orchestrate",
     "schedule": "meow schedule",
 }
 
@@ -105,22 +104,24 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
         self.assertTrue(SHARED.is_file())
 
     def test_orchestrate_skill_documents_the_native_loop(self):
-        text = (SKILLS_DIR / "orchestrate" / "SKILL.md").read_text(encoding="utf-8")
+        text = (SKILLS_DIR / "run" / "references" / "orchestration.md").read_text(
+            encoding="utf-8"
+        )
 
         for needle in (
-            "meow native orchestrate init",
-            "meow native orchestrate tasks",
-            "meow native orchestrate tick",
-            "meow native orchestrate wait",
-            "meow native orchestrate merge-done",
-            "meow native orchestrate merge-abort",
-            "meow native orchestrate triage",
-            "meow native orchestrate review-result",
-            "meow native orchestrate deliver",
-            "meow native orchestrate pr",
-            "meow native orchestrate release",
-            "meow native orchestrate resume",
-            "/meow:orchestrate resume",
+            "meow native run init",
+            "meow native run tasks",
+            "meow native run tick",
+            "meow native run wait",
+            "meow native run merge-done",
+            "meow native run merge-abort",
+            "meow native run triage",
+            "meow native run review-result",
+            "meow native run deliver",
+            "meow native run pr",
+            "meow native run release",
+            "meow native run resume",
+            "/meow:run resume",
             "fresh subagent",
             "run_in_background",
         ):
@@ -128,9 +129,14 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
                 self.assertIn(needle, text)
 
     def test_orchestrate_skill_runs_tasks_only_as_cli_children(self):
-        text = (SKILLS_DIR / "orchestrate" / "SKILL.md").read_text(encoding="utf-8")
+        text = (SKILLS_DIR / "run" / "references" / "orchestration.md").read_text(
+            encoding="utf-8"
+        )
 
-        self.assertIn("Native mode is the default", text)
+        self.assertIn(
+            "detached CLI",
+            (SKILLS_DIR / "run" / "SKILL.md").read_text(encoding="utf-8"),
+        )
         self.assertIn("Never run a task sprint yourself", text)
         self.assertIn("nothing pushed", text.lower())
 
@@ -146,16 +152,18 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
         native = next(a for a in group if isinstance(a, argparse._SubParsersAction))
         inner = next(
             a
-            for a in native.choices["orchestrate"]._actions
+            for a in native.choices["run"]._actions
             if isinstance(a, argparse._SubParsersAction)
         )
-        skill = (SKILLS_DIR / "orchestrate" / "SKILL.md").read_text(encoding="utf-8")
+        skill = (SKILLS_DIR / "run" / "references" / "orchestration.md").read_text(
+            encoding="utf-8"
+        )
         shared = SHARED.read_text(encoding="utf-8")
 
         for command in inner.choices:
             with self.subTest(command=command):
                 self.assertIn(f"`{command}", shared)
-                self.assertIn(f"meow native orchestrate {command}", skill)
+                self.assertIn(f"meow native run {command}", skill)
 
     def test_shared_protocol_lists_the_orchestrator_roles(self):
         text = SHARED.read_text(encoding="utf-8")

@@ -29,6 +29,7 @@ from meow.cli.validation import (
     _validate_run_flags,
 )
 from meow.common.process import process_identity
+from meow.execution.run_policy import uses_orchestration
 
 
 class RecipeError(ValueError):
@@ -58,7 +59,7 @@ class Recipe:
     options: dict[str, bool | str]
 
 
-_CLI_COMMANDS = {"run", "plan", "review", "orchestrate"}
+_CLI_COMMANDS = {"run", "plan", "review"}
 _PROHIBITED_ARGUMENTS = {
     "--work-dir",
     "-d",
@@ -203,34 +204,21 @@ def _validate_semantics(command: str, repo: Path, parser, parsed) -> None:
         raise RecipeError(str(exc)) from exc
 
 
-def _validate_orchestrate_arguments(parsed) -> None:
-    from meow.cli.orchestrate_cli import classify
-
-    try:
-        invocation = classify(parsed)
-    except ValueError as exc:
-        raise RecipeError(str(exc)) from exc
-    if invocation.action != "start":
-        raise RecipeError("An orchestrate recipe requires an objective")
-
-
 def _validate_arguments(recipe: Recipe, generated: list[str]) -> None:
     _check_argument_tokens(recipe.arguments)
     final_options = [*generated, *recipe.arguments]
     _check_unique_options(recipe.command, final_options)
     parser, parsed = _parse_arguments(recipe.command, final_options, recipe.request)
-    if recipe.command == "orchestrate":
-        _validate_orchestrate_arguments(parsed)
-    else:
-        _validate_semantics(recipe.command, Path(recipe.repo), parser, parsed)
-    if parsed.command != recipe.command or (
-        parsed.words != ([recipe.request] if recipe.request else [])
-        if recipe.command == "orchestrate"
-        else (getattr(parsed, "request", None) or "") != recipe.request
+    _validate_semantics(recipe.command, Path(recipe.repo), parser, parsed)
+    if (
+        parsed.command != recipe.command
+        or (getattr(parsed, "request", None) or "") != recipe.request
     ):
         raise RecipeError("Arguments cannot replace the recipe request")
     if (
         recipe.command in {"run", "plan"}
+        and not uses_orchestration(parsed)
+        and getattr(parsed, "jira", None) is None
         and getattr(parsed, "feature_name", None) != recipe.name
     ):
         raise RecipeError("Arguments cannot replace the recipe name")
@@ -440,7 +428,7 @@ def validate_recipe(repo: Path, payload: object) -> Recipe:
     request = _text(
         payload,
         "request",
-        required=mode != "cli" or command not in {"review", "orchestrate"},
+        required=mode != "cli" or command not in {"review", "run"},
     )
     _validate_mode_command(mode, command)
 
@@ -472,7 +460,14 @@ def validate_recipe(repo: Path, payload: object) -> Recipe:
 def _generated_cli_options(recipe: Recipe) -> list[str]:
     options = recipe.options
     generated: list[str] = []
-    if recipe.command in {"run", "plan"}:
+    _check_argument_tokens(recipe.arguments)
+    _check_unique_options(recipe.command, recipe.arguments)
+    _, source = _parse_arguments(recipe.command, recipe.arguments, recipe.request)
+    if (
+        recipe.command in {"run", "plan"}
+        and not uses_orchestration(source)
+        and getattr(source, "jira", None) is None
+    ):
         generated.extend(["--name", recipe.name])
     if recipe.workflow is not None and recipe.command != "run":
         raise RecipeError("workflow is supported only for run recipes")

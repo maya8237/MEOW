@@ -11,7 +11,6 @@ Use `meow COMMAND --help` for flag syntax. Read the relevant reference only:
 | `meow run` | Plan, implement, verify, review, and deliver a feature |
 | `meow plan` | Plan without implementation |
 | `meow review` | Review existing code; `--fix` enables fixes |
-| `meow orchestrate` | Parallel sprints delivered as one reviewed branch/PR |
 | `meow status [ID]` | Inspect the latest or named run; `--verbose` includes evidence |
 | `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates |
 | `meow cancel ID` | Cooperatively stop a run, preserving recovery state |
@@ -24,7 +23,7 @@ Use `meow COMMAND --help` for flag syntax. Read the relevant reference only:
 | `meow hooks` | Inspect/install/remove optional editor hooks |
 | `meow ipython` | Interactive command session |
 
-`mw` aliases `meow`. Shortcuts: `r` run, `p` plan, `o` orchestrate,
+`mw` aliases `meow`. Shortcuts: `r` run, `p` plan,
 `rv` review, `l` lint (`run --lint-fix`), `s` status, `x` cancel,
 `c` resume, `q` queue, `w` worktree, `h` hooks, `i` ipython.
 
@@ -69,25 +68,26 @@ commit/push; in-place runs do not deliver automatically. For clean-tree rules,
 Jira flag restrictions, lint-fix, checkpoints, cancellation, and recovery,
 see [RUNS.md](RUNS.md).
 
-## Orchestrate
+## Multi-sprint runs
 
 ```bash
-meow orchestrate "Add SSO and audit logs" --max-parallel 3
-meow orchestrate --jira PROJ-1 PROJ-2
-meow orchestrate --jql "project = PROJ"
-meow orchestrate --tasks tasks.toml --dry-run
-meow orchestrate status [ID]
-meow orchestrate resume ID [--task T --request "Updated request"]
-meow orchestrate cancel ID
+meow run --orchestrate "Add SSO and audit logs" --max-parallel 3
+meow run --jira PROJ-1 PROJ-2
+meow run --jql "project = PROJ"
+meow run --tasks tasks.toml --dry-run
+meow resume ID --continue [--task T --request "Updated request"]
 ```
 
-Choose one objective, `--jira`, `--jql`, or `--tasks`; optional `--from`,
-`--test`, and `--no-pr` control the base, tester, and PR. A clean checkout
-is required. Nothing is pushed before final objective review. It returns exit code 3 when
-the branch was delivered but `PR not opened`; the output includes a manual link.
-`meow worktree clean ID` cleans delivered orchestrator worktrees.
+`--orchestrate` (`-o`) coordinates complete sprints for independent deliverables.
+Task files, JQL, and multiple Jira keys select it automatically; one key does not.
+Choose one objective, `--jira`, `--jql`, or `--tasks`. A clean checkout is required.
+Only final objective review authorizes push. Exit code 3 means the branch was
+delivered but `PR not opened`; output includes a manual link.
 See [ORCHESTRATION.md](ORCHESTRATION.md) for task formats, recovery, and exit codes.
-`/meow:orchestrate` supervises the same engine natively.
+`/meow:run` chooses the engine; native supervision requires explicit opt-in.
+Lifecycle commands route by ID; resume needs `--continue` to execute.
+Multi-sprint mode accepts `--auto`, `--from`, `--test`, and `--no-pr`, but rejects
+sprint-only name/worktree/plan/workflow flags, manual approval, and `--background`.
 
 ## Review
 
@@ -155,7 +155,7 @@ Browser checks and server lifecycle are [configured separately](INTEGRATIONS.md#
 
 ## Native and CLI skill modes
 
-`/meow:run` defaults to CLI; plan/review/lint/orchestrate default to native.
+`/meow:run` defaults to CLI; plan/review/lint default to native.
 Orchestrator task sprints remain detached CLI workers. Native integrations use
 session-connected MCP tools; CLI uses configured launchers.
 Named workflow trees execute through CLI. Onboard/migration/customize configure
@@ -163,7 +163,7 @@ the project rather than provide execution engines.
 
 Native `review-checks --background` starts durable verification; `--status`
 returns evidence/log paths. `native verdict` enforces checks and scope coverage.
-`prompt`, `custom`, and `orchestrate review` accept `--host codex` (or actual
+`prompt`, `custom`, and `run review` accept `--host codex` (or actual
 host) and repeated `--available-model ID`. Unsupported models return null to
 inherit the host model, with fallback metadata. See the [native protocol](../skills/_shared/native-mode.md).
 
