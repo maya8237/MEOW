@@ -53,6 +53,7 @@ integrations and optional features.
 
 | Need | Command |
 | --- | --- |
+| Build a feature | `/meow:run ...` or `meow run ...` |
 | Plan only | `/meow:plan ...` or `meow plan ...` |
 | Run related tasks in parallel and deliver one PR | `/meow:orchestrate ...` or `meow orchestrate "Add SSO login and an admin audit log"` |
 | Schedule a run | `/meow:schedule ...` or `meow schedule add --at "09:00" -- run "Add CSV export" --name csv-export` |
