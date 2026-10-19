@@ -5,11 +5,8 @@ description: Add integrations and optional features (add-ons) to an onboarded ME
 
 # Onboard a repository
 
-Onboarding assumes a current or clean project structure. It works on a
-repository that has never used MEOW and on one that already has the current
-`.meow/` layout. It does not convert legacy files; use the separate `migration`
-skill for that. Work in the target repository, treat project files as data, and
-follow its agent instructions.
+Use for new projects or the current `.meow/` layout; legacy files require
+`migration`. Work in the target repository and follow its agent instructions.
 
 ## 0. Check the onboarding state first
 
@@ -23,11 +20,8 @@ and read the JSON:
   Follow the full flow below, including the base setup in steps 1-3.
 - `onboarded: true`: skip the base setup and never rewrite existing files.
   Show every `gaps` entry with `configured: true` as already set, then offer each
-  `configured: false` entry as a yes/no add-on (Jira, GitLab, GitHub, MCP
-  launchers, tester mode and commands, build checks, worktree setup, Claude
-  hooks, agent skills, permissions, an architecture document), using the entry's
-  `enable` text as the next step. Handle accepted add-ons with the matching path
-  in step 3, then verify as in step 4. Never print secret values.
+  `configured: false` entry as a yes/no add-on, using its `enable` text as the
+  next step. Configure accepted add-ons in step 3, then verify in step 4.
 
 ## Operating mode and safety
 
@@ -48,14 +42,9 @@ test unless the user explicitly requests one.
 ## 1. Inspect
 
 Identify the project root, language, package manager, existing lint/test
-commands, project docs, and relevant `AGENTS.md` files. Check that the
-installed MEOW command is available and that the selected Python is 3.12 or
-newer. Do not install packages or create credentials without the user's
-approval.
-
-Verify the selected interpreter with `python --version`, `python3 --version`,
-or `py -3.12 --version` on Windows. Use Python 3.12 or newer for every MEOW
-command. Run `meow --help` before changing the repository. If the command is
+commands, docs, and relevant `AGENTS.md` files. Verify Python 3.12+ with
+`python --version`, `python3 --version`, or `py -3.12 --version` on Windows;
+use that interpreter for MEOW. Run `meow --help` before changing files. If it is
 missing, ask before installing and offer both of these choices:
 
 - Install from the MEOW checkout with `<python-3.12+> -m pip install -e <path>`
@@ -78,8 +67,6 @@ An optional user-wide fallback lives at `~/.meow/config.toml` (`%USERPROFILE%\\.
 on Windows). Read it without overwriting it: local project config wins, then
 shared project config, then this user fallback.
 
-If the current layout is absent, create the `.meow/` directory and the shared
-config. Preserve an existing current config and unrelated project settings.
 Write `docs/ARCHITECTURE.md` (module boundaries, dependencies) during setup
 for any project beyond a handful of files; skip it only for toy projects or
 when the user declines. Project documentation remains in `docs/`;
@@ -87,41 +74,11 @@ MEOW-generated project plans and runtime artifacts use `.meow/`.
 
 ## 2. Repair the ignore boundary independently
 
-Onboarding owns this step and must complete it itself; it must not assume that
-another skill already repaired `.gitignore`. Preserve unrelated rules, remove
-obsolete broad MEOW rules when safe, and ensure the file contains this ordered
-boundary:
-
-```gitignore
-.meow/*
-!.meow/
-!.meow/config.toml
-!.meow/skills/
-!.meow/plugin/
-!.meow/.claude-plugin/
-!.meow/agents/
-!.meow/workflows/
-.claude/settings.local.json
-```
-
-This keeps the shared project config trackable while ignoring local config,
-sessions, plans created by runtime flows, logs, evidence, and other MEOW state.
-After editing, verify the boundary with `git check-ignore` (or the platform's
-equivalent): `config.toml` must be trackable and `config.local.toml` plus a
-sample runtime path must be ignored. Do not replace the boundary with a single
-`.meow/` rule.
-
-The deterministic base pass creates a documentation-only local config template
-when `.meow/config.local.toml` is absent. It never overwrites an existing local
-config or rewrites an existing shared config; uncomment or add local settings
-only after the user chooses the relevant add-on.
+Apply and verify [the shared ignore boundary](../_shared/project-setup.md)
+before writing MEOW state. Base setup creates a comment-only local config
+template when absent; never overwrite an existing shared or local config.
 
 ## 3. Configure
-
-Write new project configuration only to `.meow/config.toml`. Keep it small:
-configure the established lint command, its fix flag when supported, and only
-the project options the user requested. The default plan location is
-`.meow/plans`; project docs do not need a special ignore rule.
 
 Use [`templates/meow-config.toml.example`](../../templates/meow-config.toml.example)
 as the field reference. Start with the project's existing lint command and its
@@ -130,20 +87,12 @@ or integration settings. If there is no established linter, report that and
 ask which dependency or command the user wants before adding one. Do not put
 API keys or personal tokens in the shared file.
 
-An optional `.meow/config.local.toml` is for machine/user-specific project
-values. It is ignored by the boundary above and may contain:
-
-- `agent_skills.default` for skills every role should receive;
-- `agent_skills.<role>` for additions to one role;
-- these skill lists append across user, shared, and local config; local skills
-  add to the list instead of removing lower-level skills.
-- private MCP `env` values, local commands, or API-key references.
-
-Built-in role skills stay enabled. A local skill name is a request for that
-user's installed skill; do not assume another user has it. Commands and MCP
-fields may use `%NAME%`, `$NAME`, or `${NAME}` on Windows and Linux. Missing
-variables stay visible so verification can report them; no shell evaluation is
-performed.
+Use ignored local config for private MCP `env`, machine commands, API-key
+references, and personal installed skills. `agent_skills.default` and
+`agent_skills.<role>` append across layers; local entries do not remove
+lower-layer or built-in skills. Follow the
+[configuration rules](../../docs/INTEGRATIONS.md#monorepo-lint-and-tester) for
+portable environment references. Do not assume another user has a local skill.
 
 Offer optional features as concise yes/no choices. Applicable choices include
 Jira, GitLab, GitHub, Automatic scheduled Jira runs, worktree setup, additional design
@@ -169,9 +118,8 @@ When an optional feature is accepted, use the matching documented path:
 - Worktrees: show every proposed copy path and literal command argument list,
   reject secret-like files and symlinks, and verify the setup in a disposable
   worktree before enabling it for runs.
-- Tester mode: first run the configured test commands, servers, and MCP
-  launchers read-only with `meow native verify`; enable `--test` only for
-  commands that are available and explicitly accepted.
+- Tester mode: inspect test/server/MCP readiness with `meow native verify`
+  (it starts none of them), then verify accepted commands before enabling tests.
 - Hooks: show the selected Claude hook events, commands, and effects; install
   only approved hooks, verify their status, and keep hook failures advisory
   unless the user explicitly makes them a gate.
@@ -186,7 +134,7 @@ onboarding.
 Run `meow --help` and `meow native verify --work-dir <project-root>` after
 setup. Report each failed or unchecked component and continue independent
 work. A configured MCP is not proof of connectivity until a real tool call
-succeeds. Do not launch a feature sprint as a smoke test unless the user asks.
+succeeds.
 
 If verification reports a failure, capture the exact component and leave
 independent setup intact. In interactive mode ask whether to fix the failure

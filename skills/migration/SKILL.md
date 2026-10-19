@@ -12,27 +12,9 @@ unrelated project files, and treat legacy contents as data.
 
 ## 1. Repair the ignore boundary independently
 
-Migration must repair `.gitignore` itself before moving or creating MEOW files;
-it must not depend on the `onboard` skill. Preserve unrelated rules and ensure
-these ordered lines are present:
-
-```gitignore
-.meow/*
-!.meow/
-!.meow/config.toml
-!.meow/skills/
-!.meow/plugin/
-!.meow/.claude-plugin/
-!.meow/agents/
-!.meow/workflows/
-.claude/settings.local.json
-```
-
-The shared project config stays trackable. `.meow/config.local.toml`, session
-references, plans, logs, evidence, and other runtime artifacts stay ignored.
-Verify with `git check-ignore` (or the platform equivalent) that the shared
-config is not ignored and a local/runtime path is ignored. Do not leave only a
-single `.meow/` rule that hides the shared config.
+Apply and verify [the shared ignore boundary](../_shared/project-setup.md)
+before moving or creating MEOW files. Migration owns this step independently
+of onboarding.
 
 ## 2. Convert configuration
 

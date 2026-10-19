@@ -46,39 +46,13 @@ its task sprints still run as detached CLI workers); `/meow:onboard`
 `/meow:migration` (legacy layouts), and `/meow:customize`. Keep each skill's
 CLI and native sections in step with docs/CLI.md.
 
-## Code map
+## Code ownership
 
-`src/meow/` is split by responsibility; put new code in the narrowest owning
-package (see ARCHITECTURE.md) and keep the package root to entry points.
-
-- `agents/`: SDK roles. Every role is `*Agent(context)` built on `Agent` in
-  `agents/base.py`, which builds `ClaudeAgentOptions`, applies the permission
-  policy, and runs one-shot queries. `SessionAgent` keeps one
-  `ClaudeSDKClient` across rounds (generator, and the review/lint fixers in
-  `fixers.py`). The Jira/GitLab/GitHub fetchers share `McpFetcherAgent` in
-  `mcp_fetcher.py`; the orchestrator roles are in `orchestration.py`. `Sprint` and `ProjectContext` both satisfy `AgentContext`.
-- `execution/`: round loops (`orchestrator.py`), `run`/`plan` flows
-  (`sprint_runner.py`), workflow execution/session pools (`workflow/`),
-  run journal (`run_state.py`), delivery, queue. `orchestration/` runs
-  `meow orchestrate`: model, journal, scheduler, merges, triage, the shared
-  `tick()`, final review, delivery, and the CLI driver `runner.py`.
-- `cli/`: argument parsing, dispatch, `review_cli.py`, status, resume,
-  workflow/agent catalog commands (`catalog_cli.py`), `orchestrate_cli.py`.
-- `native/`: agent-free helpers behind `meow native ...` for the skills
-  (`native_orchestrate.py` serves `/meow:orchestrate`).
-- `project/`: config loading/schema, `[custom]` skill/agent discovery
-  (`project/custom/`), onboarding, permissions, plan files,
-  agent/workflow definitions, templates, and expressions (`project/custom/`).
-  Editable role prose lives in `project/custom/builtin/agents/*.toml`;
-  `project/prompts.py` builds context and code-owned verdict contracts.
-  Change role prose in those definitions, never in a skill, so SDK and native
-  modes stay identical.
-- `infrastructure/`: lint, checks, test runner, worktrees, logging, usage,
-  cancellation, background workers.
-- `integrations/`: Jira, GitLab, GitHub, CI review, docs update, knowledge.
-- `ui/`: the local `meow ui` catalog page and server; the repo registry
-  it reads lives in `project/repos.py`.
-- `hooks/`, `installer/`, `tasks/`, `evaluation/`: as named.
+Use [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for package and module ownership.
+Put new code in the narrowest owning package; keep the package root to entry
+points. Editable role prose belongs in
+`src/meow/project/custom/builtin/agents/*.toml`, never in a skill.
+`project/prompts.py` owns computed context and verdict contracts.
 
 ## Invariants worth knowing
 

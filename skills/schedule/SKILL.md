@@ -1,6 +1,6 @@
 ---
 name: schedule
-description: Schedule MEOW to run itself later on Windows or Linux. Use when the user asks to run a request, feature, workflow, or Jira issue at a future time, or to list, edit, reschedule, or cancel scheduled MEOW runs. Registers an OS task through the MEOW CLI and works from CLI or native skill sessions.
+description: Use when scheduling a MEOW request, workflow, or Jira issue for later on Windows/Linux, or listing, rescheduling, or cancelling its OS trigger.
 ---
 
 # schedule
@@ -15,9 +15,8 @@ outside the current conversation.
 
 Use the CLI mode steps below from the current session too. Scheduling itself
 starts no agents; the registered trigger starts the automatic CLI later.
-For context about other native workflows, see
-[`../_shared/native-mode.md`](../_shared/native-mode.md). Do not execute the
-native sprint now when the user's request is to execute it later.
+Other native workflows follow [the shared protocol](../_shared/native-mode.md);
+scheduling does not require loading it.
 
 ## CLI mode
 

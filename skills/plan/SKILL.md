@@ -1,14 +1,13 @@
 ---
 name: plan
-description: Have meow write a sprint plan (with a testable Sprint Contract) for a feature request, without implementing it. Runs natively in this Claude Code session by default. Use when the user wants a plan to review before any code gets written.
+description: Use when the user wants a MEOW sprint plan and testable Sprint Contract before implementation. Defaults to native planning.
 ---
 
 # plan
 
 Writes a numbered task list and a Sprint Contract, implements nothing. Runs
 **natively** by default: you are the planner. Read
-[`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this
-skill's base directory) first for the `meow native` helper and planner rules.
+[`../_shared/native-mode.md`](../_shared/native-mode.md) first for helper and planner rules.
 Use **CLI mode** (bottom) only if the user explicitly asks for it.
 
 ## Native mode

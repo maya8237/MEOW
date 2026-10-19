@@ -1,14 +1,13 @@
 ---
 name: lint
-description: Run the current project's configured lint commands and fix whatever they report, using your own Edit/Bash tools. Use when the user wants lint issues found and fixed in the current session, not via a separate meow agent run.
+description: Use when finding and fixing the project's configured lint findings in the current session, without a separate MEOW fixer agent.
 ---
 
 # lint
 
 Runs the project's `[[lint]]` commands and has **you** — this session — fix what
 they report, using `meow native lint` for the facts. Read
-[`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this
-skill's base directory) for the helper's conventions. Never run plain
+[`../_shared/native-mode.md`](../_shared/native-mode.md) for helper conventions. Never run plain
 `meow run --lint-fix` here: that spins up meow's own fixer agent, duplicating
 your work and racing your edits.
 

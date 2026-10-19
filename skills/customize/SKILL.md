@@ -103,14 +103,9 @@ sit beside it. Register skill directories through `[custom].skills`; optional
 `roles` limits recipients. Definition `skills` and `[agent_skills]` can also
 name installed skills.
 
-```toml
-[custom]
-skills = ["tools/meow/skills"]
-agents = [{ path = "tools/meow/agents", roles = ["generator"] }]
-workflows = ["tools/meow/workflows"]
-```
-
-Only extra directories need this table; workflow sources do not take `roles`.
+Register extra directories with `[custom]` using the
+[configuration example](../../docs/INTEGRATIONS.md#custom-skills-and-agents).
+Workflow sources do not take `roles`.
 
 ## 4. Verify and report
 

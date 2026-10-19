@@ -1,15 +1,12 @@
 ---
 name: review
-description: Review existing code -- report-only, or loop fixing until it passes -- sourced from a free-text prompt, a Jira issue, a GitLab merge request, a GitHub pull request, a GitLab CI checkout, a local branch's diff against a target, an existing plan file, or an existing review file being resumed. Runs natively in this Claude Code session by default except for the CLI-only CI source. Use whenever the user wants code checked or fixed against some existing source of truth, rather than a new feature built from scratch.
+description: Use when reviewing existing code or fixing review findings against a prompt, Jira issue, PR/MR, branch, plan, saved review, or CI checkout. Defaults to native, except CI and tester flows.
 ---
 
 # review
 
-One consolidated review operation covering prompt, issue, remote-review,
-branch, plan, review-file, and CI sources. Runs **natively** by default. Read
-[`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this
-skill's base directory) first. Use **CLI mode** (bottom) only if explicitly
-asked.
+Runs **natively** by default. Read [the shared protocol](../_shared/native-mode.md)
+first. Use **CLI mode** when requested, or for CI and tester flows.
 
 ## Pick the source (exactly one) and the mode
 
@@ -49,27 +46,9 @@ exists. Inspect every area in the code-owned inventory and include the grounded
 `COVERAGE:` records requested by the generated prompt. `native verdict` rejects
 missing or stale coverage.
 
-Complete the scoped audit, authorized fixes, and focused proofs first; freeze
-source/config. Do not add audit passes while final checks run.
-
-Before accepting a local PASS, run `meow native review-checks --background` with the
-same `--work-dir` and `--active-dir` as the reviewer. Inspect
-`meow native review-checks --status` until the durable job finishes, then use
-`meow native verdict <review_file>` to validate the report. Required tests and
-builds block PASS alongside required lint. The JSON supplies durable log/result
-paths. After source/config edits, rerun checks and generate a fresh review
-prompt. Remote reviews remain report-only against the supplied diff.
-
-Keep one job ID; a lost shell handle is not a failed job. If a run exceeds its
-baseline, inspect logs, child start times and source/config changes for retries.
-Isolate artifact-writing tests; preserve user files. Restart only for confirmed
-stale/failed evidence.
-
-Pass `--host codex` in Codex (or the actual host name elsewhere) to every
-`native prompt` call. If exact supported model IDs are known, repeat
-`--available-model ID` for each. Dispatch using the returned `model` only when
-non-null; null means inherit the host model. Surface `model_fallback_reason`
-when present. Never invent mappings between providers' model names.
+Follow the shared protocol's lint/check ordering, durable-job handling,
+host/model resolution, and fresh reviewer dispatch. Local PASS needs current
+verification and coverage bindings; remote reviews use only the supplied diff.
 
 1. Pick source and mode as above. The project uses `.meow/config.toml` at
    its root.
@@ -92,16 +71,10 @@ when present. Never invent mappings between providers' model names.
      Then `meow native prepare --no-worktree --allow-dirty --work-dir
      "<project-path>"` (no worktree -- reviewing current code, not
      building from the ticket).
-   - **gitlab**: fetch title/description/diff through the GitLab MCP tools
-     already connected to this session (tool names containing `gitlab`) --
-     not `[gitlab.mcp]`. If none connected, say so and stop. Do not check
-     anything out. `meow native prepare --no-worktree --allow-dirty
-     --work-dir "<project-path>"` (changes nothing; confirms config).
-   - **github**: fetch title/description/diff through the GitHub MCP tools
-     already connected to this session (tool names containing `github`) --
-     not `[github.mcp]`. If none connected, say so and stop. Do not check
-     anything out. `meow native prepare --no-worktree --allow-dirty
-     --work-dir "<project-path>"` (changes nothing; confirms config).
+   - **gitlab** / **github**: fetch title, description, and diff through that
+     provider's connected MCP tools, not its config launcher. If unavailable,
+     report and stop. Do not check out the remote branch. Prepare with
+     `meow native prepare --no-worktree --allow-dirty --work-dir "<project-path>"`.
    - **ci**: do not use native mode. Run `meow review --ci` from the detached
      GitLab checkout; use `--target-ref` and `--artifact-dir` only when the
      pipeline or maintainer explicitly supplies them. The command is

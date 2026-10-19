@@ -1,26 +1,5 @@
 # CLI guide
 
-`meow review --scope project [--fix]` inventories and reviews the whole
-checkout, including frontend and backend areas, even with pending changes or
-an existing plan. Prompt/Jira reviews also accept `--scope diff` or `auto`
-(default). Whole-project wording such as "from 0" selects project coverage
-automatically. Project verdicts require grounded `COVERAGE:` records for every
-inventoried area; missing, fabricated, or stale records force FAIL.
-
-Local CLI reviews run configured required lint, tests, and builds before
-accepting PASS; successful checks are reused only while inputs remain current.
-Remote PR/MR reviews use their supplied diff and do not run local checks.
-For native execution, `meow native review-checks --background` starts durable
-verification and `--status` reports its state and log/result paths. Native
-verdicts enforce these checks and scope coverage in code. Native prompts accept
-`--host codex` (or another host) and repeated `--available-model ID` options;
-an unsupported configured model yields `model: null` to inherit the host model,
-with the configured model and fallback reason preserved in JSON.
-
-Native `custom` and `orchestrate review` accept the same host/model capability
-flags as `prompt`. A resumed PASS is reviewed again when a new focus is given;
-whole-project wording widens an earlier diff review to project scope.
-
 This page covers the detailed behavior of MEOW's command-line interface.
 For installation and a quick start, see the [README](../README.md). For Jira
 and GitLab/GitHub configuration, scheduled runs, and error details, see
@@ -611,6 +590,17 @@ branch, and `origin` holds the delivered commit. Branches are never deleted.
 
 ## Review
 
+`meow review --scope project [--fix]` inventories and reviews the whole
+checkout, including frontend and backend areas, even with pending changes or
+an existing plan. Prompt/Jira reviews also accept `--scope diff` or `auto`
+(default). Whole-project wording such as "from 0" selects project coverage
+automatically. Project verdicts require grounded `COVERAGE:` records for every
+inventoried area; missing, fabricated, or stale records force FAIL.
+
+Local CLI reviews run configured required lint, tests, and builds before
+accepting PASS; successful checks are reused only while inputs remain current.
+Remote PR/MR reviews use their supplied diff and do not run local checks.
+
 ```bash
 meow review
 meow review "Check API error handling"
@@ -657,6 +647,17 @@ Configure `[jira]`/`[jira.mcp]` for `--jira`, `[gitlab.mcp]` for `--gitlab`, or
 See [INTEGRATIONS.md](INTEGRATIONS.md).
 
 ## Native and CLI skill modes
+
+For native execution, `meow native review-checks --background` starts durable
+verification and `--status` reports its state and log/result paths. Native
+verdicts enforce these checks and scope coverage in code. Native prompts accept
+`--host codex` (or another host) and repeated `--available-model ID` options;
+an unsupported configured model yields `model: null` to inherit the host model,
+with the configured model and fallback reason preserved in JSON.
+
+Native `custom` and `orchestrate review` accept the same host/model capability
+flags as `prompt`. A resumed PASS is reviewed again when a new focus is given;
+whole-project wording widens an earlier diff review to project scope.
 
 The workflow skills `/meow:plan`, `/meow:review`, `/meow:lint`, and
 `/meow:orchestrate` use native mode by default: the calling session plans,

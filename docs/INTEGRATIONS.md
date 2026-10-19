@@ -265,16 +265,10 @@ listed roles (`explorer`, `planner`, `generator`, `reviewer`, `tester`,
 SDK as a generated local plugin, so roles see them as `meow-custom:<name>`;
 built-in and `[agent_skills]` skills stay enabled alongside them.
 
-**Agents.** TOML definitions set `description`, `prompt`, `model`, `tools`,
-`skills`, `agents`, `session`, and `lint_on_edit`, with optional `variants` and
-`fragments`. A name maps to its config/permission role by replacing hyphens
-with underscores. `explorer` can be overridden. Claude Code `.md` frontmatter
-and prompt bodies remain an import format; unrecognized Claude Code keys are
-ignored. Specify tools for a standalone workflow role.
-
-Configured `[custom].agents` retain delegate compatibility with planner and
-generator (or their configured roles). Conventional agent definitions are used
-when explicitly named by a workflow or another agent's `agents` list.
+**Agents.** See [agent definitions](WORKFLOWS.md#agents) for fields, models,
+sessions, delegates, and Claude Code imports. Configured `[custom].agents`
+retain planner/generator delegate compatibility (or their configured roles);
+conventional definitions run only when explicitly named.
 
 **Permission boundary.** A workflow role uses its resolved tools, then the
 role's `[permissions]` policy. Delegates are additionally capped to their
@@ -331,11 +325,7 @@ is passed on the command line each time.
 | `[gitlab.mcp].args` | No | `[]` | Its arguments. |
 | `[gitlab.mcp].env` | No | `{}` | Environment variables passed to the launched server, e.g. `GITLAB_URL`, `GITLAB_TOKEN`. |
 
-**Security note:** `[gitlab.mcp].env` is passed to the launched server as-is.
-Keep tokens in the process environment or in the ignored
-`.meow/config.local.toml`; do not commit them to the shared
-`.meow/config.toml`. MEOW expands `$NAME`, `${NAME}`, and `%NAME%` in string
-configuration values without evaluating them as shell code.
+MCP `env` values follow the credential and expansion rules below.
 
 ## `[github.mcp]` — for `meow review --github`
 
@@ -351,7 +341,7 @@ the command line each time.
 The configured MCP server must expose the GitHub tools needed to fetch a pull
 request's title, body, and unified diff. MEOW accepts any compatible server.
 
-**Security note:** `[github.mcp].env` is passed to the launched server as-is.
+**MCP credentials:** each provider's `env` is passed to its server as-is.
 Keep tokens in the process environment or in the ignored
 `.meow/config.local.toml`; do not commit them to the shared
 `.meow/config.toml`. MEOW expands `$NAME`, `${NAME}`, and `%NAME%` in string
@@ -411,46 +401,9 @@ with the GitHub or GitLab tools already connected to the session.
 
 ## Scheduling automatic runs
 
-MEOW registers one-shot runs with Windows Task Scheduler or Linux systemd user
-timers. The CLI, `/meow:schedule` skill, and UI use the same scheduling helper:
-
-```bash
-meow schedule add --at "09:00" --work-dir /path/to/project -- run --jira PROJ-123
-meow schedule add --at "2026-12-01T09:00:00+02:00" -- run "Add CSV export" --name csv-export
-meow schedule list --work-dir /path/to/project
-meow schedule edit <schedule-id> --at "2026-12-02T10:30:00+02:00" --work-dir /path/to/project
-meow schedule cancel <schedule-id> --work-dir /path/to/project
-```
-
-`HH:MM` means the next occurrence in the machine's local timezone; ISO
-timestamps can specify an explicit offset. Each schedule runs once. Scheduling
-adds `--auto`, validates the arguments, and rejects interactive approval,
-lint-fix, background mode, source-branch selection, and disabling worktree
-isolation. The normal plan, implementation, verification, review, and delivery
-policy applies when the run starts. See [CLI.md](CLI.md#scheduling-a-run).
-
-In a plugin conversation, ask MEOW to run a request or Jira issue at a future
-time, or invoke `/meow:schedule`. In the UI, select **Schedule for later** in
-the session launcher, choose a local date/time, preview, and schedule. UI
-schedules save the reviewed recipe, so later edits do not change that run.
-The session details show its scheduled time, **Edit time**, and cancellation
-controls. Editing changes only the pending trigger's time, preserving its saved
-recipe and identifier. Started, completed, and cancelled schedules cannot be edited.
-
-**Windows:** tasks run as the current logged-in user with least privilege.
-No administrator privileges or password storage are needed. Keep that user
-logged in for execution. **Linux:** `systemctl --user` must connect to a working
-systemd user manager; enable lingering separately if execution must work while
-logged out. Persistent timers and Windows's StartWhenAvailable setting allow
-missed times to run when the scheduler becomes available. The machine must be
-available, and the registered project and Python environment must stay in place.
-
-Schedule metadata and CLI output logs live under `.meow/schedules/`; normal run
-journals still live under `.meow/runs/`. UI execution creates a session attempt
-whose output and result appear in the UI. Cancellation removes the trigger;
-use the normal run/session stop controls if execution has already started.
-Registration failures are reported immediately and saved with state `failed`.
-Repeated invocation of a consumed trigger does not rerun its request.
+For commands, timezones, UI controls, platform requirements, and lifecycle
+rules, see [Scheduling a run](CLI.md#scheduling-a-run). The CLI,
+`/meow:schedule`, and UI register the same one-shot OS trigger.
 
 **Jira prerequisites:** configure `[jira]`/`[jira.mcp]`, provide a reachable
 Jira MCP server, and make its credentials available to the scheduler's user.

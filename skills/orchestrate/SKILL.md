@@ -1,23 +1,18 @@
 ---
 name: orchestrate
-description: Split an objective, a set of Jira issues, a JQL query, or a task file into a graph of tasks, run each one as its own automatic MEOW sprint in parallel, merge every passing task into one integration branch, review the whole result against the objective, and open a single pull request -- or stop with nothing pushed and a precise report. Runs natively in this Claude Code session by default, where you supervise; CLI mode runs the same engine headless.
+description: Use when coordinating an objective, Jira issues, JQL results, or a task file as parallel MEOW sprints delivered in one reviewed PR. Defaults to native supervision with detached CLI task workers.
 ---
 
 # orchestrate
 
-One objective in, one reviewed branch and one pull request out. The orchestrator
-decomposes the work into tasks, runs every task as an ordinary automatic
-sprint in its own worktree (detached CLI child processes, up to `max_parallel`
-at a time), merges each passing task into the integration branch
-`orchestrator/<id>`, recovers failed tasks through triage (at most three cycles
-per task), reviews the combined branch against the objective, pushes it, and
-opens a pull or merge request. If a task cannot be recovered or the final review
-keeps failing, it stops with **nothing pushed** and says exactly what blocks it.
+Deliver one reviewed `orchestrator/<id>` branch and PR from parallel task
+sprints. Unrecoverable tasks or exhausted final reviews stop with **nothing
+pushed** and a blocker report.
 
 Native mode is the default: this session is the supervisor. Read
-[`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this
-skill's base directory) first; its "The orchestrate helpers" section defines
-every `meow native orchestrate` command and its JSON. Use **CLI mode** (bottom)
+[`../_shared/native-mode.md`](../_shared/native-mode.md) first for shared
+role, verification, and model rules. The procedure below defines the supervisor
+commands and returned fields. Use **CLI mode** (bottom)
 when the user asks for the CLI, a headless or scheduled run, or `--dry-run`.
 
 Task sprints never run inside this session or in subagents: they are the same

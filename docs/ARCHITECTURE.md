@@ -7,13 +7,18 @@ top-level alias or compatibility modules.
 - `agents/`: Claude Agent SDK roles: exploration, planning, generation,
   review, testing, fixing, documentation, and Jira/GitLab/GitHub fetching.
   `agents/orchestration.py` holds the orchestrator's decomposer, triage,
-  integrator, and pull-request roles.
+  integrator, and pull-request roles. Roles take an `AgentContext` (satisfied by
+  `Sprint` and `ProjectContext`); `agents/base.py` builds options and permissions.
+  `SessionAgent` retains one client for generator/fixer rounds;
+  `McpFetcherAgent` in `mcp_fetcher.py` shares fetching behavior across providers.
 - `cli/`: the public command surface and dispatch for `run`, `plan`, `review`
   (`review_cli.py`), status/recovery, queues, hooks, IPython, and hidden
   maintenance commands. `catalog_cli.py` owns workflow/agent inspection and ejection;
   `orchestrate_cli.py` owns `meow orchestrate`.
 - `execution/`: sprint orchestration, delivery, plan approval, queue/run
-  policy, and the durable run journal. `execution/workflow/` owns the expanded
+  policy, and the durable run journal. `orchestrator.py` owns round loops,
+  `sprint_runner.py` run/plan flows, and `run_state.py` the journal.
+  `execution/workflow/` owns the expanded
   step engine, built-in operation adapters, and loop session pools.
   `execution/orchestration/` owns the orchestrator: its journal and driver
   lock, task scheduling and child processes, merges into the integration
@@ -39,6 +44,8 @@ top-level alias or compatibility modules.
   stdlib-only `maintenance.py`, plus post-install plugin registration and
   project onboarding. Both streamed scripts and `meow --update` use it.
 - `tasks/`: task-graph models, scheduling, execution, and integration.
+- `ui/`: local catalog/session server and bundled frontend; its repository
+  registry lives in `project/repos.py`.
 
 `__main__.py` is the console entry point. Tests live in `tests/` and are not
 packaged. The `src/` layout is deliberate: running from the repository root

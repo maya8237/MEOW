@@ -1,18 +1,13 @@
 ---
 name: integrate-ci-review
-description: Add MEOW's report-only CI review job to an existing GitHub Actions or GitLab CI setup, or create the minimal provider configuration when no CI exists. Use when a user asks to integrate, configure, or add meow review to CI.
+description: Use when adding or configuring MEOW's report-only review job in GitHub Actions or GitLab CI, including repositories without CI yet.
 ---
 
 # Integrate CI review
 
-Add the MEOW CI review job to the repository's own CI configuration. The
-`--ci` flag selects the exact CI checkout as the review source; that path is
-always **report-only**: it runs `meow review --ci`, writes the review artifacts,
-and never uses `--fix`, `meow run`, or an edit-capable review mode. The CLI
-rejects `--ci` combined with `--fix`.
-
-The skill may edit CI configuration, but it must not edit application code or
-turn the CI review into an automatic fixer.
+Add `meow review --ci` to the repository's CI configuration. It reviews the
+exact checkout and writes artifacts; it is **report-only**. Edit CI files only,
+never application code, and do not use `--fix` or `meow run` in the job.
 
 ## Detect the CI provider
 
@@ -133,13 +128,6 @@ expansions. Do not interpolate them into shell source.
   `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`; do not copy GitHub's `base_ref`
   expression into GitLab YAML.
 
-The job's command remains report-only:
-
-```yaml
-script:
-  - meow review --ci --artifact-dir "$CI_PROJECT_DIR/.meow/ci-artifacts"
-```
-
 If the project uses a target branch other than the template's `dev`, keep the
 target branch consistent across the rules, fetched ref, `--target-ref`, and
 CI context. Do not silently change the review contract; explain any mismatch
@@ -150,11 +138,9 @@ broader runtime change.
 
 1. Make the smallest edit that fits the existing CI layout. Preserve comments,
    anchors, includes, matrices, and unrelated jobs.
-2. Make the integration idempotent: a second invocation must find and update
-   the existing job rather than append another one.
-3. Validate YAML with an available parser or the provider's local validation
+2. Validate YAML with an available parser or the provider's local validation
    tooling. Re-read the changed job and inspect the diff.
-4. Confirm all of the following:
+3. Confirm all of the following:
    - the job is named `meow-review`/`meow_review` exactly once;
    - it installs MEOW and runs `meow review --ci`;
    - it never includes `--fix`;
@@ -163,7 +149,7 @@ broader runtime change.
    - it references `ANTHROPIC_API_KEY` as a secret/CI variable, never as a
      committed value; and
    - no application files or generated review fixes were changed.
-5. Tell the user which CI file changed, which stage/job owns the integration,
+4. Tell the user which CI file changed, which stage/job owns the integration,
    and that they must provide `ANTHROPIC_API_KEY` as a masked GitLab variable
    or GitHub Actions secret. Mention that the job reports PASS/FAIL and does
    not fix the change set.
