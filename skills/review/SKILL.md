@@ -49,13 +49,21 @@ exists. Inspect every area in the code-owned inventory and include the grounded
 `COVERAGE:` records requested by the generated prompt. `native verdict` rejects
 missing or stale coverage.
 
-Every local review must run `meow native review-checks --background` with the
+Complete the scoped audit, authorized fixes, and focused proofs first; freeze
+source/config. Do not add audit passes while final checks run.
+
+Before accepting a local PASS, run `meow native review-checks --background` with the
 same `--work-dir` and `--active-dir` as the reviewer. Inspect
 `meow native review-checks --status` until the durable job finishes, then use
 `meow native verdict <review_file>` to validate the report. Required tests and
 builds block PASS alongside required lint. The JSON supplies durable log/result
 paths. After source/config edits, rerun checks and generate a fresh review
 prompt. Remote reviews remain report-only against the supplied diff.
+
+Keep one job ID; a lost shell handle is not a failed job. If a run exceeds its
+baseline, inspect logs, child start times and source/config changes for retries.
+Isolate artifact-writing tests; preserve user files. Restart only for confirmed
+stale/failed evidence.
 
 Pass `--host codex` in Codex (or the actual host name elsewhere) to every
 `native prompt` call. If exact supported model IDs are known, repeat
@@ -132,12 +140,10 @@ when present. Never invent mappings between providers' model names.
    Dispatch one reviewer subagent per the shared protocol, then `meow
    native verdict <review_file>`; report PASS/FAIL and the review file
    path. Do not edit any code.
-4. **Fix mode** (prompt/jira/plan/branch sources): anchor the round
-   counter on the plan file (plan source) or the review file's would-be
-   path (every other source) -- `meow native round <anchor> --reset`, then
-   `round <anchor>` once more (the first review is round 1). Loop per the
-   shared protocol: `round <anchor>` (stop if exhausted) -> (round 2+) fix
-   -> project-wide lint -> fresh reviewer subagent -> `meow native verdict`.
+4. **Fix mode**: anchor on the plan path or first reviewer prompt's report path;
+   keep that anchor. Reset only for a new review. At each round start, advance
+   once; stop if exhausted. Round 1 reviews first; later rounds fix verified
+   findings, lint, then get a fresh reviewer and validate.
    - **plan** source fixes as the plan's **generator** (Sprint-Contract-
      aware, `meow native prompt generator --plan <plan_file>`); reviews
      with `prompt reviewer-plan --plan <plan_file> [--focus "<prompt>"]`.
@@ -159,12 +165,11 @@ when present. Never invent mappings between providers' model names.
    A new focus requires a fresh review even when the saved report passed.
    If the new focus requests the whole project, use project scope for the
    fresh review and all subsequent rounds; an old diff scope must not narrow it.
-   Anchor the counter on the plan file (plan flavor: the review file's
-   name without `-review`) or the review file itself (prompt flavor);
-   `round <anchor> --reset`, then `round <anchor>` once -- the existing
-   review is round 1. Each further round is exactly step 4's plan/prompt
-   loop (a prompt to focus the fix on, if the user gave one, carries
-   through every round the same way `--focus` does above).
+   Anchor on the saved plan path or prompt report. Inspect `round <anchor>
+   --show`; never reset on resume. If no counter exists, advance once to count
+   the saved review. Stop if `round >= max_rounds`; otherwise
+   advance once at the next round start. The saved review already counts.
+   Preserve the focus through remaining rounds.
 6. If an isolated worktree was used (branch source), remind the user
    their own checkout was left untouched and where the worktree lives.
 
