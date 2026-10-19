@@ -15,7 +15,7 @@ const stepKinds: Record<string, string> = {
   uses: "Built-in stage",
   agent: "Agent stage",
   gate: "Review gate",
-  loop: "Repeating stage",
+  loop: "Loop until gates pass",
   parallel: "Parallel stages",
   call: "Nested workflow",
 };
@@ -149,7 +149,10 @@ export default function ItemDetail({
           </ol>
           <p className="hint">
             Steps run in order; conditions in the definition decide which ones
-            apply.
+            apply. Loop stages repeat until their blocking gates pass or the
+            configured round limit is reached. Built-in workflows loop through
+            implementation, review, and fixes instead of stopping after one
+            attempt.
           </p>
         </section>
       )}

@@ -9,7 +9,10 @@
 MEOW is a workflow harness for Claude that plans, implements, tests, reviews,
 and delivers software changes in isolated worktrees.
 
-![MEOW UI showing the default workflow and its execution steps](docs/images/meow-ui.png)
+Running a built-in workflow starts a loop: MEOW implements, reviews, and fixes
+the work until review passes, or the configured round limit is reached. It does
+not stop after a single attempt. Once review passes, MEOW runs the final checks
+before delivery. Custom workflows control their own loop stages.
 
 ## Install
 

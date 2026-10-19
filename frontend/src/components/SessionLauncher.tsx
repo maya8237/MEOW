@@ -421,6 +421,11 @@ export default function SessionLauncher({
                       </option>
                     ))}
                   </select>
+                  <small>
+                    Built-in workflows loop through implementation, review, and
+                    fixes until review passes or the configured round limit is
+                    reached. Custom workflows control their own loop stages.
+                  </small>
                 </label>
                 {draft.command === "plan" && (
                   <fieldset className="launcher-options launcher-wide">
