@@ -3,11 +3,14 @@ import os
 import socket
 import sys
 import tempfile
+import threading
 import unittest
 import urllib.error
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+
+import pytest
 
 from meow.infrastructure.test_runner import (
     VerificationSetupError,
@@ -28,29 +31,92 @@ def _port() -> int:
 
 def test_job_cleanup_waits_for_child_exit_after_wrapper_exit(monkeypatch):
     active = [True]
-    observations = iter(["child", "child", None])
 
-    def identity(_pid):
-        value = next(observations)
-        active[0] = value is not None
-        return value
+    def wait(handle, timeout):
+        assert handle is child_handle
+        active[0] = False
+        return 0
 
     def close():
         assert not active[0], "cleanup returned while the child still owned its cwd"
 
     job = SimpleNamespace(Close=Mock(side_effect=close))
+    child_handle = SimpleNamespace(Close=Mock())
     windows = SimpleNamespace(
         TerminateJobObject=Mock(),
-        QueryInformationJobObject=Mock(return_value=[123]),
+        # A terminating child can disappear from the job's PID list before
+        # its process handle signals that it released its working directory.
+        QueryInformationJobObject=Mock(side_effect=[[123], []]),
         JobObjectBasicProcessIdList=object(),
     )
     monkeypatch.setitem(sys.modules, "win32job", windows)
-    monkeypatch.setattr(
-        "meow.infrastructure.test_runner.process_identity", identity, raising=False
+    monkeypatch.setitem(
+        sys.modules,
+        "win32api",
+        SimpleNamespace(OpenProcess=Mock(return_value=child_handle)),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "win32event",
+        SimpleNamespace(WaitForSingleObject=wait, WAIT_TIMEOUT=258),
     )
     asyncio.run(_terminate(_OwnedProcess(SimpleNamespace(returncode=0), job)))
     windows.TerminateJobObject.assert_called_once_with(job, 1)
     job.Close.assert_called_once()
+    child_handle.Close.assert_called_once()
+
+
+def test_cancelling_job_cleanup_does_not_close_a_pending_native_wait(  # ruff: ignore[too-many-statements] -- coordinate cancellation with a native wait
+    monkeypatch,
+):
+    entered, release, pending = threading.Event(), threading.Event(), threading.Event()
+
+    def wait(handle, timeout):
+        if timeout:
+            pending.set()
+        entered.set()
+        release.wait(timeout / 1000)
+        pending.clear()
+        return 258
+
+    def close():
+        assert not pending.is_set(), "handle closed during a pending native wait"
+
+    handle = SimpleNamespace(Close=Mock(side_effect=close))
+    job = SimpleNamespace(Close=Mock())
+    monkeypatch.setitem(
+        sys.modules, "win32api", SimpleNamespace(OpenProcess=lambda *args: handle)
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "win32job",
+        SimpleNamespace(
+            TerminateJobObject=Mock(),
+            QueryInformationJobObject=lambda *args: [123],
+            JobObjectBasicProcessIdList=object(),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "win32event",
+        SimpleNamespace(WaitForSingleObject=wait, WAIT_TIMEOUT=258),
+    )
+
+    async def scenario():
+        task = asyncio.create_task(
+            _terminate(_OwnedProcess(SimpleNamespace(returncode=0), job))
+        )
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            release.set()
+        handle.Close.assert_called_once()
+        job.Close.assert_called_once()
+
+    asyncio.run(scenario())
 
 
 def test_advisory_launch_failure_does_not_abort_remaining_checks(tmp_path):

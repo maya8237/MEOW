@@ -2,17 +2,15 @@
 forced merge conflict, objective review, push, and a pull request."""
 
 from pathlib import Path
-from types import SimpleNamespace
-
-import pytest
 
 from meow.execution.orchestration.report import render_report
 from tests.orchestration.driver_fakes import PR_URL, AgentScript, World, task_dict
 from tests.orchestration.fakes import git
 
 
-@pytest.fixture
-def delivered(tmp_path, monkeypatch):
+def test_delivers_tasks_with_conflict_resolution_push_and_review(  # ruff: ignore[too-many-statements,too-many-locals] -- assert one real Git workflow without rebuilding it
+    tmp_path, monkeypatch
+):
     """Run the objective `api` -> `ui` to delivery.
 
     `ui` edits `shared.txt`, and while it runs a sibling commit lands on the
@@ -36,54 +34,35 @@ def delivered(tmp_path, monkeypatch):
 
     world.sim.before["ui", 0] = inject_sibling_commit
     oid, code = world.start()
-    return SimpleNamespace(
-        world=world, script=script, oid=oid, code=code, record=world.record(oid)
-    )
+    record = world.record(oid)
+    remote, branch = world.remote, f"orchestrator/{oid}"
 
-
-def test_delivers_both_tasks_with_the_conflict_resolved(delivered):
-    remote, branch = delivered.world.remote, f"orchestrator/{delivered.oid}"
-
-    assert delivered.code == 0
-    assert delivered.record.phase == "delivered"
-    assert [t.status for t in delivered.record.tasks] == ["merged", "merged"]
-    assert delivered.script.integrator_calls == [["shared.txt"]]
+    assert code == 0
+    assert record.phase == "delivered"
+    assert [t.status for t in record.tasks] == ["merged", "merged"]
+    assert script.integrator_calls == [["shared.txt"]]
     assert git(remote, "show", f"{branch}:shared.txt") == "api\nsibling\nui"
     assert git(remote, "show", f"{branch}:api.py") == "API = 1"
     assert git(remote, "show", f"{branch}:ui.py") == "UI = 1"
-
-
-def test_pushes_only_the_integration_branch(delivered):
-    remote, branch = delivered.world.remote, f"orchestrator/{delivered.oid}"
-    integration = Path(delivered.record.integration["worktree"])
+    integration = Path(record.integration["worktree"])
 
     assert git(remote, "for-each-ref", "--format=%(refname)") == f"refs/heads/{branch}"
     subjects = git(integration, "log", "--format=%s").splitlines()
     assert "Merge orchestrator task api" in subjects
     assert "Merge orchestrator task ui" in subjects
-
-
-def test_task_branches_coexist_and_ui_saw_api_work(delivered):
-    repo, branch = delivered.world.repo, f"orchestrator/{delivered.oid}"
-    ui_worktree = delivered.world.sim.launcher.launches[1]["worktree"]
+    repo = world.repo
+    ui_worktree = world.sim.launcher.launches[1]["worktree"]
 
     assert git(repo, "rev-parse", "--verify", f"{branch}-api")
     assert git(repo, "rev-parse", "--verify", f"{branch}-ui")
     assert (ui_worktree / "api.py").exists()
+    title, body, head, base, _output = script.pull_request.calls[0]
+    report = (world.store.dir_for(oid) / "report.md").read_text(encoding="utf-8")
 
-
-def test_review_pull_request_and_report(delivered):
-    branch = f"orchestrator/{delivered.oid}"
-    title, body, head, base, _output = delivered.script.pull_request.calls[0]
-    store = delivered.world.store
-    report = (store.dir_for(delivered.oid) / "report.md").read_text(encoding="utf-8")
-
-    assert delivered.script.review.reviews[0][:2] == ("main", branch)
-    assert delivered.record.delivery["pr"] == {"url": PR_URL, "provider": "github"}
+    assert script.review.reviews[0][:2] == ("main", branch)
+    assert record.delivery["pr"] == {"url": PR_URL, "provider": "github"}
     assert (title, head, base) == ("Orchestrator: Build it", branch, "main")
     assert "Resolved conflicts in shared.txt" in body
-    assert report.startswith(f"# Orchestrator {delivered.oid}: delivered")
+    assert report.startswith(f"# Orchestrator {oid}: delivered")
     assert "## Conflicts resolved\n\n- ui: Resolved conflicts in shared.txt" in report
-    assert render_report(delivered.world.repo, delivered.record).startswith(
-        "# Orchestrator"
-    )
+    assert render_report(repo, record).startswith("# Orchestrator")

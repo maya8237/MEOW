@@ -10,11 +10,10 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
-from contextlib import asynccontextmanager, suppress
+from contextlib import ExitStack, asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
-from meow.common.process import process_identity
 from meow.project.command_policy import split_command
 from meow.project.config_models import (
     DevServerCommand,
@@ -23,6 +22,7 @@ from meow.project.config_models import (
 )
 
 MAX_OUTPUT_CHARS = 8000
+_ERROR_INVALID_PARAMETER = 87
 
 
 @dataclass(frozen=True)
@@ -183,21 +183,40 @@ def _decode(data: bytes) -> str:
     return output
 
 
-async def _terminate_windows_job(job) -> None:
+async def _terminate_windows_job(job) -> None:  # ruff: ignore[too-many-statements, complex-structure]
+    import win32api
+    import win32event
     import win32job
 
     try:
-        win32job.TerminateJobObject(job, 1)
-        deadline = asyncio.get_running_loop().time() + 2
-        while any(
-            process_identity(pid)
+        with ExitStack() as resources:
+            handles = []
+            # Retain handles before termination can remove children from the
+            # job's PID list. Only a signalled handle proves the child exited.
             for pid in win32job.QueryInformationJobObject(
                 job, win32job.JobObjectBasicProcessIdList
-            )
-        ):
-            if asyncio.get_running_loop().time() >= deadline:
-                raise TimeoutError("Owned Windows server processes did not exit")
-            await asyncio.sleep(0.01)
+            ):
+                try:
+                    handle = win32api.OpenProcess(0x100000, False, pid)  # SYNCHRONIZE
+                except win32api.error as exc:
+                    if exc.winerror == _ERROR_INVALID_PARAMETER:
+                        continue
+                    raise
+                resources.callback(handle.Close)
+                handles.append(handle)
+            win32job.TerminateJobObject(job, 1)
+            deadline = asyncio.get_running_loop().time() + 2
+            for handle in handles:
+                # Never leave a native wait pending when cancellation closes
+                # the handle; closing a handle during a wait is undefined.
+                while (
+                    win32event.WaitForSingleObject(handle, 0) == win32event.WAIT_TIMEOUT
+                ):
+                    if asyncio.get_running_loop().time() >= deadline:
+                        raise TimeoutError(
+                            "Owned Windows server processes did not exit"
+                        )
+                    await asyncio.sleep(0.01)
     finally:
         job.Close()
 

@@ -31,7 +31,7 @@ exclude = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff==0.16.9"]
+dev = ["pytest", "pytest-xdist", "ruff==0.16.9"]
 
 [tool.ruff]
 line-length = 88
