@@ -25,8 +25,7 @@ notes, all archives, and per-archive `.sha256` files. It then advances
 read this manifest through `raw.githubusercontent.com`; they do not require
 `api.github.com`. The channel points only at a published release, never a
 source commit. A failed build leaves no
-incomplete public release. Manual workflow runs build and test without
-publishing. PRs that affect packaging also exercise this workflow.
+incomplete public release. PRs that affect packaging also exercise this workflow.
 
 Publication is serialized and can be rerun after a channel-push failure.
 Archives and checksums are uploaded to a draft release and published together.
