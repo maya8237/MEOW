@@ -1,6 +1,7 @@
 # meow feature worktrees
 .worktrees/
-docs/superpowers/
+/docs/superpowers/
+/.superpowers/
 *.lock
 # Byte-compiled / optimized / DLL files
 __pycache__/
