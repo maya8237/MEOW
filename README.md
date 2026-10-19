@@ -31,10 +31,6 @@ curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.
 The installer puts MEOW in `~/.meow`, adds the `meow` command to your PATH,
 and sets up its skills in Claude Code. Open a new terminal to get started.
 
-Run `meow --update` or `meow -u` to install the latest published release.
-Public commands and `/meow:*` skills warn when a newer release is available.
-Use `-a` / `--auto` on feature runs for automatic execution.
-
 ## Run
 
 Claude Code:
@@ -64,6 +60,16 @@ integrations and optional features.
 | Fix lint | `/meow:lint` |
 | Queue work | `meow queue "..."` |
 | Check or continue | `meow status` or `meow resume RUN_ID` |
+
+### Common flags
+
+| Flag | Purpose |
+| --- | --- |
+| `--auto` / `-a` | Run a feature automatically |
+| `--name NAME` | Name the feature branch and worktree |
+| `--from BRANCH` / `-b BRANCH` | Choose the starting branch |
+| `--update` / `-u` | Update MEOW with `meow --update` |
+| `--help` / `-h` | Show help for a command |
 
 See the [CLI guide](docs/CLI.md) for worktrees, background runs, recovery,
 orchestration, and advanced options.
