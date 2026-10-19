@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import os
+import runpy
 import subprocess
 import sys
 import zipfile
@@ -11,6 +12,32 @@ import pytest
 
 from meow.cli.parser import _build_arg_parser
 from meow.installer import maintenance
+
+
+@pytest.mark.parametrize("tag", ["1.2.3", "v1.2.3"])
+def test_release_tag_sets_package_and_plugin_versions(tmp_path, monkeypatch, tag):
+    root = Path(__file__).resolve().parents[2]
+    script = runpy.run_path(str(root / "scripts/build_release.py"))
+    monkeypatch.setitem(script["check_version"].__globals__, "ROOT", tmp_path)
+    monkeypatch.setenv("GITHUB_REF_NAME", tag)
+    project = tmp_path / "pyproject.toml"
+    project.write_text('[project]\nname = "meow"\nversion = "0.0.1"\n')
+    manifests = tmp_path / ".claude-plugin"
+    manifests.mkdir()
+    (manifests / "plugin.json").write_text('{"name":"meow","version":"0.0.1"}')
+    (manifests / "marketplace.json").write_text(
+        '{"plugins":[{"name":"meow","version":"0.0.2"}]}'
+    )
+
+    assert script["check_version"]() == "1.2.3"
+    assert 'version = "1.2.3"' in project.read_text()
+    assert json.loads((manifests / "plugin.json").read_text())["version"] == "1.2.3"
+    assert (
+        json.loads((manifests / "marketplace.json").read_text())["plugins"][0][
+            "version"
+        ]
+        == "1.2.3"
+    )
 
 
 @pytest.mark.parametrize("script", ["build_release.py", "smoke_release.py"])

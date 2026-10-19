@@ -1,19 +1,25 @@
 # Releasing MEOW
 
-MEOW's installers and `meow --update` consume published stable GitHub Releases.
-Commits to `main` do not update users. The first release using this installer
-must be published before switching the public installer scripts on `main`.
+Commit and push the changes to `main`, then create and push a three-part tag:
 
-1. Update the version in `pyproject.toml`, `.claude-plugin/plugin.json`, and
-   `.claude-plugin/marketplace.json` together.
-2. If dependencies changed, regenerate the pinned runtime requirements:
-   `uv pip compile pyproject.toml --universal --python-version 3.12 --generate-hashes --output-file requirements-release.txt`.
-3. Run `python -m pytest -q`, `ruff check .`, and `ruff format --check .`.
-4. Push a `vX.Y.Z` tag matching the package version. For example, for version
-   `0.1.4`, run `git tag v0.1.4` followed by `git push origin v0.1.4`.
+```bash
+git tag 0.1.6
+git push origin 0.1.6
+```
+
+That is the release process. CI stamps the tag's version into the Python package
+and both plugin manifests, runs tests and lint, builds all platforms, and
+publishes the release. No manual version edits are needed. Existing `vX.Y.Z`
+tags also work. Published releases retain the `v` prefix for compatibility with
+installed updaters; a numeric trigger automatically creates that release tag at
+the same commit. Commits to `main` alone do not update users.
+
+When dependencies change, regenerate the pinned runtime requirements before
+committing:
+`uv pip compile pyproject.toml --universal --python-version 3.12 --generate-hashes --output-file requirements-release.txt`.
 
 The Release workflow builds Windows x64, Linux x64/ARM64, and macOS x64/ARM64
-archives, verifies that the tag and all plugin versions agree, and runs the
+archives, stamps matching package/plugin versions from the tag, and runs the
 streamed installer against a local release server on each platform. Only after
 all builds and smoke tests pass does it publish a GitHub Release with generated
 notes, all archives, and per-archive `.sha256` files. It then advances

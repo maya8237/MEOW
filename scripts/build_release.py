@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -95,15 +96,31 @@ def build_runtime(bundle: Path, temporary: Path) -> None:
 
 
 def check_version() -> str:
-    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    project = ROOT / "pyproject.toml"
+    version = tomllib.loads(project.read_text())["project"]["version"]
+    tag = os.environ.get("GITHUB_REF_NAME")
+    if tag:
+        if not re.fullmatch(
+            r"v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag
+        ):
+            raise ValueError(f"Expected a three-part release tag, got {tag!r}")
+        version = tag.removeprefix("v")
+        project.write_text(
+            re.sub(
+                r"(?m)^version = .*$",
+                f'version = "{version}"',
+                project.read_text(),
+                count=1,
+            )
+        )
     for manifest in (ROOT / ".claude-plugin").glob("*.json"):
         data = json.loads(manifest.read_text())
-        declared = data.get("version") or data["plugins"][0]["version"]
-        if declared != version:
+        target = data if "version" in data else data["plugins"][0]
+        if tag:
+            target["version"] = version
+            manifest.write_text(json.dumps(data, indent=2) + "\n")
+        elif target["version"] != version:
             raise ValueError(f"{manifest} does not match package version {version}")
-    tag = os.environ.get("GITHUB_REF_NAME") or f"v{version}"
-    if tag != f"v{version}":
-        raise ValueError(f"Tag {tag} does not match package version {version}")
     return version
 
 

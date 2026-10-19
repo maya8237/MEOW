@@ -4,6 +4,18 @@ All notable changes to MEOW will be documented here.
 
 ## Unreleased
 
+## 0.1.6 - 2026-10-19
+
+- Release by pushing a plain `X.Y.Z` tag; CI sets package/plugin versions and
+  publishes compatible releases automatically.
+- Reduce skill/reference wording by 21% and project instructions by 30%;
+  consolidate native verification, setup, and scheduling guidance.
+- Load native-run instructions only when native execution is requested.
+- Bound native review rounds and verification retries.
+- Verify Bun dependency links after installation and repair incomplete installs once.
+- Refresh CLI banners and native update warnings.
+
+
 - Pending schedules can be rescheduled with `meow schedule edit ID --at TIME`
   or **Edit time** in UI session details, preserving their saved run settings.
 
