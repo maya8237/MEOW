@@ -5,8 +5,6 @@ description: Run a full meow sprint for a feature request in the current project
 
 # run
 
-First follow [the shared update check](../_shared/update-check.md).
-
 If the user asks to run at a future time, follow
 [`../schedule/SKILL.md`](../schedule/SKILL.md) before either execution mode.
 Register the scheduled automatic run now and report the returned schedule;

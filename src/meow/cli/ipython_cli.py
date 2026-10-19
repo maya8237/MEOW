@@ -79,6 +79,14 @@ def start_ipython() -> None:
     from meow.cli.parser import _build_arg_parser
 
     shell = TerminalInteractiveShell.instance()
+    shell.banner1 = r"""
+       /\_/\
+      ( o.o )   meow
+       > ^ <
+      /     \
+     (       )__
+      \_____/___)
+"""
     shell.register_magics(_build_magics())
     register_completers(shell, _build_arg_parser(), (*_magic_names(), "meow"))
     launch(argv=[])

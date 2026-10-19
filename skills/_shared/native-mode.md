@@ -1,5 +1,11 @@
 # Native mode: shared protocol
 
+In CLI and native modes, assume MEOW processes may belong to other concurrent
+runs. Only stop or cancel a run or process when you are 100% certain it belongs
+exclusively to your current run; verify its recorded run ID or process handle.
+Never kill processes in bulk by name or pattern. If ownership is uncertain,
+leave it running, including during timeout handling and cleanup.
+
 Other agent hosts can use the same helpers. In Codex, pass `--host codex` to
 `meow native prompt` and `meow native custom`; repeat `--available-model ID` only for exact supported
 IDs. Returned `model: null` means inherit the host model. `configured_model`

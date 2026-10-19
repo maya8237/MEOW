@@ -2,6 +2,17 @@
 # curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 set -eu
 
+cat <<'MEOW'
+
+       /\_/\
+      ( o.o )   meow
+       > ^ <
+      /     \
+     (       )__
+      \_____/___)
+
+MEOW
+
 base=${MEOW_RELEASE_BASE_URL:-https://github.com/maya8237/MEOW/releases}
 root="$HOME/.meow"
 case "$(uname -s)" in

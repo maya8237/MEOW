@@ -5,8 +5,6 @@ description: Review existing code -- report-only, or loop fixing until it passes
 
 # review
 
-First follow [the shared update check](../_shared/update-check.md).
-
 One consolidated review operation covering prompt, issue, remote-review,
 branch, plan, review-file, and CI sources. Runs **natively** by default. Read
 [`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this

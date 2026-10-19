@@ -58,9 +58,9 @@ MEOW and is used before the command, as `meow -u`.
 
 Every public CLI invocation checks for newer versions and warns on stderr
 with `meow --update` when one is available. This best-effort check has a short
-network timeout and stays silent on failure. Native JSON helpers and internal
-workers skip it. Each public `/meow:*` skill checks once at entry, including
-native-mode skills. `meow --check-update` performs only this warning check.
+network timeout and stays silent on failure. Native commands check automatically
+too, keeping warnings on stderr and JSON on stdout. Internal workers skip the
+check. `meow --check-update` performs only this warning check.
 
 These are the commands meant for normal project work:
 

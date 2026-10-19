@@ -5,8 +5,6 @@ description: Convert a legacy MEOW project layout to the current Claude SDK layo
 
 # Migrate a legacy repository
 
-First follow [the shared update check](../_shared/update-check.md).
-
 Use this skill only when the repository still has the legacy MEOW structure.
 Migration is separate from onboarding and owns conversion of old files; do
 not ask onboarding to do this work. Work in the target repository, preserve

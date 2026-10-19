@@ -5,8 +5,6 @@ description: Run the current project's configured lint commands and fix whatever
 
 # lint
 
-First follow [the shared update check](../_shared/update-check.md).
-
 Runs the project's `[[lint]]` commands and has **you** — this session — fix what
 they report, using `meow native lint` for the facts. Read
 [`../_shared/native-mode.md`](../_shared/native-mode.md) (relative to this

@@ -3,6 +3,16 @@
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
     $temporary = $null
+    Write-Host @'
+
+       /\_/\
+      ( o.o )   meow
+       > ^ <
+      /     \
+     (       )__
+      \_____/___)
+
+'@
     try {
         $base = 'https://github.com/maya8237/MEOW/releases'
         if ($env:MEOW_RELEASE_BASE_URL) { $base = $env:MEOW_RELEASE_BASE_URL }

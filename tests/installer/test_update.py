@@ -56,7 +56,7 @@ def test_offline_check_is_quiet(capsys):
     [
         (["run", "--help"], True),
         (["--version"], True),
-        (["native", "--help"], False),
+        (["native", "--help"], True),
         (["_worker", "--help"], False),
     ],
 )
@@ -68,3 +68,19 @@ def test_only_public_commands_check_versions(monkeypatch, argv, checks):
     with pytest.raises(SystemExit):
         cli_main(argv)
     assert bool(calls) == checks
+
+
+def test_native_update_warning_preserves_json_stdout(monkeypatch, capsys):
+    import json
+
+    from meow.cli import cli
+
+    monkeypatch.setattr(maintenance, "version", lambda name: "0.1.2")
+    monkeypatch.setattr(maintenance, "latest_version", lambda **kwargs: "0.2.0")
+    monkeypatch.setattr(cli, "run_native", lambda args: print('{"status": "ok"}'))
+
+    cli.cli_main(["native", "latest-plan"])
+
+    output = capsys.readouterr()
+    assert json.loads(output.out) == {"status": "ok"}
+    assert "meow --update" in output.err

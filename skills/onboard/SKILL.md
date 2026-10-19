@@ -5,8 +5,6 @@ description: Add integrations and optional features (add-ons) to an onboarded ME
 
 # Onboard a repository
 
-First follow [the shared update check](../_shared/update-check.md).
-
 Onboarding assumes a current or clean project structure. It works on a
 repository that has never used MEOW and on one that already has the current
 `.meow/` layout. It does not convert legacy files; use the separate `migration`
