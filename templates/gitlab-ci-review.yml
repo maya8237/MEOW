@@ -1,7 +1,9 @@
 # Include this job in a GitLab project whose merge requests target dev.
 #
-# Required project-level CI/CD variable (set in GitLab, masked; do not commit it):
-#   ANTHROPIC_API_KEY - Claude API key used by the Claude Agent SDK.
+# Supply masked MEOW_API_KEY for Anthropic. For a custom gateway, optionally
+# configure MEOW_API_URL and the gateway's MEOW_API_TOKEN or MEOW_API_KEY.
+# LiteLLM/settings.json are not required. Values belong in CI settings only.
+# Optional MEOW_MODEL and MEOW_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL override models.
 # Optional MR inline notes: supply masked MEOW_GITLAB_TOKEN (api scope), then add
 # --post-comments gitlab to the review command for MR pipelines only.
 meow_review:
@@ -16,6 +18,28 @@ meow_review:
   variables:
     GIT_DEPTH: "0"
   before_script:
+    - |
+      if [ "${MEOW_API_URL+x}" = x ]; then
+        export ANTHROPIC_BASE_URL="$MEOW_API_URL"
+      fi
+      if [ "${MEOW_API_TOKEN+x}" = x ]; then
+        export ANTHROPIC_AUTH_TOKEN="$MEOW_API_TOKEN"
+      fi
+      if [ "${MEOW_API_KEY+x}" = x ]; then
+        export ANTHROPIC_API_KEY="$MEOW_API_KEY"
+      fi
+      if [ "${MEOW_MODEL+x}" = x ]; then
+        export ANTHROPIC_MODEL="$MEOW_MODEL"
+      fi
+      if [ "${MEOW_DEFAULT_OPUS_MODEL+x}" = x ]; then
+        export ANTHROPIC_DEFAULT_OPUS_MODEL="$MEOW_DEFAULT_OPUS_MODEL"
+      fi
+      if [ "${MEOW_DEFAULT_SONNET_MODEL+x}" = x ]; then
+        export ANTHROPIC_DEFAULT_SONNET_MODEL="$MEOW_DEFAULT_SONNET_MODEL"
+      fi
+      if [ "${MEOW_DEFAULT_HAIKU_MODEL+x}" = x ]; then
+        export ANTHROPIC_DEFAULT_HAIKU_MODEL="$MEOW_DEFAULT_HAIKU_MODEL"
+      fi
     - python -m pip install meow
     - git fetch --no-tags origin refs/heads/dev:refs/remotes/origin/dev
   script:

@@ -9,6 +9,20 @@ Add `meow review --ci` to the repository's CI configuration. It reviews the
 exact checkout and writes artifacts; it defaults to **report-only**. Edit CI files only,
 never application code, and do not use `--fix` or `meow run` in the job.
 
+## Configure credentials and model defaults
+
+Before editing CI, read [the environment guide](references/environment.md).
+When a matching GitHub/GitLab MCP is configured, inspect existing project CI
+variables/secrets first. Reuse clear matches under their existing names through
+job-local `MEOW_*` aliases; ask the user to add only values actually missing.
+Ask whether to import model fallbacks from Claude `settings.json`. Show the user
+a copy table with each `MEOW_*` CI variable, its actual settings value (including
+tokens), source field, existing CI source, and required action. Keep URL/token/key
+values out of YAML.
+All model variables must accept CI overrides ahead of approved local defaults.
+Support direct Anthropic and optional gateways; never assume LiteLLM or a local
+settings file exists. Without settings, use CI variables and Claude defaults.
+
 ## Detect the CI provider
 
 1. Read the repository's `AGENTS.md`, `CLAUDE.md`, and other applicable
@@ -59,7 +73,7 @@ missing a required invariant; never create a duplicate.
   target branch into `refs/remotes/origin/<target>`.
 - Use a normal `pull_request` trigger. Never use `pull_request_target` while
   checking out and executing untrusted change-set code with
-  `ANTHROPIC_API_KEY`.
+  model API credentials.
 
 The GitHub job must include the equivalent of:
 
@@ -79,6 +93,7 @@ steps:
   - run: python -m pip install meow
   - name: Run MEOW report-only review
     run: |
+      # Add the selected MEOW_* exports from the environment guide here.
       git fetch --no-tags origin "refs/heads/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}:refs/remotes/origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}"
       meow review --ci --target-ref "refs/remotes/origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}" --artifact-dir .meow/ci-artifacts
   - uses: actions/upload-artifact@v4
@@ -88,10 +103,9 @@ steps:
       path: .meow/ci-artifacts/
 ```
 
-Set these environment values at the job level, using GitHub expressions and
+Set these CI context values at the job level, using GitHub expressions and
 the project's target branch:
 
-- `ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}`
 - `CI_PIPELINE_SOURCE`: `merge_request_event` for `pull_request`, otherwise
   `push`
 - `CI_MERGE_REQUEST_EVENT_TYPE`: `detached`
@@ -102,6 +116,8 @@ the project's target branch:
 - `CI_MERGE_REQUEST_DESCRIPTION_IS_TRUNCATED`: `false`
 - `CI_COMMIT_BRANCH`: `github.ref_name` for pushes
 - `CI_COMMIT_SHA`: the checked-out PR head SHA or `github.sha` for pushes
+
+Keep selected `MEOW_*` inputs on the review step, per the environment guide.
 
 Keep untrusted GitHub values in environment variables and quote shell
 expansions. Do not interpolate them into shell source.
@@ -116,7 +132,7 @@ expansions. Do not interpolate them into shell source.
   that owns the project's validation jobs.
 - Preserve the template's detached merge-request and non-target branch push
   rules, full Git history, target-ref fetch, `.meow/ci-artifacts/` artifacts,
-  and `ANTHROPIC_API_KEY` secret requirement.
+  and selected `MEOW_*` credential requirements and SDK exports.
 - Use an existing validation stage when one is clearly appropriate, such as
   `test`, `quality`, `verify`, `checks`, or `review`. Add a new `review` stage
   only when the config has an explicit `stages:` list with no suitable stage
@@ -142,13 +158,14 @@ When requested, add `--post-comments github` or `--post-comments gitlab` to
 `meow review --ci`. Keep the fixed install command `python -m pip install meow`;
 do not add an install-spec variable or ask the user to choose the package.
 
-- GitHub: set `MEOW_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` on the review step and
-  grant the job `pull-requests: write` alongside `contents: read`. Actions supplies
+- GitHub: reuse a suitable existing token through a job-local `MEOW_GITHUB_TOKEN`
+  alias, or use `${{ secrets.GITHUB_TOKEN }}`. Grant the job `pull-requests: write`
+  alongside `contents: read`. Actions supplies
   `GITHUB_EVENT_PATH`, `GITHUB_REPOSITORY`, and `GITHUB_API_URL`. Preserve the
   `CI_*` mappings above. Use a token with Pull requests write permission when
   supplying a personal access token instead. Fork PR tokens may be read-only.
-- GitLab: supply a masked `MEOW_GITLAB_TOKEN` access token with `api` scope and
-  permission to comment on the target project. GitLab supplies the API URL,
+- GitLab: reuse a suitable token through a job-local `MEOW_GITLAB_TOKEN` alias,
+  or supply a masked new token with `api` scope and comment access. GitLab supplies the API URL,
   target project ID, and MR IID automatically.
 - Enable posting only for PR/MR events; push jobs keep the report-only command.
   Never expose secrets by switching to `pull_request_target`.
@@ -168,10 +185,10 @@ notes; a failed multi-note publish can leave earlier notes posted.
    - it never includes `--fix`;
    - it checks out/fetches enough history to compute the merge base;
    - it stores `.meow/ci-artifacts/` even when the review fails;
-   - it references `ANTHROPIC_API_KEY` as a secret/CI variable, never as a
-     committed value; and
+   - API URL/credentials are CI variables/secrets, with no literal YAML defaults;
+   - every model accepts an environment override before any approved fallback; and
    - no application files or generated review fixes were changed.
 4. Tell the user which CI file changed, which stage/job owns the integration,
-   and that they must provide `ANTHROPIC_API_KEY` as a masked GitLab variable
-   or GitHub Actions secret. Mention that the job reports PASS/FAIL and does
-   not fix the change set.
+   and show the environment guide's copy table for CI variables/secrets. Mention
+   which model defaults were imported and that the job reports PASS/FAIL without
+   fixing the change set.
