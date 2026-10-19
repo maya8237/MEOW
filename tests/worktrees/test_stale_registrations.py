@@ -3,6 +3,7 @@
 import shutil
 import subprocess
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -56,6 +57,37 @@ def test_feature_worktree_is_recreated_after_its_directory_was_cleaned(repo):
     first = _ensure_feature_worktree(repo, "feat")
     shutil.rmtree(first)
     assert _ensure_feature_worktree(repo, "feat").is_dir()
+
+
+@pytest.mark.parametrize("kind", ["feature", "branch", "existing-branch"])
+def test_creation_preserves_another_worktrees_incomplete_registration(repo, kind):
+    # git worktree add creates its admin directory before writing gitdir.
+    # A repository-wide prune in that window deletes the active registration.
+    pending = repo / ".git" / "worktrees" / "pending"
+    pending.mkdir(parents=True)
+    (pending / "commondir").write_text("../..\n", encoding="utf-8")
+    if kind == "feature":
+        created = _ensure_feature_worktree(repo, "feat", fresh=True)
+    elif kind == "branch":
+        created = _ensure_branch_worktree(repo, "feat", "feature/new")
+    else:
+        git(repo, "branch", "feature/existing")
+        created = _ensure_existing_branch_worktree(repo, "feat", "feature/existing")
+    assert (created / "README.md").read_text(encoding="utf-8") == "x\n"
+    assert (pending / "commondir").read_text(encoding="utf-8") == "../..\n"
+
+
+def test_fresh_worktree_creation_is_safe_across_processes(repo):
+    workers = 6
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        futures = [
+            pool.submit(_ensure_feature_worktree, repo, "feat", fresh=True)
+            for _ in range(workers)
+        ]
+        created = [future.result(timeout=30) for future in futures]
+    assert len(set(created)) == workers
+    for path in created:
+        assert git(path, "rev-parse", "HEAD") == git(repo, "rev-parse", "HEAD")
 
 
 def test_push_does_not_hang_on_a_stuck_remote(repo, tmp_path_factory, monkeypatch):

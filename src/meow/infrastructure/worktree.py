@@ -11,7 +11,27 @@ import re
 import shutil
 import subprocess
 import tempfile
+from functools import wraps
 from pathlib import Path
+
+from meow.infrastructure.worktree_lock import worktree_lock
+
+
+def _serialize_worktree_creation(create):
+    @wraps(create)
+    def serialized(working_dir, *args, **kwargs):
+        git = shutil.which("git")
+        if not git:
+            return create(working_dir, *args, **kwargs)
+        common = _run_git([git, "rev-parse", "--git-common-dir"], cwd=working_dir)
+        if common.returncode != 0:
+            raise RuntimeError(
+                common.stderr.strip() or "Cannot find Git common directory"
+            )
+        with worktree_lock((working_dir / common.stdout.strip()).resolve()):
+            return create(working_dir, *args, **kwargs)
+
+    return serialized
 
 
 def _ensure_gitignore_entry(working_dir: Path, entry: str = ".worktrees/") -> None:
@@ -246,6 +266,7 @@ def _claim_fresh_worktree_dir(
     )
 
 
+@_serialize_worktree_creation
 def _ensure_feature_worktree(
     working_dir: Path,
     feature_name: str,
@@ -326,7 +347,7 @@ def _add_detached_worktree(  # ruff: ignore[too-many-arguments]
     *,
     release_on_failure: bool,
 ) -> None:
-    _prune_worktrees(git, working_dir)
+    _remove_stale_worktree(git, working_dir, worktree_dir)
     argv = [git, "-C", str(working_dir), "worktree", "add", "--detach"]
     argv.append(str(worktree_dir))
     if source_branch:
@@ -390,10 +411,19 @@ def _run_git(
         )
 
 
-def _prune_worktrees(git: str, working_dir: Path) -> None:
-    """Forget worktrees whose directory is gone (cleaned CI workspace, manual
-    rm); git otherwise refuses to re-add their path or check out their branch."""
-    _run_git([git, "worktree", "prune"], cwd=working_dir)
+def _remove_stale_worktree(git: str, working_dir: Path, worktree_dir: Path) -> None:
+    """Forget only the missing checkout being recreated.
+
+    A repository-wide prune can delete another concurrent add's incomplete
+    registration before Git has written its gitdir file.
+    """
+    if (
+        not worktree_dir.exists()
+        and worktree_dir.resolve() in _registered_worktree_paths(git, working_dir)
+    ):
+        _run_git(
+            [git, "worktree", "remove", "--force", str(worktree_dir)], cwd=working_dir
+        )
 
 
 def current_branch(directory: Path, default: str = "detached") -> str:
@@ -439,6 +469,7 @@ def _new_branch_argv(
     return argv
 
 
+@_serialize_worktree_creation
 def _ensure_branch_worktree(
     working_dir: Path,
     feature_name: str,
@@ -469,7 +500,7 @@ def _ensure_branch_worktree(
         )
 
     (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)
-    _prune_worktrees(git, working_dir)
+    _remove_stale_worktree(git, working_dir, worktree_dir)
     branch_exists = (
         _run_git(
             [git, "rev-parse", "--verify", "--quiet", branch_name], cwd=working_dir
@@ -489,6 +520,7 @@ def _ensure_branch_worktree(
     return worktree_dir
 
 
+@_serialize_worktree_creation
 def _ensure_existing_branch_worktree(
     working_dir: Path, feature_name: str, branch_name: str
 ) -> Path:
@@ -515,7 +547,7 @@ def _ensure_existing_branch_worktree(
         )
 
     (working_dir / ".worktrees").mkdir(parents=True, exist_ok=True)
-    _prune_worktrees(git, working_dir)
+    _remove_stale_worktree(git, working_dir, worktree_dir)
     if _ref_exists(git, working_dir, f"refs/heads/{branch_name}"):
         argv = [git, "worktree", "add", str(worktree_dir), branch_name]
     else:

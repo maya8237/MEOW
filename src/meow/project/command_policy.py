@@ -97,11 +97,14 @@ def _os_mismatch(command: str, system: str) -> str | None:
     if is_unix_only:
         return (
             "is a Unix shell command (a .sh script, or bash/sh/zsh run "
-            "directly), which does not run on native Windows. If this "
-            "project is meant to run under WSL, invoke it as "
-            "`wsl <command>` so meow can tell the difference -- or install "
-            "Git for Windows (or another bash/sh/zsh) so the interpreter "
-            "itself resolves on PATH."
+            "directly) that cannot be launched as configured on native "
+            "Windows. To use Git Bash, install Git for Windows if needed "
+            "and add the directory containing sh.exe or bash.exe to the "
+            "PATH inherited by MEOW. Prefix the script with that "
+            "interpreter, for example `sh scripts/lint.sh` or "
+            "`bash scripts/lint.sh`; a bare .sh script still cannot be "
+            "launched directly even with Git Bash on PATH. If this project "
+            "is meant to run under WSL, use `wsl <command>` instead."
         )
     if is_windows_only:
         return (
