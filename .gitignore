@@ -54,10 +54,9 @@ coverage.xml
 *.cover
 *.py.cover
 .hypothesis/
-.pytest_cache/
-/.pytest-graph-baseline/
+.pytest*/
 /Microsoft/
-/docs/exec-plans/active/prompt.*.review.md*
+/docs/exec-plans/
 cover/
 
 # Translations
