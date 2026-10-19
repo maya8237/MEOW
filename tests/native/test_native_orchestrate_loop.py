@@ -1,4 +1,4 @@
-"""A scripted native session: only `meow native orchestrate` helpers drive it."""
+"""A scripted native session: only `meow native run` helpers drive it."""
 
 import json
 import subprocess

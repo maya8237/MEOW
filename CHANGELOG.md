@@ -4,6 +4,16 @@ All notable changes to MEOW will be documented here.
 
 ## Unreleased
 
+## 0.1.8 - 2026-10-19
+
+- Coordinate complete sprints through `meow run --orchestrate` (`-o`), with
+  automatic selection for task files, JQL, and multiple Jira keys. The run
+  skill chooses the appropriate scope; the separate command and skill are removed.
+- Inspect, resume, and cancel either execution engine through the shared lifecycle
+  commands. Native supervisor helpers now live under `meow native run`.
+- Update launcher controls, recovery guidance, and command references. All maintained
+  Markdown docs and skills remain below 200 lines.
+
 ## 0.1.6 - 2026-10-19
 
 - Release by pushing a plain `X.Y.Z` tag; CI sets package/plugin versions and
@@ -24,7 +34,7 @@ All notable changes to MEOW will be documented here.
   user timers. Schedules preserve reviewed arguments, support cancellation,
   and record execution results without keeping the current session open.
 
-- `meow orchestrate` and `/meow:orchestrate`: split an objective, Jira issues,
+- Multi-sprint orchestration (now `meow run --orchestrate`): split an objective, Jira issues,
   a JQL query, or a task file into a graph of tasks, run each as its own
   automatic sprint in parallel, recover failures through triage, merge every
   passing task into one `orchestrator/<id>` branch, review it against the

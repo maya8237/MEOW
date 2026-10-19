@@ -1,4 +1,4 @@
-"""`meow native orchestrate ...`: JSON contracts of the in-session helpers."""
+"""`meow native run ...`: JSON contracts of the in-session helpers."""
 
 import asyncio
 import json
