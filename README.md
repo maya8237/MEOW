@@ -47,7 +47,9 @@ meow run "Add CSV export" --name csv-export
 ```
 
 By default, `meow run` handles the request as one sprint: plan, implement,
-check, and review. Add `-o/--orchestrate` to split an objective into tasks, run
+check, and review.
+
+Add `-o/--orchestrate` to split an objective into tasks, run
 each as a full sprint in its own worktree, and merge passing tasks. MEOW
 reviews the combined result before pushing one branch and opening one PR/MR.
 
