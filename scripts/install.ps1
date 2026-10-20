@@ -34,7 +34,15 @@
             Write-Host "Downloading MEOW $tag for Windows/$architecture..."
             $archive = Join-Path $temporary $asset
             Invoke-WebRequest "$base/download/$tag/$asset" -OutFile $archive -UseBasicParsing
-            $checksum = (Invoke-WebRequest "$base/download/$tag/$asset.sha256" -UseBasicParsing).Content
+            $checksumUrl = "$base/download/$tag/$asset.sha256"
+            try {
+                $checksum = (Invoke-WebRequest $checksumUrl -UseBasicParsing).Content
+            } catch {
+                if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) {
+                    throw "Release $tag is missing its checksum file: $asset.sha256. Installation stopped because the download cannot be verified. URL: $checksumUrl"
+                }
+                throw "Could not download checksum file $asset.sha256 for release $tag. URL: $checksumUrl. $($_.Exception.Message)"
+            }
             if ($checksum -is [byte[]]) { $checksum = [Text.Encoding]::UTF8.GetString($checksum) }
             $expected = ($checksum.Trim() -split '\s+')[0]
             $sha = [Security.Cryptography.SHA256]::Create()
