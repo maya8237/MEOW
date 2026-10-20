@@ -15,8 +15,8 @@ MEOW
 
 root="$HOME/.meow"
 case "$(uname -s)" in
-    Linux|Darwin) ;;
-    *) printf '%s\n' 'Unsupported OS. Use install.ps1 on Windows.' >&2; exit 1 ;;
+    Linux) ;;
+    *) printf '%s\n' 'Unsupported OS. MEOW supports Linux (install.sh) and Windows (install.ps1).' >&2; exit 1 ;;
 esac
 
 mkdir -p "$root/versions"
