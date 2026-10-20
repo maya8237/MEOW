@@ -4,6 +4,17 @@ All notable changes to MEOW will be documented here.
 
 ## Unreleased
 
+## 0.1.9 - 2026-10-20
+
+- Keep a named result worktree and readable branch after successful runs;
+  automatically remove safely integrated task worktrees and merged task branches.
+- Add `meow cleanup [RUN_ID]` for existing runs, including nested parallel workers.
+  Archive worker runtime evidence and preserve unfinished or changed work.
+- Derive omitted feature names from requests and handle branch-name collisions
+  without overwriting existing results.
+- Isolate the CLI naming regression test from checkout state so clean-checkout CI
+  verifies the same behavior as local runs.
+
 ## 0.1.8 - 2026-10-19
 
 - Coordinate complete sprints through `meow run --orchestrate` (`-o`), with
