@@ -122,12 +122,22 @@ def activate(release: Path) -> None:
     if not source.is_file():
         raise ValueError("MEOW release launcher is missing")
     register_checkout_plugin(settings_path(), release / "plugin")
+    print(
+        f"Registered and enabled MEOW's Claude Code plugin in {settings_path()}\n"
+        f"Plugin directory: {release / 'plugin'}\n"
+        "Restart Claude Code to load /meow:* skills (including /meow:run)."
+    )
     _install_launcher(source, root / "bin")
     _add_to_path(root / "bin")
+    print(
+        f"Installed meow and mw commands in {root / 'bin'} and added it to PATH.\n"
+        "Open a new terminal to use them."
+    )
     pointer = root / "current-version"
     with tempfile.NamedTemporaryFile(mode="w", dir=root, delete=False) as stream:
         stream.write(release.name + "\n")
     Path(stream.name).replace(pointer)
+    print(f"Activated MEOW {release.name}")
 
 
 def _install_launcher(source: Path, bin_dir: Path) -> None:

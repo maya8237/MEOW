@@ -166,7 +166,10 @@ def _wants_projects_now(
             "`claude /meow:onboard`. [Y/n]: "
         )
     except EOFError:
-        output("")
+        output(
+            "\nNo input available; skipped project setup. "
+            "Run `claude /meow:onboard` in a project to set it up later."
+        )
         return False
     return answer.strip().lower() in {"", "y", "yes"}
 
@@ -184,7 +187,10 @@ def _project_patterns(ask_path: Callable[[str], str], output: Callable[[str], No
                 "(Enter on an empty line to finish): "
             ).strip()
         except EOFError:
-            output("")
+            output(
+                "\nNo input available; finished adding projects. "
+                "Run `claude /meow:onboard` in another project to set it up later."
+            )
             return
         if not raw:
             return
@@ -258,6 +264,10 @@ def _setup_bun(ask: Callable[[str], str], output: Callable[[str], None]) -> bool
             "onboarded Bun repos? [Y/n]: "
         )
     except EOFError:
+        output(
+            "\nNo input available; skipped Bun shared dependency store setup "
+            "and migration. Rerun the installer interactively to enable it."
+        )
         return False
     if answer.strip().lower() not in {"", "y", "yes"}:
         return False
