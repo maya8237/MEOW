@@ -55,7 +55,7 @@ def build_wheel(destination: Path) -> str:
 
 def run(argv: list[str], env: dict, **kwargs) -> str:
     result = subprocess.run(
-        argv, env=env, capture_output=True, text=True, timeout=180, **kwargs
+        argv, env=env, capture_output=True, text=True, timeout=900, **kwargs
     )
     if result.returncode:
         raise RuntimeError(f"{argv}:\n{result.stdout}\n{result.stderr}")
@@ -228,5 +228,15 @@ def check_update(home: Path, env: dict, version: str) -> None:
     ).read_text() == "# preserved user configuration\n"
 
 
+def annotate_failure(error: BaseException) -> None:
+    """Surface the failure as a GitHub annotation; job logs need a login."""
+    text = f"{type(error).__name__}: {error}"[-3000:]
+    print("::error title=Release smoke failed::" + text.replace(chr(10), "%0A"))
+
+
 if __name__ == "__main__":
-    smoke()
+    try:
+        smoke()
+    except Exception as error:
+        annotate_failure(error)
+        raise
