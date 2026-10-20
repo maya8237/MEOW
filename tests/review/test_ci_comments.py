@@ -56,6 +56,8 @@ def test_github_posts_inline_note(checkout, tmp_path):
 
     def request(url, token, payload=None):
         calls.append((url, token, payload))
+        if "?" in url:
+            return []
         return (
             {"head": {"sha": source}, "base": {"sha": base}} if payload is None else {}
         )
@@ -85,6 +87,8 @@ def test_gitlab_posts_deleted_line_discussion(checkout, tmp_path):
 
     def request(url, token, payload=None):
         calls.append((url, token, payload))
+        if "?" in url:
+            return []
         return {"diff_refs": {"base_sha": base, "start_sha": base, "head_sha": source}}
 
     with patch("meow.integrations.ci_comments._request", request):
@@ -124,7 +128,10 @@ def test_gitlab_posts_deleted_line_discussion(checkout, tmp_path):
 
 
 def test_invalid_location_posts_nothing(checkout, tmp_path):
-    with patch("meow.integrations.ci_comments._request") as request:
+    with (
+        patch("meow.integrations.ci_comments.read_review_comments", return_value={}),
+        patch("meow.integrations.ci_comments._request") as request,
+    ):
         result = run(
             checkout,
             tmp_path,
@@ -143,9 +150,7 @@ def test_invalid_location_posts_nothing(checkout, tmp_path):
 def test_moved_head_posts_nothing(checkout, tmp_path):
     with patch(
         "meow.integrations.ci_comments._request",
-        return_value={
-            "diff_refs": {"head_sha": "moved"},
-        },
+        side_effect=[[], {"diff_refs": {"head_sha": "moved"}}],
     ) as request:
         result = run(
             checkout,
@@ -160,7 +165,8 @@ def test_moved_head_posts_nothing(checkout, tmp_path):
             },
         )
     assert result.verdict == "UNVERIFIED"
-    assert request.call_count == 1
+    assert "remote review revisions" in result.report_path.read_text()
+    assert request.call_count == 2  # ruff: ignore[magic-value-comparison] -- history fetch then revision verification
 
 
 @pytest.mark.parametrize(
@@ -275,7 +281,9 @@ def test_posting_failure_retains_redacted_report(checkout, tmp_path):
     with patch(
         "meow.integrations.ci_comments._request",
         side_effect=[
+            [],
             {"diff_refs": {"base_sha": base, "start_sha": base, "head_sha": source}},
+            [],
             CiReviewError("secret-token failed"),
         ],
     ):
@@ -321,6 +329,7 @@ def test_long_report_does_not_truncate_comment_data(checkout, tmp_path):
         patch(
             "meow.integrations.ci_comments.post_review_comments", return_value=0
         ) as post,
+        patch("meow.integrations.ci_comments.read_review_comments", return_value={}),
     ):
         result = run_ci_review(
             repo,
@@ -342,13 +351,19 @@ def test_github_deleted_line_on_rename_uses_current_path(tmp_path):
     event.write_text('{"number": 7}')
     diff = "--- a/old.txt\n+++ b/new.txt\n@@ -1 +1 @@\n-old\n+new"
     context = CiReviewContext("head", "feature", "dev", "target", "base", diff)
-    with patch(
-        "meow.integrations.ci_comments._request",
-        return_value={
-            "head": {"sha": "head"},
-            "base": {"sha": "target"},
-        },
-    ) as request:
+    with (
+        patch(
+            "meow.integrations.ci_comments.read_review_comments",
+            return_value={"comments": []},
+        ),
+        patch(
+            "meow.integrations.ci_comments._request",
+            return_value={
+                "head": {"sha": "head"},
+                "base": {"sha": "target"},
+            },
+        ) as request,
+    ):
         post_review_comments(
             "github",
             context,

@@ -10,7 +10,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from meow.integrations.ci_review import CiReviewContext, CiReviewError
+from meow.integrations.ci_review import MAX_DIFF, CiReviewContext, CiReviewError
+
+PAGE_SIZE = 100
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -19,7 +21,7 @@ class _NoRedirect(HTTPRedirectHandler):
         raise CiReviewError("review API redirected; check the configured API URL")
 
 
-def _request(url: str, token: str, payload: dict | None = None) -> dict:
+def _request(url: str, token: str, payload: dict | None = None) -> dict | list:
     if urlsplit(url).scheme != "https":
         raise CiReviewError("review API URL must use HTTPS")
     request = Request(
@@ -148,14 +150,82 @@ def _gitlab_position(context: CiReviewContext, finding: dict, refs: dict) -> dic
     }
 
 
-def post_review_comments(
-    provider: str, context: CiReviewContext, response: str, env: Mapping[str, str]
-) -> int:
-    findings = _findings(response, context.diff)
+def _connection(provider: str, env: Mapping[str, str]) -> tuple[str, str]:
     if provider not in {"github", "gitlab"}:
         raise CiReviewError("inline comment provider must be github or gitlab")
     token = _required(env, f"MEOW_{provider.upper()}_TOKEN")
     target = _github_target(env) if provider == "github" else _gitlab_target(env)
+    return token, target
+
+
+def read_review_comments(  # ruff: ignore[complex-structure] -- bounded pagination across provider endpoints
+    provider: str, env: Mapping[str, str]
+) -> dict[str, list]:
+    """Read every page, including replies and general review conversation."""
+    token, target = _connection(provider, env)
+    endpoints = {"discussions": target + "/discussions"}
+    if provider == "github":
+        endpoints = {
+            "comments": target + "/comments",
+            "reviews": target + "/reviews",
+            "conversation": target.replace("/pulls/", "/issues/") + "/comments",
+        }
+    history = {}
+    size = 0
+    for kind, url in endpoints.items():
+        history[kind] = []
+        for page in range(1, 101):
+            items = _request(f"{url}?page={page}&per_page={PAGE_SIZE}", token)
+            if not isinstance(items, list) or not all(
+                isinstance(item, dict) for item in items
+            ):
+                raise CiReviewError("review comments API returned an invalid list")
+            size += len(json.dumps(items))
+            if size > MAX_DIFF:
+                raise CiReviewError("existing review comments exceed review size limit")
+            history[kind].extend(items)
+            if len(items) < PAGE_SIZE:
+                break
+        else:
+            raise CiReviewError("review comments pagination exceeds review size limit")
+    return history
+
+
+def _comment_keys(  # ruff: ignore[complex-structure] -- provider-specific current-line coordinates
+    provider: str, context: CiReviewContext, history: dict
+) -> set:
+    keys = set()
+    if provider == "github":
+        for comment in history["comments"]:
+            # A null line denotes an outdated comment; never use original_line.
+            if comment.get("line") is not None:
+                keys.add((
+                    comment.get("path"),
+                    comment["line"],
+                    comment.get("side"),
+                    " ".join(comment.get("body", "").split()),
+                ))
+    else:
+        for discussion in history["discussions"]:
+            for note in discussion.get("notes", []):
+                position = note.get("position") or {}
+                if position.get("head_sha") != context.source_sha:
+                    continue
+                side = "RIGHT" if position.get("new_line") is not None else "LEFT"
+                keys.add((
+                    position.get("new_path" if side == "RIGHT" else "old_path"),
+                    position.get("new_line" if side == "RIGHT" else "old_line"),
+                    side,
+                    " ".join(note.get("body", "").split()),
+                ))
+    return keys
+
+
+def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revisions and deduplicate before provider writes
+    provider: str, context: CiReviewContext, response: str, env: Mapping[str, str]
+) -> int:
+    findings = _findings(response, context.diff)
+    token, target = _connection(provider, env)
     remote = _request(target, token)
     if provider == "github":
         matches = (
@@ -172,17 +242,32 @@ def post_review_comments(
         }
     if not matches:
         raise CiReviewError("remote review revisions differ from the reviewed checkout")
+    existing = _comment_keys(provider, context, read_review_comments(provider, env))
+    posted = 0
     for finding in findings:
+        old_path, new_path = _locations(context.diff)[
+            finding["path"], finding["line"], finding["side"]
+        ]
+        path = (
+            (old_path if new_path == "/dev/null" else new_path)
+            if provider == "github"
+            else finding["path"]
+        )
+        key = (
+            path,
+            finding["line"],
+            finding["side"],
+            " ".join(finding["body"].split()),
+        )
+        if key in existing:
+            continue
         if provider == "github":
-            old_path, new_path = _locations(context.diff)[
-                finding["path"], finding["line"], finding["side"]
-            ]
             _request(
                 target + "/comments",
                 token,
                 finding
                 | {
-                    "path": old_path if new_path == "/dev/null" else new_path,
+                    "path": path,
                     "commit_id": context.source_sha,
                 },
             )
@@ -195,4 +280,6 @@ def post_review_comments(
                     "position": _gitlab_position(context, finding, refs),
                 },
             )
-    return len(findings)
+        existing.add(key)
+        posted += 1
+    return posted

@@ -223,6 +223,12 @@ def test_ci_reviewer_grants_only_read_tools(  # ruff: ignore[too-many-statements
     )
     agent = ReviewerAgent(ProjectContext(repo, {"models": {"reviewer": None}}))
 
+    from dataclasses import replace
+
+    context = replace(
+        context, existing_comments='{"comments": [{"body": "Existing concern"}]}'
+    )
+
     async def sdk_stream(*, prompt, options):  # ruff: ignore[unused-async] -- SDK async iterator seam
         assert options.allowed_tools == ["Read", "Grep", "Glob"]
         assert options.tools == ["Read", "Grep", "Glob"]
@@ -231,6 +237,7 @@ def test_ci_reviewer_grants_only_read_tools(  # ruff: ignore[too-many-statements
         assert "feature edit" in prompt
         assert "Must preserve the old behavior." in prompt
         assert "truncated" in prompt
+        assert "Existing concern" in prompt
         from claude_agent_sdk import ResultMessage
 
         yield ResultMessage(

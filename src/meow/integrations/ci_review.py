@@ -34,6 +34,7 @@ class CiReviewContext:
     mr_description: str = ""
     mr_description_truncated: bool = False
     post_comments: bool = False
+    existing_comments: str = ""
 
 
 @dataclass(frozen=True)
@@ -200,7 +201,17 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
             target_branch=config.get("delivery", {}).get("target_branch", "dev"),
         )
         if post_comments:
-            context = CiReviewContext(**{**context.__dict__, "post_comments": True})
+            from meow.integrations.ci_comments import read_review_comments
+
+            context = CiReviewContext(**{
+                **context.__dict__,
+                "post_comments": True,
+                "existing_comments": _safe_text(
+                    json.dumps(read_review_comments(post_comments, env)),
+                    env,
+                    limit=None,
+                ),
+            })
         before = _snapshot(repo)
         if plan_file is not None:
             if not plan_file.is_file():

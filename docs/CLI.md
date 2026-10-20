@@ -183,8 +183,9 @@ Add `--post-comments gitlab` with masked `MEOW_GITLAB_TOKEN` (`api` scope and co
 access), or `--post-comments github` with `MEOW_GITHUB_TOKEN` (Pull requests write). See
 [the integration skill](../skills/integrate-ci-review/SKILL.md) for CI variables.
 Posting mode requires a PR/MR event and validates added/deleted-line locations
-and remote revisions. Failures exit 2 with artifacts. Notes use the token's
-identity; reruns may duplicate notes and API failures can leave partial results.
+and remote revisions. Existing comments inform the review; matching inline notes
+are skipped on reruns. Unreadable history or publishing failures exit 2 with
+artifacts. Notes use the token's identity; partial publishes can leave notes posted.
 
 ## Maintainer and internal commands
 

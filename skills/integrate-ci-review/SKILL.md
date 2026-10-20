@@ -170,10 +170,13 @@ do not add an install-spec variable or ask the user to choose the package.
 - Enable posting only for PR/MR events; push jobs keep the report-only command.
   Never expose secrets by switching to `pull_request_target`.
 
-Findings become inline code discussions on added/deleted lines. The CLI checks
-locations and remote revisions before posting; missing tokens, malformed findings,
-or publishing failures exit 2 and retain local artifacts. Reruns can add duplicate
-notes; a failed multi-note publish can leave earlier notes posted.
+Findings become inline discussions on added/deleted lines. Existing comments and
+replies inform the review; already reported concerns stay in the report rather
+than becoming new notes. The CLI checks locations and remote revisions, then
+re-fetches comments to skip matching bodies at the same current diff location.
+Missing tokens, unreadable/oversized history, malformed findings, or publishing
+failures exit 2 and retain artifacts. Partial publishes may leave notes posted;
+concurrent jobs can still race, so serialize comment-posting jobs per PR/MR.
 
 1. Make the smallest edit that fits the existing CI layout. Preserve comments,
    anchors, includes, matrices, and unrelated jobs.
