@@ -146,7 +146,7 @@ def build() -> Path:
         )
     with output.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
-    output.with_name(output.name + ".sha256").write_text(f"{digest}  {output.name}\n")
+    output.with_name(output.name + ".txt").write_text(f"{digest}  {output.name}\n")
     return output
 
 

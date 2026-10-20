@@ -44,11 +44,11 @@ trap 'exit 130' HUP INT TERM
 if [ ! -d "$destination" ]; then
     printf 'Downloading MEOW %s for %s/%s...\n' "$tag" "$system" "$architecture"
     curl -fsSL --retry 3 "$base/download/$tag/$asset" -o "$temporary/$asset"
-    curl -fsSL --retry 3 "$base/download/$tag/$asset.sha256" -o "$temporary/$asset.sha256"
+    curl -fsSL --retry 3 "$base/download/$tag/$asset.txt" -o "$temporary/$asset.txt"
     if command -v sha256sum >/dev/null 2>&1; then
-        (cd "$temporary" && sha256sum -c "$asset.sha256")
+        (cd "$temporary" && sha256sum -c "$asset.txt")
     else
-        (cd "$temporary" && shasum -a 256 -c "$asset.sha256")
+        (cd "$temporary" && shasum -a 256 -c "$asset.txt")
     fi
     mkdir "$temporary/release"
     tar -xzf "$temporary/$asset" -C "$temporary/release"

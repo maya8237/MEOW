@@ -15,7 +15,7 @@ def checksum_server(request):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             body = b'{"tag_name":"1.2.3"}' if self.path == "/latest.json" else b"zip"
-            self.send_response(request.param if self.path.endswith(".sha256") else 200)
+            self.send_response(request.param if self.path.endswith(".txt") else 200)
             self.end_headers()
             self.wfile.write(body)
 
@@ -67,7 +67,7 @@ def test_checksum_download_error_identifies_release_file(
 
     assert result.returncode == 1
     assert "checksum file" in result.stdout
-    assert "meow-windows-x86_64.zip.sha256" in result.stdout
+    assert "meow-windows-x86_64.zip.txt" in result.stdout
     assert "1.2.3" in result.stdout
     if status == HTTPStatus.NOT_FOUND:
         assert "missing" in result.stdout

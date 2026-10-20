@@ -95,7 +95,7 @@ def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
         fixtures.mkdir(parents=True)
         archive = ROOT / "dist" / asset_name()
         shutil.copy2(archive, fixtures)
-        shutil.copy2(archive.with_name(archive.name + ".sha256"), fixtures)
+        shutil.copy2(archive.with_name(archive.name + ".txt"), fixtures)
         server = http.server.ThreadingHTTPServer(
             ("127.0.0.1", 0),
             functools.partial(ReleaseServer, directory=str(temporary / "server")),

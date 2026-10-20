@@ -20,7 +20,7 @@ The Release workflow builds Windows x64, Linux x64/ARM64, and macOS x64/ARM64
 archives, stamps matching package/plugin versions from the tag, and runs the
 streamed installer against a local release server on each platform. Only after
 all builds and smoke tests pass does it publish a GitHub Release with generated
-notes, all archives, and per-archive `.sha256` files. It then advances
+notes, all archives, and per-archive `.txt` files. It then advances
 `latest.json` on the `release-channel` branch. Installers and update checks
 read this manifest through `raw.githubusercontent.com`; they do not require
 `api.github.com`. The channel points only at a published release, never a

@@ -172,7 +172,7 @@ def install_release(tag: str) -> None:
             checksum = Path(temporary) / "checksum"
             base = f"{DOWNLOAD_URL}/{tag}/{asset}"
             _download(base, archive)
-            _download(base + ".sha256", checksum)
+            _download(base + ".txt", checksum)
             unpack_release(archive, checksum.read_text().split()[0], destination)
     _validate_release(destination, tag)
     subprocess.run(

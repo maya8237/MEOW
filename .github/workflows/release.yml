@@ -58,7 +58,7 @@ jobs:
           path: |
             dist/meow-*.tar.gz
             dist/meow-*.zip
-            dist/*.sha256
+            dist/*.txt
           if-no-files-found: error
 
   publish:
