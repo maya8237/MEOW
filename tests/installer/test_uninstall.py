@@ -171,9 +171,11 @@ def test_interactive_uninstall_only_changes_files_after_confirmation(
     replies = iter(["y", str(tmp_path), "", confirm])
     calls = []
     monkeypatch.setattr("builtins.input", lambda _: next(replies))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     module["main"].__globals__.update(
         uninstall=lambda home, **kw: calls.append(("uninstall", kw["purge"])),
         un_onboard=lambda project: calls.append(("project", project)),
+        find_scheduled=lambda: [],
     )
     assert module["main"]() == 0
     assert calls == (
@@ -222,3 +224,111 @@ def test_powershell_reports_errors_but_not_cancellation(tmp_path, helper_exit):
     )
     assert result.returncode == helper_exit
     assert ("MEOW uninstall failed" in result.stdout) is (helper_exit == 1)
+
+
+def test_hooks_edited_by_the_user_and_empty_files_are_cleaned(tmp_path):
+    module = runpy.run_path(str(SCRIPT))
+    project = tmp_path / "project"
+    project.mkdir()
+    install_claude_hooks(project, ["lint"])
+    settings = project / ".claude/settings.local.json"
+    data = json.loads(settings.read_text())
+    data["hooks"]["PostToolUse"][0]["matcher"] = "Edit"  # no longer in the manifest
+    settings.write_text(json.dumps(data))
+    module["un_onboard"](project)
+    assert not settings.exists()
+    assert not (project / ".claude").exists()
+
+
+def test_checkout_registration_outside_meow_is_kept(tmp_path):
+    module = runpy.run_path(str(SCRIPT))
+    checkout = tmp_path / "dev/plugin"
+    checkout.mkdir(parents=True)
+    settings = tmp_path / ".claude/settings.json"
+    settings.parent.mkdir()
+    settings.write_text(
+        json.dumps({
+            "enabledPlugins": {"meow@meow": True},
+            "extraKnownMarketplaces": {
+                "meow": {"source": {"source": "directory", "path": str(checkout)}}
+            },
+            "hooks": {"Stop": [{"hooks": [{"command": "meow native hook x"}]}]},
+        })
+    )
+    module["uninstall"](tmp_path)
+    data = json.loads(settings.read_text())
+    assert data["enabledPlugins"] == {"meow@meow": True}
+    assert "hooks" not in data
+
+
+def test_scheduled_runs_are_found_and_cancelled_on_linux(tmp_path, monkeypatch):
+    if os.name == "nt":
+        pytest.skip("systemd units")
+    module = runpy.run_path(str(SCRIPT))
+    units = tmp_path / "systemd/user"
+    units.mkdir(parents=True)
+    schedule_id = "a" * 32
+    for suffix in ("service", "timer"):
+        (units / f"meow-{schedule_id}.{suffix}").write_text("")
+    (units / "other.timer").write_text("")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    module["cancel_scheduled"].__globals__["subprocess"] = SimpleNamespace(
+        run=lambda *a, **k: None, SubprocessError=Exception
+    )
+    assert module["find_scheduled"]() == [schedule_id]
+    module["cancel_scheduled"]([schedule_id])
+    assert sorted(path.name for path in units.iterdir()) == ["other.timer"]
+
+
+def test_remembered_projects_are_offered(tmp_path, monkeypatch):
+    module = runpy.run_path(str(SCRIPT))
+    project = tmp_path / "project"
+    project.mkdir()
+    (tmp_path / ".meow").mkdir()
+    repos = json.dumps([str(project)])
+    (tmp_path / ".meow/repos.toml").write_text(f"repos = {repos}\n")
+    replies = iter(["n", "y", ""])
+    monkeypatch.setattr("builtins.input", lambda _: next(replies))
+    assert module["ask_removal"](tmp_path) == (False, [project.resolve()], False)
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        ('[install]\nlinker = "isolated"\nglobalStore = true\n', None),
+        (
+            '[install]\nlinker = "isolated"\nglobalStore = true\ncache = "x"\n'
+            "[a]\nb = 1\n",
+            '[install]\ncache = "x"\n[a]\nb = 1\n',
+        ),
+        (
+            'install.linker = "isolated"\ninstall.globalStore = true\n[a]\nb = 1\n',
+            "[a]\nb = 1\n",
+        ),
+    ],
+)
+def test_bunfig_shared_store_settings_are_reverted(tmp_path, before, after):
+    module = runpy.run_path(str(SCRIPT))
+    path = tmp_path / ".bunfig.toml"
+    path.write_text(before)
+    assert module["bunfig_configured"](path)
+    assert module["revert_bunfig"](path)
+    if after is None:
+        assert not path.exists()
+    else:
+        assert path.read_text() == after
+
+
+def test_profile_cleanup_removes_the_installer_blank_line(tmp_path):
+    module = runpy.run_path(str(SCRIPT))
+    profile = tmp_path / ".profile"
+    profile.write_text('echo hi\n\nexport PATH="$HOME/.meow/bin:$PATH"\n')
+    module["remove_profiles"](tmp_path)
+    assert profile.read_text() == "echo hi\n"
+
+
+def test_uninstall_refuses_python_inside_meow(tmp_path, monkeypatch):
+    module = runpy.run_path(str(SCRIPT))
+    monkeypatch.setattr(sys, "executable", str(tmp_path / ".meow/versions/x/python"))
+    with pytest.raises(ValueError, match="outside"):
+        module["check_python_location"](tmp_path / ".meow")

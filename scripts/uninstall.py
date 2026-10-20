@@ -1,17 +1,29 @@
 #!/usr/bin/env python3
 """Uninstall the managed MEOW release using only Python's standard library."""
 
+import contextlib
+import csv
 import ctypes
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
+
+HOOK_PREFIX = "meow native hook "
+TASK = re.compile(r"meow-([0-9a-f]{32})", re.IGNORECASE)
 
 
 def path_key(value: str | Path) -> str:
     return os.path.normcase(str(Path(os.path.expandvars(value)).expanduser().resolve()))
+
+
+def confirmed(prompt: str) -> bool:
+    return input(prompt).strip().lower() in {"y", "yes"}
 
 
 def load_settings(settings: Path) -> dict:
@@ -21,42 +33,115 @@ def load_settings(settings: Path) -> dict:
     return data
 
 
-def clean_plugins(data: dict, root: Path, names: tuple[str, ...]) -> None:
-    for field in ("enabledPlugins", "extraKnownMarketplaces"):
-        entries = data.get(field, {})
-        if not isinstance(entries, dict):
-            raise ValueError(f"{field} must be an object")
-        for name in names:
-            entries.pop(f"{name}@{name}" if field == "enabledPlugins" else name, None)
-    clean_legacy(data, root)
+def object_field(data: dict, field: str) -> dict:
+    value = data.get(field, {})
+    if not isinstance(value, dict):
+        raise ValueError(f"{field} must be an object")
+    return value
 
 
-def clean_legacy(data: dict, root: Path) -> None:
-    env = data.get("env", {})
-    if not isinstance(env, dict):
-        raise ValueError("env must be an object")
-    legacy = env.get("CLAUDE_CODE_PLUGIN_DIRS")
-    if legacy is not None:
-        if not isinstance(legacy, str):
-            raise ValueError("CLAUDE_CODE_PLUGIN_DIRS must be a string")
-        kept = [
-            entry
-            for entry in legacy.split(os.pathsep)
-            if entry and not legacy_path(entry, root).is_relative_to(root)
-        ]
-        if kept:
-            env["CLAUDE_CODE_PLUGIN_DIRS"] = os.pathsep.join(kept)
-        else:
-            env.pop("CLAUDE_CODE_PLUGIN_DIRS", None)
-
-
-def legacy_path(entry: str, root: Path) -> Path:
+def legacy_path(entry: str, base: Path) -> Path:
     path = Path(os.path.expandvars(entry)).expanduser()
-    return (path if path.is_absolute() else root.parent / path).resolve()
+    return (path if path.is_absolute() else base / path).resolve()
 
 
-def write_settings(settings: Path, data: dict) -> None:
+def owned_marketplace(entry: object, root: Path, base: Path) -> bool:
+    """False for a registration that points at someone's own checkout."""
+    source = entry.get("source") if isinstance(entry, dict) else None
+    path = source.get("path") if isinstance(source, dict) else None
+    if not isinstance(path, str):
+        return True
+    target = legacy_path(path, base)
+    return target.is_relative_to(root) or not target.exists()
+
+
+def clean_plugins(
+    data: dict, root: Path, base: Path, names: tuple[str, ...]
+) -> list[str]:
+    """Drop MEOW's marketplaces and plugins; return names left in place."""
+    known = object_field(data, "extraKnownMarketplaces")
+    enabled = object_field(data, "enabledPlugins")
+    kept = []
+    for name in names:
+        if name in known and not owned_marketplace(known[name], root, base):
+            kept.append(name)
+            continue
+        known.pop(name, None)
+        enabled.pop(f"{name}@{name}", None)
+    for field, value in (
+        ("extraKnownMarketplaces", known),
+        ("enabledPlugins", enabled),
+    ):
+        if field in data and not value:
+            del data[field]
+    clean_legacy(data, root, base)
+    return kept
+
+
+def clean_legacy(data: dict, root: Path, base: Path) -> None:
+    env = object_field(data, "env")
+    legacy = env.get("CLAUDE_CODE_PLUGIN_DIRS")
+    if legacy is None:
+        return
+    if not isinstance(legacy, str):
+        raise ValueError("CLAUDE_CODE_PLUGIN_DIRS must be a string")
+    kept = [
+        entry
+        for entry in legacy.split(os.pathsep)
+        if entry and not legacy_path(entry, base).is_relative_to(root)
+    ]
+    if kept:
+        env["CLAUDE_CODE_PLUGIN_DIRS"] = os.pathsep.join(kept)
+    else:
+        del env["CLAUDE_CODE_PLUGIN_DIRS"]
+        if not env:
+            del data["env"]
+
+
+def meow_hook(entry: object) -> bool:
+    hooks = entry.get("hooks") if isinstance(entry, dict) else None
+    return isinstance(hooks, list) and any(
+        isinstance(hook, dict) and str(hook.get("command", "")).startswith(HOOK_PREFIX)
+        for hook in hooks
+    )
+
+
+def clean_hooks(data: dict, manifest: dict) -> None:  # ruff: ignore[complex-structure, too-many-branches]
+    """Remove manifest-owned hooks and any other `meow native hook` command.
+
+    A hook the user edited no longer matches the manifest, but it would still
+    fail on every tool call once the `meow` command is gone.
+    """
+    hooks = object_field(data, "hooks")
+    entries = manifest.get("entries", [])
+    if not isinstance(entries, list):
+        raise ValueError("hook manifest entries must be an array")
+    owned = []
+    for item in entries:
+        if not isinstance(item, dict) or "event" not in item or "entry" not in item:
+            raise ValueError("Invalid hook manifest entry")
+        owned.append(item["entry"])
+    for event, values in list(hooks.items()):
+        if not isinstance(values, list):
+            continue
+        kept = [v for v in values if v not in owned and not meow_hook(v)]
+        if len(kept) == len(values):
+            continue
+        if kept:
+            hooks[event] = kept
+        else:
+            del hooks[event]
+    if "hooks" in data and not hooks:
+        del data["hooks"]
+
+
+def write_settings(settings: Path, data: dict, *, delete_empty: bool = False) -> None:
     if load_settings(settings) == data:
+        return
+    if delete_empty and not data:
+        settings.unlink()
+        with contextlib.suppress(OSError):
+            settings.parent.rmdir()
         return
     temporary = None
     try:
@@ -75,23 +160,11 @@ def remove_plugin(home: Path, root: Path) -> None:
     settings = home / ".claude/settings.json"
     if settings.exists():
         data = load_settings(settings)
-        clean_plugins(data, root, ("meow", "meow-user"))
+        kept = clean_plugins(data, root, home, ("meow", "meow-user"))
+        clean_hooks(data, {})
         write_settings(settings, data)
-
-
-def clean_hooks(data: dict, manifest: dict) -> None:
-    hooks = data.get("hooks", {})
-    if not isinstance(hooks, dict):
-        raise ValueError("hooks must be an object")
-    entries = manifest.get("entries", [])
-    if not isinstance(entries, list):
-        raise ValueError("hook manifest entries must be an array")
-    for item in entries:
-        if not isinstance(item, dict) or "event" not in item or "entry" not in item:
-            raise ValueError("Invalid hook manifest entry")
-        values = hooks.get(item["event"], [])
-        if isinstance(values, list):
-            hooks[item["event"]] = [value for value in values if value != item["entry"]]
+        for name in kept:
+            print(f"Kept {name} in {settings}: it points outside {root}.")
 
 
 def un_onboard(project: Path) -> None:
@@ -108,11 +181,11 @@ def un_onboard(project: Path) -> None:
         settings = project / ".claude" / name
         if settings.exists():
             data = load_settings(settings)
-            clean_plugins(data, root, ("meow-project", "meow-local"))
+            clean_plugins(data, root, project, ("meow-project", "meow-local"))
             clean_hooks(data, owned)
             updates.append((settings, data))
     for settings, data in updates:
-        write_settings(settings, data)
+        write_settings(settings, data, delete_empty=True)
     remove_install(root, root)
     remove_project_ignores(project)
     print(f"Removed MEOW onboarding and project data: {project}")
@@ -133,17 +206,24 @@ def remove_project_ignores(project: Path) -> None:
         path.write_bytes(kept.encode("utf-8"))
 
 
-def remove_profiles(home: Path) -> None:
+def remove_profiles(home: Path) -> None:  # ruff: ignore[complex-structure]
     line = 'export PATH="$HOME/.meow/bin:$PATH"'
     for name in (".profile", ".bashrc", ".bash_profile", ".zshrc"):
         profile = home / name
-        if profile.is_file():
-            content = profile.read_text(encoding="utf-8")
-            kept = "".join(
-                part for part in content.splitlines(True) if part.strip() != line
-            )
-            if kept != content:
-                profile.write_text(kept, encoding="utf-8")
+        if not profile.is_file():
+            continue
+        with profile.open(encoding="utf-8", newline="") as stream:
+            content = stream.read()
+        kept: list[str] = []
+        for part in content.splitlines(True):
+            if part.strip() != line:
+                kept.append(part)
+            elif kept and not kept[-1].strip():
+                kept.pop()  # the blank line the installer put before it
+        text = "".join(kept)
+        if text != content:
+            with profile.open("w", encoding="utf-8", newline="") as stream:
+                stream.write(text)
 
 
 def remove_path(home: Path) -> None:
@@ -175,6 +255,123 @@ def remove_path(home: Path) -> None:
     )
 
 
+def unit_dir() -> Path:
+    base = os.environ.get("XDG_CONFIG_HOME")
+    if base and Path(base).is_absolute():
+        return Path(base) / "systemd" / "user"
+    return Path.home() / ".config" / "systemd" / "user"
+
+
+def find_scheduled() -> list[str]:
+    """Ids of MEOW one-shot triggers registered with this user's OS scheduler."""
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["schtasks", "/Query", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        rows = csv.reader(result.stdout.splitlines())
+        names = [row[0].lstrip("\\") for row in rows if row]
+    else:
+        directory = unit_dir()
+        names = (
+            [path.stem for path in directory.glob("meow-*.timer")]
+            if directory.is_dir()
+            else []
+        )
+    return sorted({m[1].lower() for name in names if (m := TASK.fullmatch(name))})
+
+
+def cancel_scheduled(ids: list[str]) -> None:
+    for schedule_id in ids:
+        if os.name == "nt":
+            result = subprocess.run(
+                ["schtasks", "/Delete", "/TN", f"MEOW-{schedule_id}", "/F"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode:
+                raise ValueError(
+                    f"Could not delete scheduled task MEOW-{schedule_id}: "
+                    f"{(result.stderr or result.stdout).strip()}"
+                )
+            continue
+        name = f"meow-{schedule_id}"
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(
+                ["systemctl", "--user", "disable", "--now", f"{name}.timer"],
+                capture_output=True,
+                timeout=30,
+            )
+        for suffix in ("service", "timer"):
+            (unit_dir() / f"{name}.{suffix}").unlink(missing_ok=True)
+    if ids and os.name != "nt":
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(
+                ["systemctl", "--user", "daemon-reload"],
+                capture_output=True,
+                timeout=30,
+            )
+
+
+def bun_settings(text: str) -> bool:
+    try:
+        install = tomllib.loads(text).get("install", {})
+    except tomllib.TOMLDecodeError:
+        return False
+    return (
+        isinstance(install, dict)
+        and install.get("linker") == "isolated"
+        and install.get("globalStore") is True
+    )
+
+
+def bunfig_configured(path: Path) -> bool:
+    return path.is_file() and bun_settings(path.read_text(encoding="utf-8"))
+
+
+def revert_bunfig(path: Path) -> bool:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+    """Remove the two shared-store keys MEOW's setup writes; True if changed."""
+    original = path.read_text(encoding="utf-8")
+    if not bun_settings(original):
+        return False
+    before = tomllib.loads(original)
+    in_install, kept = False, []
+    key = re.compile(r"^[ \t]*(install\.)?[\"']?(linker|globalStore)[\"']?[ \t]*=")
+    header = re.compile(r"^[ \t]*\[(.*?)\]")
+    for line in original.splitlines(True):
+        if match := header.match(line):
+            in_install = match[1].strip().strip("\"'") == "install"
+        elif (found := key.match(line)) and (in_install or found[1]):
+            continue
+        kept.append(line)
+    text = "".join(kept)
+    expected = {**before, "install": dict(before["install"])}
+    del expected["install"]["linker"], expected["install"]["globalStore"]
+    if not expected["install"]:
+        del expected["install"]
+        text = re.sub(
+            r"^[ \t]*\[\s*[\"']?install[\"']?\s*\][ \t]*\n?", "", text, flags=re.M
+        )
+    try:
+        valid = tomllib.loads(text) == expected
+    except tomllib.TOMLDecodeError:
+        valid = False
+    if not valid:
+        raise ValueError(
+            f"Cannot safely edit {path}; remove linker/globalStore by hand"
+        )
+    if text.strip():
+        path.write_text(text, encoding="utf-8")
+    else:
+        path.unlink()
+    return True
+
+
 def remove_install(path: Path, root: Path) -> None:
     # Never recurse through a symlink or Windows junction into another tree.
     if path.is_symlink():
@@ -190,40 +387,97 @@ def remove_install(path: Path, root: Path) -> None:
             path.unlink()
 
 
+def check_python_location(root: Path) -> None:
+    executables = {Path(sys.executable).absolute(), Path(sys.executable).resolve()}
+    if any(path.is_relative_to(root) for path in executables):
+        raise ValueError("Run this script with Python outside ~/.meow")
+
+
 def uninstall(home: Path, *, purge: bool = False) -> None:
     home = home.resolve()
     root = home / ".meow"
     if root.is_symlink() or root.is_junction():
         raise ValueError(f"Refusing linked install directory: {root}")
-    if Path(sys.executable).resolve().is_relative_to(root):
-        raise ValueError("Run this script with Python outside ~/.meow")
+    check_python_location(root)
     remove_plugin(home, root)
     remove_path(home)
     targets = (
         [root]
         if purge
-        else [
-            root / name
-            for name in (
-                "bin",
-                "versions",
-                "current-version",
-            )
-        ]
+        else [root / name for name in ("bin", "versions", "current-version")]
     )
-    for target in targets:
-        remove_install(target, root)
-
-
-def main() -> int:
     try:
-        purge, projects = ask_removal()
-        if input("Uninstall MEOW now? [y/N]: ").strip().lower() not in {"y", "yes"}:
+        for target in targets:
+            remove_install(target, root)
+    except OSError as exc:
+        raise ValueError(
+            f"{exc}. Close running MEOW commands and terminals, then rerun."
+        ) from exc
+
+
+def saved_projects(home: Path) -> list[Path]:
+    try:
+        data = tomllib.loads((home / ".meow/repos.toml").read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return []
+    repos = data.get("repos", [])
+    if not isinstance(repos, list):
+        return []
+    found = [Path(repo) for repo in repos if isinstance(repo, str)]
+    return [
+        repo for repo in found if repo.is_dir() and repo.resolve() != home.resolve()
+    ]
+
+
+def ask_removal(home: Path) -> tuple[bool, list[Path], bool]:  # ruff: ignore[complex-structure]
+    purge = confirmed("Also delete ALL ~/.meow configuration and run data? [y/N]: ")
+    print("Optional: un-onboard projects, deleting their entire .meow directories,")
+    print("including configuration, custom definitions, plans, and run history.")
+    print("This also removes their MEOW hooks and skill/plugin registrations.")
+    projects: list[Path] = []
+    for project in saved_projects(home):
+        if confirmed(f"Un-onboard remembered project {project}? [y/N]: "):
+            projects.append(project.resolve())
+    while value := input(
+        "Other project path to un-onboard (Enter to finish): "
+    ).strip():
+        project = Path(value.strip("\"'")).expanduser().resolve()
+        if not project.is_dir() or project == home.resolve():
+            print("Enter an existing project directory.")
+            continue
+        if project not in projects:
+            projects.append(project)
+    bun = False
+    if bunfig_configured(home / ".bunfig.toml"):
+        bun = confirmed(
+            "Remove the shared-store linker/globalStore settings MEOW setup may have\n"
+            "added to ~/.bunfig.toml? Migrated Bun repos keep their layout. [y/N]: "
+        )
+    return purge, projects, bun
+
+
+def main() -> int:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+    home = Path.home()
+    try:
+        check_python_location(home.resolve() / ".meow")
+        purge, projects, bun = ask_removal(home)
+        scheduled = find_scheduled()
+        if scheduled:
+            print(f"Will cancel {len(scheduled)} scheduled MEOW run(s) in the OS.")
+        if not confirmed("Uninstall MEOW now? [y/N]: "):
             print("Cancelled. No files changed.")
             return 0
+        failures = 0
         for project in projects:
-            un_onboard(project)
-        uninstall(Path.home(), purge=purge)
+            try:
+                un_onboard(project)
+            except (OSError, ValueError) as exc:
+                failures += 1
+                print(f"Could not un-onboard {project}: {exc}", file=sys.stderr)
+        cancel_scheduled(scheduled)
+        if bun:
+            revert_bunfig(home / ".bunfig.toml")
+        uninstall(home, purge=purge)
     except (EOFError, KeyboardInterrupt):
         print("\nCancelled.")
         return 130
@@ -233,22 +487,9 @@ def main() -> int:
     print("MEOW removed. Open a new terminal and restart Claude Code.")
     if not purge:
         print("Kept ~/.meow configuration and run data.")
-    return 0
-
-
-def ask_removal() -> tuple[bool, list[Path]]:
-    purge = input("Also delete ALL ~/.meow configuration and run data? [y/N]: ")
-    print("Optional: un-onboard projects, deleting their entire .meow directories,")
-    print("including configuration, custom definitions, plans, and run history.")
-    projects = []
-    while value := input("Project path to un-onboard (Enter to finish): ").strip():
-        project = Path(value.strip("\"'")).expanduser().resolve()
-        if not project.is_dir() or project == Path.home().resolve():
-            print("Enter an existing project directory.")
-            continue
-        if project not in projects:
-            projects.append(project)
-    return purge.strip().lower() in {"y", "yes"}, projects
+    if failures:
+        print(f"{failures} project(s) could not be un-onboarded.", file=sys.stderr)
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

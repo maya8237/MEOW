@@ -13,14 +13,34 @@
       \_____/___)
 
 '@
-    try {
-        $python = $env:MEOW_PYTHON
-        if (-not $python) {
-            $python = (Get-Command python -ErrorAction SilentlyContinue).Source
+    # Newest Python 3.12+ from `where python` and the py launcher (or MEOW_PYTHON),
+    # found as install.ps1 does; venvs resolve to their base interpreter.
+    function Find-Python {
+        $probe = 'import os,sys;v=sys.version_info;print(v[0]*10000+v[1]*100+v[2],os.path.realpath(sys._base_executable))'
+        $candidates = @()
+        if ($env:MEOW_PYTHON) {
+            $candidates = @($env:MEOW_PYTHON)
+        } else {
+            $ErrorActionPreference = 'Continue'
+            $candidates += @(& where.exe python 2>$null)
+            foreach ($line in @(& py -0p 2>$null)) {
+                if ("$line" -match '[A-Za-z]:\\.*\.exe\s*$') { $candidates += $Matches[0].Trim() }
+            }
         }
-        if (-not $python) { throw 'Python 3.12+ is required; set MEOW_PYTHON to its path.' }
-        & $python -c 'import sys;sys.exit(sys.version_info < (3,12))'
-        if ($LASTEXITCODE -ne 0) { throw 'Python 3.12+ is required; set MEOW_PYTHON to its path.' }
+        $best = $null
+        foreach ($candidate in $candidates) {
+            $ErrorActionPreference = 'Continue'
+            try { $found = "$(& $candidate -c $probe 2>$null)" } catch { continue }
+            if ($LASTEXITCODE -ne 0 -or $found -notmatch '^(\d+) (.+)$') { continue }
+            if ([int]$Matches[1] -ge 31200 -and (-not $best -or [int]$Matches[1] -gt $best.Key)) {
+                $best = @{ Key = [int]$Matches[1]; Path = $Matches[2] }
+            }
+        }
+        if (-not $best) { throw 'Python 3.12+ is required; set MEOW_PYTHON to its path.' }
+        return $best.Path
+    }
+    try {
+        $python = Find-Python
         $script = $null
         if ($PSScriptRoot) { $script = Join-Path $PSScriptRoot 'uninstall.py' }
         if (-not $script -or -not (Test-Path -LiteralPath $script)) {

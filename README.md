@@ -109,6 +109,11 @@ irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.ps1 |
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.sh | sh
 ```
 
+It asks before changing anything. It removes the MEOW release, `meow`/`mw` on
+PATH, the Claude Code plugin and skill registrations, scheduled MEOW runs, and
+(optionally) `~/.meow` data, Bun shared-store settings, and each project's
+`.meow/`, hooks, and plugin entries.
+
 ## Docs
 
 - [Architecture](docs/ARCHITECTURE.md)
