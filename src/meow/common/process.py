@@ -47,7 +47,9 @@ def process_identity(  # ruff: ignore[too-many-return-statements, complex-struct
     stat = Path(f"/proc/{pid}/stat")
     if stat.is_file():
         try:
-            return stat.read_text(encoding="utf-8").rsplit(")", 1)[1].split()[19]
+            fields = stat.read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+            # A zombie has exited and only awaits reaping, so it is not live.
+            return None if fields[0] in {"Z", "X"} else fields[19]
         except (OSError, IndexError):
             return None
     try:
