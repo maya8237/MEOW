@@ -114,7 +114,7 @@ class RolePolicy:
                         candidate.resolve().relative_to(project_root.resolve())
                     )
                 path = _relative_path(raw_path)
-            except ValueError:
+            except (ValueError, OSError):
                 return "deny"
             # A directory search also reaches protected paths beneath it.
             hits = [rule.action for rule in path_rules if _contains(rule.path, path)]

@@ -4,6 +4,7 @@ import asyncio
 import copy
 import os
 import re
+import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import suppress
 from pathlib import Path
@@ -14,6 +15,8 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    CLIConnectionError,
+    CLINotFoundError,
     PermissionResultAllow,
     PermissionResultDeny,
     ProcessError,
@@ -48,6 +51,18 @@ _BASH_TIMEOUT_ENV = {
 _SDK_CRASH_RETRY_ATTEMPTS = 3
 _SDK_CRASH_RETRY_BACKOFF = 1.0
 _NTSTATUS_SEVERITY_BIT = 0x80000000
+_OUTPUT_UNLINK_ATTEMPTS = 3
+_OUTPUT_UNLINK_BACKOFF = 0.2
+
+
+def _is_os_failure(exc: BaseException) -> bool:
+    """True for an operating-system failure (a `WinError`, a locked or
+    denied file, a process that could not start), which a short wait and a
+    fresh attempt often clears: a plain `OSError`, or an SDK connection error
+    other than a missing CLI. Everything else is a real failure."""
+    if isinstance(exc, CLINotFoundError):
+        return False
+    return isinstance(exc, OSError | CLIConnectionError)
 
 
 def _looks_like_a_crash(exit_code: int | None) -> bool:
@@ -96,8 +111,13 @@ def guard_tools(
     previous = options.can_use_tool
 
     async def can_use_tool(tool: str, tool_input: dict[str, Any], context: object):
-        if tool in tools and (reason := deny_reason(tool_input)):
-            return PermissionResultDeny(message=reason, interrupt=interrupt)
+        if tool in tools:
+            try:
+                reason = deny_reason(tool_input)
+            except OSError as exc:  # cannot verify the target: refuse, don't crash
+                reason = f"Could not check this call ({exc}); try another approach"
+            if reason:
+                return PermissionResultDeny(message=reason, interrupt=interrupt)
         if previous is not None:
             return await previous(tool, tool_input, context)
         return PermissionResultAllow()
@@ -147,8 +167,23 @@ def allow_only_tools(
 
 
 def prepare_output_file(output_file: Path) -> None:
-    """Remove a prior output so a later existence check cannot accept stale data."""
-    output_file.unlink(missing_ok=True)
+    """Remove a prior output so a later existence check cannot accept stale data.
+
+    A file another process briefly holds open (a `WinError` sharing violation)
+    is retried; if it stays locked it is emptied instead, and failing that the
+    run continues with a warning rather than crashing before the agent starts.
+    """
+    for attempt in range(_OUTPUT_UNLINK_ATTEMPTS):
+        try:
+            output_file.unlink(missing_ok=True)
+            return
+        except OSError as exc:
+            reason = str(exc)
+            time.sleep(_OUTPUT_UNLINK_BACKOFF * (attempt + 1))
+    try:
+        output_file.write_text("", encoding="utf-8")
+    except OSError:
+        logger.warning("output_not_cleared", file=str(output_file), reason=reason)
 
 
 def _preview(text: str) -> str:
@@ -285,6 +320,13 @@ async def _consume_query(  # ruff: ignore[complex-structure]
             exc.stderr = last_text
         raise
     return "\n".join(parts)
+
+
+def _check_os_retry(exc: BaseException, role: str, attempt: int) -> None:
+    """Re-raise `exc` unless another attempt is worthwhile; else log the retry."""
+    if not _is_os_failure(exc) or attempt >= _SDK_CRASH_RETRY_ATTEMPTS:
+        raise exc
+    logger.warning("os_error_retry", role=role, attempt=attempt, reason=str(exc))
 
 
 def _process_error_message(
@@ -542,6 +584,10 @@ class Agent:
                 raise RuntimeError(
                     _process_error_message(role, exc, crashed=crashed, attempt=attempt)
                 ) from exc
+            except (OSError, CLIConnectionError) as exc:
+                _check_os_retry(exc, role, attempt)
+                await asyncio.sleep(delay)
+                delay *= 2
 
     async def run_definition_query(self, agent, prompt, options, role):
         pool = self.context.config.get("_workflow_pool")
@@ -644,7 +690,9 @@ class SessionAgent(Agent):
             "to see what is already done; do not redo finished work.\n\n"
         )
 
-    async def _turn(self, message: str) -> str:
+    async def _turn(  # ruff: ignore[too-many-statements]
+        self, message: str
+    ) -> str:
         """Send one message and return the assistant's text for that turn.
 
         A full context window or a crashed CLI process replaces the session and
@@ -663,6 +711,12 @@ class SessionAgent(Agent):
             except ProcessError as exc:
                 crashes += 1
                 await self._recover_crash(exc, crashes)
+                continue
+            except (OSError, CLIConnectionError) as exc:
+                crashes += 1
+                _check_os_retry(exc, self.role, crashes)
+                await asyncio.sleep(_SDK_CRASH_RETRY_BACKOFF * 2 ** (crashes - 1))
+                await self._restart("hit an operating-system error")
                 continue
             self._recap = ""
             logger.info("session_turn_finished", role=self.role)

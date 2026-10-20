@@ -242,19 +242,34 @@ def describe_lint_plan(commands: list[LintCommand]) -> None:
         )
 
 
+async def _lint_or_skip(
+    working_dir: Path, commands: list[LintCommand], file_path: str, timeout: float
+) -> list[str]:
+    """Per-file lint problems; a file the OS won't let us inspect (a `WinError`)
+    is skipped so the agent's turn goes on."""
+    try:
+        return await run_lint_on_file(working_dir, commands, file_path, timeout)
+    except OSError as exc:
+        logger.warning("lint_hook_failed", file=file_path, reason=str(exc))
+        return []
+
+
 def make_lint_hook(working_dir: Path, commands: list[LintCommand], timeout: float = 60):
     per_file = [entry for entry in commands if entry.per_file]
 
     async def lint_edited_file(input_data, tool_use_id, context):
-        if input_data.get("tool_name") not in {"Write", "Edit"}:
-            return {}
-
         file_path = input_data.get("tool_input", {}).get("file_path")
-        if not file_path:
+        if input_data.get("tool_name") not in {"Write", "Edit"} or not file_path:
             return {}
 
         logger.debug("lint_hook_running", file=file_path, commands=len(per_file))
-        problems = await run_lint_on_file(working_dir, per_file, file_path, timeout)
+        try:
+            problems = await run_lint_on_file(working_dir, per_file, file_path, timeout)
+        except (
+            OSError
+        ) as exc:  # a file the OS won't let us inspect must not crash the turn
+            logger.warning("lint_hook_failed", file=file_path, reason=str(exc))
+            return {}
         if not problems:
             return {}  # clean or auto-fixed -- nothing fed back into context
 
