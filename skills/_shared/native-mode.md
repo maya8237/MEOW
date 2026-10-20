@@ -141,6 +141,9 @@ Report success only when `finalize` returns `complete: true`.
 Separate-worktree finalization commits and pushes; in-place runs do not
 automatically deliver. Claude owns transcripts; journals retain role/session
 references, and missing SDK usage is `unavailable`.
+Successful finalization cleans integrated task artifacts and retains the result.
+`meow cleanup [RUN_ID]` retries cleanup; preserved workers include a reason.
+Worker runtime evidence is archived under `.meow/cleanup/` before removal.
 
 Use artifact paths returned by helpers, never reconstruct names. Default
 `docs_dir` is `.meow/plans`. Verdicts start with `SUMMARY: ...`, then

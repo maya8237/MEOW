@@ -3,8 +3,10 @@ worktrees, never its branches and never anything that could hold unsaved work.""
 
 from pathlib import Path
 
+from meow.execution.cleanup import cleanup_run, remove_worker
 from meow.execution.orchestration.model import OrchestratorRecord
 from meow.execution.orchestration.store import OrchestratorStore
+from meow.execution.run_state import RunStore
 from meow.infrastructure.worktree_controls import (
     WorktreeSafetyError,
     _git,
@@ -45,14 +47,20 @@ def _branch_refusals(repo: Path, record: OrchestratorRecord) -> list[str]:
     integration = record.integration.get("branch")
     if not integration:
         return ["the orchestrator has no integration branch"]
-    return [
-        f"task branch {task.branch} is not merged into {integration}"
-        for task in record.tasks
-        if task.branch
-        and _git(
+    reasons = []
+    for task in record.tasks:
+        if not task.branch:
+            continue
+        ref = _git(repo, "show-ref", "--verify", "--quiet", f"refs/heads/{task.branch}")
+        if ref.returncode and not (task.worktree and Path(task.worktree).exists()):
+            continue  # Already removed by successful consolidation.
+        if _git(
             repo, "merge-base", "--is-ancestor", task.branch, integration
-        ).returncode
-    ]
+        ).returncode:
+            reasons.append(
+                f"task branch {task.branch} is not merged into {integration}"
+            )
+    return reasons
 
 
 def _push_refusals(repo: Path, record: OrchestratorRecord) -> list[str]:
@@ -105,3 +113,58 @@ def clean_orchestrator(repo: Path, orch_id: str) -> list[Path]:
     if reasons:
         raise WorktreeSafetyError("Refusing cleanup: " + "; ".join(reasons))
     return _remove(repo, paths)
+
+
+def consolidate_orchestrator(repo: Path, orch_id: str) -> dict:  # ruff: ignore[too-many-statements, too-many-branches, complex-structure]
+    """Keep the delivered integration checkout and discard merged task artifacts."""
+    repo = repo.resolve()
+    store = OrchestratorStore(repo)
+    record = store.load(orch_id)
+    report = {"run_id": orch_id, "removed": [], "kept": []}
+    if record.phase != "delivered":
+        report["kept"].append(f"orchestrator is {record.phase}, not delivered")
+        return report
+    target = record.integration.get("branch")
+    active = Path(record.integration.get("worktree") or repo).resolve()
+    if not target or active not in _registered(repo):
+        report["kept"].append("integration worktree is missing")
+        return report
+    for task in record.tasks:
+        if not task.branch or not task.worktree:
+            continue
+        path = Path(task.worktree).resolve()
+        try:
+            if (
+                task.status != "merged"
+                or task.branch != f"{target}-{task.id}"
+                or path == active
+            ):
+                raise WorktreeSafetyError(
+                    f"task {task.id} is unfinished or not owned by this orchestrator"
+                )
+            for child_id in task.run_ids:
+                child = RunStore(repo).load(child_id)
+                if (
+                    child.source != "orchestrator"
+                    or Path(child.worktree).resolve() != path
+                ):
+                    raise WorktreeSafetyError(
+                        f"run {child_id} is not owned by task {task.id}"
+                    )
+                nested = cleanup_run(repo, child_id, integrated_into=target)
+                report["removed"].extend(nested["removed"])
+                report["kept"].extend(nested["kept"])
+            ref = _git(repo, "rev-parse", "--verify", f"refs/heads/{task.branch}")
+            if ref.returncode:
+                if path in _registered(repo) or path.exists():
+                    raise WorktreeSafetyError(f"task {task.id} branch is missing")
+                continue
+            commit = ref.stdout.strip()
+            if _git(repo, "merge-base", "--is-ancestor", commit, target).returncode:
+                raise WorktreeSafetyError(f"task {task.id} has unmerged commits")
+            if remove_worker(repo, path, target, commit, branch=task.branch):
+                report["removed"].append(str(path))
+        except (OSError, RuntimeError, ValueError) as exc:
+            report["kept"].append(str(exc))
+    store.update(orch_id, lambda rec: rec.delivery.update(cleanup=report))
+    return report

@@ -16,6 +16,7 @@ _VISIBLE_COMMANDS = (
     "status",
     "cancel",
     "worktree",
+    "cleanup",
     "resume",
     "hooks",
     "ipython",
@@ -119,8 +120,8 @@ def _add_feature_args(parser: argparse.ArgumentParser):
         default=None,
         help=(
             "Feature name used for generated files and as the worktree name "
-            "when worktrees are enabled. Required for plain build mode "
-            "unless --no-worktree/-n is supplied; meaningless (and "
+            "when worktrees are enabled; defaults to a short request name. "
+            "Meaningless (and "
             "rejected) with --jira/--lint-fix/--orchestrate, which derive their own "
             "worktree names."
         ),
@@ -247,6 +248,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     )
     cancel_parser.add_argument("run_id")
     _add_common_args(cancel_parser)
+    cleanup_parser = subparsers.add_parser(
+        "cleanup", help="Keep completed results and remove integrated task artifacts."
+    )
+    cleanup_parser.add_argument("run_id", nargs="?")
+    _add_common_args(cleanup_parser)
     worktree_parser = subparsers.add_parser(
         "worktree", help="Inspect and safely clean run worktrees."
     )

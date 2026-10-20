@@ -82,7 +82,6 @@ def test_register_list_cancel_preserves_request(  # ruff: ignore[too-many-statem
     "argv",
     [
         ["status"],
-        ["run", "task"],
         ["run", "task", "--name", "x", "--no-worktree"],
         ["run", "task", "--name", "x", "--manually-approve-plan"],
         ["run", "--lint-fix"],
@@ -93,6 +92,12 @@ def test_invalid_run_never_registers(tmp_path, backend, argv):
     with pytest.raises(ValueError):
         scheduling.schedule_run(tmp_path, future(), argv)
     backend.assert_not_called()
+
+
+def test_scheduled_run_can_derive_name(tmp_path, backend):
+    job = scheduling.schedule_run(tmp_path, future(), ["run", "Add CSV export"])
+    assert "Add CSV export" in job["argv"]
+    assert job["state"] == "scheduled"
 
 
 def test_registration_failure_is_saved_and_reported(tmp_path, monkeypatch, backend):

@@ -53,9 +53,11 @@ def test_delivers_tasks_with_conflict_resolution_push_and_review(  # ruff: ignor
     repo = world.repo
     ui_worktree = world.sim.launcher.launches[1]["worktree"]
 
-    assert git(repo, "rev-parse", "--verify", f"{branch}-api")
-    assert git(repo, "rev-parse", "--verify", f"{branch}-ui")
-    assert (ui_worktree / "api.py").exists()
+    branches = git(repo, "branch", "--format=%(refname:short)").splitlines()
+    assert f"{branch}-api" not in branches
+    assert f"{branch}-ui" not in branches
+    assert not ui_worktree.exists()
+    assert (integration / "api.py").exists()
     title, body, head, base, _output = script.pull_request.calls[0]
     report = (world.store.dir_for(oid) / "report.md").read_text(encoding="utf-8")
 

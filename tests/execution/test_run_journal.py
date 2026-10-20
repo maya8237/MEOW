@@ -71,7 +71,7 @@ def test_interrupted_generator_is_recorded_before_edit(tmp_path):
     ]
 
 
-def test_run_records_planning_and_completion(tmp_path):
+def test_run_records_planning_and_completion(tmp_path):  # ruff: ignore[too-many-statements]
     (tmp_path / ".meow").mkdir()
     (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     plan = tmp_path / "plan.md"
@@ -109,11 +109,13 @@ def test_run_records_planning_and_completion(tmp_path):
             "meow.execution.workflow.builtin_steps._review_round", side_effect=passed
         ),
         patch("meow.execution.workflow.builtin_steps.deliver_verified_run") as deliver,
+        patch("meow.execution.sprint_runner.cleanup_completed") as cleanup,
     ):
         planner.return_value.run = AsyncMock(return_value=plan)
         asyncio.run(run_sprint(tmp_path, "x", "request", use_worktree=False))
     record = RunStore(tmp_path).latest()
     assert record.phase == "complete"
+    cleanup.assert_called_once_with(tmp_path.resolve(), record.id)
     assert record.plan_file == str(plan)
     deliver.assert_called_once()
     assert deliver.call_args.args[0].directory == RunStore(tmp_path).directory

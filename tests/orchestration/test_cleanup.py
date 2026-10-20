@@ -181,3 +181,73 @@ def test_clean_refuses_a_worktree_outside_the_worktree_root(delivered, tmp_path)
 
     with pytest.raises(WorktreeSafetyError, match="outside the MEOW worktree root"):
         clean_orchestrator(delivered["repo"], delivered["id"])
+
+
+def test_consolidate_keeps_integration_and_deletes_merged_task_branch(delivered):
+    from meow.execution.orchestration.cleanup import consolidate_orchestrator
+
+    report = consolidate_orchestrator(delivered["repo"], delivered["id"])
+    assert report["kept"] == []
+    assert delivered["integration_wt"].is_dir()
+    assert not delivered["task_wt"].exists()
+    branches = git(
+        delivered["repo"], "branch", "--format=%(refname:short)"
+    ).splitlines()
+    assert delivered["integration"] in branches
+    assert delivered["task_branch"] not in branches
+    assert consolidate_orchestrator(delivered["repo"], delivered["id"])["removed"] == []
+
+
+def test_result_can_still_be_removed_after_consolidation(delivered):
+    from meow.execution.orchestration.cleanup import consolidate_orchestrator
+
+    consolidate_orchestrator(delivered["repo"], delivered["id"])
+    removed = clean_orchestrator(delivered["repo"], delivered["id"])
+    assert removed == [delivered["integration_wt"].resolve()]
+
+
+def test_consolidate_preserves_dirty_worker(delivered):
+    from meow.execution.orchestration.cleanup import consolidate_orchestrator
+
+    (delivered["task_wt"] / "scratch.txt").write_text("keep", encoding="utf-8")
+    report = consolidate_orchestrator(delivered["repo"], delivered["id"])
+    assert report["kept"]
+    assert delivered["task_wt"].is_dir()
+
+
+def test_consolidate_also_removes_nested_parallel_workers(delivered):
+    from meow.execution.orchestration.cleanup import consolidate_orchestrator
+    from meow.execution.run_state import RunStore
+
+    repo = delivered["repo"]
+    store = RunStore(repo)
+    child = store.create(
+        source="orchestrator",
+        request="API",
+        repo=repo,
+        worktree=delivered["task_wt"],
+        branch=delivered["task_branch"],
+    )
+    nested = repo / ".worktrees" / f"{child.id}-slice"
+    commit = git(repo, "rev-parse", delivered["task_branch"])
+    git(repo, "worktree", "add", "--detach", str(nested), commit)
+    store.transition(
+        child.id,
+        "complete",
+        results={
+            "tasks": {
+                "slice": {
+                    "status": "complete",
+                    "commit": commit,
+                    "worktree": str(nested),
+                },
+            }
+        },
+    )
+    delivered["store"].update(
+        delivered["id"], lambda rec: rec.tasks[0].run_ids.append(child.id)
+    )
+    report = consolidate_orchestrator(repo, delivered["id"])
+    assert not nested.exists()
+    assert report["kept"] == []
+    assert delivered["integration_wt"].is_dir()

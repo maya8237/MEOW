@@ -7,6 +7,7 @@ from pathlib import Path
 from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled, check_cancel, delivery_lock
 from meow.infrastructure.worktree import _is_linked_worktree, _run_git
+from meow.infrastructure.worktree_names import result_branch
 from meow.infrastructure.worktree_setup import is_secret_like
 from meow.project.config_files import SHARED_PROJECT_PATHS
 
@@ -118,10 +119,12 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
         return False
     try:
         check_cancel(store, run_id)
+        if _git(active, "branch", "--show-current").stdout.strip() == "":
+            result_branch(active, record.results.get("feature_name") or record.request)
         if push:
-            branch, remote = _branch_and_remote(active, f"meow/{run_id}")
+            branch, remote = _branch_and_remote(active)
         else:
-            branch, remote = _checked_out_branch(active, f"meow/{run_id}"), None
+            branch, remote = _checked_out_branch(active), None
         previous = record.delivery
         if push and previous.get("pushed") and previous.get("commit"):
             return True

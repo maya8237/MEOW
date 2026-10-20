@@ -12,6 +12,7 @@ from meow.execution.run_policy import (
     uses_orchestration,
 )
 from meow.infrastructure.worktree import _is_linked_worktree
+from meow.infrastructure.worktree_names import request_name
 
 
 def _validate_feature_name_requirement(
@@ -28,7 +29,7 @@ def _validate_feature_name_requirement(
         and not _is_linked_worktree(working_dir)
     )
     if requires_name and args.feature_name is None:
-        parser.error("--name/-f is required unless --no-worktree/-n is supplied")
+        args.feature_name = request_name(args.request or "feature")
 
 
 def _validate_lint_fix_flags(parser: argparse.ArgumentParser, args) -> None:

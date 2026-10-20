@@ -64,11 +64,10 @@ def test_separate_feature_worktree_commits_and_pushes(tmp_path):
     assert deliver_verified_run(store, run_id) is True
 
     record = store.load(run_id)
-    assert record.delivery["branch"] == f"meow/{run_id}"
+    assert record.delivery["branch"] == "meow/feature"
     assert record.delivery["commit"] == git(active, "rev-parse", "HEAD")
     assert (
-        git(remote, "rev-parse", f"refs/heads/meow/{run_id}")
-        == record.delivery["commit"]
+        git(remote, "rev-parse", "refs/heads/meow/feature") == record.delivery["commit"]
     )
 
 
@@ -109,7 +108,7 @@ def test_auto_source_branch_delivers_to_separate_branch(
 
     assert deliver_verified_run(store, run_id, auto=args.auto) is True
 
-    assert git(remote, "show", f"meow/{run_id}:file.txt") == "after"
+    assert git(remote, "show", "meow/feature:file.txt") == "after"
     assert git(active, "rev-parse", "HEAD^") == git(repo, "rev-parse", "release/test")
     assert git(repo, "show", "release/test:file.txt") == "before"
     assert (repo / "file.txt").read_text(encoding="utf-8") == "uncommitted main changes"
@@ -214,7 +213,7 @@ def test_delivery_commits_where_git_has_no_identity(tmp_path, monkeypatch):
 
     assert deliver_verified_run(store, run_id) is True
 
-    assert git(remote, "rev-parse", f"refs/heads/meow/{run_id}")
+    assert git(remote, "rev-parse", "refs/heads/meow/feature")
 
 
 def test_delivery_does_not_hang_on_a_stuck_push(tmp_path, monkeypatch):
@@ -283,7 +282,7 @@ def test_push_false_on_detached_head_switches_to_run_branch(tmp_path):
 
     deliver_verified_run(store, run_id, push=False)
 
-    assert git(active, "branch", "--show-current") == f"meow/{run_id}"
+    assert git(active, "branch", "--show-current") == "meow/feature"
     assert store.load(run_id).phase == "committed"
 
 

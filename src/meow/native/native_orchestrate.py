@@ -755,7 +755,7 @@ def _validate_delivery(store: OrchestratorStore, orch_id: str) -> None:
         raise
 
 
-def record_pr(
+def record_pr(  # ruff: ignore[too-many-statements]
     repo: Path, orch_id: str, *, url: str | None = None, error: str | None = None
 ) -> dict:
     """Record how opening the PR went and finish the orchestrator as delivered."""
@@ -779,6 +779,9 @@ def record_pr(
 
     updated = store.update(orch_id, mutate)
     report = write_report(repo, updated)
+    from meow.execution.cleanup import cleanup_completed
+
+    cleanup_completed(repo, orch_id)
     lock.release()
     return {
         "phase": "delivered",

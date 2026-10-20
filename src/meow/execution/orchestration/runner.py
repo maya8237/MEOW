@@ -378,6 +378,9 @@ class _Driver:
                 self.repo, self.store, self.orch_id, self.config, self.agents
             )
         self._set_phase("delivered")
+        from meow.execution.cleanup import cleanup_completed
+
+        await asyncio.to_thread(cleanup_completed, self.repo, self.orch_id)
 
     # -- intake -----------------------------------------------------------
 

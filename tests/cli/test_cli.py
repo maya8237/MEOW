@@ -40,7 +40,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
         help_text = output.getvalue()
         self.assertIn(
-            "{run,review,plan,status,cancel,worktree,resume,hooks,ipython,workflows,agents,ui,schedule}",
+            "{run,review,plan,status,cancel,worktree,cleanup,resume,hooks,ipython,workflows,agents,ui,schedule}",
             help_text,
         )
         self.assertNotIn("_worker", help_text)
@@ -1315,18 +1315,18 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @patch("meow.cli.dispatch.run_review_command", new_callable=AsyncMock)
     @patch("meow.cli.dispatch.run_plan", new_callable=AsyncMock)
     @patch("meow.cli.dispatch.run_sprint", new_callable=AsyncMock)
-    def test_plan_command_requires_worktree_when_not_disabled(
+    def test_plan_command_derives_name_when_omitted(
         self, mock_sprint, mock_plan, mock_review, mock_boot
     ):
         with (
             patch("meow.cli.validation._is_linked_worktree", return_value=False),
             patch("sys.argv", ["meow", "plan", "ship-it", "--work-dir", "."]),
-            self.assertRaises(SystemExit),
         ):
             cli.cli_main()
 
-        mock_boot.assert_not_called()
-        mock_plan.assert_not_called()
+        mock_boot.assert_called_once()
+        mock_plan.assert_awaited_once()
+        self.assertEqual(mock_plan.call_args.args[1], "ship-it")
         mock_review.assert_not_called()
         mock_sprint.assert_not_called()
 
@@ -2218,16 +2218,12 @@ class FeatureNameRequirementTests(unittest.TestCase):
     directory in place regardless -- a --name with no effect, required for
     no reason."""
 
-    def test_plain_run_without_name_or_no_worktree_is_rejected(self):
-        with (
-            patch("meow.cli.validation._is_linked_worktree", return_value=False),
-            patch("meow.execution.run_policy._ensure_clean_tree"),
-            patch("sys.argv", ["meow", "run", "do it", "--work-dir", "."]),
-            self.assertRaises(SystemExit) as ctx,
-        ):
-            cli.cli_main()
-
-        self.assertEqual(ctx.exception.code, 2)
+    def test_plain_run_without_name_derives_it_from_request(self):
+        parser = cli._build_arg_parser()
+        args = parser.parse_args(["run", "Add CSV export"])
+        with patch("meow.cli.validation._is_linked_worktree", return_value=False):
+            cli._validate_feature_name_requirement(parser, args, Path.cwd())
+        self.assertEqual(args.feature_name, "add-csv-export")
 
     @staticmethod
     def test_plain_run_with_no_worktree_flag_does_not_require_a_name():

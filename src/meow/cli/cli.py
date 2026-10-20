@@ -11,6 +11,7 @@ from pathlib import Path
 from claude_agent_sdk import ProcessError
 
 from meow.cli.catalog_cli import catalog_command
+from meow.cli.cleanup_cli import cleanup_command
 from meow.cli.dispatch import _dispatch
 from meow.cli.ipython_cli import start_ipython
 from meow.cli.orchestration_cli import run_orchestration
@@ -146,6 +147,9 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         return
     working_dir = Path(args.working_dir).resolve()
     log_working_directory(working_dir)
+    if args.command == "cleanup":
+        cleanup_command(working_dir, args.run_id)
+        return
     if args.command in {"schedule", "_scheduled"}:
         from meow.cli.schedule_cli import schedule_command
         from meow.infrastructure.scheduling import execute_schedule

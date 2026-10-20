@@ -7,6 +7,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from meow.execution.cleanup import cleanup_completed
 from meow.execution.delivery import deliver_verified_run
 from meow.execution.run_state import RunStore
 from meow.infrastructure.checks import (
@@ -242,6 +243,7 @@ async def finalize(  # ruff: ignore[too-many-statements, complex-structure, too-
     if passed:
         deliver_verified_run(store, run_id)
         store.transition(run_id, "complete")
+        cleanup_completed(repo, run_id)
     else:
         reason = "Required evidence failed"
         if verdicts.get("reviewer") == "STALE":

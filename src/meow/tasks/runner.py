@@ -117,7 +117,11 @@ async def run_parallel_plan(  # ruff: ignore[complex-structure, too-many-stateme
             "status": "complete" if spec.id in integrated else "waiting",
             "owned_paths": list(spec.owned_paths),
             **(
-                {"verification": saved[spec.id].get("verification", [])}
+                {
+                    key: saved[spec.id][key]
+                    for key in ("verification", "commit", "worktree")
+                    if key in saved[spec.id]
+                }
                 if spec.id in integrated
                 else {}
             ),

@@ -61,3 +61,36 @@ def test_compound_redirect_is_shell_syntax(tmp_path):
     )
     evidence = asyncio.run(verify_task(spec, tmp_path))
     assert evidence[0]["output"].strip() == "[]"
+
+
+def test_resume_retains_completed_worker_metadata_for_cleanup(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from meow.execution.run_state import RunStore
+    from meow.tasks.model import TaskGraph
+    from meow.tasks.runner import run_parallel_plan
+
+    store = RunStore(tmp_path)
+    run = store.create(
+        source="prompt", request="work", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    saved = {
+        "status": "complete",
+        "commit": "a" * 40,
+        "worktree": str(tmp_path / ".worktrees" / f"{run.id}-api"),
+    }
+    store.update_results(run.id, tasks={"api": saved})
+
+    async def execute(*args, **kwargs):  # ruff: ignore[unused-async]
+        assert kwargs["completed"] == {"api"}
+        return SimpleNamespace(passed=True, revision="a" * 40)
+
+    monkeypatch.setattr("meow.tasks.runner.execute_in_worktrees", execute)
+    sprint = SimpleNamespace(config={}, active_working_dir=lambda: tmp_path)
+    graph = TaskGraph((TaskSpec("api", (), ("api.txt",), ()),))
+    assert asyncio.run(
+        run_parallel_plan(sprint, graph, tmp_path / "plan.md", store, run.id)
+    )
+    task = store.load(run.id).results["tasks"]["api"]
+    assert task["commit"] == saved["commit"]
+    assert task["worktree"] == saved["worktree"]

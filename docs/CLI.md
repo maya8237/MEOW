@@ -15,6 +15,7 @@ Use `meow COMMAND --help` for flag syntax. Read the relevant reference only:
 | `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates |
 | `meow cancel ID` | Cooperatively stop a run, preserving recovery state |
 | `meow worktree` | List, inspect, or safely clean owned worktrees |
+| `meow cleanup [ID]` | [Keep results and remove integrated task artifacts](CLEANUP.md) |
 | `meow detach [--log FILE] -- CMD...` | Detach a command; returns PID and log JSON |
 | `meow queue ["request"]` | Add a request, or process pending requests serially |
 | `meow workflows` / `meow agents` | Inspect, eject, validate, or diff definitions |
@@ -55,18 +56,16 @@ meow run "Add CSV export" --name csv-export
 meow plan "Add CSV export" --name csv-export
 ```
 
-Worktrees are the default; `--no-worktree` uses the selected directory and makes
-the name optional. `--from BRANCH` (`-b`) selects the starting branch.
+Worktrees are the default; `--no-worktree` uses the selected directory.
+Omit `--name` to derive a short request name. `--from BRANCH` (`-b`) selects the starting branch.
 Fresh runs get unique names; continuation reuses the saved worktree.
 `--plan PATH` supplies a plan; `--resume-at review` reviews existing work first.
 `--manually-approve-plan` (`-m`) pauses before implementation; plan-only rejects it.
 `--auto --background` detaches an automatic run. Auto rejects in-place execution,
 manual approval, resume-at-review, and lint-fix.
 
-First use onboards the project. Required checks and review precede linked-worktree
-commit/push; in-place runs do not deliver automatically. For clean-tree rules,
-Jira flag restrictions, lint-fix, checkpoints, cancellation, and recovery,
-see [RUNS.md](RUNS.md).
+First use onboards the project. Checks and review precede linked-worktree delivery;
+in-place runs do not deliver automatically. See [runs and recovery](RUNS.md).
 
 ## Multi-sprint runs
 

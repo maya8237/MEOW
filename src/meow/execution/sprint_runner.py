@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from meow.agents.planner import PlannerAgent, require_plan_file
+from meow.execution.cleanup import cleanup_completed
 from meow.execution.orchestrator import (
     _prepare_sprint,
 )
@@ -27,6 +28,7 @@ from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.node_dependencies import ensure_node_dependencies
 from meow.infrastructure.worktree import current_branch
+from meow.infrastructure.worktree_names import request_name
 from meow.infrastructure.worktree_setup import (
     prepare_environment,
     run_setup,
@@ -230,6 +232,8 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     # an earlier one by name; continuing (--plan, --resume-at review)
     # keeps reuse. `meow resume` passes use_worktree=False, so it is unaffected.
     fresh = plan_file is None and resume_at == "generate"
+    if use_worktree and not feature_name:
+        feature_name = request_name(request)
     if use_worktree and plan_file is not None:
         # A plan inside .worktrees/<X>/ belongs to that worktree, whatever
         # --name says (a fresh plan may have landed in `<name>-2`).
@@ -404,6 +408,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     if state.plan_file is not None:
         PlanStore(active_dir).transition(state.plan_file, "complete", record.id)
     logger.info("sprint_complete", feature_name=feature_name)
+    cleanup_completed(config_dir, record.id)
 
 
 async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would change cli.py's call site
@@ -414,6 +419,8 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
     use_worktree: bool = True,
     source_branch: str | None = None,
 ) -> Path:
+    if use_worktree and not feature_name:
+        feature_name = request_name(request)
     sprint, effective_name, active_dir = _prepare_sprint(
         working_dir,
         feature_name,

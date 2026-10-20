@@ -109,6 +109,9 @@ Use `-a` / `--auto` for non-interactive delivery or `--background`
 an isolated worktree and cannot be combined with `--no-worktree`, manual plan
 approval, `--resume-at review`, or `--lint-fix`. An in-place
 `--no-worktree` run does not automatically commit or push.
+Successful runs automatically retain the result and clean integrated task artifacts.
+Use `meow cleanup [RUN_ID]` to retry cleanup; omitted IDs scan saved runs.
+Report retained artifacts and their reasons; never force-delete unfinished work.
 Stream its progress (`[planner]`, `[generator]`,
 `[reviewer]`) to the user. Report the plan and review file paths on success
 (or, for `--jira`, the printed `{"issue": ..., "branch": ...}` JSON line), or
