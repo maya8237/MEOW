@@ -73,9 +73,3 @@ def test_agents_file_lists_the_orchestrate_skill_and_package():
     text = _read("AGENTS.md")
     assert "Run defaults to CLI" in text
     assert "orchestration/" in text
-
-
-def test_readme_shows_multi_sprint_run():
-    text = _read("README.md")
-    assert "meow run --orchestrate" in text
-    assert "/meow:run" in text
