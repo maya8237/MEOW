@@ -95,6 +95,20 @@ MEOW supports Jira, GitLab, GitHub, configured tests and builds, browser
 tester checks, Claude Code hooks, and scheduled Jira runs. See the
 [integration guide](docs/INTEGRATIONS.md).
 
+## Uninstall
+
+### PowerShell
+
+```powershell
+irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.ps1 | iex
+```
+
+### Bash
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.sh | sh
+```
+
 ## Docs
 
 - [Architecture](docs/ARCHITECTURE.md)
