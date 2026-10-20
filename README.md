@@ -46,6 +46,11 @@ Terminal or CI:
 meow run "Add CSV export" --name csv-export
 ```
 
+By default, `meow run` handles the request as one sprint: plan, implement,
+check, and review. Add `--orchestrate` to split an objective into tasks, run
+each as a full sprint in its own worktree, and merge passing tasks. MEOW
+reviews the combined result before pushing one branch and opening one PR/MR.
+
 Projects are set up automatically on first use. Use `/meow:onboard` to configure
 integrations and optional features.
 
@@ -55,7 +60,6 @@ integrations and optional features.
 | --- | --- |
 | Build a feature | `/meow:run ...` or `meow run ...` |
 | Plan only | `/meow:plan ...` or `meow plan ...` |
-| Run related tasks in parallel and deliver one PR | `/meow:run ... --orchestrate` or `meow run --orchestrate "Add SSO login and an admin audit log"` |
 | Schedule a run | `/meow:schedule ...` or `meow schedule add --at "09:00" -- run "Add CSV export" --name csv-export` |
 | Review | `/meow:review ...` or `meow review ...` |
 | Integrate CI review | `/meow:integrate-ci-review` |
@@ -67,6 +71,8 @@ integrations and optional features.
 
 | Flag | Purpose |
 | --- | --- |
+| `--orchestrate` / `-o` | Coordinate multiple sprints and deliver one reviewed branch and PR/MR |
+| `--max-parallel N` | Limit concurrent sprints with `--orchestrate` (default: 3) |
 | `--auto` / `-a` | Run a feature automatically |
 | `--name NAME` | Name the feature branch and worktree |
 | `--from BRANCH` / `-b BRANCH` | Choose the starting branch |
