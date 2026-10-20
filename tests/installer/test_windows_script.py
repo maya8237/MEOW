@@ -1,7 +1,9 @@
+import io
 import os
 import shutil
 import subprocess
 import sys
+import zipfile
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14,7 +16,14 @@ import pytest
 def checksum_server(request):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            body = b'{"tag_name":"1.2.3"}' if self.path == "/latest.json" else b"zip"
+            archive = io.BytesIO()
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr("payload.txt", "release payload")
+            body = (
+                b'{"tag_name":"1.2.3"}'
+                if self.path == "/latest.json"
+                else archive.getvalue()
+            )
             self.send_response(request.param if self.path.endswith(".sha256") else 200)
             self.end_headers()
             self.wfile.write(body)
@@ -74,6 +83,15 @@ def test_checksum_download_error_identifies_release_file(
     else:
         assert "missing" not in result.stdout
         assert f"{base}/download/1.2.3/" in result.stdout
+    _assert_install_state(tmp_path, status, result.stdout)
+
+
+def _assert_install_state(tmp_path, status, stdout):
     assert (tmp_path / ".meow" / "versions").is_dir()
-    assert not (tmp_path / ".meow" / "versions" / "1.2.3").exists()
+    destination = tmp_path / ".meow" / "versions" / "1.2.3"
+    if status == HTTPStatus.NOT_FOUND:
+        assert (destination / "payload.txt").read_text() == "release payload"
+        assert "continuing without checksum verification" in stdout
+    else:
+        assert not destination.exists()
     assert not list((tmp_path / ".meow" / "versions").glob(".install-*"))

@@ -6,12 +6,41 @@ import runpy
 import subprocess
 import sys
 import zipfile
+from http import HTTPStatus
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 
 from meow.cli.parser import _build_arg_parser
 from meow.installer import maintenance
+
+
+@pytest.mark.parametrize("status", [404, 503])
+def test_install_release_allows_only_missing_checksum(tmp_path, monkeypatch, status):
+    from meow.installer import releases
+
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("payload.txt", "release payload")
+
+    def fetch(url, **_kwargs):
+        if url.endswith(".sha256"):
+            raise HTTPError(url, status, "checksum unavailable", {}, None)
+        return io.BytesIO(archive.getvalue())
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(maintenance, "urlopen", fetch)
+    monkeypatch.setattr(releases, "_validate_release", lambda *_args: None)
+    monkeypatch.setattr(releases.subprocess, "run", lambda *_args, **_kwargs: None)
+    destination = tmp_path / ".meow" / "versions" / "0.2.0"
+    if status == HTTPStatus.NOT_FOUND:
+        releases.install_release("0.2.0")
+        assert (destination / "payload.txt").read_text() == "release payload"
+    else:
+        with pytest.raises(HTTPError):
+            releases.install_release("0.2.0")
+        assert not destination.exists()
 
 
 @pytest.mark.parametrize("tag", ["1.2.3", "2.0.0"])

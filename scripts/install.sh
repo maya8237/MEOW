@@ -44,11 +44,19 @@ trap 'exit 130' HUP INT TERM
 if [ ! -d "$destination" ]; then
     printf 'Downloading MEOW %s for %s/%s...\n' "$tag" "$system" "$architecture"
     curl -fsSL --retry 3 "$base/download/$tag/$asset" -o "$temporary/$asset"
-    curl -fsSL --retry 3 "$base/download/$tag/$asset.sha256" -o "$temporary/$asset.sha256"
-    if command -v sha256sum >/dev/null 2>&1; then
-        (cd "$temporary" && sha256sum -c "$asset.sha256")
+    checksum_status=$(curl -sSL --retry 3 -w '%{http_code}' "$base/download/$tag/$asset.sha256" -o "$temporary/$asset.sha256")
+    if [ "$checksum_status" = 200 ]; then
+        if command -v sha256sum >/dev/null 2>&1; then
+            (cd "$temporary" && sha256sum -c "$asset.sha256")
+        else
+            (cd "$temporary" && shasum -a 256 -c "$asset.sha256")
+        fi
+    elif [ "$checksum_status" = 404 ]; then
+        # Temporary: revert this exception when release checksums are available.
+        printf 'Release %s is missing its checksum file: %s.sha256; temporarily continuing without checksum verification.\n' "$tag" "$asset"
     else
-        (cd "$temporary" && shasum -a 256 -c "$asset.sha256")
+        printf 'Could not download checksum file %s.sha256 for release %s (HTTP %s).\n' "$asset" "$tag" "$checksum_status" >&2
+        exit 1
     fi
     mkdir "$temporary/release"
     tar -xzf "$temporary/$asset" -C "$temporary/release"
