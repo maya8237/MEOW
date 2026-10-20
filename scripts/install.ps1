@@ -35,27 +35,22 @@
             $archive = Join-Path $temporary $asset
             Invoke-WebRequest "$base/download/$tag/$asset" -OutFile $archive -UseBasicParsing
             $checksumUrl = "$base/download/$tag/$asset.sha256"
-            $checksum = $null
             try {
                 $checksum = (Invoke-WebRequest $checksumUrl -UseBasicParsing).Content
             } catch {
                 if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) {
-                    # Temporary: revert this exception when release checksums are available.
-                    Write-Host "Release $tag is missing its checksum file: $asset.sha256; temporarily continuing without checksum verification. URL: $checksumUrl"
-                } else {
-                    throw "Could not download checksum file $asset.sha256 for release $tag. URL: $checksumUrl. $($_.Exception.Message)"
+                    throw "Release $tag is missing its checksum file: $asset.sha256. Installation stopped because the download cannot be verified. URL: $checksumUrl"
                 }
+                throw "Could not download checksum file $asset.sha256 for release $tag. URL: $checksumUrl. $($_.Exception.Message)"
             }
-            if ($null -ne $checksum) {
-                if ($checksum -is [byte[]]) { $checksum = [Text.Encoding]::UTF8.GetString($checksum) }
-                $expected = ($checksum.Trim() -split '\s+')[0]
-                $sha = [Security.Cryptography.SHA256]::Create()
-                $stream = [IO.File]::OpenRead($archive)
-                try { $actual = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') }
-                finally { $stream.Dispose(); $sha.Dispose() }
-                if ($actual -ine $expected) {
-                    throw 'MEOW release checksum mismatch; installation was not changed.'
-                }
+            if ($checksum -is [byte[]]) { $checksum = [Text.Encoding]::UTF8.GetString($checksum) }
+            $expected = ($checksum.Trim() -split '\s+')[0]
+            $sha = [Security.Cryptography.SHA256]::Create()
+            $stream = [IO.File]::OpenRead($archive)
+            try { $actual = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') }
+            finally { $stream.Dispose(); $sha.Dispose() }
+            if ($actual -ine $expected) {
+                throw 'MEOW release checksum mismatch; installation was not changed.'
             }
             $staging = Join-Path $temporary 'release'
             [Reflection.Assembly]::LoadWithPartialName('System.IO.Compression.FileSystem') | Out-Null

@@ -10,9 +10,7 @@ import sysconfig
 import tarfile
 import tempfile
 import zipfile
-from http import HTTPStatus
 from pathlib import Path
-from urllib.error import HTTPError
 
 from meow.installer import maintenance
 from meow.project.claude_settings import register_checkout_plugin
@@ -46,14 +44,11 @@ def asset_name() -> str:
     return f"meow-{system}-{machine}.{extension}"
 
 
-def unpack_release(archive: Path, digest: str | None, destination: Path) -> None:
-    if digest is not None:
-        with archive.open("rb") as stream:
-            actual = hashlib.file_digest(stream, "sha256").hexdigest()
-        if actual != digest:
-            raise ValueError(
-                "MEOW release checksum mismatch; installation was not changed"
-            )
+def unpack_release(archive: Path, digest: str, destination: Path) -> None:
+    with archive.open("rb") as stream:
+        actual = hashlib.file_digest(stream, "sha256").hexdigest()
+    if actual != digest:
+        raise ValueError("MEOW release checksum mismatch; installation was not changed")
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=destination.parent) as temporary:
         staging = Path(temporary) / "release"
@@ -165,21 +160,6 @@ def _download(url: str, destination: Path) -> None:
         shutil.copyfileobj(response, stream)
 
 
-def _fetch_digest(tag: str, asset: str, url: str, checksum: Path) -> str | None:
-    try:
-        _download(url, checksum)
-    except HTTPError as exc:
-        if exc.code != HTTPStatus.NOT_FOUND:
-            raise
-        # Temporary: revert this exception when release checksums are available.
-        print(
-            f"Release {tag} is missing its checksum file: {asset}.sha256; "
-            "temporarily continuing without checksum verification."
-        )
-        return None
-    return checksum.read_text().split()[0]
-
-
 def install_release(tag: str) -> None:
     maintenance._version_parts(tag)
     root = Path.home() / ".meow"
@@ -192,8 +172,8 @@ def install_release(tag: str) -> None:
             checksum = Path(temporary) / "checksum"
             base = f"{DOWNLOAD_URL}/{tag}/{asset}"
             _download(base, archive)
-            digest = _fetch_digest(tag, asset, base + ".sha256", checksum)
-            unpack_release(archive, digest, destination)
+            _download(base + ".sha256", checksum)
+            unpack_release(archive, checksum.read_text().split()[0], destination)
     _validate_release(destination, tag)
     subprocess.run(
         [
