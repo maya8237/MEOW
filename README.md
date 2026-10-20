@@ -28,7 +28,8 @@ irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | i
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 ```
 
-The installer puts MEOW in `~/.meow`, adds the `meow` command to your PATH,
+The installer needs Python 3.12 or newer (it uses the newest it finds; set
+`MEOW_PYTHON` to choose one). It puts MEOW in `~/.meow`, adds the `meow` command to your PATH,
 and sets up its skills in Claude Code. Open a new terminal or restart Claude Code
 to get started.
 

@@ -1,5 +1,5 @@
 [project]
-name = "meow"
+name = "meow-harness"
 version = "0.1.5"
 description = "MEOW workflow engine for the Claude Agent SDK, configurable per project"
 readme = "README.md"
@@ -21,6 +21,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/meow"]
+
+# Everything an install needs besides the package: the installer builds the
+# launcher and Claude plugin from these copies.
+[tool.hatch.build.targets.wheel.force-include]
+"skills" = "meow/_release/plugin/skills"
+".claude-plugin" = "meow/_release/plugin/.claude-plugin"
+"scripts/release" = "meow/_release/launcher"
+"requirements-release.txt" = "meow/_release/requirements-release.txt"
+"LICENSE" = "meow/_release/LICENSE"
 
 [tool.hatch.build.targets.sdist]
 exclude = [

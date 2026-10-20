@@ -186,7 +186,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     parser.add_argument(
         "--version",
         action="version",
-        version=f"meow {version('meow')}",
+        version=f"meow {version('meow-harness')}",
     )
     updates = parser.add_mutually_exclusive_group()
     updates.add_argument(

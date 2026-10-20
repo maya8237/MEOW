@@ -1,10 +1,10 @@
-"""Exercise a real bundle through a local release server, without a checkout install."""
+"""Install this checkout's wheel through the real installers, like users do."""
 
 import functools
+import hashlib
 import http.server
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -16,27 +16,41 @@ ROOT = Path(__file__).resolve().parents[1]
 PROBE_EXIT_CODE = 7
 sys.path.insert(0, str(ROOT / "src"))
 
-from meow.installer.releases import asset_name  # ruff: ignore[module-import-not-at-top-of-file]
+from meow.installer.releases import release_python  # ruff: ignore[module-import-not-at-top-of-file]
 
 
 class ReleaseServer(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/latest":
-            self.send_response(302)
-            self.send_header("Location", f"/tag/{self.server.tag}")
-            self.end_headers()
-        elif self.path == "/latest.json":
+        if self.path == "/latest.json":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(
-                json.dumps({"tag_name": self.server.tag}, indent=2).encode()
-            )
-        elif self.path.startswith("/tag/"):
-            self.send_response(200)
-            self.end_headers()
+            manifest = {
+                "tag_name": self.server.tag,
+                "wheel_sha256": self.server.digest,
+            }
+            self.wfile.write(json.dumps(manifest, indent=2).encode())
         else:
             super().do_GET()
+
+
+def build_wheel(destination: Path) -> str:
+    """Build this checkout's wheel into DESTINATION; return its SHA-256."""
+    run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "-w",
+            str(destination),
+            str(ROOT),
+        ],
+        os.environ,
+    )
+    (wheel,) = destination.glob("meow_harness-*.whl")
+    return hashlib.sha256(wheel.read_bytes()).hexdigest()
 
 
 def run(argv: list[str], env: dict, **kwargs) -> str:
@@ -71,7 +85,7 @@ def check_install(home: Path, env: dict, version: str) -> None:
     alias = executable.with_name("mw.exe" if os.name == "nt" else "mw")
     assert run([str(alias), "--version"], env).strip() == f"meow {version}"
     release = home / ".meow/versions" / version
-    python = release / "runtime" / ("python.exe" if os.name == "nt" else "bin/python3")
+    python = release_python(release)
     probe = (
         "import subprocess,sys; import meow.agents.base; import meow.ui.server; "
         "import IPython; from meow.infrastructure.scheduling import _run_argv; "
@@ -87,26 +101,33 @@ def check_install(home: Path, env: dict, version: str) -> None:
 
 def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
     version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
-    with tempfile.TemporaryDirectory(prefix="meow release smoke ") as directory:
+    # pip splits PIP_FIND_LINKS on whitespace, so wheels live in a plain path.
+    with (
+        tempfile.TemporaryDirectory(prefix="meow-wheels-") as wheel_directory,
+        tempfile.TemporaryDirectory(prefix="meow release smoke ") as directory,
+    ):
         temporary = Path(directory)
         home = temporary / "user with spaces"
         home.mkdir()
-        fixtures = temporary / "server/download" / version
-        fixtures.mkdir(parents=True)
-        archive = ROOT / "dist" / asset_name()
-        shutil.copy2(archive, fixtures)
-        shutil.copy2(archive.with_name(archive.name + ".txt"), fixtures)
+        # pip finds the unpublished wheel here, standing in for the index.
+        wheels = Path(wheel_directory)
+        digest = build_wheel(wheels)
         server = http.server.ThreadingHTTPServer(
             ("127.0.0.1", 0),
             functools.partial(ReleaseServer, directory=str(temporary / "server")),
         )
         server.tag = version
+        server.digest = digest
         threading.Thread(target=server.serve_forever, daemon=True).start()
         # Test-only startup patch: never modify the developer's real Windows
         # registry PATH or contact GitHub while exercising a local fixture.
         startup = temporary / "startup"
         startup.mkdir()
+        # Python processes before MEOW is installed cannot import the patch.
         (startup / "sitecustomize.py").write_text(
+            "try:\n import meow_patch\nexcept ImportError:\n pass\n"
+        )
+        (startup / "meow_patch.py").write_text(
             "import os\n"
             "from meow.installer import releases, maintenance\n"
             "releases._add_to_path = lambda path: None\n"
@@ -120,8 +141,6 @@ def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
             " winreg.SetValueEx = safe_set\n"
             "maintenance.check_for_updates = lambda: None\n"
             "maintenance.RELEASE_URL = os.environ['MEOW_RELEASE_MANIFEST_URL']\n"
-            "releases.DOWNLOAD_URL = "
-            "os.environ['MEOW_RELEASE_BASE_URL'] + '/download'\n"
         )
         base = f"http://127.0.0.1:{server.server_port}"
         env = {
@@ -129,7 +148,8 @@ def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
             "HOME": str(home),
             "USERPROFILE": str(home),
             "PYTHONPATH": str(startup),
-            "MEOW_RELEASE_BASE_URL": base,
+            "MEOW_PYTHON": sys.executable,
+            "PIP_FIND_LINKS": str(wheels),
             "MEOW_RELEASE_MANIFEST_URL": base + "/latest.json",
         }
         try:
@@ -141,14 +161,15 @@ def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
             bootstrap(env)
             assert config.read_text() == "# preserved user configuration\n"
             check_install(home, env, version)
+            check_other_python(home, env, version)
             check_update(home, env, version)
             assert (home / ".meow/current-version").read_text().strip() == version
         finally:
             server.shutdown()
             server.server_close()
     print(
-        "Release smoke passed: streamed install, relocation, CLI, alias, "
-        "plugin, child Python, reinstall, and update."
+        "Release smoke passed: streamed install, CLI, alias, plugin, child "
+        "Python, reinstall, Python change, and update."
     )
 
 
@@ -178,12 +199,21 @@ def check_launcher_arguments(home: Path, env: dict, temporary: Path) -> None:
     assert result.returncode == PROBE_EXIT_CODE
 
 
+def check_other_python(home: Path, env: dict, version: str) -> None:
+    """An install made by another Python is rebuilt by the installer."""
+    config = home / ".meow/versions" / version / "runtime/pyvenv.cfg"
+    config.write_text(config.read_text().replace("version = ", "version = 0.", 1))
+    bootstrap(env)
+    assert "version = 0." not in config.read_text()
+    check_install(home, env, version)
+
+
 def check_update(home: Path, env: dict, version: str) -> None:
     """Make the installed runtime older, then update through the real launcher."""
     versions = home / ".meow/versions"
     previous = versions / "0.0.0"
     (versions / version).rename(previous)
-    metadata = next((previous / "runtime").rglob("meow-*.dist-info/METADATA"))
+    metadata = next((previous / "runtime").rglob("meow_harness-*.dist-info/METADATA"))
     metadata.write_text(
         metadata.read_text().replace(f"Version: {version}", "Version: 0.0.0")
     )

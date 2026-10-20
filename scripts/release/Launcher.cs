@@ -34,7 +34,7 @@ class Launcher
             if (!Regex.IsMatch(tag, @"\A[0-9]+\.[0-9]+\.[0-9]+\z"))
                 throw new Exception("Invalid release pointer; rerun the installer.");
             var start = new ProcessStartInfo {
-                FileName = Path.Combine(root, "versions", tag, "runtime", "python.exe"),
+                FileName = Path.Combine(root, "versions", tag, "runtime", "Scripts", "python.exe"),
                 Arguments = "-m meow " + string.Join(" ", args.Select(Quote)),
                 UseShellExecute = false
             };

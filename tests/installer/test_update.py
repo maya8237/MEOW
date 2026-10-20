@@ -14,18 +14,20 @@ from meow.installer import maintenance, releases
 )
 def test_update_selects_newer_published_release(monkeypatch, current, latest, installs):
     monkeypatch.setattr(maintenance, "version", lambda name: current)
-    monkeypatch.setattr(maintenance, "latest_version", lambda: latest)
+    monkeypatch.setattr(maintenance, "latest_release", lambda: (latest, "0" * 64))
     installed = []
-    monkeypatch.setattr(releases, "install_release", installed.append)
+    monkeypatch.setattr(
+        releases, "install_release", lambda tag, digest: installed.append(tag)
+    )
     assert maintenance.update() == 0
     assert installed == installs
 
 
 def test_failed_download_does_not_report_success(monkeypatch, capsys):
     monkeypatch.setattr(maintenance, "version", lambda name: "0.1.2")
-    monkeypatch.setattr(maintenance, "latest_version", lambda: "0.2.0")
+    monkeypatch.setattr(maintenance, "latest_release", lambda: ("0.2.0", "0" * 64))
 
-    def fail(tag):
+    def fail(tag, digest):
         raise OSError("offline")
 
     monkeypatch.setattr(releases, "install_release", fail)

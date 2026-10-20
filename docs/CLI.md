@@ -38,10 +38,11 @@ All public commands accept `--work-dir PATH` (`-d`); native helpers also accept
 Project documentation stays in `docs/`.
 
 `meow --update` (`-u`) installs the latest published stable release, never
-a branch tip; it cannot accompany a project command. Bundles include Python,
-dependencies, UI, and plugin files and are checksum-verified. The installer
-registers the plugin before switching launchers in `~/.meow/bin`; config,
-caches, and earlier runtimes are retained. Failures return nonzero.
+a branch tip; it cannot accompany a project command. It installs that version's
+checksum-verified wheel from the package index into a venv built by the newest
+Python 3.12+ found. The installer registers the plugin before switching
+launchers in `~/.meow/bin`; config, caches, and earlier runtimes are retained.
+Failures return nonzero.
 Keep runtimes used by workers/schedules. Rerun the installer for setup prompts
 or migration from an editable install; remove obsolete launchers shadowing PATH.
 

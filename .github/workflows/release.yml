@@ -33,7 +33,7 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
 
-  build:
+  smoke:
     strategy:
       fail-fast: false
       matrix:
@@ -41,44 +41,50 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build portable runtime, CLI, and Claude plugin
-        env:
-          # PR builds validate against the package version, not branch names.
-          GITHUB_REF_NAME: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-        run: python scripts/build_release.py
-      - name: Exercise relocated bundle and streamed installer
+      - name: Install from this checkout's source through the streamed installer
         run: python scripts/smoke_release.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: meow-${{ matrix.os }}
-          path: |
-            dist/meow-*.tar.gz
-            dist/meow-*.zip
-            dist/*.txt
-          if-no-files-found: error
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [build, validate]
+    needs: [smoke, validate]
     runs-on: ubuntu-latest
     concurrency:
       group: meow-release-publication
       cancel-in-progress: false
     permissions:
       contents: write
+      id-token: write # PyPI trusted publishing; no stored token
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          path: dist
-          merge-multiple: true
+          python-version: '3.12'
+      - name: Stamp the tag into the package and plugin, then build
+        run: |
+          python scripts/stamp_release.py "$TAG"
+          python -m pip install build
+          python -m build --sdist --wheel
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true # a rerun after a later failure may find it uploaded
+      - name: Read the wheel checksum the index serves
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            sha=$(curl -fsSL "https://pypi.org/pypi/meow-harness/$TAG/json" |
+              jq -r '[.urls[] | select(.packagetype == "bdist_wheel")][0].digests.sha256 // empty' || true)
+            [ -n "$sha" ] && break
+            sleep 15
+          done
+          [ -n "$sha" ]
+          echo "WHEEL_SHA256=$sha" >> "$GITHUB_ENV"
       - name: Read the current release channel
         run: |
           gh auth setup-git
@@ -98,27 +104,17 @@ jobs:
           else
             echo 'ADVANCE_CHANNEL=false' >> "$GITHUB_ENV"
           fi
-      - name: Publish a complete release after every platform passes
+      - name: Publish the GitHub release notes
         run: |
           if ! gh release view "$TAG" > /dev/null 2>&1; then
-            gh release create "$TAG" --verify-tag --draft --generate-notes --title "MEOW $TAG"
+            gh release create "$TAG" --verify-tag --generate-notes --title "MEOW $TAG"
           fi
-          gh release view "$TAG" --json isDraft,isPrerelease,assets > published.json
-          if jq -e '.isDraft' published.json > /dev/null; then
-            gh release upload "$TAG" dist/* --clobber
-            gh release edit "$TAG" --draft=false --latest="$ADVANCE_CHANNEL"
-          fi
-          gh release view "$TAG" --json isDraft,isPrerelease,assets > published.json
-          jq -e '.isDraft == false and .isPrerelease == false' published.json > /dev/null
-          for asset in dist/*; do
-            name=$(basename "$asset")
-            jq -e --arg name "$name" 'any(.assets[]; .name == $name)' published.json > /dev/null
-          done
+          gh release edit "$TAG" --draft=false --latest="$ADVANCE_CHANNEL"
       - name: Advance the raw-content release channel after publication
         if: env.ADVANCE_CHANNEL == 'true'
         working-directory: channel
         run: |
-          jq -n --arg tag "$TAG" '{tag_name: $tag}' > latest.json
+          jq -n --arg tag "$TAG" --arg sha "$WHEEL_SHA256" '{tag_name: $tag, wheel_sha256: $sha}' > latest.json
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add latest.json

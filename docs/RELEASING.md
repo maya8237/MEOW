@@ -8,38 +8,50 @@ git push origin 0.1.6
 ```
 
 That is the release process. CI stamps the tag's version into the Python package
-and both plugin manifests, runs tests and lint, builds all platforms, and
-publishes the release under that exact numeric tag. No prefix, alias tag, or
-manual version edits are needed. Commits to `main` alone do not update users.
+and both plugin manifests, runs tests and lint, installs the checkout through the
+real installers on each platform, then publishes. No prefix, alias tag, or manual
+version edits are needed. Commits to `main` alone do not update users.
+
+MEOW is published to PyPI as `meow-harness` (the import package and `meow`
+command are unchanged). The Release workflow's publish job builds the sdist and
+wheel, uploads them with PyPI trusted publishing (no stored token), reads the
+wheel's SHA-256 back from PyPI, creates the GitHub Release (notes only, no
+attached files), and advances `latest.json` on the `release-channel` branch to
+`{"tag_name", "wheel_sha256"}`. Installers and update checks read it through
+`raw.githubusercontent.com`; they do not require `api.github.com`. The channel
+points only at a version already on PyPI. Publication is serialized and can be
+rerun after a later failure; an older tag cannot replace a newer one.
+
+One-time setup: reserve `meow-harness` on pypi.org and add a trusted publisher
+for this repository, workflow `release.yml`. PyPI versions cannot be replaced, so
+fix a bad release with a new tag.
 
 When dependencies change, regenerate the pinned runtime requirements before
 committing:
 `uv pip compile pyproject.toml --universal --python-version 3.12 --generate-hashes --output-file requirements-release.txt`.
+The wheel carries that file, the skills, plugin manifests, and launcher sources
+under `meow/_release/`, so installs need nothing but the wheel.
 
-The Release workflow builds Windows x64, Linux x64/ARM64, and macOS x64/ARM64
-archives, stamps matching package/plugin versions from the tag, and runs the
-streamed installer against a local release server on each platform. Only after
-all builds and smoke tests pass does it publish a GitHub Release with generated
-notes, all archives, and per-archive `.txt` files. It then advances
-`latest.json` on the `release-channel` branch. Installers and update checks
-read this manifest through `raw.githubusercontent.com`; they do not require
-`api.github.com`. The channel points only at a published release, never a
-source commit. A failed build leaves no
-incomplete public release. PRs that affect packaging also exercise this workflow.
+## What installers do
 
-Publication is serialized and can be rerun after a channel-push failure.
-Archives and checksums are uploaded to a draft release and published together.
-Failed draft uploads can be replaced on retry; published assets are retained.
-An older tag cannot replace a newer tag in the release channel.
+1. Pick the newest Python 3.12+: `where python` and `py -0p` on Windows, `PATH`
+   elsewhere, or `MEOW_PYTHON`. Virtual environments resolve to their base.
+2. Create a staging venv and run `pip install --no-deps --require-hashes
+   --only-binary :all:` for exactly the manifest's version and wheel hash.
+3. Run the new release's `python -m meow.installer.releases --finish`: install
+   `requirements-release.txt` with `--require-hashes`, build the launcher
+   (Windows uses the .NET Framework compiler included with Windows), copy the
+   plugin, and swap the staging folder into `~/.meow/versions/TAG`. An existing
+   folder is set aside until the new one is in place, so reruns repair installs
+   built by another or removed Python.
+4. Register the plugin and switch the launchers and `current-version`.
 
-To reproduce a platform's bundle locally, install uv and Python 3.12+, then run
-`python scripts/build_release.py` and `python scripts/smoke_release.py`.
-Builds install the wheel and hash-pinned dependencies into an isolated,
-relocatable CPython runtime obtained through uv. They do not install MEOW into
-the user's system Python. Windows builds compile the small stable launcher
-using the .NET Framework compiler included with Windows; Unix launchers use
-`sh`. Dependencies keep their licenses in the bundled runtime.
+`meow -u` runs the same steps with the newest Python it finds. Pip settings such
+as `PIP_INDEX_URL` apply, so mirrors work. Run `python scripts/smoke_release.py`
+to exercise the installer against a locally built wheel.
 
 The versioned runtimes intentionally remain after updates so active workers
 and OS schedules can still launch their original interpreter. Keep those
-versions until their jobs have finished or their schedules are recreated.
+versions until their jobs have finished or their schedules are recreated. A
+venv depends on the Python that built it; if that Python is removed, rerun the
+installer.

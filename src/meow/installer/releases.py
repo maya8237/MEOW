@@ -1,77 +1,113 @@
-"""Install portable release bundles under the user's ~/.meow directory."""
+"""Install MEOW wheels from the package index into ~/.meow/versions."""
 
 import argparse
-import hashlib
+import contextlib
 import os
-import platform
+import re
 import shutil
 import subprocess
-import sysconfig
-import tarfile
 import tempfile
-import zipfile
+import uuid
 from pathlib import Path
 
 from meow.installer import maintenance
 from meow.project.claude_settings import register_checkout_plugin
 
-DOWNLOAD_URL = "https://github.com/maya8237/MEOW/releases/download"
+DISTRIBUTION = "meow-harness"
+RELEASE_DATA = Path(__file__).resolve().parents[1] / "_release"
+MINIMUM_PYTHON = (3, 12)
+# No quotes: Windows PowerShell 5.1 strips them from native arguments.
+PROBE = (
+    "import os,sys;v=sys.version_info;"
+    "print(v[0],v[1],v[2],os.path.realpath(sys._base_executable))"
+)
+PROBE_FIELDS = 4
+PYTHON_NAME = re.compile(r"python(3(\.\d+)?)?")
 
 
 def settings_path() -> Path:
     return Path.home() / ".claude" / "settings.json"
 
 
-def asset_name() -> str:
-    systems = {"Windows": "windows", "Linux": "linux", "Darwin": "macos"}
-    machines = {
-        "amd64": "x86_64",
-        "x86_64": "x86_64",
-        "aarch64": "arm64",
-        "arm64": "arm64",
-    }
+def _lines(*argv: str) -> list[str]:
     try:
-        system = systems[platform.system()]
-        architecture = (
-            sysconfig.get_platform().rsplit("-", 1)[-1]
-            if system == "windows"
-            else platform.machine()
+        result = subprocess.run(
+            argv, capture_output=True, text=True, errors="replace", timeout=30
         )
-        machine = machines[architecture.lower()]
-    except KeyError as exc:
-        raise RuntimeError("No MEOW release is available for this platform") from exc
-    extension = "zip" if system == "windows" else "tar.gz"
-    return f"meow-{system}-{machine}.{extension}"
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return result.stdout.splitlines() if result.returncode == 0 else []
 
 
-def unpack_release(archive: Path, digest: str, destination: Path) -> None:
-    with archive.open("rb") as stream:
-        actual = hashlib.file_digest(stream, "sha256").hexdigest()
-    if actual != digest:
-        raise ValueError("MEOW release checksum mismatch; installation was not changed")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=destination.parent) as temporary:
-        staging = Path(temporary) / "release"
-        staging.mkdir()
-        _extract(archive, staging)
-        staging.rename(destination)
+def _windows_candidates() -> list[str]:
+    found = _lines("where.exe", "python")
+    for line in _lines("py", "-0p"):
+        match = re.search(r"[A-Za-z]:\\.*\.exe\s*$", line)
+        if match:
+            found.append(match.group().strip())
+    return found
 
 
-def _extract(archive: Path, staging: Path) -> None:
-    if not zipfile.is_zipfile(archive):
-        with tarfile.open(archive) as bundle:
-            bundle.extractall(staging, filter="data")
-        return
-    with zipfile.ZipFile(archive) as bundle:
-        for member in bundle.infolist():
-            target = (staging / member.filename).resolve()
-            if not target.is_relative_to(staging.resolve()):
-                raise ValueError("Unsafe path in MEOW release archive")
-        bundle.extractall(staging)
+def _path_candidates() -> list[str]:
+    found = []
+    for directory in filter(None, os.environ.get("PATH", "").split(os.pathsep)):
+        try:
+            names = sorted(os.listdir(directory))
+        except OSError:
+            continue
+        found += [
+            os.path.join(directory, name)
+            for name in names
+            if PYTHON_NAME.fullmatch(name)
+        ]
+    return found
+
+
+def _probe(candidate: str) -> tuple[tuple[int, ...], Path] | None:
+    try:
+        result = subprocess.run(
+            [candidate, "-c", PROBE], capture_output=True, text=True, timeout=15
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    fields = result.stdout.strip().split(" ", PROBE_FIELDS - 1)
+    if (
+        result.returncode
+        or len(fields) != PROBE_FIELDS
+        or not all(f.isdecimal() for f in fields[:3])
+    ):
+        return None
+    return tuple(map(int, fields[:3])), Path(fields[3])
+
+
+def find_python() -> Path:
+    """Return the newest Python 3.12+ on PATH, or the one MEOW_PYTHON names.
+
+    Windows asks `where python` (plus the `py` launcher); elsewhere PATH is
+    scanned. Virtual environments resolve to their base interpreter.
+    """
+    override = os.environ.get("MEOW_PYTHON")
+    if override:
+        candidates = [override]
+    else:
+        candidates = _windows_candidates() if os.name == "nt" else _path_candidates()
+    found = [
+        probe
+        for probe in map(_probe, candidates)
+        if probe and probe[0][:2] >= MINIMUM_PYTHON
+    ]
+    if not found:
+        raise RuntimeError(
+            "MEOW needs Python 3.12 or newer. Install it (winget install "
+            "Python.Python.3.13, brew install python, or apt install python3), "
+            "or set MEOW_PYTHON to its path."
+        )
+    return max(found, key=lambda item: item[0])[1]
 
 
 def release_python(release: Path) -> Path:
-    return release / "runtime" / ("python.exe" if os.name == "nt" else "bin/python3")
+    runtime = release / "runtime"
+    return runtime / ("Scripts/python.exe" if os.name == "nt" else "bin/python3")
 
 
 def activate(release: Path) -> None:
@@ -96,14 +132,19 @@ def activate(release: Path) -> None:
 
 def _install_launcher(source: Path, bin_dir: Path) -> None:
     bin_dir.mkdir(parents=True, exist_ok=True)
+    for stale in bin_dir.glob("*.old-*"):
+        with contextlib.suppress(OSError):  # still running; retried next time
+            stale.unlink()
     for name in (source.name, "mw.exe" if os.name == "nt" else "mw"):
         target = bin_dir / name
-        # Windows locks the running launcher. It only reads current-version;
-        # changing that pointer updates the application without replacing it.
-        if os.name != "nt" or not target.exists():
-            temporary = target.with_suffix(".new")
-            shutil.copy2(source, temporary)
-            temporary.replace(target)
+        temporary = target.with_suffix(".new")
+        shutil.copy2(source, temporary)
+        if os.name == "nt" and target.exists():
+            # Windows cannot overwrite a running launcher (an update runs under
+            # the old one) but can rename it, and older launchers expect a
+            # different runtime layout, so they must always be replaced.
+            target.rename(target.with_name(f"{name}.old-{uuid.uuid4().hex[:8]}"))
+        temporary.replace(target)
 
 
 def _add_to_path(bin_dir: Path) -> None:
@@ -152,38 +193,124 @@ def _notify_environment() -> None:
     )
 
 
-def _download(url: str, destination: Path) -> None:
-    with (
-        maintenance.urlopen(url, timeout=120) as response,
-        destination.open("wb") as stream,
-    ):
-        shutil.copyfileobj(response, stream)
+def _run(*argv: str, **kwargs) -> str:
+    result = subprocess.run(argv, text=True, capture_output=True, **kwargs)
+    if result.returncode:
+        raise RuntimeError(result.stdout + result.stderr)
+    return result.stdout
 
 
-def install_release(tag: str) -> None:
-    maintenance._version_parts(tag)
-    root = Path.home() / ".meow"
-    destination = root / "versions" / tag
-    asset = asset_name()
+def _pip(python: Path, *args: str) -> None:
+    command = (str(python), "-m", "pip", "install", "--disable-pip-version-check")
+    _run(*command, "--no-input", *args)
+
+
+def stage_bundle(python: Path, bundle: Path, tag: str, digest: str) -> None:
+    """Create BUNDLE/runtime and install exactly the published wheel into it."""
+    try:
+        _run(str(python), "-m", "venv", str(bundle / "runtime"))
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"{exc}\nThis Python could not create a virtual environment. "
+            "On Debian/Ubuntu install the python3-venv package."
+        ) from exc
+    requirement = bundle.parent / "wheel.txt"
+    requirement.write_text(f"{DISTRIBUTION}=={tag} --hash=sha256:{digest}\n")
+    options = ("--no-deps", "--require-hashes", "--only-binary", ":all:")
+    _pip(release_python(bundle), *options, "-r", str(requirement))
+
+
+def _build_launcher(bundle: Path) -> None:
+    target = bundle / "bin"
+    target.mkdir()
+    source = RELEASE_DATA / "launcher"
+    if os.name == "nt":
+        compiler = (
+            Path(os.environ["WINDIR"]) / "Microsoft.NET/Framework64/v4.0.30319/csc.exe"
+        )
+        _run(
+            str(compiler),
+            "/nologo",
+            "/optimize+",
+            "/target:exe",
+            f"/out:{target / 'meow.exe'}",
+            str(source / "Launcher.cs"),
+        )
+    else:
+        shutil.copy2(source / "launcher.sh", target / "meow")
+        (target / "meow").chmod(0o755)
+
+
+def _swap(bundle: Path, destination: Path) -> None:
+    """Move BUNDLE into place, setting any previous build aside until it works."""
     if not destination.exists():
-        root.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=root) as temporary:
-            archive = Path(temporary) / asset
-            checksum = Path(temporary) / "checksum"
-            base = f"{DOWNLOAD_URL}/{tag}/{asset}"
-            _download(base, archive)
-            _download(base + ".txt", checksum)
-            unpack_release(archive, checksum.read_text().split()[0], destination)
-    _validate_release(destination, tag)
-    subprocess.run(
-        [
-            str(release_python(destination)),
+        bundle.rename(destination)
+        return
+    retired = destination.with_name(f".old-{destination.name}-{os.getpid()}")
+    try:
+        destination.rename(retired)
+    except OSError as exc:
+        raise RuntimeError(
+            f"{destination} is in use. Stop running MEOW jobs, then rerun."
+        ) from exc
+    try:
+        bundle.rename(destination)
+    except OSError:
+        retired.rename(destination)
+        raise
+    shutil.rmtree(retired, ignore_errors=True)
+
+
+def finish_bundle(bundle: Path, destination: Path) -> None:
+    """Complete a staged bundle: pinned dependencies, launcher, plugin, swap.
+
+    Runs from the new wheel (on PYTHONPATH of any Python 3.12+), never from
+    inside BUNDLE, so Windows can rename the folder afterwards. The venv is not
+    relocatable, but launchers use `python -m meow`, which survives the move.
+    """
+    lock = RELEASE_DATA / "requirements-release.txt"
+    _pip(release_python(bundle), "--require-hashes", "-r", str(lock))
+    _build_launcher(bundle)
+    shutil.copytree(RELEASE_DATA / "plugin", bundle / "plugin")
+    shutil.copy2(RELEASE_DATA / "LICENSE", bundle / "LICENSE")
+    _swap(bundle, destination)
+
+
+def install_release(tag: str, digest: str) -> None:
+    """Install TAG's wheel with the newest Python, then activate it."""
+    maintenance._version_parts(tag)
+    python = find_python()
+    versions = Path.home() / ".meow" / "versions"
+    destination = versions / tag
+    versions.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=versions, prefix=".install-") as temporary:
+        bundle = Path(temporary) / "bundle"
+        bundle.mkdir()
+        stage_bundle(python, bundle, tag, digest)
+        purelib = _run(
+            str(release_python(bundle)),
+            "-c",
+            "import sysconfig;print(sysconfig.get_path('purelib'))",
+        ).strip()
+        # The new release finishes its own install, whatever this one does.
+        env = {**os.environ, "PYTHONPATH": purelib}
+        _run(
+            str(python),
             "-m",
             "meow.installer.releases",
-            "--activate",
+            "--finish",
             str(destination),
-        ],
-        check=True,
+            "--bundle",
+            str(bundle),
+            env=env,
+        )
+    _validate_release(destination, tag)
+    _run(
+        str(release_python(destination)),
+        "-m",
+        "meow.installer.releases",
+        "--activate",
+        str(destination),
     )
 
 
@@ -192,7 +319,7 @@ def _validate_release(release: Path, tag: str) -> None:
         [
             str(release_python(release)),
             "-c",
-            "from importlib.metadata import version; print(version('meow'))",
+            "from importlib.metadata import version; print(version('meow-harness'))",
         ],
         check=True,
         capture_output=True,
@@ -204,9 +331,18 @@ def _validate_release(release: Path, tag: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--activate", type=Path, required=True)
+    parser.add_argument("--activate", type=Path)
+    parser.add_argument("--finish", type=Path, help="destination for --bundle")
+    parser.add_argument("--bundle", type=Path)
     parser.add_argument("--setup", action="store_true")
     args = parser.parse_args()
+    if args.finish:
+        if not args.bundle:
+            parser.error("--finish requires --bundle")
+        finish_bundle(args.bundle, args.finish)
+        return 0
+    if not args.activate:
+        parser.error("--activate or --finish is required")
     _validate_release(args.activate, args.activate.name)
     activate(args.activate)
     print(f"Installed MEOW {args.activate.name} in {args.activate.parent.parent}")

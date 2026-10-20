@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -9,13 +10,20 @@ from threading import Thread
 
 import pytest
 
+GOOD_DIGEST = "a" * 64
+
 
 @pytest.fixture(params=[HTTPStatus.NOT_FOUND, HTTPStatus.SERVICE_UNAVAILABLE])
-def checksum_server(request):
+def source_server(request):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            body = b'{"tag_name":"1.2.3"}' if self.path == "/latest.json" else b"zip"
-            self.send_response(request.param if self.path.endswith(".txt") else 200)
+            if self.path == "/latest.json":
+                manifest = {"tag_name": "1.2.3", "wheel_sha256": GOOD_DIGEST}
+                body = json.dumps(manifest).encode()
+                self.send_response(200)
+            else:
+                body = b"index failure"
+                self.send_response(request.param)
             self.end_headers()
             self.wfile.write(body)
 
@@ -26,54 +34,57 @@ def checksum_server(request):
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield f"http://127.0.0.1:{server.server_port}", request.param
+        yield f"http://127.0.0.1:{server.server_port}"
     finally:
         server.shutdown()
         server.server_close()
         thread.join()
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows installer")
-@pytest.mark.parametrize("shell", ["powershell", "pwsh"])
-def test_checksum_download_error_identifies_release_file(
-    tmp_path, shell, checksum_server
-):
+def _install(tmp_path, shell, base, **extra):
     executable = shutil.which(shell)
     if executable is None:
         pytest.skip(f"{shell} is unavailable")
-    base, status = checksum_server
-    env = dict(
-        os.environ,
-        USERPROFILE=str(tmp_path),
-        MEOW_RELEASE_BASE_URL=base,
-        MEOW_RELEASE_MANIFEST_URL=f"{base}/latest.json",
-    )
+    env = {
+        **os.environ,
+        "USERPROFILE": str(tmp_path),
+        "MEOW_PYTHON": sys.executable,
+        "PIP_INDEX_URL": f"{base}/simple",
+        "PIP_RETRIES": "0",
+        "PIP_NO_INPUT": "1",
+        "MEOW_RELEASE_MANIFEST_URL": f"{base}/latest.json",
+        **extra,
+    }
     script = Path(__file__).resolve().parents[2] / "scripts" / "install.ps1"
-    result = subprocess.run(
-        [
-            executable,
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(script),
-        ],
+    return subprocess.run(
+        [executable, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
         env=env,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=60,
         check=False,
     )
 
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows installer")
+@pytest.mark.parametrize("shell", ["powershell", "pwsh"])
+def test_index_failure_names_the_release_and_leaves_nothing(
+    tmp_path, shell, source_server
+):
+    result = _install(tmp_path, shell, source_server)
+
     assert result.returncode == 1
-    assert "checksum file" in result.stdout
-    assert "meow-windows-x86_64.zip.txt" in result.stdout
+    assert "package index" in result.stdout
     assert "1.2.3" in result.stdout
-    if status == HTTPStatus.NOT_FOUND:
-        assert "missing" in result.stdout
-    else:
-        assert "missing" not in result.stdout
-        assert f"{base}/download/1.2.3/" in result.stdout
-    assert (tmp_path / ".meow" / "versions").is_dir()
     assert not (tmp_path / ".meow" / "versions" / "1.2.3").exists()
     assert not list((tmp_path / ".meow" / "versions").glob(".install-*"))
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows installer")
+@pytest.mark.parametrize("shell", ["powershell", "pwsh"])
+def test_missing_python_stops_before_installing(tmp_path, shell, source_server):
+    result = _install(tmp_path, shell, source_server, MEOW_PYTHON=str(tmp_path / "x"))
+
+    assert result.returncode == 1
+    assert "Python 3.12 or newer" in result.stdout
+    assert not (tmp_path / ".meow" / "versions" / "1.2.3").exists()
