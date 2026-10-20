@@ -83,6 +83,16 @@ meow run "<feature request>" --name "<generated-feature-name>" --work-dir "<proj
 meow run --jira [ISSUE-KEY] --work-dir "<project-path>"   # Jira-sourced, retained branch
 ```
 
+**Watching a started run:** after launching any `meow run` (or `--orchestrate`)
+as a command from this session, create a recurring status check with
+`CronCreate` every 7 minutes (`*/7 * * * *`). Each tick runs
+`meow status <run_id> --work-dir "<project-path>"`, reports only meaningful
+changes (phase, task count, blockers, delivery), and surfaces failures. Stop
+the check with `CronDelete` once the run reaches a terminal state (delivered,
+failed, blocked, or cancelled) or the user cancels it. This is separate from
+scheduled runs, which still register through `/meow:schedule` and never
+sleep or poll in the session.
+
 **Resuming in CLI mode:** if the user asks to continue, resume, pick up, or
 build on existing code, a worktree, or an earlier plan (any wording), do not
 start a fresh run -- a plain `meow run --name X` plans from scratch in its own
