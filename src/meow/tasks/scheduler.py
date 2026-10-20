@@ -14,6 +14,7 @@ class TaskOutcome:
     worktree: str | None = None
     commit: str | None = None
     error: str | None = None
+    note: str | None = None
 
 
 class PermanentTaskError(RuntimeError):

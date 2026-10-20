@@ -155,8 +155,21 @@ async def execute_in_worktrees(  # ruff: ignore[complex-structure, too-many-argu
             if name
         ]
         if not staged:
-            if await _git(task_dir, "rev-parse", "HEAD") == bases[spec.id]:
-                return TaskOutcome(spec.id, "complete", str(task_dir), bases[spec.id])
+            if await _git(task_dir, "rev-parse", "HEAD") == bases[spec.id] or (
+                spec.verification
+                and not await _git(
+                    task_dir, "diff", bases[spec.id], "--name-only", "-z"
+                )
+            ):
+                return TaskOutcome(
+                    spec.id,
+                    "complete",
+                    str(task_dir),
+                    bases[spec.id],
+                    note="Verification only; no file changes."
+                    if spec.verification
+                    else None,
+                )
             raise ValueError(f"task {spec.id} produced no changes")
         outside = [path for path in staged if not _owned(path, spec)]
         if outside:

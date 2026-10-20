@@ -2,11 +2,15 @@
 
 import asyncio
 import subprocess
+import sys
 import time
+
+import pytest
 
 from meow.tasks import executor
 from meow.tasks.executor import execute_in_worktrees
 from meow.tasks.model import TaskGraph, TaskSpec
+from meow.tasks.runner import verify_task
 
 MIN_TICKS = 10
 
@@ -138,6 +142,57 @@ def test_noop_worker_completes_without_replaying_its_base(tmp_path, monkeypatch)
     assert integrated == ["change"]
     assert result.revision != original
     assert _git(repo, "rev-list", "--count", f"{original}..HEAD") == "1"
+
+
+@pytest.mark.parametrize("empty_commit", [False, True])
+def test_verification_only_worker_records_note_without_integrating(
+    tmp_path, empty_commit
+):
+    repo = _one_commit_repo(tmp_path)
+    original = _git(repo, "rev-parse", "HEAD")
+    spec = TaskSpec(
+        "verify",
+        (),
+        ("unused.txt",),
+        (f'"{sys.executable}" -c "print(123)"', f'"{sys.executable}" -c "print(456)"'),
+    )
+
+    async def implement(spec, worktree):
+        evidence = await verify_task(spec, worktree)
+        assert [item["exit_code"] for item in evidence] == [0, 0]
+        # A clean worker can have moved HEAD without changing any files.
+        if empty_commit:
+            _git(worktree, "commit", "--allow-empty", "-m", "verification")
+
+    result = asyncio.run(
+        execute_in_worktrees(
+            repo, TaskGraph((spec,)), "f" * 32, implement, max_parallel=1
+        )
+    )
+    assert result.passed, [outcome.error for outcome in result.outcomes]
+    assert result.revision == original
+    assert result.outcomes[0].note == "Verification only; no file changes."
+
+
+def test_clean_worker_with_failed_verification_does_not_complete(tmp_path):
+    repo = _one_commit_repo(tmp_path)
+    original = _git(repo, "rev-parse", "HEAD")
+    spec = TaskSpec(
+        "verify", (), ("unused.txt",), (f'"{sys.executable}" -c "exit(7)"',)
+    )
+
+    async def implement(spec, worktree):
+        await verify_task(spec, worktree)
+
+    result = asyncio.run(
+        execute_in_worktrees(
+            repo, TaskGraph((spec,)), "f" * 32, implement, max_parallel=1
+        )
+    )
+    assert not result.passed
+    assert "verification failed" in result.outcomes[0].error
+    assert result.outcomes[0].note is None
+    assert result.revision == original
 
 
 def _ticks_while_executing(repo):

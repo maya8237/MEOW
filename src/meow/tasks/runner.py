@@ -9,9 +9,9 @@ from meow.agents.generator import Generator
 from meow.execution.run_state import RunStore
 from meow.execution.sprint import Sprint, build_sprint
 from meow.infrastructure.cancellation import cancel_requested
-from meow.infrastructure.test_runner import _argv
 from meow.infrastructure.usage import usage_scope
 from meow.infrastructure.worktree_setup import run_setup
+from meow.project.config_models import LintCommand
 from meow.project.permissions import PermissionPolicy
 
 from .executor import execute_in_worktrees
@@ -39,7 +39,9 @@ def _verification_argv(command: str) -> list[str]:
                 )
             return ["cmd", "/c", command]
         return ["bash", "-o", "pipefail", "-c", command]
-    return _argv(command, ())
+    # Keep the lint launch policy: native Windows programs use their original
+    # name, while .cmd/.bat shims need the resolved path.
+    return LintCommand(command).argv()
 
 
 async def verify_task(  # ruff: ignore[complex-structure, too-many-statements]
@@ -119,7 +121,7 @@ async def run_parallel_plan(  # ruff: ignore[complex-structure, too-many-stateme
             **(
                 {
                     key: saved[spec.id][key]
-                    for key in ("verification", "commit", "worktree")
+                    for key in ("verification", "commit", "worktree", "note")
                     if key in saved[spec.id]
                 }
                 if spec.id in integrated
@@ -143,6 +145,8 @@ async def run_parallel_plan(  # ruff: ignore[complex-structure, too-many-stateme
             task_state[outcome.id]["worktree"] = outcome.worktree
         if outcome.commit:
             task_state[outcome.id]["commit"] = outcome.commit
+        if outcome.note:
+            task_state[outcome.id]["note"] = outcome.note
 
     async def prepare(task_dir: Path) -> None:  # ruff: ignore[unused-async]
         manifest = config.get("worktree_setup", {"copy": [], "commands": []})
