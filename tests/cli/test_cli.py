@@ -1089,14 +1089,16 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_sprint.assert_not_called()
         mock_plan.assert_not_called()
 
+    @staticmethod
     @patch("meow.cli.cli._boot_repo")
     @patch("meow.cli.dispatch.run_review_command", new_callable=AsyncMock)
     @patch("meow.cli.dispatch.run_plan", new_callable=AsyncMock)
     @patch("meow.cli.dispatch.run_sprint", new_callable=AsyncMock)
-    def test_run_command_requires_worktree_when_not_disabled(
-        self, mock_sprint, mock_plan, mock_review, mock_boot
+    def test_run_command_derives_name_with_supplied_plan(
+        mock_sprint, mock_plan, mock_review, mock_boot
     ):
         with (
+            tempfile.TemporaryDirectory() as temp_dir,
             patch("meow.cli.validation._is_linked_worktree", return_value=False),
             patch(
                 "sys.argv",
@@ -1105,17 +1107,25 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                     "run",
                     "ship-it",
                     "--work-dir",
-                    ".",
+                    temp_dir,
                     "--plan",
                     "docs/exec-plans/active/ship-it.md",
                 ],
             ),
-            self.assertRaises(SystemExit),
         ):
             cli.cli_main()
 
-        mock_boot.assert_not_called()
-        mock_sprint.assert_not_called()
+        mock_boot.assert_called_once()
+        mock_sprint.assert_awaited_once_with(
+            Path(temp_dir).resolve(),
+            "ship-it",
+            "ship-it",
+            use_worktree=True,
+            plan_file=(Path(temp_dir) / "docs/exec-plans/active/ship-it.md").resolve(),
+            source_branch=None,
+            approve_plan=None,
+            resume_at="generate",
+        )
         mock_plan.assert_not_called()
         mock_review.assert_not_called()
 
