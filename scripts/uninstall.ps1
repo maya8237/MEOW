@@ -29,6 +29,7 @@
             $script = $temporary
         }
         & $python $script
+        if ($LASTEXITCODE -eq 130) { return }
         if ($LASTEXITCODE -ne 0) { throw 'MEOW uninstall did not finish; see the error above.' }
     } catch {
         Write-Host "MEOW uninstall failed: $($_.Exception.Message)" -ForegroundColor Red

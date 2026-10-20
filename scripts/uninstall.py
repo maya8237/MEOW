@@ -226,7 +226,7 @@ def main() -> int:
         uninstall(Path.home(), purge=purge)
     except (EOFError, KeyboardInterrupt):
         print("\nCancelled.")
-        return 1
+        return 130
     except (OSError, ValueError) as exc:
         print(f"MEOW uninstall failed: {exc}", file=sys.stderr)
         return 1

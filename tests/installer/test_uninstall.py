@@ -14,6 +14,7 @@ from meow.hooks.claude import install_claude_hooks
 from meow.project.onboarding import BOUNDARY
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "uninstall.py"
+CANCELLED_EXIT_CODE = 130
 
 
 @pytest.mark.parametrize("purge", [False, True])
@@ -178,3 +179,46 @@ def test_interactive_uninstall_only_changes_files_after_confirmation(
     assert calls == (
         [("project", tmp_path), ("uninstall", True)] if confirm == "y" else []
     )
+
+
+@pytest.mark.parametrize("interruption", [EOFError, KeyboardInterrupt])
+def test_uninstall_cancellation_has_a_distinct_exit_code(
+    monkeypatch, capsys, interruption
+):
+    module = runpy.run_path(str(SCRIPT))
+
+    def cancel(_prompt):
+        raise interruption
+
+    monkeypatch.setattr("builtins.input", cancel)
+    assert module["main"]() == CANCELLED_EXIT_CODE
+    assert capsys.readouterr().out.strip() == "Cancelled."
+
+
+@pytest.mark.parametrize("helper_exit", [CANCELLED_EXIT_CODE, 1])
+def test_powershell_reports_errors_but_not_cancellation(tmp_path, helper_exit):
+    shell = shutil.which("powershell")
+    if not shell:
+        pytest.skip("PowerShell is not available")
+    wrapper = tmp_path / "uninstall.ps1"
+    shutil.copyfile(SCRIPT.with_suffix(".ps1"), wrapper)
+    (tmp_path / "uninstall.py").write_text(
+        f"import sys; print('Cancelled.' if {helper_exit} == 130 else 'Error'); "
+        f"sys.exit({helper_exit})"
+    )
+    quoted = str(wrapper).replace("'", "''")
+    result = subprocess.run(
+        [
+            shell,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            f"& '{quoted}'; exit $LASTEXITCODE",
+        ],
+        env={**os.environ, "MEOW_PYTHON": sys.executable},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == helper_exit
+    assert ("MEOW uninstall failed" in result.stdout) is (helper_exit == 1)
