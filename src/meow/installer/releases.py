@@ -279,8 +279,11 @@ def finish_bundle(bundle: Path, destination: Path) -> None:
     relocatable, but launchers use `python -m meow`, which survives the move.
     """
     lock = RELEASE_DATA / "requirements-release.txt"
+    print("Installing pinned dependencies (this can take a minute)...", flush=True)
     _pip(release_python(bundle), "--require-hashes", "-r", str(lock))
+    print("Building the meow launcher...", flush=True)
     _build_launcher(bundle)
+    print("Installing the Claude Code plugin...", flush=True)
     shutil.copytree(RELEASE_DATA / "plugin", bundle / "plugin")
     shutil.copy2(RELEASE_DATA / "LICENSE", bundle / "LICENSE")
     _swap(bundle, destination)

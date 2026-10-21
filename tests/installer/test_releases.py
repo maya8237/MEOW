@@ -251,3 +251,21 @@ def test_failed_activation_keeps_previous_release(tmp_path, monkeypatch):
     with pytest.raises((ValueError, FileNotFoundError)):
         activate(release)
     assert (root / "current-version").read_text() == "0.1.3"
+
+
+def test_finish_bundle_reports_each_slow_step(tmp_path, monkeypatch, capsys):
+    from meow.installer import releases
+
+    steps = []
+    monkeypatch.setattr(releases, "release_python", lambda bundle: bundle / "py")
+    monkeypatch.setattr(releases, "_pip", lambda *args: steps.append("pip"))
+    monkeypatch.setattr(releases, "_build_launcher", lambda b: steps.append("launcher"))
+    monkeypatch.setattr(releases.shutil, "copytree", lambda *a: steps.append("plugin"))
+    monkeypatch.setattr(releases.shutil, "copy2", lambda *a: None)
+    monkeypatch.setattr(releases, "_swap", lambda *a: steps.append("swap"))
+
+    releases.finish_bundle(tmp_path / "bundle", tmp_path / "dest")
+
+    printed = capsys.readouterr().out.lower()
+    assert steps == ["pip", "launcher", "plugin", "swap"]
+    assert "dependencies" in printed and "launcher" in printed

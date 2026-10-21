@@ -408,3 +408,27 @@ def test_worker_rejects_an_unknown_saved_invocation(tmp_path):
         background.worker_main(tmp_path, record.id, "n")
 
     assert store.load(record.id).phase == "failed"
+
+
+def test_windows_detach_hides_the_console_without_detaching_it(tmp_path, monkeypatch):
+    # DETACHED_PROCESS makes Windows ignore CREATE_NO_WINDOW, so a venv python.exe
+    # launcher's child interpreter opens its own blank console window.
+    seen = {}
+    monkeypatch.setattr(background.sys, "platform", "win32")
+    for name, value in (
+        ("CREATE_NEW_PROCESS_GROUP", 0x200),
+        ("CREATE_NO_WINDOW", 0x08000000),
+        ("DETACHED_PROCESS", 0x8),
+    ):
+        monkeypatch.setattr(background.subprocess, name, value, raising=False)
+
+    def popen(argv, **kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(pid=1)
+
+    monkeypatch.setattr(background.subprocess, "Popen", popen)
+
+    background.detach_command(tmp_path, ["tool"])
+
+    assert seen["creationflags"] & 0x08000000
+    assert not seen["creationflags"] & 0x8

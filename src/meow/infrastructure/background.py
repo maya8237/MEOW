@@ -213,10 +213,10 @@ def detach_command(
         log_path.parent.mkdir(parents=True, exist_ok=True)
     creationflags = 0
     if sys.platform == "win32":
+        # Not DETACHED_PROCESS: it overrides CREATE_NO_WINDOW, and a venv
+        # python.exe then spawns its base interpreter in a new visible console.
         creationflags = (
-            subprocess.CREATE_NEW_PROCESS_GROUP
-            | subprocess.CREATE_NO_WINDOW
-            | getattr(subprocess, "DETACHED_PROCESS", 0)
+            subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
         )
     with log_path.open("ab") as stream:
         process = subprocess.Popen(
