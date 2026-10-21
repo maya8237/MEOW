@@ -165,6 +165,10 @@ def _warn_bun_config(directory: Path) -> None:
         _LOGGER.warning("bun_project_hoisted", cwd=str(directory))
     elif settings.get("globalStore") is False:
         _LOGGER.warning("bun_global_store_disabled", cwd=str(directory))
+    if settings.get("production") is True:
+        # Bun cannot override this from the command line, so test tooling such as
+        # Playwright in devDependencies stays uninstalled until the setting goes.
+        _LOGGER.warning("bun_production_skips_dev_dependencies", cwd=str(directory))
 
 
 def run_node_install(  # ruff: ignore[complex-structure, too-many-statements]

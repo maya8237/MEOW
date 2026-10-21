@@ -433,3 +433,15 @@ def test_unreadable_modules_directory_means_not_ready(tmp_path, monkeypatch):
         node.Path, "iterdir", lambda _self: (_ for _ in ()).throw(PermissionError())
     )
     assert node._missing(tmp_path, {"dependencies": {"a": "1"}}) == ["node_modules"]
+
+
+def test_production_bunfig_warns_that_dev_dependencies_are_skipped(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "bunfig.toml").write_text("[install]\nproduction = true\n")
+    warnings = []
+    monkeypatch.setattr(
+        node._LOGGER, "warning", lambda event, **_kw: warnings.append(event)
+    )
+    node._warn_bun_config(tmp_path)
+    assert warnings == ["bun_production_skips_dev_dependencies"]

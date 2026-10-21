@@ -85,4 +85,6 @@ dependency in that folder's `package.json`.
 - The 900-second install timeout is set with `MEOW_NODE_INSTALL_TIMEOUT`
   (seconds); logs record each install's duration. A timed-out install is
   retried next time because `.meow/node-install.pending` remains.
-- Warnings are logged for a project `hoisted` linker or `globalStore = false`.
+- Warnings are logged for a project `hoisted` linker, `globalStore = false`, or
+  `production = true` (devDependencies such as Playwright stay uninstalled;
+  Bun cannot override it from the command line, so remove the setting).
