@@ -12,6 +12,14 @@ from meow.infrastructure.worktree_setup import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _home(tmp_path_factory, monkeypatch):
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    return home
+
+
 @pytest.mark.parametrize(
     "error",
     [
@@ -106,7 +114,11 @@ def test_failed_bun_retry_stops_and_keeps_pending_marker(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     ("manager", "lock", "argv"),
     [
-        ("bun@1.4.0", "bun.lock", ["bun", "install", "--frozen-lockfile"]),
+        (
+            "bun@1.4.0",
+            "bun.lock",
+            ["bun", "install", "--linker", "isolated", "--frozen-lockfile"],
+        ),
         ("npm@11.0.0", "package-lock.json", ["npm", "ci"]),
         ("pnpm@10.0.0", "pnpm-lock.yaml", ["pnpm", "install", "--frozen-lockfile"]),
         ("yarn@1.22.22", "yarn.lock", ["yarn", "install", "--frozen-lockfile"]),
@@ -179,8 +191,8 @@ def test_successful_but_incomplete_bun_install_is_repaired_once(tmp_path, monkey
     assert (tmp_path / "node_modules/x").is_dir()
     node.ensure_node_dependencies(tmp_path)
     assert calls == [
-        ["bun", "install", "--frozen-lockfile"],
-        ["bun", "install", "--frozen-lockfile", "--force"],
+        ["bun", "install", "--linker", "isolated", "--frozen-lockfile"],
+        ["bun", "install", "--linker", "isolated", "--frozen-lockfile", "--force"],
     ]
 
 
@@ -195,7 +207,8 @@ def test_bun_install_fails_if_force_still_leaves_missing_modules(tmp_path, monke
     )
     with pytest.raises(WorktreeSetupError, match="still incomplete"):
         node.ensure_node_dependencies(tmp_path)
-    assert calls == [["bun", "install"], ["bun", "install", "--force"]]
+    isolated = ["bun", "install", "--linker", "isolated"]
+    assert calls == [isolated, [*isolated, "--force"]]
 
 
 def test_policy_blocks_automatic_install_and_missing_tool_is_actionable(
@@ -242,7 +255,7 @@ def test_broken_transitive_bun_store_link_triggers_repair(tmp_path, monkeypatch)
 
     def repair(directory, argv, **_kwargs):
         assert directory == tmp_path
-        assert argv == ["bun", "install"]
+        assert argv == ["bun", "install", "--linker", "isolated"]
         target.mkdir()
 
     monkeypatch.setattr(node, "run_node_install", repair)
@@ -313,3 +326,110 @@ def test_workspace_member_dependencies_are_repaired_when_root_store_exists(
     node.ensure_node_dependencies(tmp_path)
     node.ensure_node_dependencies(tmp_path)
     assert calls == [(["pnpm", "install", "--frozen-lockfile"], tmp_path)]
+
+
+def _bun_project(tmp_path, dev=True):
+    (tmp_path / "package.json").write_text(
+        json.dumps({
+            "packageManager": "bun@1.4.0",
+            "dependencies": {"a": "1"},
+            "devDependencies": {"b": "1"} if dev else {},
+        })
+    )
+
+
+def test_project_hoisted_choice_is_respected(tmp_path):
+    _bun_project(tmp_path)
+    (tmp_path / "bunfig.toml").write_text('[install]\nlinker = "hoisted"\n')
+    data = json.loads((tmp_path / "package.json").read_text())
+    assert node.install_command(tmp_path, data) == ["bun", "install"]
+
+
+def test_user_hoisted_setting_cannot_disable_shared_store(tmp_path, _home):
+    _bun_project(tmp_path)
+    (_home / ".bunfig.toml").write_text('[install]\nlinker = "hoisted"\n')
+    data = json.loads((tmp_path / "package.json").read_text())
+    assert node.install_command(tmp_path, data)[2:] == ["--linker", "isolated"]
+
+
+def test_malformed_bunfig_is_ignored(tmp_path):
+    _bun_project(tmp_path)
+    (tmp_path / "bunfig.toml").write_text("[install\nlinker = ")
+    data = json.loads((tmp_path / "package.json").read_text())
+    assert "isolated" in node.install_command(tmp_path, data)
+
+
+@pytest.mark.parametrize("where", ["project", "user"])
+def test_production_bunfig_does_not_require_dev_dependencies(
+    tmp_path, monkeypatch, _home, where
+):
+    _bun_project(tmp_path)
+    target = tmp_path if where == "project" else _home
+    (target / ("bunfig.toml" if where == "project" else ".bunfig.toml")).write_text(
+        "[install]\nproduction = true\n"
+    )
+    calls = []
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+
+    def install(argv, cwd, _env, _timeout):
+        calls.append(argv)
+        (cwd / "node_modules" / "a").mkdir(parents=True)
+        return 0, "", False
+
+    monkeypatch.setattr(node, "run_captured", install)
+    node.ensure_node_dependencies(tmp_path)
+    node.ensure_node_dependencies(tmp_path)
+    assert len(calls) == 1  # no forced reinstall, and ready afterwards
+
+
+def test_still_incomplete_error_names_missing_and_forbids_hoisting(
+    tmp_path, monkeypatch
+):
+    _bun_project(tmp_path)
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+
+    def install(_argv, cwd, _env, _timeout):
+        (cwd / "node_modules" / "a").mkdir(parents=True, exist_ok=True)
+        return 0, "", False
+
+    monkeypatch.setattr(node, "run_captured", install)
+    with pytest.raises(WorktreeSetupError, match=r"missing: b\).*do not switch"):
+        node.ensure_node_dependencies(tmp_path)
+
+
+def test_bun_without_linker_support_retries_without_it(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+
+    def install(argv, *_args):
+        calls.append(argv)
+        if "--linker" in argv:
+            return 1, "error: Unknown option '--linker'", False
+        return 0, "", False
+
+    monkeypatch.setattr(node, "run_captured", install)
+    node.run_node_install(tmp_path, ["bun", "install", "--linker", "isolated"])
+    assert calls == [["bun", "install", "--linker", "isolated"], ["bun", "install"]]
+
+
+def test_install_timeout_is_configurable_and_reported(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+    monkeypatch.setenv("MEOW_NODE_INSTALL_TIMEOUT", "1234")
+    monkeypatch.setattr(
+        node, "run_captured", lambda *args: (seen.append(args[3]) or None, "", True)
+    )
+    with pytest.raises(WorktreeSetupError, match="after 1234s"):
+        node.run_node_install(tmp_path, ["bun", "install"])
+    assert seen == [1234.0]
+    monkeypatch.setenv("MEOW_NODE_INSTALL_TIMEOUT", "junk")
+    assert node._install_timeout() == pytest.approx(node._DEFAULT_TIMEOUT)
+
+
+def test_unreadable_modules_directory_means_not_ready(tmp_path, monkeypatch):
+    _bun_project(tmp_path)
+    (tmp_path / "node_modules").mkdir()
+    monkeypatch.setattr(
+        node.Path, "iterdir", lambda _self: (_ for _ in ()).throw(PermissionError())
+    )
+    assert node._missing(tmp_path, {"dependencies": {"a": "1"}}) == ["node_modules"]

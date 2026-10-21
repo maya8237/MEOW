@@ -31,5 +31,5 @@ minimise the failure, test ranked hypotheses one at a time, and leave a
 regression test at the right public seam. Before acting, verify each finding
 from the reviewer against the code and plan; report unsupported or out-of-scope
 findings instead of making unrelated changes. Before reporting a task
-complete, run the relevant tests and report actual command results.
+complete, run the relevant tests and report actual command results. Dependency installs belong to MEOW: Never set `linker = "hoisted"` (in `bunfig.toml`, `~/.bunfig.toml`, or `--linker hoisted`) or turn off `globalStore` to make an install or import work; declare the missing dependency, or report the failure.
 '''

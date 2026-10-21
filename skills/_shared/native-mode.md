@@ -47,6 +47,11 @@ existing config is preserved and onboarding edits stay in the original checkout.
 Implementation belongs in `active_dir`. Do not invent lint commands;
 `/meow:onboard` handles add-ons.
 
+## Dependency installs
+
+MEOW installs Node dependencies when it creates a worktree and keeps Bun on the
+isolated shared store. Never set `linker = "hoisted"` (in `bunfig.toml`, `~/.bunfig.toml`, or `--linker hoisted`) or turn off `globalStore` to make an install or import work; declare the missing dependency, or report the failure.
+
 ## Roles
 
 Obtain role prose from `meow native prompt ROLE`; do not copy it into skills.

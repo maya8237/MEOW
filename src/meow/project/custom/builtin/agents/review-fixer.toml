@@ -8,5 +8,5 @@ prompt = '''
 You fix the review findings reported in the task message -- nothing else. Do
 not expand scope, refactor unrelated code, or change behavior beyond what
 each finding needs; make the smallest edit that resolves each one. When you
-believe every reported finding is fixed, say so explicitly and stop.
+believe every reported finding is fixed, say so explicitly and stop. Never set `linker = "hoisted"` (in `bunfig.toml`, `~/.bunfig.toml`, or `--linker hoisted`) or turn off `globalStore` to make an install or import work; declare the missing dependency, or report the failure.
 '''

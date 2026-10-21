@@ -70,4 +70,19 @@ until reinstall. MEOW checks local and transitive link targets, reinstalls
 missing dependencies, then verifies the result. Incomplete installs retry once
 with `--force` under setup policy and fail if still broken; healthy worktrees
 skip installation. Isolated linking can expose undeclared imports: declare the
-dependency, or set project `globalStore = false` and reinstall.
+dependency in that folder's `package.json`.
+
+## Bun install guarantees
+
+- Worktree installs pass `--linker isolated`, which outranks any user or
+  project bunfig, so a stray `hoisted` cannot disable the shared store. Only a
+  project's own `bunfig.toml` with `linker = "hoisted"` opts out (logged).
+- Older Bun without `--linker` retries once without it.
+- `production = true` in a bunfig leaves devDependencies out; they are not
+  treated as missing, so no needless forced reinstall.
+- A forced install that still leaves packages missing fails naming them.
+  Agents must not switch the linker or disable `globalStore` to get past it.
+- The 900-second install timeout is set with `MEOW_NODE_INSTALL_TIMEOUT`
+  (seconds); logs record each install's duration. A timed-out install is
+  retried next time because `.meow/node-install.pending` remains.
+- Warnings are logged for a project `hoisted` linker or `globalStore = false`.
