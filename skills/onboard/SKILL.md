@@ -110,8 +110,12 @@ installed and must be installed before the feature works. Tell them to install
 it themselves with `/plugin` (marketplace plugins) or `/mcp` (servers), then
 come back. Once installed, ask them for the access tokens and use them to set
 up the MCP: write tokens only to ignored `.meow/config.local.toml` or the MCP's
-own env, never the shared config, and never echo them. You can also configure
-the CLI launcher, which does not need a session MCP. Leave the feature
+own env, never the shared config, and never echo them. For a fresh install,
+also register the MCP for Claude's own use, not just MEOW: run `claude mcp add`
+at local or user scope with tokens in `--env`, never project scope or
+`.mcp.json`, which are committed. Show the command first and confirm with
+`claude mcp list`. You can also configure the CLI launcher, which does not need
+a session MCP. Leave the feature
 unverified and unscheduled until a real tool call succeeds.
 
 When an optional feature is accepted, use the matching documented path:
