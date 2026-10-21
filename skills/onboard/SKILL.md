@@ -120,6 +120,12 @@ installed and must be installed before the feature works, in this order:
 4. The user runs `/mcp` to confirm the server connects. It cannot connect
    before the tokens are set; `claude mcp list` is Claude's equivalent check.
 
+If `/plugin`, `/mcp` or `claude mcp` is unavailable or fails, do not retry or
+stall: show the error, give the user the exact command or UI step to run
+themselves, mark that feature unverified, and continue the other setup. Hand a
+command to the user in interactive mode; in automatic mode skip it and list it
+in the summary.
+
 You can also configure the CLI launcher, which does not need a session MCP.
 Leave the feature unverified and unscheduled until a real tool call succeeds.
 
