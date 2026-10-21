@@ -113,9 +113,10 @@ installed and must be installed before the feature works, in this order:
    `.meow/config.local.toml` or the MCP's own env, never the shared config, and
    never echo them.
 3. For a fresh install, also register the MCP for Claude's own use, not just
-   MEOW: run `claude mcp add` at local or user scope with tokens in `--env`,
-   never project scope or `.mcp.json`, which are committed. Show the command
-   first.
+   MEOW: run `claude mcp add` at local or user scope, never project scope or
+   `.mcp.json`, which are committed. Stdio: `claude mcp add NAME -e KEY=val --
+   COMMAND ARGS` (the `--` is required). HTTP: `--transport http NAME URL
+   --header "Authorization: Bearer ..."`. Show the command first.
 4. The user runs `/mcp` to confirm the server connects. It cannot connect
    before the tokens are set; `claude mcp list` is Claude's equivalent check.
 
