@@ -170,8 +170,8 @@ def prepare_output_file(output_file: Path) -> None:
     """Remove a prior output so a later existence check cannot accept stale data.
 
     A file another process briefly holds open (a `WinError` sharing violation)
-    is retried; if it stays locked it is emptied instead, and failing that the
-    run continues with a warning rather than crashing before the agent starts.
+    is retried; if it stays locked it is emptied instead. If neither succeeds,
+    stop before an old artifact can be mistaken for the new agent's output.
     """
     for attempt in range(_OUTPUT_UNLINK_ATTEMPTS):
         try:
@@ -184,6 +184,7 @@ def prepare_output_file(output_file: Path) -> None:
         output_file.write_text("", encoding="utf-8")
     except OSError:
         logger.warning("output_not_cleared", file=str(output_file), reason=reason)
+        raise
 
 
 def _preview(text: str) -> str:

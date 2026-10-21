@@ -411,6 +411,15 @@ def test_has_conflict_markers_of_missing_file_is_false(tmp_path):
     assert has_conflict_markers(tmp_path / "gone.txt") is False
 
 
+def test_staging_conflict_markers_does_not_make_a_merge_resolved(git_repo):
+    scenario = conflicted(git_repo)
+    git(scenario.worktree, "add", "shared.py")
+    outcome = scenario.finish("ui")
+    assert outcome.status == "conflict"
+    assert "shared.py" in outcome.conflicted_paths
+    assert scenario.record.task("ui").status != "merged"
+
+
 def test_merge_without_git_identity_falls_back_to_meow(git_repo, monkeypatch):
     scenario = start(git_repo)
     scenario.add_task("api", {"api.py": "x\n"})

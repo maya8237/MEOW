@@ -90,7 +90,7 @@ steps:
   - uses: actions/setup-python@v5
     with:
       python-version: "3.12"
-  - run: python -m pip install meow
+  - run: python -m pip install meow-harness
   - name: Run MEOW report-only review
     run: |
       # Add the selected MEOW_* exports from the environment guide here.
@@ -155,7 +155,7 @@ broader runtime change.
 ### Optional inline review notes
 
 When requested, add `--post-comments github` or `--post-comments gitlab` to
-`meow review --ci`. Keep the fixed install command `python -m pip install meow`;
+`meow review --ci`. Keep the fixed install command `python -m pip install meow-harness`;
 do not add an install-spec variable or ask the user to choose the package.
 
 - GitHub: reuse a suitable existing token through a job-local `MEOW_GITHUB_TOKEN`

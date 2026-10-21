@@ -98,12 +98,21 @@ def clean_legacy(data: dict, root: Path, base: Path) -> None:
             del data["env"]
 
 
-def meow_hook(entry: object) -> bool:
+def without_meow_hooks(entry: object) -> object | None:
     hooks = entry.get("hooks") if isinstance(entry, dict) else None
-    return isinstance(hooks, list) and any(
-        isinstance(hook, dict) and str(hook.get("command", "")).startswith(HOOK_PREFIX)
+    if not isinstance(hooks, list):
+        return entry
+    kept = [
+        hook
         for hook in hooks
-    )
+        if not (
+            isinstance(hook, dict)
+            and str(hook.get("command", "")).startswith(HOOK_PREFIX)
+        )
+    ]
+    if len(kept) == len(hooks):
+        return entry
+    return {**entry, "hooks": kept} if kept else None
 
 
 def clean_hooks(data: dict, manifest: dict) -> None:  # ruff: ignore[complex-structure, too-many-branches]
@@ -120,12 +129,17 @@ def clean_hooks(data: dict, manifest: dict) -> None:  # ruff: ignore[complex-str
     for item in entries:
         if not isinstance(item, dict) or "event" not in item or "entry" not in item:
             raise ValueError("Invalid hook manifest entry")
-        owned.append(item["entry"])
+        owned.append((item["event"], item["entry"]))
     for event, values in list(hooks.items()):
         if not isinstance(values, list):
             continue
-        kept = [v for v in values if v not in owned and not meow_hook(v)]
-        if len(kept) == len(values):
+        kept = [
+            cleaned
+            for value in values
+            if (event, value) not in owned
+            and (cleaned := without_meow_hooks(value)) is not None
+        ]
+        if kept == values:
             continue
         if kept:
             hooks[event] = kept

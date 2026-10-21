@@ -199,6 +199,88 @@ def test_create_workflow_copies_existing_definition(running, project):
     assert "nightly-copy" in workflows
 
 
+@pytest.mark.parametrize(
+    ("kind", "source"),
+    [("agents", "explorer"), ("workflows", "quick"), ("skills", "")],
+)
+def test_created_descriptions_round_trip_unicode_and_escapes(project, kind, source):
+    description = 'Build \U0001f431 "carefully" with C:\\tools\nNext line.'
+    if kind == "agents":
+        description = description.replace("\n", " ")
+    result = create_module.create_definition(
+        project,
+        kind,
+        {"name": "roundtrip", "description": description, "source": source},
+    )
+    assert Path(result["file"]).is_file()
+    item = next(
+        item for item in build_catalog(project)[kind] if item["name"] == "roundtrip"
+    )
+    assert item["description"] == description
+
+
+def test_remember_unicode_repository_preserves_existing_choices(project, tmp_path):
+    other = tmp_path / "project-\U0001f431"
+    other.mkdir()
+    repos_module.remember(project)
+    repos_module.remember(other)
+    assert repos_module.repo_choices(project) == [
+        str(project.resolve()),
+        str(other.resolve()),
+    ]
+
+
+@pytest.mark.parametrize("kind", ["skills", "agents", "workflows"])
+@pytest.mark.parametrize("scope", ["project", "user"])
+def test_catalog_refreshes_table_form_custom_sources(project, tmp_path, kind, scope):
+    folder = tmp_path / "definitions"
+    folder.mkdir()
+    if kind == "skills":
+        target = folder / "fresh" / "SKILL.md"
+        target.parent.mkdir()
+        text = "---\nname: fresh\ndescription: Before.\n---\nBody.\n"
+    else:
+        target = folder / "fresh.toml"
+        template = "explorer" if kind == "agents" else "quick"
+        text = (builtin_dir() / kind / f"{template}.toml").read_text(encoding="utf-8")
+    target.write_text(text, encoding="utf-8")
+    config = (
+        project / ".meow" / "config.toml"
+        if scope == "project"
+        else create_module.user_config_path()
+    )
+    config.parent.mkdir(parents=True, exist_ok=True)
+    relative = "definitions" if scope == "project" else folder.as_posix()
+    config.write_text(
+        f'[custom]\n{kind} = [{{path = "{relative}"}}]\n', encoding="utf-8"
+    )
+    with _Server(0, project) as server:
+        before = server.catalog_bytes()
+        updated = (
+            text.replace("Before.", "After editing.")
+            if kind == "skills"
+            else text + "\n# Changed\n"
+        )
+        target.write_text(updated, encoding="utf-8")
+        assert server.catalog_bytes() != before
+
+
+def test_catalog_cache_does_not_scan_install_or_runtime_files(project, monkeypatch):
+    user_dir = create_module.user_config_path().parent
+    user_dir.mkdir(parents=True, exist_ok=True)
+    runtime = user_dir / "versions" / "0.1.5" / "runtime"
+    runtime.mkdir(parents=True)
+    original = Path.rglob
+
+    def definitions_only(path, pattern):
+        assert path != user_dir, "Catalog refresh must not walk installed runtimes"
+        return original(path, pattern)
+
+    monkeypatch.setattr(Path, "rglob", definitions_only)
+    with _Server(0, project) as server:
+        assert b'"workflows"' in server.catalog_bytes()
+
+
 def test_create_skill_lands_in_project_plugin_and_registers_it(running, project):
     status, body = _post(
         running.server_port,

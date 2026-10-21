@@ -5,6 +5,7 @@ import hashlib
 import os
 import signal
 import subprocess
+import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass, replace
@@ -12,7 +13,7 @@ from functools import partial
 from pathlib import Path
 
 from meow.execution.run_state import MAX_OUTPUT, CheckResult, RunStore
-from meow.infrastructure.test_runner import prepared_test_stage
+from meow.infrastructure.test_runner import capture_windows_command, prepared_test_stage
 from meow.project.command_policy import split_command
 from meow.project.config import config_paths
 from meow.project.config_files import SHARED_PROJECT_PATHS
@@ -277,13 +278,37 @@ def kill_process_tree(process: subprocess.Popen) -> None:
         process.kill()
 
 
-def run_captured(
-    argv: list[str], cwd: Path, env: dict[str, str], timeout: float
+def _communicate(
+    process: subprocess.Popen, timeout: float, cancelled: threading.Event | None
+):
+    if cancelled is None:
+        return process.communicate(timeout=timeout)
+    deadline = time.monotonic() + timeout
+    while not cancelled.is_set():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(process.args, timeout)
+        try:
+            return process.communicate(timeout=min(remaining, 0.1))
+        except subprocess.TimeoutExpired:
+            continue
+    raise InterruptedError("Verification cancelled")
+
+
+def run_captured(  # ruff: ignore[too-many-arguments] -- cancellation belongs to the owned subprocess
+    argv: list[str],
+    cwd: Path,
+    env: dict[str, str],
+    timeout: float,
+    *,
+    cancel_event: threading.Event | None = None,
 ) -> tuple[int | None, str, bool]:
     """Run to completion; (exit code, output, timed out). A timeout kills the
     whole process tree so nothing keeps editing the checkout afterwards."""
+    shell = os.name == "nt" and argv[:2] == ["cmd", "/c"]
     with subprocess.Popen(
-        argv,
+        argv[2] if shell else argv,
+        shell=shell,
         cwd=cwd,
         env=env,
         stdout=subprocess.PIPE,
@@ -292,7 +317,7 @@ def run_captured(
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
     ) as process:
         try:
-            data, _ = process.communicate(timeout=timeout)
+            data, _ = _communicate(process, timeout, cancel_event)
             return process.returncode, data.decode("utf-8", errors="replace"), False
         except subprocess.TimeoutExpired:
             kill_process_tree(process)
@@ -306,7 +331,28 @@ def run_captured(
             raise
 
 
-def run_check(
+async def _run_cancellable(callback):
+    """Do not return from cancellation while the command's worker still runs."""
+    cancelled = threading.Event()
+    task = asyncio.create_task(asyncio.to_thread(callback, cancel_event=cancelled))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        cancelled.set()
+        with suppress(Exception):
+            await asyncio.shield(task)
+        raise
+
+
+async def run_captured_async(
+    argv: list[str], cwd: Path, env: dict[str, str], timeout: float
+) -> tuple[int | None, str, bool]:
+    if os.name == "nt":
+        return await capture_windows_command(argv, cwd, env, timeout)
+    return await _run_cancellable(partial(run_captured, argv, cwd, env, timeout))
+
+
+async def _run_check(
     repo: Path,
     check: Check,
     *,
@@ -327,7 +373,7 @@ def run_check(
         argv = [*split_command(check.command), *check.args]
         if not argv:
             raise ValueError("empty command")
-        exit_code, output, timed_out = run_captured(
+        exit_code, output, timed_out = await run_captured_async(
             argv,
             resolve_command_cwd(repo, check.cwd),
             {**os.environ, **(check.env or {})},
@@ -346,6 +392,19 @@ def run_check(
         fingerprint,
         timed_out,
         check_identity(check),
+    )
+
+
+def run_check(
+    repo: Path,
+    check: Check,
+    *,
+    revision: str | None = None,
+    fingerprint: str | None = None,
+) -> CheckResult:
+    """Synchronous entry point for the same owned command runner used by batches."""
+    return asyncio.run(
+        _run_check(repo, check, revision=revision, fingerprint=fingerprint)
     )
 
 
@@ -433,14 +492,8 @@ async def _run_check_batch(  # ruff: ignore[complex-structure, too-many-branches
     for check in checks:
         if check.kind not in {"test", "browser"}:
             results.append(
-                await asyncio.to_thread(
-                    partial(
-                        run_check,
-                        repo,
-                        check,
-                        revision=revision,
-                        fingerprint=fingerprint,
-                    )
+                await _run_check(
+                    repo, check, revision=revision, fingerprint=fingerprint
                 )
             )
     tests = [check for check in checks if check.kind == "test"]

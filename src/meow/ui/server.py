@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from meow.project.config import user_config_path
+from meow.project.custom.sources import KINDS, conventional_dir
 from meow.project.repos import remember, repo_choices
 from meow.ui.catalog import build_global_catalog
 from meow.ui.create import CreateError, create_definition
@@ -52,32 +53,54 @@ def _static_files() -> dict[str, tuple[Path, str]]:
     }
 
 
-def _config_skill_folders(working_dir: Path) -> list[Path]:
-    folders = []
-    for config in (
-        working_dir / ".meow" / "config.toml",
-        working_dir / ".meow" / "config.local.toml",
-    ):
-        try:
-            data = tomllib.loads(config.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        custom = data.get("custom")
-        skills = custom.get("skills", []) if isinstance(custom, dict) else []
-        folders.extend(
-            working_dir / folder for folder in skills if isinstance(folder, str)
+def _config_folders(config: Path, base: Path) -> list[Path]:
+    try:
+        data = tomllib.loads(config.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    custom = data.get("custom")
+    if not isinstance(custom, dict):
+        return []
+    entries = [
+        entry
+        for kind in KINDS
+        if isinstance(custom.get(kind), list)
+        for entry in custom[kind]
+    ]
+    folders = [
+        entry.get("path") if isinstance(entry, dict) else entry for entry in entries
+    ]
+    return [
+        base / Path(folder).expanduser()
+        for folder in folders
+        if isinstance(folder, str) and folder
+    ]
+
+
+def _catalog_roots(repos: list[str]) -> list[Path]:
+    user_config = user_config_path()
+    user_dir = user_config.parent
+    roots = [user_config, user_dir.parent / ".claude" / "agents"]
+    roots.extend(_config_folders(user_config, user_dir))
+    roots.extend(conventional_dir("user", kind, user_dir, user_dir) for kind in KINDS)
+    for name in repos:
+        repo = Path(name)
+        for config in (repo / ".meow/config.toml", repo / ".meow/config.local.toml"):
+            roots.append(config)
+            roots.extend(_config_folders(config, repo))
+        roots.extend(
+            conventional_dir(scope, kind, repo, user_dir)
+            for scope in ("local", "project")
+            for kind in KINDS
         )
-    return folders
+        roots.extend([repo / ".claude/agents", repo / ".claude/plugins"])
+    return sorted(set(roots))
 
 
 def _fingerprint(repos: list[str]) -> tuple:
-    roots = [user_config_path().parent]
-    for repo in repos:
-        roots.append(Path(repo) / ".meow")
-        roots.extend(_config_skill_folders(Path(repo)))
     stamps = []
-    for root in roots:
-        paths = [root, *root.rglob("*")] if root.is_dir() else [root]
+    for root in _catalog_roots(repos):
+        paths = [root, *sorted(root.rglob("*"))] if root.is_dir() else [root]
         for path in paths:
             try:
                 info = path.stat()

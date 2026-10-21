@@ -1,5 +1,7 @@
 import json
+import re
 import subprocess
+import tomllib
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -127,8 +129,21 @@ def test_example_job_runs_for_merge_request_pipelines():
     assert 'CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"' in example
     assert "- when: never" in example
     assert "image: python:3.12" in example
-    assert "python -m pip install meow" in example
     assert "MEOW_INSTALL_SPEC" not in example
+
+
+def test_ci_integrations_install_the_published_distribution():
+    root = Path(__file__).resolve().parents[2]
+    distribution = tomllib.loads((root / "pyproject.toml").read_text())["project"][
+        "name"
+    ]
+    for relative in (
+        "templates/gitlab-ci-review.yml",
+        "skills/integrate-ci-review/SKILL.md",
+    ):
+        text = (root / relative).read_text(encoding="utf-8")
+        packages = re.findall(r"python -m pip install ([\w-]+)", text)
+        assert packages and set(packages) == {distribution}, relative
 
 
 @pytest.mark.parametrize(

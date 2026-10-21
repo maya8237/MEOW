@@ -182,6 +182,8 @@ def begin_merge(
 def _commit_resolution(worktree: Path, task: OrchestratorTask) -> tuple[str, ...]:
     """Commit a resolved merge; return paths that still hold markers instead."""
     paths = _unmerged_paths(worktree)
+    staged = _git(worktree, "diff", "--cached", "--name-only", "-z").stdout
+    paths = tuple(sorted(set(paths) | {path for path in staged.split("\0") if path}))
     leftover = tuple(path for path in paths if has_conflict_markers(worktree / path))
     if leftover:
         return leftover

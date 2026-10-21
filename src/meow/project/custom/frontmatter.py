@@ -4,6 +4,7 @@ Supports what those files need: `key: value` scalars (optionally quoted),
 inline lists (`[a, b]`), block lists (`- a`), and `|` / `>` block scalars.
 """
 
+import json
 from pathlib import Path
 
 _FENCE = "---"
@@ -13,7 +14,13 @@ _QUOTES = ('"', chr(39))
 def _scalar(text: str) -> str:
     text = text.strip()
     if len(text) > 1 and text[0] == text[-1] and text[0] in _QUOTES:
-        return text[1:-1]
+        if text[0] == '"':
+            try:
+                return json.loads(text)
+            except ValueError:
+                # Keep the existing limited YAML support for non-JSON escapes.
+                return text[1:-1]
+        return text[1:-1].replace("''", "'")
     return text
 
 

@@ -40,7 +40,7 @@ meow_review:
       if [ "${MEOW_DEFAULT_HAIKU_MODEL+x}" = x ]; then
         export ANTHROPIC_DEFAULT_HAIKU_MODEL="$MEOW_DEFAULT_HAIKU_MODEL"
       fi
-    - python -m pip install meow
+    - python -m pip install meow-harness
     - git fetch --no-tags origin refs/heads/dev:refs/remotes/origin/dev
   script:
     - meow review --ci --artifact-dir "$CI_PROJECT_DIR/.meow/ci-artifacts"

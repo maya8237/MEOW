@@ -23,7 +23,7 @@ def remember(repo: Path) -> None:
     if current in saved:
         return
     saved.append(current)
-    body = "".join(f"  {json.dumps(path)},\n" for path in saved)
+    body = "".join(f"  {json.dumps(path, ensure_ascii=False)},\n" for path in saved)
     path = registry_path()
     with suppress(OSError):
         path.parent.mkdir(parents=True, exist_ok=True)

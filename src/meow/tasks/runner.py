@@ -1,6 +1,5 @@
 """Bridge a validated task graph to isolated generator workers."""
 
-import asyncio
 import os
 import shlex
 from pathlib import Path
@@ -9,6 +8,7 @@ from meow.agents.generator import Generator
 from meow.execution.run_state import RunStore
 from meow.execution.sprint import Sprint, build_sprint
 from meow.infrastructure.cancellation import cancel_requested
+from meow.infrastructure.checks import run_captured_async
 from meow.infrastructure.usage import usage_scope
 from meow.infrastructure.worktree_setup import run_setup
 from meow.project.config_models import LintCommand
@@ -44,9 +44,7 @@ def _verification_argv(command: str) -> list[str]:
     return LintCommand(command).argv()
 
 
-async def verify_task(  # ruff: ignore[complex-structure, too-many-statements]
-    spec: TaskSpec, worktree: Path
-) -> list[dict[str, object]]:
+async def verify_task(spec: TaskSpec, worktree: Path) -> list[dict[str, object]]:
     """Run declared checks before a worker can commit or integrate its slice."""
     evidence: list[dict[str, object]] = []
     for command in spec.verification:
@@ -54,43 +52,28 @@ async def verify_task(  # ruff: ignore[complex-structure, too-many-statements]
         if not argv:
             raise ValueError(f"task {spec.id} has an empty verification command")
         try:
-            options = {
-                "cwd": worktree,
-                "stdout": asyncio.subprocess.PIPE,
-                "stderr": asyncio.subprocess.STDOUT,
-            }
-            process = await (
-                asyncio.create_subprocess_shell(command, **options)
-                if os.name == "nt" and argv[:2] == ["cmd", "/c"]
-                else asyncio.create_subprocess_exec(*argv, **options)
+            exit_code, output, timed_out = await run_captured_async(
+                argv, worktree, os.environ.copy(), 300
             )
-            try:
-                output, _ = await asyncio.wait_for(process.communicate(), 300)
-            except TimeoutError:
-                process.kill()
-                await process.wait()
+            if timed_out:
                 raise PermanentTaskError(
                     f"task {spec.id} verification timed out: {command}"
-                ) from None
-            except asyncio.CancelledError:
-                process.kill()
-                await process.wait()
-                raise
+                )
         except OSError as exc:
             raise PermanentTaskError(
                 f"task {spec.id} verification could not start: {command}: {exc}"
             ) from exc
         item: dict[str, object] = {
             "command": command,
-            "exit_code": process.returncode,
-            "output": output.decode("utf-8", errors="replace")[:4000],
+            "exit_code": exit_code,
+            "output": output[:4000],
         }
         evidence.append(item)
-        if process.returncode != 0:  # None (unknown) is a failure too
+        if exit_code != 0:  # None (unknown) is a failure too
             tail = str(item["output"]).strip()[-600:]
             raise PermanentTaskError(
                 f"task {spec.id} verification failed: {command} "
-                f"(exit {process.returncode})" + (f"\n{tail}" if tail else "")
+                f"(exit {exit_code})" + (f"\n{tail}" if tail else "")
             )
     return evidence
 

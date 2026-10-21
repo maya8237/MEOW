@@ -6,6 +6,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import tempfile
 import threading
 import urllib.error
 import urllib.parse
@@ -54,28 +55,62 @@ class _OwnedProcess:
     job: object | None = None
 
 
-def _spawn_windows_job_process(  # ruff: ignore[too-many-statements]
-    argv, cwd: Path, env: dict[str, str], loop
+def _windows_startup(output, resources: ExitStack):
+    import msvcrt
+
+    import win32api
+    import win32con
+    import win32process
+
+    startup = win32process.STARTUPINFO()
+    if output is not None:
+        stdin = resources.enter_context(open(os.devnull, "rb"))  # ruff: ignore[open-file-with-context-handler] -- caller's ExitStack closes it
+        current = win32api.GetCurrentProcess()
+        handles = []
+        for stream in (stdin, output):
+            handle = win32api.DuplicateHandle(
+                current,
+                msvcrt.get_osfhandle(stream.fileno()),
+                current,
+                0,
+                True,
+                win32con.DUPLICATE_SAME_ACCESS,
+            )
+            resources.callback(handle.Close)
+            handles.append(handle)
+        startup.dwFlags |= win32con.STARTF_USESTDHANDLES
+        startup.hStdInput, startup.hStdOutput = handles
+        startup.hStdError = startup.hStdOutput
+    return startup
+
+
+def _spawn_windows_job_process(  # ruff: ignore[too-many-statements, too-many-arguments]
+    argv, cwd: Path, env: dict[str, str], loop, *, output=None
 ):
     """Launch suspended, attach the process tree to a job, then resume it."""
     import win32api
     import win32job
     import win32process
 
-    startup = win32process.STARTUPINFO()
-    process_handle, thread_handle, pid, _ = win32process.CreateProcess(
-        argv[0],
-        subprocess.list2cmdline(argv),
-        None,
-        None,
-        False,
-        win32process.CREATE_SUSPENDED
-        | win32process.CREATE_NEW_PROCESS_GROUP
-        | win32process.CREATE_NO_WINDOW,
-        env,
-        str(cwd),
-        startup,
-    )
+    executable = shutil.which(argv[0]) or argv[0]
+    command_line = subprocess.list2cmdline([executable, *argv[1:]])
+    if argv[:2] == ["cmd", "/c"]:
+        command_line = f'{subprocess.list2cmdline([executable])} /c "{argv[2]}"'
+    with ExitStack() as resources:
+        startup = _windows_startup(output, resources)
+        process_handle, thread_handle, pid, _ = win32process.CreateProcess(
+            executable,
+            command_line,
+            None,
+            None,
+            output is not None,
+            win32process.CREATE_SUSPENDED
+            | win32process.CREATE_NEW_PROCESS_GROUP
+            | win32process.CREATE_NO_WINDOW,
+            env,
+            str(cwd),
+            startup,
+        )
     job = None
     try:
         job = win32job.CreateJobObject(None, "")
@@ -131,6 +166,39 @@ class _WindowsOwnedProcess:
         import win32api
 
         win32api.TerminateProcess(self.handle, 1)
+
+
+async def capture_windows_command(
+    argv: list[str], cwd: Path, env: dict[str, str], timeout: float
+) -> tuple[int | None, str, bool]:
+    """Capture a job's output without pipes that orphaned children can hold open."""
+    import pywintypes
+
+    with tempfile.TemporaryFile() as output:
+        # CreateProcess and job assignment happen synchronously before the first
+        # await, so cancellation can never discard an unregistered process tree.
+        try:
+            process, job = _spawn_windows_job_process(
+                argv, cwd, env, asyncio.get_running_loop(), output=output
+            )
+        except pywintypes.error as exc:
+            raise OSError(exc.winerror, str(exc)) from exc
+        timed_out = False
+        try:
+            await asyncio.wait_for(process.wait(), timeout)
+        except TimeoutError:
+            timed_out = True
+        finally:
+            try:
+                await _terminate(_OwnedProcess(process, job))
+            finally:
+                process.handle.Close()
+        output.seek(0)
+        return (
+            None if timed_out else process.returncode,
+            output.read().decode("utf-8", errors="replace"),
+            timed_out,
+        )
 
 
 @dataclass(frozen=True)

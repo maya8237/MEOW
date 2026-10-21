@@ -79,6 +79,19 @@ class OsErrorToleranceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SyncToleranceTests(unittest.TestCase):
+    def test_prepare_output_file_refuses_unclearable_stale_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "out.json"
+            target.write_text("stale", encoding="utf-8")
+            with (
+                patch.object(Path, "unlink", side_effect=_winerror(32)),
+                patch.object(Path, "write_text", side_effect=_winerror(32)),
+                patch("meow.agents.base.time.sleep"),
+                self.assertRaises(OSError),
+            ):
+                prepare_output_file(target)
+            self.assertEqual(target.read_text(encoding="utf-8"), "stale")
+
     def test_prepare_output_file_survives_a_locked_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "out.json"

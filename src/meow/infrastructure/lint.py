@@ -3,12 +3,11 @@ per-file command on each file the generator writes, feeding unfixable
 failures back into the generator's context as additional tool-use output.
 """
 
-import asyncio
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from meow.infrastructure.checks import kill_process_tree
+from meow.infrastructure.checks import run_captured_async
 from meow.infrastructure.logging import get_logger
 from meow.project.config_models import LintCommand, resolve_command_cwd
 
@@ -51,25 +50,12 @@ async def _run_subprocess(
     on timeout. A program that cannot start (not installed, bad shim) is a
     failing command, not a crash, so every caller reports it the same way."""
     try:
-        process = await asyncio.create_subprocess_exec(
-            *argv,
-            cwd=str(working_dir),
-            env={**os.environ, **(env or {})},
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=os.name != "nt",
+        code, output, timed_out = await run_captured_async(
+            argv, working_dir, {**os.environ, **(env or {})}, timeout
         )
     except OSError as exc:
         return _CANNOT_START, f"Could not run lint command {argv[0]}: {exc}"
-    try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-    except TimeoutError:
-        kill_process_tree(process)
-        await process.wait()
-        return None
-
-    streams = (stdout.decode(errors="replace"), stderr.decode(errors="replace"))
-    return process.returncode, "\n".join(part for part in streams if part.strip())
+    return None if timed_out else (code, output)
 
 
 async def _run_one_lint_command(  # ruff: ignore[too-many-return-statements]

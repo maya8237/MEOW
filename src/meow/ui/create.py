@@ -189,7 +189,8 @@ def _register_skill_plugin(scope: str, working_dir: Path) -> None:
 def _with_identity(text: str, name: str, description: str) -> str:
     head, *tail = _TABLE_START.split(text, maxsplit=1)
     head = _IDENTITY.sub("", head).strip()
-    top = f'name = "{name}"\ndescription = {json.dumps(description)}\n'
+    encoded = json.dumps(description, ensure_ascii=False)
+    top = f'name = "{name}"\ndescription = {encoded}\n'
     if head:
         top += f"\n{head}\n"
     return top + ("\n" + tail[0] if tail else "")

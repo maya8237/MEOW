@@ -97,6 +97,31 @@ def test_un_onboard_removes_project_setup_and_preserves_other_hooks(tmp_path):
     assert data["enabledPlugins"] == {"other@other": True}
 
 
+def test_uninstall_preserves_sibling_commands_in_a_shared_hook_group():
+    module = runpy.run_path(str(SCRIPT))
+    user_hook = {"type": "command", "command": "echo keep user hook"}
+    group = {
+        "matcher": "Write|Edit",
+        "hooks": [
+            {"type": "command", "command": "meow native hook lint_after_edit"},
+            user_hook,
+        ],
+    }
+    data = {"hooks": {"PostToolUse": [group]}}
+    module["clean_hooks"](data, {})
+    assert data == {
+        "hooks": {"PostToolUse": [{"matcher": "Write|Edit", "hooks": [user_hook]}]}
+    }
+
+
+def test_uninstall_manifest_ownership_is_scoped_to_the_event():
+    module = runpy.run_path(str(SCRIPT))
+    group = {"hooks": [{"type": "command", "command": "echo custom hook"}]}
+    data = {"hooks": {"Stop": [group], "SessionEnd": [group]}}
+    module["clean_hooks"](data, {"entries": [{"event": "Stop", "entry": group}]})
+    assert data == {"hooks": {"SessionEnd": [group]}}
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows registry PATH")
 def test_windows_path_preserves_other_entries_and_registry_type(tmp_path, monkeypatch):
     import ctypes
