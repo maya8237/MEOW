@@ -42,9 +42,8 @@ a branch tip; it cannot accompany a project command. It installs that version's
 checksum-verified wheel from the package index into a venv built by the newest
 Python 3.12+ found. The installer registers the plugin before switching
 launchers in `~/.meow/bin`; config, caches, and earlier runtimes are retained.
-Failures return nonzero.
-Keep runtimes used by workers/schedules. Rerun the installer for setup prompts
-or migration from an editable install; remove obsolete launchers shadowing PATH.
+Failures return nonzero. Keep runtimes used by workers/schedules. Rerun the installer
+for setup prompts or editable-install migration; remove obsolete launchers shadowing PATH.
 
 Public commands warn on stderr about newer versions, silently ignoring network
 failures; `--check-update` checks only. Internal workers skip this check.
@@ -197,5 +196,4 @@ artifacts. Notes use the token's identity; partial publishes can leave notes pos
 - `meow native`: deterministic JSON helpers for skill authors/debugging.
 - `meow evaluate`: read-only harness evaluation over saved runs.
 - `meow _worker`: private implementation detail for automatic background runs.
-- `meow _orchestrator-task`: private detached task worker.
-- `meow _scheduled ID`: private at-most-once schedule worker.
+- `meow _orchestrator-task`, `meow _scheduled ID`: private task and schedule workers.

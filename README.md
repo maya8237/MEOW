@@ -126,5 +126,4 @@ PATH, the Claude Code plugin and skill registrations, scheduled MEOW runs, and
 - [Project instructions](AGENTS.md)
 - [Contributing](CONTRIBUTING.md)
 - [Roadmap](docs/ROADMAP.md)
-- [Changelog](CHANGELOG.md)
 - [License](LICENSE)
