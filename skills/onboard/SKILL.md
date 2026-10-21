@@ -106,12 +106,13 @@ enabled after its commands are verified.
 For every accepted feature that needs an MCP (Jira, GitLab, GitHub, Tester
 mode), check first whether the session has its tools and whether the CLI
 launcher (for example `uvx`) exists. If not, warn the user that the MCP is not
-installed and must be installed before the feature works. Offer what you can do
-for them: show the exact install or `claude mcp add` command and run it only
-after approval, or configure the CLI launcher, which does not need a session
-MCP. Never ask for or print secret values; the user supplies them in local
-config. Leave the feature unverified and unscheduled until a real tool call
-succeeds.
+installed and must be installed before the feature works. Tell them to install
+it themselves with `/plugin` (marketplace plugins) or `/mcp` (servers), then
+come back. Once installed, ask them for the access tokens and use them to set
+up the MCP: write tokens only to ignored `.meow/config.local.toml` or the MCP's
+own env, never the shared config, and never echo them. You can also configure
+the CLI launcher, which does not need a session MCP. Leave the feature
+unverified and unscheduled until a real tool call succeeds.
 
 When an optional feature is accepted, use the matching documented path:
 
