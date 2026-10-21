@@ -52,10 +52,14 @@ def prepare_environment(
             config.get("worktree_setup", {"copy": [], "commands": []}),
             command_decision=decision,
             record_action=actions.append,
+            timeout=config.get("install_timeout"),
         )
     else:
         ensure_node_dependencies(
-            active, command_decision=decision, record_action=actions.append
+            active,
+            command_decision=decision,
+            record_action=actions.append,
+            timeout=config.get("install_timeout"),
         )
     return actions
 
@@ -75,8 +79,11 @@ def validate_setup(raw: object) -> dict[str, list]:
     """Normalize explicit copy paths and literal command argument vectors."""
     if raw is None:
         return {"copy": [], "commands": []}
-    if not isinstance(raw, dict) or set(raw) - {"copy", "commands"}:
-        raise ValueError("[worktree_setup] accepts only copy and commands")
+    if not isinstance(raw, dict) or set(raw) - {"copy", "commands", "install_timeout"}:
+        raise ValueError(
+            "[worktree_setup] accepts only copy, commands and install_timeout"
+        )
+    install_timeout(raw)
     copies = raw.get("copy", [])
     commands = raw.get("commands", [])
     if not isinstance(copies, list) or not isinstance(commands, list):
@@ -92,6 +99,16 @@ def validate_setup(raw: object) -> dict[str, list]:
             raise ValueError("worktree setup commands must be non-empty string arrays")
         normalized_commands.append(command)
     return {"copy": normalized_copies, "commands": normalized_commands}
+
+
+def install_timeout(raw: object) -> float | None:
+    """Seconds each dependency install may take; None keeps MEOW's default."""
+    value = raw.get("install_timeout") if isinstance(raw, dict) else None
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise ValueError("[worktree_setup] install_timeout must be positive seconds")
+    return float(value)
 
 
 def _no_symlinks(root: Path, relative: Path) -> Path:
@@ -122,6 +139,7 @@ def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-
     *,
     record_action: Callable[[dict[str, object]], None] | None = None,
     command_decision: Callable[[list[str]], str | None] | None = None,
+    timeout: float | None = None,
 ) -> None:
     """Apply pre-approved setup; report each completed action to the journal."""
     pending = _no_symlinks(worktree, Path(".meow/worktree-setup.pending"))
@@ -172,6 +190,9 @@ def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-
     from meow.infrastructure.node_dependencies import ensure_node_dependencies
 
     ensure_node_dependencies(
-        worktree, command_decision=command_decision, record_action=record_action
+        worktree,
+        command_decision=command_decision,
+        record_action=record_action,
+        timeout=timeout,
     )
     pending.unlink(missing_ok=True)

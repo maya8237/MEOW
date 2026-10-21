@@ -8,7 +8,7 @@ description: Use when the user wants a MEOW sprint plan and testable Sprint Cont
 Writes a numbered task list and a Sprint Contract, implements nothing. Runs
 **natively** by default: you are the planner. Read
 [`../_shared/native-mode.md`](../_shared/native-mode.md) first for helper and planner rules.
-Use **CLI mode** (bottom) only if the user explicitly asks for it.
+Use **CLI mode** (bottom) only if the user explicitly asks for it. Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## Native mode
 

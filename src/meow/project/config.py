@@ -152,7 +152,7 @@ def _workflow_config(user_config):
 
 def load_config(working_dir: Path) -> dict:
     from meow.infrastructure.checks import normalize_build
-    from meow.infrastructure.worktree_setup import validate_setup
+    from meow.infrastructure.worktree_setup import install_timeout, validate_setup
     from meow.project.permissions import parse_policy
 
     user_config = {}
@@ -171,6 +171,7 @@ def load_config(working_dir: Path) -> dict:
     config["tester"] = _normalize_tester_config(user_config)
     config["build"] = normalize_build(user_config.get("build", []))
     config["worktree_setup"] = validate_setup(user_config.get("worktree_setup"))
+    config["install_timeout"] = install_timeout(user_config.get("worktree_setup"))
     delivery = user_config.get("delivery", {})
     if not isinstance(delivery, dict):
         raise ValueError(f"{_CONFIG_FILENAME}: [delivery] must be a table")

@@ -445,3 +445,34 @@ def test_production_bunfig_warns_that_dev_dependencies_are_skipped(
     )
     node._warn_bun_config(tmp_path)
     assert warnings == ["bun_production_skips_dev_dependencies"]
+
+
+def test_configured_install_timeout_reaches_the_install(tmp_path, monkeypatch):
+    _bun_project(tmp_path, dev=False)
+    seen = []
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+
+    def install(_argv, cwd, _env, timeout):
+        seen.append(timeout)
+        (cwd / "node_modules" / "a").mkdir(parents=True)
+        return 0, "", False
+
+    monkeypatch.setattr(node, "run_captured", install)
+    monkeypatch.setenv("MEOW_NODE_INSTALL_TIMEOUT", "50")
+    node.ensure_node_dependencies(tmp_path, timeout=2400)
+    assert seen == [2400.0]
+
+
+@pytest.mark.parametrize("bad", [0, -5, "10", True])
+def test_install_timeout_config_must_be_positive_seconds(bad):
+    with pytest.raises(ValueError, match="install_timeout"):
+        validate_setup({"install_timeout": bad})
+
+
+def test_install_timeout_config_is_parsed_without_changing_the_manifest():
+    from meow.infrastructure.worktree_setup import install_timeout
+
+    raw = {"install_timeout": 1800}
+    assert validate_setup(raw) == {"copy": [], "commands": []}
+    assert install_timeout(raw) == pytest.approx(1800.0)
+    assert install_timeout(None) is None

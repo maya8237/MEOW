@@ -7,6 +7,7 @@ import shutil
 import time
 import tomllib
 from collections.abc import Callable, Iterator
+from functools import partial
 from pathlib import Path
 
 from meow.infrastructure.checks import run_captured
@@ -152,7 +153,9 @@ def bun_settings(directory: Path) -> dict:
     }
 
 
-def _install_timeout() -> float:
+def _install_timeout(configured: float | None = None) -> float:
+    if configured:
+        return configured
     try:
         return max(float(os.environ.get("MEOW_NODE_INSTALL_TIMEOUT", "")), 1.0)
     except ValueError:
@@ -171,12 +174,13 @@ def _warn_bun_config(directory: Path) -> None:
         _LOGGER.warning("bun_production_skips_dev_dependencies", cwd=str(directory))
 
 
-def run_node_install(  # ruff: ignore[complex-structure, too-many-statements]
+def run_node_install(  # ruff: ignore[complex-structure, too-many-statements, too-many-arguments]
     directory: Path,
     argv: list[str],
     *,
     command_decision: Callable[[list[str]], str | None] | None = None,
     record_action: Callable[[dict[str, object]], None] | None = None,
+    timeout: float | None = None,
 ) -> None:
     if command_decision and command_decision(argv) in {"deny", "ask"}:
         raise WorktreeSetupError(
@@ -196,7 +200,10 @@ def run_node_install(  # ruff: ignore[complex-structure, too-many-statements]
         _LOGGER.info("node_dependencies_installing", cwd=str(directory), argv=argv)
         started = time.monotonic()
         code, output, timed_out = run_captured(
-            [executable, *argv[1:]], directory, dict(os.environ), _install_timeout()
+            [executable, *argv[1:]],
+            directory,
+            dict(os.environ),
+            _install_timeout(timeout),
         )
         _LOGGER.info(
             "node_dependencies_finished",
@@ -226,10 +233,14 @@ def run_node_install(  # ruff: ignore[complex-structure, too-many-statements]
                 retry,
                 command_decision=command_decision,
                 record_action=record_action,
+                timeout=timeout,
             )
         reason = "timed out" if timed_out else f"exit {code}"
         if timed_out:
-            reason += f" after {_install_timeout():g}s; raise MEOW_NODE_INSTALL_TIMEOUT"
+            reason += (
+                f" after {_install_timeout(timeout):g}s; raise "
+                "[worktree_setup] install_timeout in .meow/config.toml"
+            )
         raise WorktreeSetupError(
             f"Dependency install failed in {directory} ({reason}): "
             f"{' '.join(argv)}\n{output[-4000:]}"
@@ -270,7 +281,14 @@ def ensure_node_dependencies(
     *,
     command_decision: Callable[[list[str]], str | None] | None = None,
     record_action: Callable[[dict[str, object]], None] | None = None,
+    timeout: float | None = None,
 ) -> None:
+    install = partial(
+        run_node_install,
+        command_decision=command_decision,
+        record_action=record_action,
+        timeout=timeout,
+    )
     for directory, data in node_projects(root):
         if (
             not any(
@@ -285,15 +303,10 @@ def ensure_node_dependencies(
             and not (directory / "pnpm-workspace.yaml").is_file()
         ):
             continue
-        _install_project(directory, data, command_decision, record_action)
+        _install_project(directory, data, install)
 
 
-def _install_project(
-    directory: Path,
-    data: dict,
-    command_decision: Callable[[list[str]], str | None] | None,
-    record_action: Callable[[dict[str, object]], None] | None,
-) -> None:
+def _install_project(directory: Path, data: dict, install: Callable[..., None]) -> None:
     pending = directory / ".meow" / "node-install.pending"
     production = _production(directory)
     if not pending.exists() and not _missing(directory, data, production):
@@ -301,21 +314,14 @@ def _install_project(
     argv = install_command(directory, data)
     if argv[0] == "bun":
         _warn_bun_config(directory)
-    run_node_install(
-        directory, argv, command_decision=command_decision, record_action=record_action
-    )
+    install(directory, argv)
     missing = _missing(directory, data, production) if argv[0] == "bun" else []
     if not missing:
         return
     _LOGGER.warning(
         "bun_incomplete_install_retry", cwd=str(directory), missing=missing[:20]
     )
-    run_node_install(
-        directory,
-        [*argv, "--force"],
-        command_decision=command_decision,
-        record_action=record_action,
-    )
+    install(directory, [*argv, "--force"])
     missing = _missing(directory, data, production)
     if missing:
         raise WorktreeSetupError(

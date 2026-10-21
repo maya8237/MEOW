@@ -40,6 +40,7 @@ from meow.project.permissions import (
     PermissionPolicy,
     make_permission_callback,
 )
+from meow.project.prompts import DEPENDENCY_GUIDANCE
 
 logger = get_logger(__name__)
 
@@ -492,6 +493,8 @@ class Agent:
         **extra_options,
     ) -> ClaudeAgentOptions:
         """Build SDK options from project context and agent-specific values."""
+        if "Bash" in allowed_tools and isinstance(system_prompt, str):
+            system_prompt = f"{system_prompt}\n\n{DEPENDENCY_GUIDANCE}"
         self._apply_skills(role, extra_options)
         allowed_tools = self._apply_policy(role, allowed_tools, extra_options)
         journal = self.context.config.get("_run_journal")

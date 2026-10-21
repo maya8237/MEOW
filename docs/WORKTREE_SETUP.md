@@ -9,6 +9,7 @@ branch-review, plan-only, and task worktrees.
 [worktree_setup]
 copy = [".env.example"]
 commands = [["python", "-m", "pip", "install", "-e", "."]]
+install_timeout = 1800  # optional: seconds per dependency install (default 900)
 ```
 
 Copies must be regular, non-secret-like project-relative files; absolute paths,
@@ -16,6 +17,9 @@ Copies must be regular, non-secret-like project-relative files; absolute paths,
 arrays run in the new worktree with a 300-second timeout. Onboarding previews
 the exact commands. The `setup` role's `WorktreeSetup` permission can deny or
 require approval; runs stop for either decision.
+
+Agents with `Bash` may install missing dependencies, repair `node_modules`, and
+raise `install_timeout` themselves; they must not switch Bun to `hoisted`.
 
 Failures retain the worktree and `.meow/worktree-setup.pending` for retry.
 Successful setup is not repeated on ordinary reuse; completed copies are
@@ -82,8 +86,9 @@ dependency in that folder's `package.json`.
   treated as missing, so no needless forced reinstall.
 - A forced install that still leaves packages missing fails naming them.
   Agents must not switch the linker or disable `globalStore` to get past it.
-- The 900-second install timeout is set with `MEOW_NODE_INSTALL_TIMEOUT`
-  (seconds); logs record each install's duration. A timed-out install is
+- The 900-second install timeout is set with `install_timeout` (seconds) in
+  `[worktree_setup]`, or `MEOW_NODE_INSTALL_TIMEOUT` when unset; logs record each
+  install's duration. A timed-out install is
   retried next time because `.meow/node-install.pending` remains.
 - Warnings are logged for a project `hoisted` linker, `globalStore = false`, or
   `production = true` (devDependencies such as Playwright stay uninstalled;

@@ -7,7 +7,7 @@ description: Create, override, attach, or remove MEOW skills, agents, and workfl
 
 Definitions load on every run; no reinstall is needed. Use `docs/WORKFLOWS.md`
 for agent/workflow formats and `docs/INTEGRATIONS.md` for configured sources,
-skills, models, and permissions.
+skills, models, and permissions. Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## 1. Resolve the request and scope
 

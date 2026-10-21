@@ -7,7 +7,7 @@ description: Use when adding or configuring MEOW's CI review job in GitHub Actio
 
 Add `meow review --ci` to the repository's CI configuration. It reviews the
 exact checkout and writes artifacts; it defaults to **report-only**. Edit CI files only,
-never application code, and do not use `--fix` or `meow run` in the job.
+never application code, and do not use `--fix` or `meow run` in the job. Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## Configure credentials and model defaults
 

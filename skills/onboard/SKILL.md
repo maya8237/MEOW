@@ -7,6 +7,7 @@ description: Add integrations and optional features (add-ons) to an onboarded ME
 
 Use for new projects or the current `.meow/` layout; legacy files require
 `migration`. Work in the target repository and follow its agent instructions.
+Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## 0. Check the onboarding state first
 

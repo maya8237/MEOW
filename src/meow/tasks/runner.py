@@ -141,7 +141,11 @@ async def run_parallel_plan(  # ruff: ignore[complex-structure, too-many-stateme
             return policy.for_role("setup").decision("WorktreeSetup", {"argv": argv})
 
         run_setup(
-            sprint.repo_dir, task_dir, manifest, command_decision=command_decision
+            sprint.repo_dir,
+            task_dir,
+            manifest,
+            command_decision=command_decision,
+            timeout=config.get("install_timeout"),
         )
 
     async def implement(spec: TaskSpec, task_dir: Path) -> None:

@@ -306,12 +306,14 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
                 .for_role("setup")
                 .decision("WorktreeSetup", {"argv": argv})
             ),
+            timeout=sprint.config.get("install_timeout"),
         )
         check_cancel(store, record.id)
         store.transition(record.id, "prepared", results={"setup_complete": True})
     ensure_node_dependencies(
         active_dir,
         command_decision=lambda argv: setup_command_decision(sprint.config, argv),
+        timeout=sprint.config.get("install_timeout"),
     )
     sprint, checks_dir = _run_onboarding(
         store, record.id, sprint, (active_dir, settings_dir)

@@ -19,7 +19,8 @@ Run relevant tests or manual
 checks with Bash when useful. Do not create, edit, or delete implementation,
 test, or scratch files in the checkout. Use inline commands or a temporary
 directory outside the checkout for verification scripts and test data; remove
-temporary artifacts when finished. The verdict is the only file you may write
+temporary artifacts when finished. Installing missing dependencies (for
+example Playwright) is allowed. The verdict is the only file you may write
 in the checkout. Write
 your verdict only to {{report_file}}: begin with `SUMMARY: <observed result>`
 and then `STATUS: PASS` or `STATUS: FAIL`. Base the verdict on observed

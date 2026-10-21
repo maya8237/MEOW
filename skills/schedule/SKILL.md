@@ -9,7 +9,7 @@ When the user asks MEOW to run at a future time, register the schedule now;
 do not run the work immediately, sleep in the session, or use host-specific
 cron/Task Scheduler commands yourself. Both CLI and native sessions use the
 same deterministic helper. The future work runs through the automatic CLI,
-outside the current conversation.
+outside the current conversation. Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## Native mode
 

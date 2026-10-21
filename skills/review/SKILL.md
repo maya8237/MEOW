@@ -6,7 +6,7 @@ description: Use when reviewing existing code or fixing review findings against 
 # review
 
 Runs **natively** by default. Read [the shared protocol](../_shared/native-mode.md)
-first. Use **CLI mode** when requested, or for CI and tester flows.
+first. Use **CLI mode** when requested, or for CI and tester flows. Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## Pick the source (exactly one) and the mode
 

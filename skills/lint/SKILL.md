@@ -9,7 +9,7 @@ Runs the project's `[[lint]]` commands and has **you** — this session — fix 
 they report, using `meow native lint` for the facts. Read
 [`../_shared/native-mode.md`](../_shared/native-mode.md) for helper conventions. Never run plain
 `meow run --lint-fix` here: that spins up meow's own fixer agent, duplicating
-your work and racing your edits.
+your work and racing your edits. Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## Native mode
 

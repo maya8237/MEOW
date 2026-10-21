@@ -21,6 +21,21 @@ from meow.project.custom.rendering import builtin_agent, render_agent
 from meow.project.custom.templates import render
 from meow.project.shaping import ShapeContext
 
+DEPENDENCY_GUIDANCE = (
+    "Dependencies: MEOW installs Node dependencies when it creates a worktree. "
+    "If a module, CLI or browser you need is missing (a tester without "
+    "Playwright, say), install it yourself from the project's lockfile with its "
+    "own package manager (`bun install --linker isolated`, `npm ci`, `pnpm "
+    "install --frozen-lockfile`, `yarn install --immutable`; `bunx playwright "
+    "install` for browsers). Installing is not a source edit, so read-only and "
+    "verdict-only roles may do it. If an install times out, raise "
+    "`install_timeout` (seconds) under `[worktree_setup]` in "
+    "`.meow/config.local.toml` so MEOW's own installs allow it next time, and "
+    "run the install yourself now. Repair `node_modules` in any other legitimate "
+    'way. Never set `linker = "hoisted"`, turn off `globalStore`, or add '
+    "`--production`; declare a missing import in `package.json`, or report it."
+)
+
 
 def _agent(agent: CustomAgent | None, name: str) -> CustomAgent:
     return agent if agent is not None else builtin_agent(name)
