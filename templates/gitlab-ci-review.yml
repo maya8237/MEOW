@@ -6,9 +6,20 @@
 # Optional MEOW_MODEL and MEOW_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL override models.
 # Optional MR inline notes: supply masked MEOW_GITLAB_TOKEN (api scope), then add
 # --post-comments gitlab to the review command for MR pipelines only.
+# Match the job name to local hyphen/underscore conventions. Ask for stage/order,
+# needs (default: none), manual mode (default: no), cancellation, and failure policy.
+# Merge this policy into the host workflow; preserve its rules and other settings.
+# It also cancels other interruptible jobs when a newer pipeline starts.
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+
 meow_review:
   image: python:3.12
   stage: test
+  needs: []
+  interruptible: true
+  allow_failure: true
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev" && $CI_MERGE_REQUEST_EVENT_TYPE == "detached"'
       when: on_success

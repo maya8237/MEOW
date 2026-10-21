@@ -43,30 +43,32 @@ test/lint pipeline. Ask only if there is no clear owner.
 
 ## Fit the existing pipeline
 
-In this skill, the target branch is the branch being reviewed against. GitHub
-calls it the pull request's **base ref** (`github.base_ref`); GitLab calls it
-the merge request's **target branch** (`CI_MERGE_REQUEST_TARGET_BRANCH_NAME`).
+Before editing, use [the pipeline guide](references/pipeline.md) to match job naming
+and ask about placement, dependencies, manual execution, cancellation, and failure.
+Honor prior answers; otherwise wait. Defaults: automatic, `needs: []`, cancellation
+enabled, failure allowed. Include the last stage as a placement option.
+
+The target branch is the branch being reviewed against: GitHub's `github.base_ref`
+or GitLab's `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`.
 Use the same project target branch in the rules, checkout, fetch, and review
 command for either provider.
 
-Look for an existing `meow-review`/`meow_review` job or a step that already
-runs `meow review --ci`. If one exists, update it in place only when it is
-missing a required invariant; never create a duplicate.
+Update an existing `meow-review`/`meow_review` job in place to match the selected
+preferences and required invariants; never create a duplicate.
 
 ### GitHub Actions
 
-- Prefer adding a `meow-review` job under `jobs:` in the existing main CI
+- Prefer adding the convention-matched MEOW job under `jobs:` in the main CI
   workflow. Do not create a second workflow when the current workflow can host
   the job.
-- Preserve the workflow's existing runner, checkout, Python setup, and job
-  ordering conventions. Add `needs` only when the existing pipeline clearly
-  requires review to wait for a validation job.
+- Preserve runner, checkout, and Python conventions. Use job-level `needs`,
+  `concurrency`, and `continue-on-error` for the selected pipeline preferences.
 - Ensure the workflow runs for the same review targets as the project. Add a
   missing `pull_request` trigger or non-target `push` trigger only when that
   matches the existing CI policy.
 - GitHub Actions has no stage list. Do not invent a stage; a job is enough.
   If no existing workflow is a suitable owner, create
-  `.github/workflows/meow-review.yml` with one `meow-review` job.
+  `.github/workflows/meow-review.yml` with one convention-matched MEOW job.
 - On pull requests, check out the source commit SHA with `fetch-depth: 0`,
   not GitHub's synthetic merge ref. Map the GitHub event fields to the
   `CI_*` variables consumed by the existing CLI before invoking it. Fetch the
@@ -128,16 +130,15 @@ expansions. Do not interpolate them into shell source.
   for the job's rules and behavior. When integrating another repository, copy
   and adapt the job into its local CI configuration; do not assume that the
   other repository can resolve this plugin's relative template path.
-- Add one `meow_review` job to the local root config or the local included file
+- Add one convention-matched MEOW job to the root config or local included file
   that owns the project's validation jobs.
 - Preserve the template's detached merge-request and non-target branch push
   rules, full Git history, target-ref fetch, `.meow/ci-artifacts/` artifacts,
   and selected `MEOW_*` credential requirements and SDK exports.
-- Use an existing validation stage when one is clearly appropriate, such as
-  `test`, `quality`, `verify`, `checks`, or `review`. Add a new `review` stage
-  only when the config has an explicit `stages:` list with no suitable stage
-  and a separate review stage fits its ordering. If no `stages:` list exists,
-  use GitLab's existing default `test` stage instead of adding one.
+- Offer `post-checks`/`post-review`, another tailored name, and custom-name input.
+  Confirm new stage names and order before editing; preserve existing stages.
+- Apply the selected dependencies, execution mode, cancellation, and failure
+  policy; the template runs automatically with empty needs and allows failure.
 - Keep `when: never` as the final fallback rule so unrelated pipeline types do
   not run the job.
 - GitLab already supplies the target branch through
@@ -189,9 +190,10 @@ concurrent jobs can still race, so serialize comment-posting jobs per PR/MR.
    - it checks out/fetches enough history to compute the merge base;
    - it stores `.meow/ci-artifacts/` even when the review fails;
    - API URL/credentials are CI variables/secrets, with no literal YAML defaults;
-   - every model accepts an environment override before any approved fallback; and
+   - every model accepts an environment override before any approved fallback;
+   - naming, placement, needs, execution mode, and policies match the choices; and
    - no application files or generated review fixes were changed.
-4. Tell the user which CI file changed, which stage/job owns the integration,
+4. Tell the user which CI file changed, the selected stage/order and job policies,
    and show the environment guide's copy table for CI variables/secrets. Mention
    which model defaults were imported and that the job reports PASS/FAIL without
    fixing the change set.
