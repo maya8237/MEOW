@@ -90,7 +90,6 @@ class RunState:
             "parallel": False,
             "test": self.test,
             "bug_mode": bool(self.sprint.config.get("_bug_mode")),
-            "auto": bool(self.sprint.config.get("_auto")),
             "checks_configured": bool(configured_checks(self.sprint.config)),
             "inputs": {},
             **self.flags,

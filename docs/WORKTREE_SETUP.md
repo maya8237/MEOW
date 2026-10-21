@@ -15,7 +15,7 @@ Copies must be regular, non-secret-like project-relative files; absolute paths,
 `..`, links, and secret-like names are rejected. Commands are literal argument
 arrays run in the new worktree with a 300-second timeout. Onboarding previews
 the exact commands. The `setup` role's `WorktreeSetup` permission can deny or
-require approval; auto stops for either decision.
+require approval; runs stop for either decision.
 
 Failures retain the worktree and `.meow/worktree-setup.pending` for retry.
 Successful setup is not repeated on ordinary reuse; completed copies are

@@ -54,7 +54,6 @@ def test_register_list_cancel_preserves_request(  # ruff: ignore[too-many-statem
     )
     assert job["state"] == "scheduled"
     assert request in job["argv"]
-    assert "--auto" in job["argv"]
     assert str(tmp_path.resolve()) in job["argv"]
     assert scheduling.list_schedules(tmp_path)[0]["id"] == job["id"]
     if platform == "win32":
@@ -82,7 +81,6 @@ def test_register_list_cancel_preserves_request(  # ruff: ignore[too-many-statem
     "argv",
     [
         ["status"],
-        ["run", "task", "--name", "x", "--no-worktree"],
         ["run", "task", "--name", "x", "--manually-approve-plan"],
         ["run", "--lint-fix"],
         ["run", "task", "--name", "x", "--work-dir", "/another"],
@@ -98,6 +96,18 @@ def test_scheduled_run_can_derive_name(tmp_path, backend):
     job = scheduling.schedule_run(tmp_path, future(), ["run", "Add CSV export"])
     assert "Add CSV export" in job["argv"]
     assert job["state"] == "scheduled"
+
+
+@pytest.mark.parametrize("flag,push", [("-n", None), ("-nc", False), ("-np", True)])
+def test_scheduled_in_place_run_preserves_delivery_choice(
+    tmp_path, backend, flag, push
+):
+    from meow.cli.parser import _build_arg_parser
+
+    job = scheduling.schedule_run(tmp_path, future(), ["run", "task", flag])
+    args = _build_arg_parser().parse_args(job["argv"][4:])
+    assert args.no_worktree is True
+    assert args.push is push
 
 
 def test_registration_failure_is_saved_and_reported(tmp_path, monkeypatch, backend):
@@ -169,7 +179,7 @@ def test_ui_execution_uses_frozen_recipe_after_edit(tmp_path, monkeypatch, backe
         workflow=None,
         inputs={},
         arguments=[],
-        options={"auto": True},
+        options={},
     )
     store = SessionStore(tmp_path)
     store.save_recipe(frozen)

@@ -48,7 +48,7 @@ def test_builtin_slash_skills_resolve_from_portable_release(
     assert sessions._builtin_skill_names() == {"run"}
 
 
-def test_feature_recipe_builds_auto_isolated_cli_argv(tmp_path):
+def test_feature_recipe_builds_cli_argv(tmp_path):
     recipe = validate_recipe(
         tmp_path,
         valid_payload(
@@ -70,7 +70,6 @@ def test_feature_recipe_builds_auto_isolated_cli_argv(tmp_path):
         "meow-custom:quick",
         "--input",
         "scope=users",
-        "--auto",
         "--",
         "Add an API endpoint",
     ]
@@ -89,7 +88,6 @@ def test_orchestrate_recipe_preserves_objective_and_options(tmp_path):
         "-m",
         "meow",
         "run",
-        "--auto",
         *arguments,
         "--",
         objective,
@@ -136,7 +134,7 @@ def test_source_flags_can_supply_work_without_request(tmp_path, command, argumen
         tmp_path, valid_payload(command=command, request="", arguments=arguments)
     )
     argv = command_for(recipe)
-    assert argv[4:] == [command, *(["--auto"] if command == "run" else []), *arguments]
+    assert argv[4:] == [command, *arguments]
 
 
 def test_optional_flag_cannot_consume_the_request():
@@ -191,27 +189,11 @@ def test_cli_recipe_uses_parser_to_reject_unknown_and_invalid_options(tmp_path):
     )
     argv = command_for(in_place)
     assert "--no-worktree" in argv
-    assert "--auto" not in argv
 
 
-@pytest.mark.parametrize(
-    "options", [{"no_worktree": True}, {"no_worktree": True, "auto": False}]
-)
-def test_no_worktree_does_not_silently_disable_default_auto(tmp_path, options):
-    with pytest.raises(RecipeError, match="--auto requires an isolated worktree"):
-        validate_recipe(
-            tmp_path,
-            valid_payload(options=options),
-        )
-
-
-def test_legacy_interactive_ui_run_is_always_auto(tmp_path):
-    recipe = validate_recipe(
-        tmp_path,
-        valid_payload(options={"auto": False}),
-    )
-    assert recipe.options["auto"] is True
-    assert "--auto" in command_for(recipe)
+def test_no_worktree_recipe_uses_the_checkout(tmp_path):
+    recipe = validate_recipe(tmp_path, valid_payload(options={"no_worktree": True}))
+    assert "--no-worktree" in command_for(recipe)
 
 
 def test_cli_recipe_rejects_duplicate_singleton_flags(tmp_path):
@@ -220,15 +202,6 @@ def test_cli_recipe_rejects_duplicate_singleton_flags(tmp_path):
             tmp_path,
             valid_payload(arguments=["--test", "--test"]),
         )
-
-
-def test_plan_recipe_does_not_receive_auto_flag(tmp_path):
-    recipe = validate_recipe(
-        tmp_path,
-        valid_payload(command="plan", name="Plan API", repo=str(tmp_path)),
-    )
-
-    assert "--auto" not in command_for(recipe)
 
 
 def test_review_recipe_allows_only_headless_review_form(tmp_path):

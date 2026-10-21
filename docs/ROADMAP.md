@@ -42,7 +42,7 @@ Projects could configure optional handlers for uses such as CI status or
 notifications. Reporting handlers should not change a verified run's result
 when they fail. A handler explicitly configured as a required gate may block
 completion, and its failure should be recorded. Handlers need timeouts and
-declared permissions. In `--auto` mode, they must never prompt for
+declared permissions. Headless runs must never prompt for
 input; failures must leave a clear checkpoint and recovery path.
 
 Add event types only when a concrete consumer needs them. Avoid exposing every

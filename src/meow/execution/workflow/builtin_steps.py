@@ -52,7 +52,6 @@ async def shape(state):  # ruff: ignore[unused-async] -- mirrors existing shapin
     preplan = prepare_preplan(
         state.sprint.active_working_dir(),
         state.request,
-        auto=state.variables()["auto"],
         evidence=state.evidence,
     )
     state.journal("shaping_finished", results={"preplan": preplan.to_dict()})
@@ -286,7 +285,7 @@ async def deliver(state):  # ruff: ignore[unused-async]
     deliver_verified_run(
         state.store,
         state.run_id,
-        auto=delivery.get("auto", False),
+        commit=delivery.get("enabled"),
         push=delivery.get("push", True),
     )
 

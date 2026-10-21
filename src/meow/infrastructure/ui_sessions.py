@@ -385,13 +385,7 @@ def _imported_resume_recipe(
         else None,
         inputs=inputs if isinstance(inputs, dict) else {},
         arguments=[],
-        options={
-            "auto": bool(
-                record.delivery.get("auto", False)
-                if isinstance(record.delivery, dict)
-                else False
-            )
-        },
+        options={},
     )
 
 

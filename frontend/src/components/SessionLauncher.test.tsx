@@ -119,7 +119,6 @@ test.each(["skill", "agent"] as const)(
         const valid =
           recipe.mode === "claude" &&
           recipe.options.permission_policy === "default" &&
-          !Object.hasOwn(recipe.options, "auto") &&
           !Object.hasOwn(recipe.options, "no_worktree") &&
           (kind !== "agent" || recipe.options.agent === "helper");
         return new Response(
@@ -267,7 +266,7 @@ test("scheduling sends a timestamp and never launches immediately", async () => 
   expect(calls.some((url) => url.endsWith("/launch"))).toBe(false);
 });
 
-test("CLI draft defaults to auto and cannot launch before its preview", async () => {
+test("CLI draft cannot launch before its preview", async () => {
   const user = userEvent.setup();
   render(<SessionLauncher {...props()} />);
   expect(
@@ -278,6 +277,22 @@ test("CLI draft defaults to auto and cannot launch before its preview", async ()
   await user.type(screen.getByLabelText("Session name"), "Fix search");
   await user.type(screen.getByLabelText("Request"), "Fix search behavior");
   expect(launch).toBeDisabled();
+});
+
+test("editing an in-place recipe preserves its no-worktree choice", () => {
+  render(
+    <SessionLauncher
+      {...props()}
+      initialRecipe={{
+        mode: "cli",
+        command: "run",
+        options: { no_worktree: true },
+      }}
+    />,
+  );
+  expect(
+    screen.getByRole("checkbox", { name: "Work in this repository directly" }),
+  ).toBeChecked();
 });
 
 test("Claude bypass stays unchecked until explicitly selected", () => {
@@ -484,7 +499,7 @@ test("editing keeps the saved repository as the update owner", async () => {
         workflow: null,
         inputs: {},
         arguments: [],
-        options: { auto: true, no_worktree: false },
+        options: { no_worktree: false },
       }}
       sessionId={id}
       editOnly
@@ -567,7 +582,7 @@ test("imported recipe can be saved as an editable draft with unknown flags calle
         workflow: "quick",
         inputs: { area: "ui" },
         arguments: [],
-        options: { auto: true, no_worktree: false },
+        options: { no_worktree: false },
       }}
       onSaved={onSaved}
     />,

@@ -102,6 +102,14 @@ class _JiraSources(argparse.Action):
         )
 
 
+class _InPlaceDelivery(argparse.Action):
+    """Select the checkout and whether its verified commit should be pushed."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        namespace.no_worktree = True
+        setattr(namespace, self.dest, self.const)
+
+
 def _add_common_args(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--work-dir",
@@ -112,7 +120,7 @@ def _add_common_args(parser: argparse.ArgumentParser):
     )
 
 
-def _add_feature_args(parser: argparse.ArgumentParser):
+def _add_feature_args(parser: argparse.ArgumentParser, *, delivery: bool = False):
     parser.add_argument(
         "--name",
         "-f",
@@ -126,28 +134,43 @@ def _add_feature_args(parser: argparse.ArgumentParser):
             "worktree names."
         ),
     )
-    parser.add_argument(
+    worktree = parser.add_mutually_exclusive_group()
+    worktree.add_argument(
         "--no-worktree",
         "-n",
         dest="no_worktree",
         action="store_true",
-        help="Run in the main repo instead of creating/using a .worktrees entry.",
+        help="Run in the selected checkout without committing or pushing.",
     )
+    if delivery:
+        for flag, long_flag, push, description in (
+            ("-nc", "--no-worktree-commit", False, "commit without pushing"),
+            ("-np", "--no-worktree-push", True, "commit and push"),
+        ):
+            worktree.add_argument(
+                flag,
+                long_flag,
+                dest="push",
+                action=_InPlaceDelivery,
+                nargs=0,
+                const=push,
+                default=None,
+                help=(
+                    f"Run in the selected checkout and {description} "
+                    "after verification."
+                ),
+            )
     parser.add_argument(
         "--from",
         "-b",
         dest="source_branch",
         default=None,
         help=(
-            "Branch a freshly created worktree should be checked out from, "
-            "instead of the main checkout's current HEAD. Ignored when an "
-            "existing worktree is reused, or when --no-worktree is set "
-            "(there is no worktree to create). Skips the uncommitted-"
-            "changes check for this invocation, but only together with "
-            "worktree mode (i.e. not --no-worktree) -- the new worktree is "
-            "built from this branch, not the main checkout's current "
-            "state, so its own uncommitted changes don't apply to it. "
-            "Orchestration uses this as its base and always requires a clean checkout."
+            "Create a fresh worktree from this branch, preserving existing "
+            "worktrees. Requires the main checkout with worktrees enabled. "
+            "Skips the uncommitted-changes check because local edits stay "
+            "in the original checkout. Orchestration also uses this base "
+            "and skips the check."
         ),
     )
 
@@ -404,22 +427,9 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     run_parser.add_argument(
-        "-a",
-        "--auto",
-        action="store_true",
-        help=(
-            "Deliver a verified isolated-worktree run without interactive "
-            "handoff; required for --background."
-        ),
-    )
-    # Durable schedules and workers created before --auto retain their argv.
-    run_parser.add_argument(
-        "--unattended", dest="auto", action="store_true", help=argparse.SUPPRESS
-    )
-    run_parser.add_argument(
         "--background",
         action="store_true",
-        help="Continue an automatic run in a detached local worker.",
+        help="Continue a run in a detached local worker.",
     )
     run_parser.add_argument(
         "--test",
@@ -444,7 +454,7 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     _add_common_args(run_parser)
-    _add_feature_args(run_parser)
+    _add_feature_args(run_parser, delivery=True)
     _add_manual_approval_arg(run_parser)
     _add_orchestration_args(run_parser)
 

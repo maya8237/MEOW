@@ -92,7 +92,6 @@ async def run_issue_solver(  # ruff: ignore[too-many-arguments]
     run_id: str | None = None,
     workflow: str | None = None,
     inputs: dict[str, str] | None = None,
-    auto: bool = False,
 ) -> dict:
     """Fetch a Jira issue, solve it in a worktree, and return its branch.
 
@@ -114,7 +113,6 @@ async def run_issue_solver(  # ruff: ignore[too-many-arguments]
             issue_key,
             approve_plan,
             run_id=run_id,
-            auto=auto,
             **({"test": True} if test else {}),
             **({"workflow": workflow} if workflow else {}),
             **({"inputs": inputs} if inputs else {}),
@@ -134,7 +132,6 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
     run_id: str | None = None,
     workflow: str | None = None,
     inputs: dict[str, str] | None = None,
-    auto: bool = False,
 ) -> dict:
     issue = (
         await cancellable(
@@ -166,10 +163,7 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
         )
 
     logger.info("issue_solver_sprint_started", issue=issue["key"], branch=branch_name)
-    # A background worker always runs automatically; a foreground run only on request.
     run_options = {"run_id": run_id} if run_id else {}
-    if auto or run_id:
-        run_options["auto"] = True
     if existing_worktree:
         run_options["worktree_preexisting"] = True
     await run_sprint(

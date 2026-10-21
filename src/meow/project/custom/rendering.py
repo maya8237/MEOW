@@ -54,7 +54,6 @@ PROMPT_VARIABLES = frozenset({
     "resume_review",
     "review_first",
     "parallel",
-    "auto",
     "checks_configured",
     # Orchestrator roles
     "objective",

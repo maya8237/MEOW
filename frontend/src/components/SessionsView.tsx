@@ -519,6 +519,6 @@ function recipeFromRun(run: ImportedRun): Recipe {
     workflow: run.workflow?.name || null,
     inputs: run.workflow?.inputs || {},
     arguments: [],
-    options: { auto: true, no_worktree: false },
+    options: { no_worktree: false },
   };
 }

@@ -98,7 +98,6 @@ def test_conflicting_product_choices_stop_without_question(tmp_path):
     result = prepare_preplan(
         tmp_path,
         "Choose between deleting accounts or retaining them forever",
-        auto=True,
     )
     assert result.decision.mode == "needs_user_decision"
     assert result.shape is None
@@ -146,7 +145,7 @@ def test_unexpected_failure_before_planning_marks_the_run_failed(tmp_path):
     ],
 )
 def test_case_lists_are_not_product_decisions(tmp_path, request_text):
-    result = prepare_preplan(tmp_path, request_text, auto=True)
+    result = prepare_preplan(tmp_path, request_text)
     assert result.decision.mode != "needs_user_decision"
 
 
@@ -234,7 +233,6 @@ def test_auto_product_choice_stops_before_planning(tmp_path):
                 "x",
                 "Choose between deleting all accounts or retaining them forever",
                 use_worktree=False,
-                auto=True,
             )
         )
     planner.assert_not_called()

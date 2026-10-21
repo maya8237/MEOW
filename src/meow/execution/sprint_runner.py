@@ -27,7 +27,7 @@ from meow.infrastructure.checks import (
 from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.node_dependencies import ensure_node_dependencies
-from meow.infrastructure.worktree import current_branch
+from meow.infrastructure.worktree import _is_linked_worktree, current_branch
 from meow.infrastructure.worktree_names import request_name
 from meow.infrastructure.worktree_setup import (
     prepare_environment,
@@ -138,6 +138,11 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
         load_config(Path(record_root or working_dir)), options.get("workflow")
     )
     store = RunStore(Path(record_root or working_dir).resolve())
+    delivery = {
+        field: options[option]
+        for field, option in (("enabled", "commit"), ("push", "push"))
+        if options.get(option) is not None
+    }
     if run_id is None:
         run_id = store.create(
             source=source,
@@ -145,7 +150,11 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
             repo=record_root or working_dir,
             worktree=working_dir,
             branch="preparing",
+            delivery=delivery,
         ).id
+    elif delivery:
+        record = store.load(run_id)
+        store.transition(run_id, record.phase, delivery={**record.delivery, **delivery})
     try:
         await _drive_sprint(
             working_dir,
@@ -190,7 +199,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     resume_at: str = "generate",
     test: bool = False,
     record_root: Path | None = None,
-    auto: bool = False,
+    commit: bool | None = None,
     push: bool | None = None,
     worktree_preexisting: bool = False,
     required_session_roles: set[str] | None = None,
@@ -231,7 +240,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     # A run that plans from scratch gets its own worktree rather than reusing
     # an earlier one by name; continuing (--plan, --resume-at review)
     # keeps reuse. `meow resume` passes use_worktree=False, so it is unaffected.
-    fresh = plan_file is None and resume_at == "generate"
+    fresh = bool(source_branch) or (plan_file is None and resume_at == "generate")
     if use_worktree and not feature_name:
         feature_name = request_name(request)
     if use_worktree and plan_file is not None:
@@ -253,7 +262,6 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     )
     branch = current_branch(active_dir)
     sprint.config["_run_journal"] = (store, record.id)
-    sprint.config["_auto"] = auto
     sprint.config["_bug_mode"] = is_bug_request(request)
     if required_session_roles:
         sprint.config["_resume_required_roles"] = set(required_session_roles)
@@ -263,7 +271,11 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
         worktree=str(active_dir),
         branch=branch,
         delivery={
-            "auto": auto or record.delivery.get("auto", False),
+            "enabled": (
+                record.delivery.get("enabled", _is_linked_worktree(active_dir))
+                if commit is None
+                else commit
+            ),
             "push": record.delivery.get("push", True) if push is None else push,
         },
         results={"feature_name": effective_name} if effective_name else {},

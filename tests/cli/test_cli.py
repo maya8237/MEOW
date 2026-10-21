@@ -52,15 +52,40 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         parser = cli._build_arg_parser()
 
         self.assertFalse(parser.parse_args(["resume", "run-123"]).continue_run)
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["resume", "run-123", "--auto-resume"])
+        self.assertTrue(
+            parser.parse_args(["resume", "run-123", "--continue"]).continue_run
+        )
 
-    def test_auto_flag_accepts_short_alias(self):
+    def test_in_place_delivery_flags_preserve_plan_alias(self):
         parser = cli._build_arg_parser()
+        ordinary = parser.parse_args(["run", "feature", "-n"])
+        delivery = parser.parse_args(["run", "feature", "-np"])
+        commit = parser.parse_args(["run", "feature", "-nc", "-p", "plan.md"])
+        self.assertTrue(ordinary.no_worktree)
+        self.assertIsNone(ordinary.push)
+        self.assertTrue(delivery.no_worktree)
+        self.assertTrue(delivery.push)
+        self.assertTrue(commit.no_worktree)
+        self.assertFalse(commit.push)
+        self.assertEqual(commit.plan, "plan.md")
+        for flags in (["-n", "-np"], ["-nc", "-np"]):
+            with self.assertRaises(SystemExit):
+                parser.parse_args(["run", "feature", *flags])
 
-        self.assertTrue(parser.parse_args(["run", "feature", "--auto"]).auto)
-        self.assertTrue(parser.parse_args(["run", "feature", "-a"]).auto)
-        self.assertTrue(parser.parse_args(["run", "feature", "--auto"]).auto)
+    def test_in_place_delivery_options_reach_the_sprint(self):
+        from meow.cli.dispatch import _dispatch_plain_build
+
+        parser = cli._build_arg_parser()
+        for flag, commit, push in (
+            ("-n", False, False),
+            ("-nc", True, False),
+            ("-np", True, True),
+        ):
+            args = parser.parse_args(["run", "feature", flag])
+            with patch("meow.cli.dispatch.run_sprint", new=AsyncMock()) as run:
+                _dispatch_plain_build(args, Path.cwd(), use_worktree=False)
+            self.assertEqual(run.await_args.kwargs["commit"], commit)
+            self.assertEqual(run.await_args.kwargs["push"], push)
 
     def test_hidden_top_level_commands_remain_parseable(self):
         parser = cli._build_arg_parser()
@@ -761,7 +786,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             self.assertEqual(checked_out, other_branch_commit)
             self.assertNotEqual(checked_out, main_commit)
 
-    def test_feature_worktree_reuse_ignores_source_branch(self):
+    def test_feature_worktree_with_source_branch_uses_a_new_worktree(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir).resolve()
             self._init_repo(project_root)
@@ -775,7 +800,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 project_root, "ship-it", source_branch="other-branch"
             )
 
-            self.assertEqual(first, second)
+            self.assertNotEqual(first, second)
+            self.assertEqual(second.name, "ship-it-2")
 
     def test_feature_worktree_creation_raises_when_git_fails(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1260,39 +1286,33 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             resume_at="generate",
         )
 
-    @staticmethod
     @patch("meow.execution.run_policy._ensure_clean_tree")
     @patch("meow.cli.cli._boot_repo")
     @patch("meow.cli.dispatch.run_sprint", new_callable=AsyncMock)
-    def test_source_branch_with_no_worktree_still_requires_a_clean_tree(
-        mock_sprint, mock_boot, mock_clean_tree
+    def test_source_branch_with_no_worktree_is_rejected(
+        self, mock_sprint, mock_boot, mock_clean_tree
     ):
-        with patch(
-            "sys.argv",
-            [
-                "meow",
-                "run",
-                "ship-it",
-                "--from",
-                "release/1.0",
-                "--no-worktree",
-                "--work-dir",
-                ".",
-            ],
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "meow",
+                    "run",
+                    "ship-it",
+                    "--from",
+                    "release/1.0",
+                    "--no-worktree",
+                    "--work-dir",
+                    ".",
+                ],
+            ),
+            self.assertRaises(SystemExit) as error,
         ):
             cli.cli_main()
 
-        mock_clean_tree.assert_called_once_with(Path(".").resolve())
-        mock_sprint.assert_awaited_once_with(
-            Path(".").resolve(),
-            None,
-            "ship-it",
-            use_worktree=False,
-            plan_file=None,
-            source_branch="release/1.0",
-            approve_plan=None,
-            resume_at="generate",
-        )
+        self.assertEqual(error.exception.code, 2)
+        mock_clean_tree.assert_not_called()
+        mock_sprint.assert_not_awaited()
 
     @staticmethod
     @patch("meow.cli.cli._boot_repo")
@@ -1637,6 +1657,8 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             source_branch=None,
             approve_plan=None,
             resume_at="generate",
+            commit=False,
+            push=False,
         )
 
 

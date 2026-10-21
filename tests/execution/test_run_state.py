@@ -8,16 +8,16 @@ from meow.execution.run_state import MAX_OUTPUT, RunStateError, RunStore
 
 
 @pytest.mark.parametrize(
-    ("delivery", "expected"),
+    "delivery",
     [
-        ({"unattended": True}, {"unattended": True, "auto": True}),
-        ({"unattended": False}, {"unattended": False, "auto": False}),
-        ({"unattended": True, "auto": False}, {"unattended": True, "auto": False}),
-        ({"unattended": False, "auto": True}, {"unattended": False, "auto": True}),
-        ({"push": False}, {"push": False}),
+        {},
+        {"enabled": True, "push": True},
+        {"enabled": True, "push": False},
+        {"push": False},
+        {"enabled": False, "push": False},
     ],
 )
-def test_load_preserves_legacy_automatic_delivery_policy(tmp_path, delivery, expected):
+def test_delivery_fields_round_trip(tmp_path, delivery):
     store = RunStore(tmp_path)
     record = store.create(
         source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
@@ -28,10 +28,10 @@ def test_load_preserves_legacy_automatic_delivery_policy(tmp_path, delivery, exp
     path.write_text(json.dumps(raw))
     before = path.read_bytes()
 
-    assert store.load(record.id).delivery == expected
+    assert store.load(record.id).delivery == delivery
     assert path.read_bytes() == before
-    assert store.update_results(record.id, resumed=True).delivery == expected
-    assert json.loads(path.read_text())["delivery"] == expected
+    assert store.update_results(record.id, resumed=True).delivery == delivery
+    assert json.loads(path.read_text())["delivery"] == delivery
 
 
 def test_create_transition_and_latest(tmp_path):

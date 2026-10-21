@@ -37,7 +37,7 @@ const defaults = (repo: string): Recipe => ({
   workflow: null,
   inputs: {},
   arguments: [],
-  options: { auto: true, no_worktree: false },
+  options: { no_worktree: false },
 });
 
 export default function SessionLauncher({
@@ -79,13 +79,6 @@ export default function SessionLauncher({
       };
       if (catalogItem?.kind === "agent")
         value.options = { ...value.options, agent: catalogItem.item.name };
-    }
-    if (value.mode === "cli" && value.command === "run") {
-      value.options = {
-        ...value.options,
-        auto: true,
-        no_worktree: false,
-      };
     }
     return value;
   }, [repo, initialRecipe, catalogItem, sessionId]);
@@ -226,7 +219,7 @@ export default function SessionLauncher({
       arguments: mode === "cli" ? draft.arguments : [],
       options:
         mode === "cli"
-          ? { auto: true, no_worktree: false }
+          ? { no_worktree: false }
           : {
               permission_policy: "default",
               ...(catalogItem?.kind === "agent"
@@ -359,12 +352,9 @@ export default function SessionLauncher({
                     arguments: [],
                     ...(draft.mode === "cli"
                       ? {
-                          options:
-                            event.target.value === "run"
-                              ? { auto: true, no_worktree: false }
-                              : event.target.value === "plan"
-                                ? { no_worktree: false }
-                                : {},
+                          options: ["run", "plan"].includes(event.target.value)
+                            ? { no_worktree: false }
+                            : {},
                         }
                       : {}),
                   })
@@ -426,7 +416,7 @@ export default function SessionLauncher({
                     reached. Custom workflows control their own loop stages.
                   </small>
                 </label>
-                {draft.command === "plan" && (
+                {(draft.command === "plan" || draft.command === "run") && (
                   <fieldset className="launcher-options launcher-wide">
                     <legend>CLI options</legend>
                     <label>
@@ -612,9 +602,9 @@ export default function SessionLauncher({
           )}
           {draft.mode === "cli" && draft.command === "run" && (
             <p className="session-note">
-              UI feature runs execute automatically in an isolated worktree and
-              follow the repository delivery policy. They may commit and push
-              verified work in their worktree.
+              UI feature runs execute automatically and follow the repository
+              delivery policy. They may commit and push verified work in their
+              worktree.
             </p>
           )}
           {error && (

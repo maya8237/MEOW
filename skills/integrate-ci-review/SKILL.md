@@ -12,16 +12,15 @@ never application code, and do not use `--fix` or `meow run` in the job.
 ## Configure credentials and model defaults
 
 Before editing CI, read [the environment guide](references/environment.md).
+Ask: **"Should MEOW post inline review comments on PRs/MRs?"** Reuse a prior answer or wait for the choice.
 When a matching GitHub/GitLab MCP is configured, inspect existing project CI
 variables/secrets first. Reuse clear matches under their existing names through
-job-local `MEOW_*` aliases; ask the user to add only values actually missing.
-Ask whether to import model fallbacks from Claude `settings.json`. Show the user
-a copy table with each `MEOW_*` CI variable, its actual settings value (including
-tokens), source field, existing CI source, and required action. Keep URL/token/key
-values out of YAML.
-All model variables must accept CI overrides ahead of approved local defaults.
-Support direct Anthropic and optional gateways; never assume LiteLLM or a local
-settings file exists. Without settings, use CI variables and Claude defaults.
+job-local `MEOW_*` aliases. Request missing CI variables/secrets at the final
+handoff, after editing and validating CI; missing values do not block that work.
+Ask whether to import model fallbacks from Claude `settings.json`. Present the
+environment guide's copy table at the end. Keep URL/token/key values out of YAML.
+All models accept CI overrides ahead of approved local defaults. Support direct
+Anthropic and optional gateways; without local settings, use CI/Claude defaults.
 
 ## Detect the CI provider
 
@@ -155,7 +154,7 @@ broader runtime change.
 
 ### Optional inline review notes
 
-When requested, add `--post-comments github` or `--post-comments gitlab` to
+If enabled, add `--post-comments github` or `--post-comments gitlab` to
 `meow review --ci`. Keep the fixed install command `python -m pip install meow-harness`;
 do not add an install-spec variable or ask the user to choose the package.
 
@@ -194,6 +193,7 @@ concurrent jobs can still race, so serialize comment-posting jobs per PR/MR.
    - naming, placement, needs, execution mode, and policies match the choices; and
    - no application files or generated review fixes were changed.
 4. Tell the user which CI file changed, the selected stage/order and job policies,
-   and show the environment guide's copy table for CI variables/secrets. Mention
-   which model defaults were imported and that the job reports PASS/FAIL without
-   fixing the change set.
+   imported model defaults, and the posting choice. Explain that review reports
+   PASS/FAIL without fixing the change set. End with the environment guide's copy
+   table and an explicit request to add missing CI variables/secrets, including
+   the provider token when posting is enabled and no suitable token is available.

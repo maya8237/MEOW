@@ -187,9 +187,7 @@ def parse_policy(  # ruff: ignore[complex-structure, too-many-branches, too-many
     return PermissionPolicy(tuple(rules))
 
 
-def make_permission_callback(
-    policy: RolePolicy, *, auto: bool, project_root: Path | None = None
-):
+def make_permission_callback(policy: RolePolicy, *, project_root: Path | None = None):
     """Return an SDK callback; the SDK remains the tool executor."""
 
     async def can_use_tool(  # ruff: ignore[unused-async]
@@ -201,8 +199,6 @@ def make_permission_callback(
         reason = "Project policy denied this action"
         if decision == "ask":
             reason = "Project policy requires approval for this action"
-            if auto:
-                reason += "; automatic run stopped"
         return PermissionResultDeny(message=reason, interrupt=decision == "ask")
 
     return can_use_tool

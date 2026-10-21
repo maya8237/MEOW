@@ -77,7 +77,7 @@ tool = "Bash"
 action = "deny"
 ```
 
-Actions are `allow`, `deny`, or `ask`; auto stops on ask. Repository-relative
+Actions are `allow`, `deny`, or `ask`; runs stop on `ask`. Repository-relative
 `path` scopes Read/Write/Edit/NotebookEdit and must not escape the project.
 Path-scoped roles must deny both Bash and Agent.
 
@@ -176,7 +176,7 @@ Claude/Git credentials must support noninteractive execution. Registration
 preserves executable PATH but does not copy shell-only secrets. Use persistent
 account/integration credentials; `MEOW_LOG_FILE` adds a persistent log.
 For recurrence, external Task Scheduler/cron/systemd/CI can invoke
-`meow run --auto` with absolute executable/project paths; built-in triggers are one-shot.
+`meow run` with absolute executable/project paths; built-in triggers are one-shot.
 
 ## If something's missing
 

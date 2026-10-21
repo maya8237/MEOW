@@ -86,8 +86,8 @@ def _invocation_kind(
     """Classify a background invocation; reject anything else."""
     if args.command == "_orchestrator-task":
         return "orchestrator-task"
-    if args.command != "run" or not args.auto or not args.background:
-        raise BackgroundError("Background execution requires run --auto --background")
+    if args.command != "run" or not args.background:
+        raise BackgroundError("Background execution requires run --background")
     if args.lint_fix or args.manually_approve_plan:
         raise BackgroundError("Background execution cannot prompt or run lint-fix")
     return "run"
@@ -117,6 +117,11 @@ def _create_run(
         repo=repo,
         worktree=repo,
         branch="preparing",
+        delivery=(
+            {"enabled": args.push is not None, "push": args.push is True}
+            if args.no_worktree
+            else {}
+        ),
     )
 
 
@@ -125,7 +130,7 @@ def launch_background(
 ) -> str:
     """Checkpoint an automatic invocation and start one detached worker.
 
-    `run --auto --background` creates its own run record. The internal
+    `run --background` creates its own run record. The internal
     `_orchestrator-task` invocation needs a `seed` describing the run record.
     """
     from meow.cli.parser import _build_arg_parser
@@ -338,7 +343,11 @@ def worker_main(  # ruff: ignore[too-many-statements]
                     test=args.test,
                     run_id=run_id,
                     record_root=repo,
-                    auto=True,
+                    **(
+                        {"commit": args.push is not None, "push": args.push is True}
+                        if args.no_worktree
+                        else {}
+                    ),
                     **({"workflow": args.workflow} if args.workflow else {}),
                     **({"inputs": parse_inputs(args.input)} if args.input else {}),
                 )

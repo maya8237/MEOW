@@ -5,6 +5,8 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pytest
+
 from meow.infrastructure.worktree import (
     _ensure_branch_worktree,
     _ensure_existing_branch_worktree,
@@ -264,6 +266,56 @@ class FreshFeatureWorktreeTests(unittest.TestCase):
             )
 
             self.assertEqual((active.name, name), ("feat", "feat"))
+
+
+@pytest.mark.parametrize("linked", [False, True])
+def test_explicit_base_rejects_in_place_execution(tmp_path, linked):
+    root = make_repo(str(tmp_path))
+    first = _ensure_feature_worktree(root, "feat")
+    git(root, "branch", "release")
+    (first / "README.md").write_text("unfinished work", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="--from requires a new worktree"):
+        _resolve_working_dir(
+            first if linked else root,
+            use_worktree=linked,
+            feature_name="feat",
+            source_branch="release",
+        )
+
+    assert (first / "README.md").read_text(encoding="utf-8") == "unfinished work"
+
+
+def test_explicit_base_creates_separate_worktree_when_name_is_taken(tmp_path):
+    root = make_repo(str(tmp_path))
+    git(root, "branch", "release")
+    (root / "README.md").write_text("main change", encoding="utf-8")
+    git(root, "commit", "-am", "main change")
+    first = _ensure_feature_worktree(root, "feat")
+    (first / "README.md").write_text("unfinished work", encoding="utf-8")
+
+    active, name, is_worktree = _resolve_working_dir(
+        root, use_worktree=True, feature_name="feat", source_branch="release"
+    )
+
+    assert active == root / ".worktrees" / "feat-2"
+    assert name == "feat-2"
+    assert is_worktree
+    assert (active / "README.md").read_text(encoding="utf-8") == "x\n"
+    assert (first / "README.md").read_text(encoding="utf-8") == "unfinished work"
+
+
+@pytest.mark.parametrize("source_branch", ["missing-branch", "", "--force"])
+def test_invalid_base_does_not_reuse_existing_worktree(tmp_path, source_branch):
+    root = make_repo(str(tmp_path))
+    first = _ensure_feature_worktree(root, "feat")
+    (first / "README.md").write_text("unfinished work", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Failed to create worktree"):
+        _ensure_feature_worktree(root, "feat", source_branch=source_branch)
+
+    assert (first / "README.md").read_text(encoding="utf-8") == "unfinished work"
+    assert not (root / ".worktrees" / "feat-2").exists()
 
 
 if __name__ == "__main__":

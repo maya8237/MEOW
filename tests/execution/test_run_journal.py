@@ -120,11 +120,31 @@ def test_run_records_planning_and_completion(tmp_path):  # ruff: ignore[too-many
     deliver.assert_called_once()
     assert deliver.call_args.args[0].directory == RunStore(tmp_path).directory
     assert deliver.call_args.args[1] == record.id
-    assert deliver.call_args.kwargs == {"auto": False, "push": True}
+    assert deliver.call_args.kwargs == {"commit": False, "push": True}
     assert "planning" in [item["phase"] for item in record.transitions]
 
 
-def test_run_sprint_persists_push_false_for_delivery(tmp_path):
+@pytest.mark.parametrize("commit,push", [(False, False), (True, False), (True, True)])
+def test_preparation_failure_retains_delivery_policy(tmp_path, commit, push):
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
+    with (
+        patch(
+            "meow.execution.sprint_runner._prepare_sprint",
+            side_effect=RuntimeError("Preparation failed"),
+        ),
+        pytest.raises(RuntimeError, match="Preparation failed"),
+    ):
+        asyncio.run(
+            run_sprint(
+                tmp_path, None, "request", use_worktree=False, commit=commit, push=push
+            )
+        )
+    assert RunStore(tmp_path).latest().delivery == {"enabled": commit, "push": push}
+
+
+@pytest.mark.parametrize("commit,push", [(False, False), (True, False), (True, True)])
+def test_run_sprint_persists_delivery_policy(tmp_path, commit, push):
     (tmp_path / ".meow").mkdir()
     (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
     plan = tmp_path / "plan.md"
@@ -170,13 +190,13 @@ def test_run_sprint_persists_push_false_for_delivery(tmp_path):
                 "x",
                 "request",
                 use_worktree=False,
-                auto=True,
-                push=False,
+                commit=commit,
+                push=push,
             )
         )
     record = RunStore(tmp_path).latest()
-    assert record.delivery == {"auto": True, "push": False}
-    assert deliver.call_args.kwargs == {"auto": True, "push": False}
+    assert record.delivery == {"enabled": commit, "push": push}
+    assert deliver.call_args.kwargs == {"commit": commit, "push": push}
 
 
 def test_multitask_plan_uses_isolated_executor_then_final_review(tmp_path):

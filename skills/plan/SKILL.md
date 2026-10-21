@@ -20,7 +20,7 @@ Use **CLI mode** (bottom) only if the user explicitly asks for it.
    (`meow plan` never required a clean tree). `--fresh` never reuses an
    existing worktree: a taken name becomes `<name>-2`, ... -- use the JSON
    `name`, `plan_file` and `active_dir` it returns, not your own name. Add `--no-worktree` if the user
-   wants the main repo (name then optional), `--from <branch>` if given.
+   wants the main repo (name then optional). `--from <branch>` requires a new worktree.
    Report failures verbatim and stop.
 3. Create a `preparing` checkpoint with `--request "<feature request>"`,
    `--work-dir "<project-path>"`, and `--active-dir "<active_dir>"`; retain its

@@ -38,7 +38,6 @@ def _dispatch_jira_build(args, working_dir: Path) -> None:
                 **({"test": True} if args.test else {}),
                 **({"workflow": args.workflow} if args.workflow else {}),
                 **({"inputs": parse_inputs(args.input)} if args.input else {}),
-                **({"auto": True} if args.auto else {}),
             )
         )
     except IssueUnresolvedError as exc:
@@ -61,9 +60,13 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
                 source_branch=args.source_branch,
                 approve_plan=approve_plan,
                 resume_at=args.resume_at,
+                **(
+                    {"commit": args.push is not None, "push": args.push is True}
+                    if args.no_worktree
+                    else {}
+                ),
                 **({"workflow": args.workflow} if args.workflow else {}),
                 **({"inputs": parse_inputs(args.input)} if args.input else {}),
-                **({"auto": True} if args.auto else {}),
                 **({"test": True} if args.test else {}),
             )
         )

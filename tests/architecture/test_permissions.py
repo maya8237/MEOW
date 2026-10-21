@@ -89,7 +89,7 @@ def test_callback_denies_absolute_path_inside_project(tmp_path):
         ]
     })
     callback = make_permission_callback(
-        policy.for_role("generator"), auto=True, project_root=tmp_path
+        policy.for_role("generator"), project_root=tmp_path
     )
     result = asyncio.run(callback("Write", {"file_path": str(tmp_path / ".env")}, None))
     assert result.behavior == "deny"
@@ -99,13 +99,13 @@ def test_callback_denies_absolute_path_inside_project(tmp_path):
     assert other.behavior == "allow"
 
 
-def test_auto_ask_interrupts_without_prompt():
+def test_ask_interrupts_without_prompt():
     policy = parse_policy({
         "rule": [
             {"role": "generator", "tool": "Bash", "action": "ask"},
         ]
     })
-    callback = make_permission_callback(policy.for_role("generator"), auto=True)
+    callback = make_permission_callback(policy.for_role("generator"))
     result = asyncio.run(callback("Bash", {"command": "git push"}, None))
     assert result.behavior == "deny"
     assert result.interrupt is True

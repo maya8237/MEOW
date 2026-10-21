@@ -21,7 +21,7 @@ def valid_recipe(repo: Path) -> Recipe:
         workflow=None,
         inputs={},
         arguments=[],
-        options={"auto": True},
+        options={},
     )
 
 

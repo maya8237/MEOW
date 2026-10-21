@@ -96,17 +96,17 @@ def commit_worktree(active: Path, message: list[str]) -> str:
 
 
 def deliver_verified_run(
-    store: RunStore, run_id: str, *, auto: bool = False, push: bool = True
+    store: RunStore, run_id: str, *, commit: bool | None = None, push: bool = True
 ) -> bool:
     """Hold the run's delivery lock until commit/push has finished."""
     with delivery_lock(store, run_id):
-        return _deliver_verified_run(store, run_id, auto=auto, push=push)
+        return _deliver_verified_run(store, run_id, commit=commit, push=push)
 
 
 def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches]
-    store: RunStore, run_id: str, *, auto: bool = False, push: bool = True
+    store: RunStore, run_id: str, *, commit: bool | None = None, push: bool = True
 ) -> bool:
-    """Deliver after verified checks, from a linked worktree or automatic run.
+    """Deliver after verified checks when enabled, defaulting to linked worktrees.
 
     Return False when delivery was not requested for an in-place run. A Git
     failure keeps the checkout and journal for manual recovery.
@@ -115,7 +115,7 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
     if record.phase != "checks_finished":
         raise ValueError("Delivery requires current passing checks")
     active = Path(record.worktree)
-    if not (auto or _is_linked_worktree(active)):
+    if not (_is_linked_worktree(active) if commit is None else commit):
         return False
     try:
         check_cancel(store, run_id)
@@ -139,13 +139,13 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
         onboarded = record.results.get("onboarding", {}).get("files")
         if onboarded:
             message += ["-m", "Onboarded: " + ", ".join(onboarded)]
-        commit = commit_worktree(active, message)
+        commit_sha = commit_worktree(active, message)
         store.transition(
             run_id,
             "committed",
             delivery={
                 **store.load(run_id).delivery,
-                "commit": commit,
+                "commit": commit_sha,
                 "committed": True,
             },
         )

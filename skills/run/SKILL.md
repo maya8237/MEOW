@@ -112,13 +112,14 @@ and a `## Sprint Contract`, run `meow run "<request>" --name "<name>"
 which reviews the existing code and generates only what is missing. If there
 is none, or it is incomplete, tell the user and run normally.
 
-Add `--no-worktree` to operate in the main repo (name then optional; not
+Add `-n` / `--no-worktree` to operate in the selected checkout (name optional; not
 applicable to `--jira`, which always uses its own pushable-branch worktree).
-Use `-a` / `--auto` for non-interactive delivery or `--background`
-(`meow -u` updates MEOW); it requires
-an isolated worktree and cannot be combined with `--no-worktree`, manual plan
-approval, `--resume-at review`, or `--lint-fix`. An in-place
-`--no-worktree` run does not automatically commit or push.
+Runs execute automatically and commit/push verified work from their worktree.
+`-n` leaves changes uncommitted; `-nc` / `--no-worktree-commit` operates in the
+selected checkout and commits only; `-np` / `--no-worktree-push` operates there
+and commits/pushes. Existing linked worktrees selected with `--work-dir` are
+used directly. Add `-m` for plan approval, or `--background` to detach a run;
+background runs reject manual approval and lint-fix. `meow -u` updates MEOW.
 Successful runs automatically retain the result and clean integrated task artifacts.
 Use `meow cleanup [RUN_ID]` to retry cleanup; omitted IDs scan saved runs.
 Report retained artifacts and their reasons; never force-delete unfinished work.

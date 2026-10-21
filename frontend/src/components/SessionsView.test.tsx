@@ -23,7 +23,7 @@ const recipe = {
   workflow: null,
   inputs: {},
   arguments: [],
-  options: { auto: true },
+  options: {},
 };
 function fixture(state = "draft", archived = false) {
   const attemptState = state === "needs_decision" ? "needs_decision" : state;
@@ -466,7 +466,7 @@ test("imported runs explain missing history and open editable recipes with unkno
       workflow: "quick",
       inputs: { area: "ui" },
       arguments: [],
-      options: { auto: true, no_worktree: false },
+      options: { no_worktree: false },
     }),
     undefined,
     undefined,

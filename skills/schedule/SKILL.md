@@ -34,8 +34,9 @@ scheduling does not require loading it.
 
    For a Jira issue, replace the request/name with `run --jira "<KEY>"`.
    Preserve requested `--workflow`, `--input`, `--plan`, and `--test` flags.
-   Scheduling adds `--auto`; it requires an isolated worktree and rejects
-   manual approval, lint-fix, `--background`, and `--from`. It follows the
+   Scheduling rejects manual approval, lint-fix, `--background`, and `--from`.
+   Preserve `-n`, `-nc`, or `-np` when requested; otherwise it uses a worktree.
+   It follows the
    project's normal verification and delivery policy when it runs.
 3. Check the exit status. Only report a schedule as created when the command
    succeeds and returns JSON with `state: "scheduled"`. Report its `id`, the

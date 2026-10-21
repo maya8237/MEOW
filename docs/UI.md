@@ -24,9 +24,9 @@ See [WORKFLOWS.md](WORKFLOWS.md) for resolution and override rules.
 Open **Sessions → New session**, select a registered repository and command,
 or start from a workflow, skill, or supported Claude agent.
 The launcher previews and validates the exact command. CLI commands use argument
-arrays and have no interactive stdin. Feature runs are automatic and isolated;
-passing runs can commit/push under normal delivery policy. Other commands run
-headlessly without receiving unsupported `--auto`.
+arrays and have no interactive stdin. Feature runs execute automatically in a
+worktree by default and commit/push after verification. In-place options select
+no delivery (`-n`), commit only (`-nc`), or commit/push (`-np`).
 
 Advanced arguments derive flags, aliases, types, choices, and descriptions from
 the CLI parser. Check a flag and supply values; Remove clears the flag and values.

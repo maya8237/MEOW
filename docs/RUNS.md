@@ -24,8 +24,8 @@ Use `/meow:onboard` for add-ons.
 
 Before planning, project guidance/code are inspected; requests may be shaped
 and complex UI/component work breadboarded. Clear requests proceed directly.
-Unresolved product decisions checkpoint and stop even in auto; automatic runs
-never wait for input. Feature flows do not propose/edit prose docs; onboarding
+Unresolved product decisions checkpoint and stop; runs never wait for answers
+except at explicit `-m` plan approval. Feature flows do not propose/edit prose docs; onboarding
 can create selected project knowledge.
 
 With no saved run, `--resume-at review --plan PATH` skips planning and reviews
@@ -36,14 +36,16 @@ latest plan. Default `--resume-at generate` replans unless a plan is supplied.
 
 Completion requires an independent reviewer PASS, enabled tester PASS, and
 current required lint/test/build evidence. Advisory failures remain visible.
-Only a separate linked worktree automatically commits and pushes to `origin`;
-detached work gets a `meow/RUN_ID` branch. In-place runs do not deliver.
+Normal runs commit and push to `origin` from their worktree.
+`-n` uses the selected checkout without committing or pushing; `-nc` uses it
+and commits only; `-np` uses it and commits/pushes after verification.
+Explicit `-n` also disables delivery inside an existing linked worktree.
+Detached work gets a result branch.
 A missing remote or failed push retains the worktree/checkpoint.
 
-`--auto` uses noninteractive delivery in an isolated worktree and is required
-for `--background`. It accepts `--from`/`-b`, which selects a starting commit;
-delivery uses a separate `meow/RUN_ID` branch. It rejects `--no-worktree`,
-manual approval, resume-at-review, and lint-fix.
+`--background` detaches a run and rejects manual approval and lint-fix.
+`--from`/`-b` selects the starting commit for a new worktree.
+Select an existing linked worktree with `--work-dir PATH`; MEOW uses it directly.
 
 ## Status and continuation
 
@@ -84,7 +86,7 @@ reviews interrupted generation first.
 ## Background runs and queues
 
 ```bash
-meow run "REQUEST" --name NAME --auto --background
+meow run "REQUEST" --name NAME --background
 ```
 
 Returns a run ID immediately. Status supplies worker state/log path; a vanished

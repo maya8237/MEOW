@@ -195,7 +195,6 @@ def prepare_preplan(
     repo: Path,
     request: str,
     *,
-    auto: bool = False,
     evidence: ProjectContextEvidence | None = None,
 ) -> PreplanResult:
     """Choose the shortest safe preparation path without asking questions."""

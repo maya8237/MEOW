@@ -22,6 +22,7 @@ from meow.infrastructure.worktree import (
     DirtyWorkingTreeError,
     _boot_repo,
     _ensure_clean_tree,
+    _require_source_worktree,
 )
 from meow.integrations.issue_solver import _load_jira_config
 from meow.project.config import load_config
@@ -81,7 +82,9 @@ def _refusal(
         print(problem, file=sys.stderr)
         return EXIT_FAILED
     try:
-        _ensure_clean_tree(working_dir)
+        _require_source_worktree(working_dir, args.source_branch)
+        if not args.source_branch:
+            _ensure_clean_tree(working_dir)
     except DirtyWorkingTreeError as exc:
         print(f"\nWARNING: {exc}", file=sys.stderr)
         return EXIT_FAILED

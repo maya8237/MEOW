@@ -270,15 +270,13 @@ def _validated_claude_options(options: dict) -> dict[str, bool | str]:
 
 
 def _validated_cli_options(options: dict, command: str) -> dict[str, bool | str]:
-    if set(options) - {"no_worktree", "auto"}:
+    if set(options) - {"no_worktree"}:
         raise RecipeError("Unsupported CLI options: " + ", ".join(sorted(options)))
     if any(not isinstance(item, bool) for item in options.values()):
         raise RecipeError("CLI options must be boolean")
     if command not in {"run", "plan"} and "no_worktree" in options:
         raise RecipeError("no_worktree is available only for run and plan recipes")
-    if command != "run" and "auto" in options:
-        raise RecipeError("auto is available only for run recipes")
-    return {**options, "auto": True} if command == "run" else options
+    return options
 
 
 def _validated_options(mode: str, command: str, value: object) -> dict[str, bool | str]:
@@ -487,7 +485,6 @@ def _run_cli_options(recipe: Recipe) -> list[str]:
         for key, value in recipe.inputs.items()
         for token in ("--input", f"{key}={value}")
     ]
-    options.append("--auto")
     return options
 
 

@@ -48,8 +48,8 @@ For a saved native run, inspect and continue that same ID with `meow resume <run
    name they gave, or the one matching `.worktrees/`; ask only if several
    fit), then follow "Resume check" below.
    Add `--no-worktree` if the user wants the main repo instead of an isolated
-   worktree (then `--name` may be omitted); add `--from <branch>` if
-   they named one. `prepare` also onboards a never-onboarded project; if its
+   worktree (then `--name` may be omitted). `--from <branch>` creates a fresh
+   worktree and rejects in-place execution. `prepare` also onboards a new project; if its
    `onboarding.files` is non-empty, tell the user which files it set up. On a
    nonzero exit (e.g. uncommitted changes), report the message verbatim and
    stop. Keep `active_dir`, `plan_file`, `review_file`,

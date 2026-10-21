@@ -24,8 +24,8 @@ of fighting for it.
 2. **Start it.** Run `meow native run init --objective "<text>"` (or
    `--tasks <file>`), adding `--from <branch>` (base branch, default the current
    one), `--max-parallel N`, `--test` (each task also runs the configured
-   tests), or `--no-pr` when the user asked for them. The checkout must have no
-   uncommitted changes. Keep `id` and `integration_worktree` from the JSON.
+   tests), or `--no-pr` when the user asked for them. Without `--from`, the
+   checkout must be clean. Keep `id` and `integration_worktree` from the JSON.
 3. **Decompose** (you are the decomposer). If `decomposer` is `null` the tasks
    are saved: go to step 4. Otherwise follow its `system_prompt` and `query`
    yourself: read the repository with read-only tools, then write the JSON that

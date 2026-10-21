@@ -215,6 +215,38 @@ def test_init_refuses_a_dirty_tree(git_repo):
         orch.init(repo, objective="Build login")
 
 
+def test_init_with_explicit_base_preserves_local_changes(git_repo):
+    repo, _ = git_repo
+    git(repo, "branch", "release")
+    (repo / "file.txt").write_text("main only", encoding="utf-8")
+    git(repo, "commit", "-am", "main change")
+    (repo / "file.txt").write_text("staged work", encoding="utf-8")
+    git(repo, "add", "file.txt")
+    (repo / "file.txt").write_text("unstaged work", encoding="utf-8")
+    (repo / "dirty.txt").write_text("untracked work", encoding="utf-8")
+    status = git(repo, "status", "--porcelain", "--", "file.txt", "dirty.txt")
+
+    result = orch.init(repo, objective="Build login", base="release")
+
+    active = Path(result["integration_worktree"])
+    assert (active / "file.txt").read_text(encoding="utf-8") == "before"
+    assert not (active / "dirty.txt").exists()
+    assert git(repo, "status", "--porcelain", "--", "file.txt", "dirty.txt") == status
+    assert git(repo, "branch", "--show-current") == "main"
+    assert git(repo, "show", ":file.txt") == "staged work"
+    assert (repo / "file.txt").read_text(encoding="utf-8") == "unstaged work"
+    assert (repo / "dirty.txt").read_text(encoding="utf-8") == "untracked work"
+
+
+def test_init_with_explicit_base_rejects_linked_checkout(git_repo):
+    repo, _ = git_repo
+    linked = repo.parent / "linked"
+    git(repo, "worktree", "add", "--detach", str(linked))
+
+    with pytest.raises(ValueError, match="--from requires a new worktree"):
+        orch.init(linked, objective="Build login", base="main")
+
+
 def test_init_records_the_options(git_repo):
     repo, _ = git_repo
 

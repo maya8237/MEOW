@@ -15,7 +15,7 @@ def _controlled(action: argparse.Action, command: str) -> str | None:
         "input": "Workflow inputs",
         **(
             {"no_worktree": "Work in this repository directly"}
-            if command == "plan"
+            if command in {"run", "plan"}
             else {}
         ),
     }
@@ -23,12 +23,11 @@ def _controlled(action: argparse.Action, command: str) -> str | None:
         return f"Set using {fields[action.dest]} in the launcher."
     unavailable = {
         "help": "Help is shown here; this flag does not start a session.",
-        "auto": "Enabled automatically for UI feature runs.",
     }
     if command == "run":
         unavailable.update(
             dict.fromkeys(
-                ("no_worktree", "lint_fix", "report_only", "resume_at"),
+                ("lint_fix", "report_only", "resume_at"),
                 "UI feature runs start from a request and execute automatically in an "
                 "isolated worktree. Use the CLI for this mode, or Resume a saved run.",
             )
@@ -60,6 +59,7 @@ def cli_options() -> dict:
                 _option(action, command)
                 for action in _parser_for(parser, command)._actions
                 if any(flag.startswith("--") for flag in action.option_strings)
+                and action.help != argparse.SUPPRESS
             ]
             for command in sorted(_CLI_COMMANDS)
         }

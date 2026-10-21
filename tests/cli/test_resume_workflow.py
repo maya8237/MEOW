@@ -80,18 +80,24 @@ def test_legacy_record_uses_default_despite_new_config_default(tmp_path):
     assert run.await_args.kwargs["resume_at"] == "review"
 
 
-def test_resume_propagates_saved_auto_policy(tmp_path):
-    store, record, _, _ = setup_workflow(tmp_path)
-    store.transition(record.id, "failed", delivery={"auto": True})
-    captured = {}
-
-    fake_run_sprint = AsyncMock(
-        side_effect=lambda *args, **kwargs: captured.update(kwargs)
+@pytest.mark.parametrize("enabled,push", [(False, False), (True, False), (True, True)])
+def test_resume_preserves_in_place_delivery_policy(tmp_path, enabled, push):
+    store, record, metadata, _ = setup_workflow(tmp_path)
+    store.transition(
+        record.id,
+        "failed",
+        delivery={"enabled": enabled, "push": push},
+        results={"workflow": metadata},
     )
-    with patch("meow.cli.resume_cli.run_sprint", new=fake_run_sprint):
+    with (
+        patch("meow.execution.sprint_runner._is_linked_worktree", return_value=True),
+        patch(
+            "meow.execution.workflow.stages.StageAgent.run",
+            new=AsyncMock(return_value=""),
+        ),
+    ):
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
-
-    assert captured["auto"] is True
+    assert store.load(record.id).delivery == {"enabled": enabled, "push": push}
 
 
 def test_resume_preserves_explicit_tester_mode(tmp_path):

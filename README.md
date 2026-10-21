@@ -76,7 +76,10 @@ integrations and optional features.
 | --- | --- |
 | `--orchestrate` / `-o` | Coordinate multiple sprints and deliver one reviewed branch and PR/MR |
 | `--max-parallel N` | Limit concurrent sprints with `--orchestrate` (default: 3) |
-| `--auto` / `-a` | Run a feature automatically |
+| `-n` / `--no-worktree` | Work in the current checkout without committing or pushing |
+| `-nc` / `--no-worktree-commit` | Work in the current checkout and commit without pushing |
+| `-np` / `--no-worktree-push` | Work in the current checkout, commit, and push |
+| `-m` / `--manually-approve-plan` | Approve the plan before implementation |
 | `--name NAME` | Name the feature branch and worktree |
 | `--from BRANCH` / `-b BRANCH` | Choose the starting branch |
 | `--update` / `-u` | Update MEOW with `meow --update` |
@@ -84,6 +87,7 @@ integrations and optional features.
 
 See the [CLI guide](docs/CLI.md) for worktrees, background runs, recovery,
 orchestration, and advanced options.
+Normal feature runs create a worktree and commit/push after verification.
 
 ## Configuration and integrations
 

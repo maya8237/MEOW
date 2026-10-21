@@ -13,12 +13,13 @@ from meow.execution.run_state import RunStore
 from meow.infrastructure import background
 
 
-def test_background_requires_auto(tmp_path):
+def test_background_requires_background_flag(tmp_path):
     with pytest.raises(background.BackgroundError):
         background.launch_background(tmp_path, ["run", "feature", "--name", "x"])
 
 
-def test_background_cli_requires_auto(tmp_path, monkeypatch):
+@pytest.mark.parametrize("flag", ["-m", "--lint-fix"])
+def test_background_cli_rejects_interactive_or_lint_modes(tmp_path, monkeypatch, flag):
     usage_error = 2
     monkeypatch.setattr(
         sys,
@@ -30,6 +31,7 @@ def test_background_cli_requires_auto(tmp_path, monkeypatch):
             "--name",
             "x",
             "--background",
+            flag,
             "--work-dir",
             str(tmp_path),
         ],
@@ -51,7 +53,6 @@ def test_background_cli_returns_run_id_without_running_agent(
             "feature",
             "--name",
             "x",
-            "--auto",
             "--background",
             "--work-dir",
             str(tmp_path),
@@ -72,7 +73,7 @@ def test_launch_creates_checkpoint_and_worker_log(tmp_path, monkeypatch):
 
     monkeypatch.setattr(background.subprocess, "Popen", fake_popen)
     run_id = background.launch_background(
-        tmp_path, ["run", "feature", "--name", "x", "--auto", "--background"]
+        tmp_path, ["run", "feature", "--name", "x", "--background"]
     )
     record = RunStore(tmp_path).load(run_id)
     assert record.background["launcher_pid"] == worker_pid
@@ -82,11 +83,29 @@ def test_launch_creates_checkpoint_and_worker_log(tmp_path, monkeypatch):
     assert spawned[0][1]["stdin"] == background.subprocess.DEVNULL
 
 
+@pytest.mark.parametrize(
+    "flag,delivery",
+    [
+        ("-n", {"enabled": False, "push": False}),
+        ("-nc", {"enabled": True, "push": False}),
+        ("-np", {"enabled": True, "push": True}),
+    ],
+)
+def test_delivery_choice_is_saved_before_worker_starts(
+    tmp_path, monkeypatch, flag, delivery
+):
+    def spawn(store, repo, run_id, argv):
+        assert store.load(run_id).delivery == delivery
+
+    monkeypatch.setattr(background, "_spawn_worker", spawn)
+    background.launch_background(tmp_path, ["run", "feature", "--background", flag])
+
+
 def test_real_worker_survives_launcher_and_reports_failure(tmp_path):
     # An absent MEOW config makes the fixture worker exit without an agent.
     run_id = background.launch_background(
         tmp_path,
-        ["run", "feature", "--name", "x", "--auto", "--background"],
+        ["run", "feature", "--name", "x", "--background"],
     )
     store = RunStore(tmp_path)
     # Cold Windows startup can exceed ten seconds on a busy machine.
@@ -147,7 +166,16 @@ def test_status_labels_browser_with_no_result_unavailable(tmp_path):
     assert "Browser: UNAVAILABLE" in render(store.load(record.id))
 
 
-def test_worker_runs_saved_sprint_and_completes(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "flag,delivery",
+    [
+        (None, {}),
+        ("-n", {"commit": False, "push": False}),
+        ("-nc", {"commit": True, "push": False}),
+        ("-np", {"commit": True, "push": True}),
+    ],
+)
+def test_worker_runs_saved_sprint_and_completes(tmp_path, monkeypatch, flag, delivery):
     store = RunStore(tmp_path)
     record = store.create(
         source="prompt",
@@ -161,11 +189,20 @@ def test_worker_runs_saved_sprint_and_completes(tmp_path, monkeypatch):
         record.id,
         launcher_pid=os.getpid(),
         nonce="n",
-        argv=["run", "feature", "--name", "x", "--auto", "--background"],
+        argv=[
+            "run",
+            "feature",
+            "--name",
+            "x",
+            "--background",
+            *([flag] if flag else []),
+        ],
     )
 
     async def fake_run_sprint(*_args, **kwargs):  # ruff: ignore[unused-async]
         assert kwargs["run_id"] == record.id
+        assert kwargs["use_worktree"] is ("commit" not in delivery)
+        assert {key: kwargs[key] for key in delivery} == delivery
         store.transition(record.id, "complete")
 
     monkeypatch.setattr("meow.execution.sprint_runner.run_sprint", fake_run_sprint)
@@ -210,7 +247,6 @@ def test_background_cli_launches_from_the_argv_it_was_given(tmp_path, monkeypatc
         "feature",
         "--name",
         "x",
-        "--auto",
         "--background",
         "--work-dir",
         str(tmp_path),
@@ -265,16 +301,14 @@ def test_orchestrator_task_launch_without_seed_is_rejected(tmp_path):
 
 def test_run_launch_with_a_seed_is_rejected(tmp_path):
     seed = background.RunSeed("orchestrator", "x", tmp_path, "b")
-    argv = ["run", "feature", "--name", "x", "--auto", "--background"]
+    argv = ["run", "feature", "--name", "x", "--background"]
     with pytest.raises(background.BackgroundError, match="does not take a run seed"):
         background.launch_background(tmp_path, argv, seed=seed)
 
 
-def test_run_without_auto_is_still_rejected(tmp_path):
-    with pytest.raises(background.BackgroundError, match="run --auto --background"):
-        background.launch_background(
-            tmp_path, ["run", "x", "--name", "y", "--background"]
-        )
+def test_run_without_background_is_rejected(tmp_path):
+    with pytest.raises(background.BackgroundError, match="run --background"):
+        background.launch_background(tmp_path, ["run", "x", "--name", "y"])
 
 
 def test_invocation_kind_classifies_saved_argv():
@@ -286,7 +320,6 @@ def test_invocation_kind_classifies_saved_argv():
         "feature",
         "--name",
         "x",
-        "--auto",
         "--background",
     ])
     task_args = parser.parse_args(["_orchestrator-task", ORCHESTRATOR_ID, "t1"])

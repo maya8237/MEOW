@@ -102,7 +102,7 @@ Conditions allow dotted identifiers, quoted strings, integers, booleans,
 
 | Values | Meaning |
 |---|---|
-| `plan_given`, `resume_review`, `review_first`, `parallel`, `test`, `bug_mode`, `auto`, `checks_configured` | Run flags; review_first includes resume-review/parallel tasks |
+| `plan_given`, `resume_review`, `review_first`, `parallel`, `test`, `bug_mode`, `checks_configured` | Run flags; review_first includes resume-review/parallel tasks |
 | `round`, `feedback`, `steps.<id>.status`, `inputs.<name>` | Loop state, failed-gate feedback, PASS/FAIL/done/skipped results, input strings |
 | `active_dir`, `docs_dir`, `request`, `feature_name`, `check_worktree_hygiene` | Run context |
 | `plan_file`, `review_file`, `report_file`, `output_file` | Invocation artifact paths |

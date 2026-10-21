@@ -55,12 +55,10 @@ def test_release_tools_import_without_installed_dependencies(script):
     assert result.returncode == 0, result.stderr
 
 
-def test_update_flags_and_auto_do_not_conflict():
+def test_update_flags_are_standalone():
     parser = _build_arg_parser()
     assert parser.parse_args(["--update"]).update
     assert parser.parse_args(["-u"]).update
-    assert parser.parse_args(["run", "hello", "-a"]).auto
-    assert parser.parse_args(["run", "hello", "--auto"]).auto
     with pytest.raises(SystemExit):
         parser.parse_args(["--update", "status", "run-1"])
 

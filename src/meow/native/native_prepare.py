@@ -40,6 +40,14 @@ class PrepareOptions:
     require_clean: bool = True
     fresh: bool = False
 
+    def __post_init__(self) -> None:
+        if self.source_branch and not self.use_worktree:
+            raise ValueError("--from requires a new worktree; drop --no-worktree")
+        if self.source_branch and (self.branch or self.existing_branch):
+            raise ValueError(
+                "--from cannot be combined with --branch or --existing-branch"
+            )
+
 
 def _lint_plan(commands: list[LintCommand]) -> list[dict]:
     return [
@@ -134,7 +142,7 @@ def prepare(working_dir: Path, options: PrepareOptions) -> dict:
     onboarding, config = _onboard(working_dir, active_dir, options, config)
     docs_dir = active_dir / config["docs_dir"]
     plan_file, review_file = _plan_paths(docs_dir, name)
-    if options.fresh:
+    if options.fresh or options.source_branch:
         # Same guard `run_sprint` applies before planning: don't hand a skill a
         # plan path that another active run still owns.
         from meow.execution.run_state import RunStore

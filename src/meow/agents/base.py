@@ -472,7 +472,6 @@ class Agent:
             return allowed_tools
         extra_options["can_use_tool"] = make_permission_callback(
             role_policy,
-            auto=bool(self.context.config.get("_auto", False)),
             project_root=self.context.active_working_dir(),
         )
         # dontAsk pre-approves tools without consulting the callback, so the

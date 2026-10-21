@@ -72,7 +72,12 @@ from meow.execution.orchestration.triage import (
 from meow.execution.run_state import RunStore
 from meow.infrastructure.background import launch_background
 from meow.infrastructure.checks import run_final_checks
-from meow.infrastructure.worktree import _boot_repo, _ensure_clean_tree, current_branch
+from meow.infrastructure.worktree import (
+    _boot_repo,
+    _ensure_clean_tree,
+    _require_source_worktree,
+    current_branch,
+)
 from meow.native.native_models import resolve_native_model
 from meow.native.native_prompt import _branch_review
 from meow.project.config import load_config
@@ -217,7 +222,9 @@ def init(  # ruff: ignore[too-many-arguments]
     base_branch = base or current_branch(repo)
     if base_branch == "detached":
         raise ValueError("HEAD is detached; pass --from BRANCH")
-    _ensure_clean_tree(repo)
+    _require_source_worktree(repo, base)
+    if not base:
+        _ensure_clean_tree(repo)
     _boot_repo(repo, include_gitignore=True)
     config = load_config(repo)
     drafts, keys = _load_drafts(tasks_file)

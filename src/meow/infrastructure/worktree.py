@@ -189,6 +189,20 @@ def _boot_repo(working_dir: Path, *, include_gitignore: bool = True) -> None:
             _ensure_gitignore_entry(working_dir, entry)
 
 
+def _require_source_worktree(
+    working_dir: Path, source_branch: str | None, *, use_worktree: bool = True
+) -> None:
+    if source_branch is not None and (
+        not source_branch or source_branch.startswith("-")
+    ):
+        raise ValueError("--from requires a valid Git ref")
+    if source_branch and (not use_worktree or _is_linked_worktree(working_dir)):
+        raise ValueError(
+            "--from requires a new worktree; use the main checkout "
+            "without --no-worktree"
+        )
+
+
 def _resolve_working_dir(  # ruff: ignore[too-many-arguments]
     working_dir: Path,
     *,
@@ -210,8 +224,9 @@ def _resolve_working_dir(  # ruff: ignore[too-many-arguments]
     an existing worktree means "work here", not "nest another worktree
     inside it". `source_branch`, when given, is the branch a freshly
     created worktree checks out instead of the main checkout's current
-    HEAD; see `_ensure_feature_worktree`.
+    HEAD; it always creates a fresh worktree and rejects in-place execution.
     """
+    _require_source_worktree(working_dir, source_branch, use_worktree=use_worktree)
     if not use_worktree or _is_linked_worktree(working_dir):
         return working_dir, feature_name, False
     if not feature_name:
@@ -220,7 +235,7 @@ def _resolve_working_dir(  # ruff: ignore[too-many-arguments]
     worktree_dir = _ensure_feature_worktree(
         working_dir, feature_name, source_branch=source_branch, fresh=fresh
     )
-    return worktree_dir, (worktree_dir.name if fresh else feature_name), True
+    return worktree_dir, worktree_dir.name, True
 
 
 def _registered_worktree_paths(git: str, working_dir: Path) -> set[Path]:
@@ -286,9 +301,8 @@ def _ensure_feature_worktree(
     git calls.
 
     `source_branch`, when given, checks the new worktree out from that
-    branch instead of the main checkout's current HEAD -- ignored when an
-    existing worktree is being reused rather than created, since resuming
-    one takes priority over re-branching it.
+    branch instead of the main checkout's current HEAD. It always creates a
+    fresh worktree, preserving any existing worktree with the same name.
 
     `fresh` never reuses: if `.worktrees/<feature_name>` exists, the next free
     `<feature_name>-N` is created instead, so `source_branch` always applies.
@@ -299,6 +313,7 @@ def _ensure_feature_worktree(
     inside it.
     """
     _reject_reserved_name(feature_name)
+    fresh = fresh or source_branch is not None
     worktrees_dir = working_dir / ".worktrees"
     worktree_dir = worktrees_dir / feature_name
     git = shutil.which("git")
@@ -348,9 +363,9 @@ def _add_detached_worktree(  # ruff: ignore[too-many-arguments]
     release_on_failure: bool,
 ) -> None:
     _remove_stale_worktree(git, working_dir, worktree_dir)
-    argv = [git, "-C", str(working_dir), "worktree", "add", "--detach"]
+    argv = [git, "-C", str(working_dir), "worktree", "add", "--detach", "--"]
     argv.append(str(worktree_dir))
-    if source_branch:
+    if source_branch is not None:
         argv.append(source_branch)
     try:
         subprocess.run(

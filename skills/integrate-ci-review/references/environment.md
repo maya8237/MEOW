@@ -4,6 +4,9 @@ Read this before generating either provider's job. Ask: **“Use the Claude mode
 defaults from your settings.json as CI fallbacks?”** Honor an answer already
 given in this conversation. Declining means no local model values enter YAML;
 all model selections can still be supplied through CI environment variables.
+Inspect existing variables now, but request missing CI variables/secrets only at
+the final handoff, after editing and validating the job. Use CI references for
+missing values; do not wait for secrets to be added before completing local work.
 Do not assume LiteLLM, a gateway, or even a local settings file is installed.
 Use ordinary Anthropic API-key authentication when no custom endpoint/auth mode
 is configured. A custom URL may belong to any compatible gateway, not just
@@ -74,7 +77,7 @@ If the user declines reading settings entirely, use `not read` in the table.
 If no settings file exists, show `not found — configure in CI`; continue without
 local defaults. Do not install LiteLLM or require local Claude settings to proceed.
 
-Show a **table in the user-facing response** before the final setup handoff:
+Show a **table in the user-facing response** at the final setup handoff:
 **CI variable | Value from settings.json | Source field | Existing CI source | Action/use**.
 Show the actual copyable values, including the API token/API key when found,
 as requested for this setup. Do not mask or replace them with example values.
@@ -108,8 +111,13 @@ Also include every other detected model selector, such as
 and generate the matching export. Preserve already-prefixed `MEOW_*` inputs;
 prefer them when the same source defines both forms. Do not import unrelated
 cloud settings, hooks, permissions, or authentication helpers.
-For inline notes, add `MEOW_GITLAB_TOKEN` or `MEOW_GITHUB_TOKEN` to the table;
-show `not set` if absent. Do not mistake the model API token for the forge token.
+If the user enables inline comments, include the provider's token in the table:
+`MEOW_GITLAB_TOKEN` (masked secret, `api` scope and MR comment access) or
+`MEOW_GITHUB_TOKEN` (secret, Pull requests write permission). Reuse an existing
+token; GitHub's built-in `secrets.GITHUB_TOKEN` with `pull-requests: write` also
+counts as configured. Request a new provider token at the end only if no suitable
+token is available. If posting is disabled, no provider token is needed.
+Do not mistake the model API token for the forge token.
 
 ## Generate the job
 
@@ -174,4 +182,9 @@ fake values: an override wins, an absent override selects the approved fallback,
 and declining imports leaves model choice to CI/Claude. Check every exported
 model, not only Sonnet. Explain which CI variables/secrets to create using the
 copy table, which defaults were approved, and that credentials stay out of YAML.
+End with an explicit request to add the missing required variables/secrets in
+the provider's CI settings, including the provider token if posting is enabled.
+Give names, secret/variable type, required permissions, and available copy values;
+mark optional model overrides as optional. If nothing is missing, say so instead
+of asking for duplicate variables. Do not ask for secrets to be pasted into chat.
 Do not upload the table as an artifact or save it to the repository.

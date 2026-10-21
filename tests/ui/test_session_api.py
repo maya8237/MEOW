@@ -81,7 +81,7 @@ def recipe(repo, **changes):
         "workflow": None,
         "inputs": {},
         "arguments": [],
-        "options": {"auto": True},
+        "options": {},
     }
     return {**value, **changes}
 
@@ -107,6 +107,15 @@ def test_cli_options_are_derived_from_the_command_parsers(running):
     assert orchestrate["--max-parallel"]["kind"] == "number"
     assert orchestrate["--orchestrate"]["aliases"] == ["--orchestrate", "-o"]
     assert orchestrate["--dry-run"]["help"]
+
+
+def test_cli_options_hide_legacy_modes_and_expose_in_place_delivery():
+    from meow.ui.cli_options import cli_options
+
+    run = {item["flag"]: item for item in cli_options()["commands"]["run"]}
+    for flag in ("--no-worktree-commit", "--no-worktree-push"):
+        assert run[flag]["kind"] == "switch"
+        assert run[flag]["controlled"] is None
 
 
 def test_cli_options_include_new_parser_flags_without_a_ui_flag_list(monkeypatch):
@@ -145,7 +154,6 @@ def test_orchestrate_preview_builds_cli_and_warns_about_delivery(running, projec
     assert status == HTTPStatus.OK, body
     assert body["argv"][4:] == [
         "run",
-        "--auto",
         "--orchestrate",
         "--max-parallel",
         "2",

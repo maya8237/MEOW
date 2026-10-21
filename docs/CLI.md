@@ -48,7 +48,7 @@ or migration from an editable install; remove obsolete launchers shadowing PATH.
 
 Public commands warn on stderr about newer versions, silently ignoring network
 failures; `--check-update` checks only. Internal workers skip this check.
-Use `-a`/`--auto` for automatic execution; `-u` means update.
+Runs execute automatically; `-m` adds a plan approval pause. `-u` means update.
 
 ## Build and plan
 
@@ -57,16 +57,19 @@ meow run "Add CSV export" --name csv-export
 meow plan "Add CSV export" --name csv-export
 ```
 
-Worktrees are the default; `--no-worktree` uses the selected directory.
+Normal runs use a worktree and commit/push after verification.
+`-n` / `--no-worktree` uses the selected checkout without committing or pushing.
+`-nc` / `--no-worktree-commit` uses it and commits without pushing;
+`-np` / `--no-worktree-push` uses it and commits/pushes. These options are exclusive.
+An existing linked worktree selected with `-d PATH` is used directly.
 Omit `--name` to derive a short request name. `--from BRANCH` (`-b`) selects the starting branch.
-Fresh runs get unique names; continuation reuses the saved worktree.
+`--from` always creates a fresh worktree; in-place execution rejects it.
 `--plan PATH` supplies a plan; `--resume-at review` reviews existing work first.
 `--manually-approve-plan` (`-m`) pauses before implementation; plan-only rejects it.
-`--auto --background` detaches an automatic run. Auto rejects in-place execution,
-manual approval, resume-at-review, and lint-fix.
+`--background` detaches a run and rejects manual approval and lint-fix.
 
-First use onboards the project. Checks and review precede linked-worktree delivery;
-in-place runs do not deliver automatically. See [runs and recovery](RUNS.md).
+First use onboards the project. Checks and review precede commits and pushes.
+See [runs and recovery](RUNS.md).
 
 ## Multi-sprint runs
 
@@ -78,16 +81,13 @@ meow run --tasks tasks.toml --dry-run
 meow resume ID --continue [--task T --request "Updated request"]
 ```
 
-`--orchestrate` (`-o`) coordinates complete sprints for independent deliverables.
-Task files, JQL, and multiple Jira keys select it automatically; one key does not.
-Choose one objective, `--jira`, `--jql`, or `--tasks`. A clean checkout is required.
-Only final objective review authorizes push. Exit code 3 means the branch was
-delivered but `PR not opened`; output includes a manual link.
-See [ORCHESTRATION.md](ORCHESTRATION.md) for task formats, recovery, and exit codes.
+Task files, JQL, and multiple Jira keys select orchestration automatically.
+`--orchestrate` (`-o`) selects it explicitly; `--max-parallel N` limits concurrent
+sprints, `--dry-run` saves the decomposition, and `--no-pr` skips opening a PR.
+Local edits require explicit `--from BRANCH`; execution uses an isolated worktree.
+Exit code 3 means the branch was delivered but `PR not opened`; output includes a manual link.
+See [ORCHESTRATION.md](ORCHESTRATION.md) for sources, flags, delivery gates, and recovery.
 `/meow:run` chooses the engine; native supervision requires explicit opt-in.
-Lifecycle commands route by ID; resume needs `--continue` to execute.
-Multi-sprint mode accepts `--auto`, `--from`, `--test`, and `--no-pr`, but rejects
-sprint-only name/worktree/plan/workflow flags, manual approval, and `--background`.
 
 ## Review
 
@@ -128,8 +128,9 @@ Windows Task Scheduler requires a logged-in user; Linux requires a systemd user
 manager (lingering for logged-out execution). Missed triggers may run when available.
 Keep the registered project/runtime paths and scheduler credentials available.
 
-Only `run` may follow `--`; scheduling adds `--auto` and rejects manual approval,
-`--no-worktree`, lint-fix, background, and source-branch selection.
+Only `run` may follow `--`; scheduling rejects manual approval, lint-fix,
+background, and source-branch selection. In-place options retain their usual
+commit/push behavior.
 State and logs live in `.meow/schedules/`. Editing preserves the frozen recipe
 and ID; only pending schedules are editable, with rollback on OS-update failure.
 Cancellation removes the trigger; stop an already-started run via run/session controls.
@@ -143,7 +144,7 @@ and resume rules are in [WORKFLOWS.md](WORKFLOWS.md).
 
 `meow hooks status claude` reads `active`/`missing`/`modified` state.
 `install claude --only NAME` installs accepted hooks; repeat `--only`.
-`uninstall claude` removes only owned entries. Hooks are optional, including in auto.
+`uninstall claude` removes only owned entries. Hooks are optional.
 Names: `lint`, `shaping`, `plan_capture`, `plan_stop`.
 Lint/shaping PostToolUse findings use `additionalContext`; plan Stop advisories
 use `systemMessage`. Capture runs after plan Write/Edit only without a sidecar;

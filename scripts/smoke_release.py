@@ -81,7 +81,7 @@ def check_install(home: Path, env: dict, version: str) -> None:
     executable = home / ".meow/bin" / ("meow.exe" if os.name == "nt" else "meow")
     assert run([str(executable), "--version"], env).strip() == f"meow {version}"
     assert "--update" in run([str(executable), "--help"], env)
-    assert "--auto" in run([str(executable), "run", "--help"], env)
+    assert "--no-worktree-commit" in run([str(executable), "run", "--help"], env)
     alias = executable.with_name("mw.exe" if os.name == "nt" else "mw")
     assert run([str(alias), "--version"], env).strip() == f"meow {version}"
     release = home / ".meow/versions" / version

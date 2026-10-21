@@ -153,6 +153,29 @@ def test_dirty_tree_is_refused(repo, capsys, monkeypatch):
     assert "uncommitted" in capsys.readouterr().err
 
 
+def test_explicit_base_allows_dirty_checkout(repo, monkeypatch):
+    record = delivered(repo)
+    calls = []
+    monkeypatch.setattr(
+        orchestration_cli, "start_orchestrator", fake_start(record.id, 0, calls)
+    )
+    git(repo, "branch", "release")
+    (repo / "dirty.txt").write_text("local work", encoding="utf-8")
+
+    assert run_orchestration(parse("Add login", "--from", "release"), repo) == 0
+
+    assert calls[0]["base_branch"] == "release"
+    assert (repo / "dirty.txt").read_text(encoding="utf-8") == "local work"
+
+
+def test_explicit_base_rejects_linked_checkout(repo, monkeypatch):
+    monkeypatch.setattr(orchestration_cli, "start_orchestrator", never_called)
+    git(repo, "worktree", "add", "--detach", str(repo.parent / "linked"))
+
+    with pytest.raises(ValueError, match="--from requires a new worktree"):
+        run_orchestration(parse("Add login", "--from", "HEAD"), repo.parent / "linked")
+
+
 def test_objective_is_preserved(repo, monkeypatch):
     record = delivered(repo)
     calls = []

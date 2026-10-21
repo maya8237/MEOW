@@ -134,6 +134,39 @@ class WorktreeSetupTests(unittest.TestCase):
             self.assertEqual((active / "setup-count").read_text(), "x")
 
 
+class PrepareSourceBranchTests(unittest.TestCase):
+    def test_source_branch_reports_fresh_worktree_and_plan_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            first = native.prepare(
+                root, native.PrepareOptions(name="feat", require_clean=False)
+            )
+            original = Path(first["active_dir"]) / "README.md"
+            original.write_text("unfinished work", encoding="utf-8")
+
+            result = native.prepare(
+                root, native.PrepareOptions(name="feat", source_branch="HEAD")
+            )
+
+            self.assertEqual(result["name"], "feat-2")
+            self.assertEqual(Path(result["active_dir"]).name, "feat-2")
+            self.assertEqual(Path(result["plan_file"]).name, "feat-2.md")
+            self.assertEqual(Path(result["review_file"]).name, "feat-2-review.md")
+            self.assertEqual(original.read_text(encoding="utf-8"), "unfinished work")
+
+    def test_source_branch_rejects_conflicting_checkout_options(self):
+        for conflict in (
+            {"use_worktree": False},
+            {"branch": "issue/X-1"},
+            {"existing_branch": "release"},
+        ):
+            with (
+                self.subTest(conflict=conflict),
+                self.assertRaisesRegex(ValueError, "--from"),
+            ):
+                native.PrepareOptions(source_branch="main", **conflict)
+
+
 class PrepareTests(unittest.TestCase):
     def test_creates_feature_worktree_and_reports_paths(self):
         with tempfile.TemporaryDirectory() as tmp:

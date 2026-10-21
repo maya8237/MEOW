@@ -12,8 +12,9 @@ Explicit native supervision uses the same engine. Configuration is under [orches
 
 Choose one objective, `--jira KEY...`, `--jql QUERY`, or `--tasks FILE`.
 Select orchestration with `--orchestrate` (`-o`); task files, JQL, and multiple
-Jira keys also select it. Starts require a clean checkout except
-`.gitignore`/`.meow/`.
+Jira keys also select it. Starts require a clean checkout unless `--from BRANCH`
+selects a committed base; local edits stay outside the integration worktree.
+With `--from`, select the main checkout rather than an existing linked worktree.
 
 | Flag | Meaning |
 |---|---|
@@ -24,7 +25,8 @@ Jira keys also select it. Starts require a clean checkout except
 | `--no-pr` | Push without opening a PR |
 | `meow resume ID --continue --task T --request TEXT` | Reset a blocked task (default blocker task), optionally replace request |
 
-Jira is read-only and requires `[jira]`/`[jira.mcp]` in CLI mode.
+Sprint-only name/worktree/plan/workflow flags, manual approval, and `--background`
+are rejected. Jira is read-only and requires `[jira]`/`[jira.mcp]` in CLI mode.
 Each issue stays one task; the decomposer may add only dependencies/paths.
 Objective/Jira decomposition allows at most 32 tasks and one corrective retry
 for invalid output. Narrow oversized objectives/queries.

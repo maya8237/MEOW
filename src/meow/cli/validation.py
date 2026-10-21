@@ -11,13 +11,21 @@ from meow.execution.run_policy import (
     _misused_flags,
     uses_orchestration,
 )
-from meow.infrastructure.worktree import _is_linked_worktree
+from meow.infrastructure.worktree import _is_linked_worktree, _require_source_worktree
 from meow.infrastructure.worktree_names import request_name
 
 
 def _validate_feature_name_requirement(
     parser: argparse.ArgumentParser, args, working_dir: Path
 ) -> None:
+    try:
+        _require_source_worktree(
+            working_dir,
+            getattr(args, "source_branch", None),
+            use_worktree=not args.no_worktree,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     requires_name = (
         (args.command == "plan" or _is_plain_build(args))
         and not args.no_worktree
@@ -82,16 +90,10 @@ def _validate_run_flags(parser: argparse.ArgumentParser, args) -> None:
         _validate_orchestration_flags(parser, args)
         return
     _validate_workflow_flags(parser, args)
-    if args.background and not args.auto:
-        parser.error("--background requires --auto")
-    if args.auto and args.manually_approve_plan:
-        parser.error("--auto cannot wait for manual plan approval")
-    if args.auto and args.lint_fix:
-        parser.error("--auto requires a feature run")
-    if args.auto and args.no_worktree:
-        parser.error("--auto requires an isolated worktree")
-    if args.auto and args.resume_at != "generate":
-        parser.error("--auto cannot resume at review")
+    if args.background and args.manually_approve_plan:
+        parser.error("--background cannot wait for manual plan approval")
+    if args.background and args.lint_fix:
+        parser.error("--background requires a feature run")
     if args.report_only and not args.lint_fix:
         parser.error("--report-only only makes sense with --lint-fix")
     if args.lint_fix:
