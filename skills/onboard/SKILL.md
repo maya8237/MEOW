@@ -106,17 +106,21 @@ enabled after its commands are verified.
 For every accepted feature that needs an MCP (Jira, GitLab, GitHub, Tester
 mode), check first whether the session has its tools and whether the CLI
 launcher (for example `uvx`) exists. If not, warn the user that the MCP is not
-installed and must be installed before the feature works. Tell them to install
-it themselves with `/plugin` (marketplace plugins) and then `/mcp`
-(to check and authenticate the servers), then come back. Once installed, ask them for the access tokens and use them to set
-up the MCP: write tokens only to ignored `.meow/config.local.toml` or the MCP's
-own env, never the shared config, and never echo them. For a fresh install,
-also register the MCP for Claude's own use, not just MEOW: run `claude mcp add`
-at local or user scope with tokens in `--env`, never project scope or
-`.mcp.json`, which are committed. Show the command first and confirm with
-`claude mcp list`. You can also configure the CLI launcher, which does not need
-a session MCP. Leave the feature
-unverified and unscheduled until a real tool call succeeds.
+installed and must be installed before the feature works, in this order:
+
+1. The user installs it with `/plugin` (marketplace plugins), then comes back.
+2. They give Claude the access tokens. Write them only to ignored
+   `.meow/config.local.toml` or the MCP's own env, never the shared config, and
+   never echo them.
+3. For a fresh install, also register the MCP for Claude's own use, not just
+   MEOW: run `claude mcp add` at local or user scope with tokens in `--env`,
+   never project scope or `.mcp.json`, which are committed. Show the command
+   first.
+4. The user runs `/mcp` to confirm the server connects. It cannot connect
+   before the tokens are set; `claude mcp list` is Claude's equivalent check.
+
+You can also configure the CLI launcher, which does not need a session MCP.
+Leave the feature unverified and unscheduled until a real tool call succeeds.
 
 When an optional feature is accepted, use the matching documented path:
 
