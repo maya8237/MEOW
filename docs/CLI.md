@@ -62,7 +62,7 @@ Normal runs use a worktree and commit/push after verification.
 `-np` / `--no-worktree-push` uses it and commits/pushes. These options are exclusive.
 An existing linked worktree selected with `-d PATH` is used directly.
 Omit `--name` to derive a short request name. `--from BRANCH` (`-b`) selects the starting branch.
-`--from` always creates a fresh worktree; in-place execution rejects it.
+`--from` always creates a fresh worktree (in-place rejects it) and opens an MR verified by its pipeline: [PIPELINE](PIPELINE.md); `--no-pr`, `--fix-non-meow-jobs`.
 `--plan PATH` supplies a plan; `--resume-at review` reviews existing work first.
 `--manually-approve-plan` (`-m`) pauses before implementation; plan-only rejects it.
 `--background` detaches a run and rejects manual approval and lint-fix.
