@@ -7,8 +7,8 @@ Claude Code skills from the MEOW plugin. Each has a CLI equivalent; flags are in
 Build a feature, resolve Jira issues, or coordinate an objective into one reviewed delivery.
 Example: `/meow:run Add retry with backoff to the HTTP client`. [Reference](../skills/run/SKILL.md)
 
-Worktree runs open a PR (GitHub) or MR (GitLab) after pushing, then verify its CI
-pipeline and fix failing MEOW review jobs within the configured round limit.
+A worktree run opens a PR (GitHub) or MR (GitLab) after pushing, then verifies its CI
+pipeline and fixes failing MEOW review jobs within the configured round limit.
 `--target BRANCH` overrides `[delivery].target_branch`; auto-onboarding sets it
 to existing `dev`, otherwise `master`. `--from` only chooses where work starts.
 The selected target survives resume. Explicit in-place runs keep their delivery

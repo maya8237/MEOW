@@ -4,7 +4,7 @@ export const sourceUrl = (path: string) => `${REPO_URL}/blob/main/${path}`;
 export const runSkill = [
   "run",
   "Build something",
-  "Plan, build, review, and deliver a change. Worktree runs push, open a PR (GitHub) or MR (GitLab), then verify its CI pipeline.",
+  "Plan, build, review, and deliver a change. A worktree run pushes, opens a PR (GitHub) or MR (GitLab), then verifies its CI pipeline.",
   "Add retry with backoff to the HTTP client",
 ] as const;
 

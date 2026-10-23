@@ -143,10 +143,6 @@ function Skills() {
           {runTitle}. {runDescription}
         </p>
         <Command text={`/meow:run ${runExample}`} />
-        <p>
-          Describe the change, expected behavior, and how to check it. You can
-          also name the branch to start from and where the PR/MR should go.
-        </p>
         <h3>Detailed prompt examples</h3>
         {runExamples.map(({ title, prompt }) => (
           <section key={title}>
@@ -157,11 +153,14 @@ function Skills() {
         <p className="guide-note">
           Every request, simple or detailed, runs in its own worktree and, once
           checks pass, opens a PR/MR into your configured target (set during
-          onboarding) and verifies its pipeline. Name a branch in your prompt
-          only to change where work starts or where the PR/MR goes. PR/MR
-          creation and pipeline checks require your provider connection; if they
-          fail, MEOW reports the reason and available links.{" "}
+          onboarding) and verifies its pipeline. PR/MR creation and pipeline
+          checks require your provider connection; if they fail, MEOW reports
+          the reason and available links.{" "}
           <a href={sourceUrl("docs/PIPELINE.md")}>PR/MR & pipeline guide</a>
+        </p>
+        <p className="guide-note">
+          Optional: to change where work starts or where the PR/MR goes, name
+          the branches in your prompt.
         </p>
         <a className="guide-detail" href={sourceUrl("skills/run/SKILL.md")}>
           Full skill instructions on GitHub
