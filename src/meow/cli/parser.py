@@ -265,6 +265,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
         default="generate",
     )
     orchestrator_task_parser.add_argument("--plan", default=None)
+    orchestrator_task_parser.add_argument(
+        "--force-disable-tests",
+        action="store_true",
+        help="Disable tester/test/browser checks; keep lint and build.",
+    )
     orchestrator_task_parser.add_argument("--test", action="store_true")
     orchestrator_task_parser.add_argument("--preexisting", action="store_true")
     _add_common_args(orchestrator_task_parser)
@@ -440,6 +445,11 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Continue a run in a detached local worker.",
     )
     run_parser.add_argument(
+        "--force-disable-tests",
+        action="store_true",
+        help="Disable tester/test/browser checks; keep lint and build.",
+    )
+    run_parser.add_argument(
         "--test",
         action="store_true",
         help="Run tests after review, in each sprint when orchestrating.",
@@ -547,6 +557,11 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
             "passes) instead of a single report-only pass. Implied when "
             "--review-file is given."
         ),
+    )
+    review_parser.add_argument(
+        "--force-disable-tests",
+        action="store_true",
+        help="Disable tester/test/browser checks; keep lint and build.",
     )
     review_parser.add_argument(
         "--test",

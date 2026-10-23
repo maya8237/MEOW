@@ -205,6 +205,20 @@ async def generate(state):
 
 
 async def review(state, step):
+    from meow.infrastructure.verification_policy import behavior_changed
+
+    if state.flags.get("auto_test") and not state.flags.get("test_requested"):
+        state.test = await asyncio.to_thread(
+            behavior_changed, state.sprint.active_working_dir()
+        )
+        reason = (
+            "behavior changed or unknown"
+            if state.test
+            else "documentation-only changes"
+        )
+        state.store.update_results(
+            state.run_id, test=state.test, tester_selection=reason
+        )
     if state.plan_file:
         status, verdict = await _review_round(
             state.sprint, state.plan_file, state.round or 1, test=state.test
@@ -271,8 +285,23 @@ async def verify(state, step):
     """Run the configured gates before the AI review so a failure costs no agent."""
     active = state.sprint.active_working_dir()
     state.journal("checking")
-    state.checks_results = await run_final_checks(active, state.sprint.config)
+    state.sprint.config.pop("_workflow_checks", None)
+    state.checks_results = await run_final_checks(
+        active, state.sprint.config, hook_lint=True
+    )
+    lint = [item for item in state.checks_results if item.kind == "lint"]
+    mode = (
+        "hook-verified"
+        if lint and all("hook ledger" in item.output for item in lint)
+        else "run"
+    )
+    logger.info("lint_verification", mode=mode)
+    state.store.update_results(state.run_id, lint_verification=mode)
     state.checks_baseline = await asyncio.to_thread(stage_baseline, active)
+    state.sprint.config["_workflow_checks"] = (
+        state.checks_results,
+        state.checks_baseline,
+    )
     status, verdict = _verify_verdict(state.checks_results)
     state.gate_result(replace(step, blocks="loop"), status, verdict)
     return status

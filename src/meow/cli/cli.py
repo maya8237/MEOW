@@ -296,6 +296,13 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
             try:
                 onboard_if_needed(working_dir, working_dir)
                 config = load_config(working_dir)
+                if args.force_disable_tests:
+                    from meow.infrastructure.verification_policy import disable_tests
+
+                    print(
+                        "Tests: SKIPPED (--force-disable-tests): "
+                        + ", ".join(disable_tests(config))
+                    )
                 target = config["delivery"]["target_branch"]
                 result = run_ci_review(
                     working_dir,

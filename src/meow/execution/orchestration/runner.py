@@ -165,6 +165,10 @@ class _Driver:
         self.store = OrchestratorStore(repo)
         self.orch_id = orch_id
         self.config = config
+        if self.store.load(orch_id).options.get("force_disable_tests"):
+            from meow.infrastructure.verification_policy import disable_tests
+
+            disable_tests(config)
         self.agents = wiring.agents
         self.launcher = wiring.launcher
         self.sleep = wiring.sleep
@@ -513,6 +517,7 @@ async def start_orchestrator(  # ruff: ignore[too-many-arguments] -- the pinned 
     target_branch: str | None = None,
     max_parallel: int | None = None,
     test: bool = False,
+    force_disable_tests: bool = False,
     open_pr: bool | None = None,
     dry_run: bool = False,
     agents: OrchestratorAgents | None = None,
@@ -536,7 +541,8 @@ async def start_orchestrator(  # ruff: ignore[too-many-arguments] -- the pinned 
         mode="cli",
         max_parallel=max_parallel or settings["max_parallel"],
         options={
-            "test": test,
+            "test": test and not force_disable_tests,
+            "force_disable_tests": force_disable_tests,
             "pr": settings["open_pr"] if open_pr is None else open_pr,
             "target_branch": target_branch or config["delivery"]["target_branch"],
         },

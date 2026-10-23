@@ -28,7 +28,8 @@ when = "not resume_review"
 id = "rounds"
 loop = [
   { id = "generate", uses = "builtin.generate", when = "round > 1 or not review_first" },
-  { id = "review", uses = "builtin.review" },
+  { id = "verify", uses = "builtin.verify", when = "checks_configured" },
+  { id = "review", uses = "builtin.review", when = "steps.verify.status != 'FAIL'" },
 ]
 
 [[steps]]

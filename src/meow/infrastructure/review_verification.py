@@ -20,6 +20,7 @@ from meow.execution.run_state import CheckResult
 from meow.infrastructure.background import detach_command
 from meow.infrastructure.checks import (
     _code_paths,
+    cached_workflow_results,
     check_identity,
     checks_current,
     code_revision,
@@ -267,6 +268,9 @@ async def review_evidence(
     root: Path, config: dict, *, retry_failed=True
 ) -> LintGateEvidence:
     """Run or reuse deterministic lint/test/build checks for a local review."""
+    cached = await cached_workflow_results(root, config)
+    if cached is not None:
+        return _result_evidence(cached)
     root, config = root.resolve(), _normalized(config)
     job, reserved = _reserve(root, config, retry_failed=retry_failed)
     if reserved:

@@ -105,6 +105,7 @@ def run_orchestration(args: argparse.Namespace, working_dir: Path) -> int:
             **({"target_branch": args.target_branch} if args.target_branch else {}),
             max_parallel=args.max_parallel,
             test=args.test,
+            **({"force_disable_tests": True} if args.force_disable_tests else {}),
             open_pr=False if args.no_pr else None,
             dry_run=args.dry_run,
         )

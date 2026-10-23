@@ -353,6 +353,7 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
     use_worktree: bool = True,
     test: bool = False,
     scope: str = "auto",
+    force_disable_tests: bool = False,
 ) -> None:
     """`meow review`'s dispatcher. Exactly one of `jira_key`,
     `gitlab_link`, `github_link`, `branch`(+`target`), `plan_file`, or
@@ -366,6 +367,8 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
     `fix=True` outright: there is no local checkout of a remote request to
     fix.
     """
+    if force_disable_tests:
+        test = False
     if scope not in {"auto", "project", "diff"}:
         raise ValueError("--scope must be auto, project, or diff")
     if scope != "auto" and any(
@@ -418,6 +421,14 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
     try:
         onboard_if_needed(working_dir, working_dir)
         config = load_config(working_dir)
+        if force_disable_tests:
+            from meow.infrastructure.verification_policy import disable_tests
+
+            skipped = disable_tests(config)
+            if store and record:
+                store.update_results(
+                    record.id, force_disable_tests=True, skipped_checks=skipped
+                )
         # Keep lightweight in-memory configs accepted by integrations and tests.
         config.setdefault("docs_dir", DEFAULT_CONFIG["docs_dir"])
         config.setdefault("max_rounds", DEFAULT_CONFIG["max_rounds"])

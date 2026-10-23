@@ -22,7 +22,13 @@ from meow.project.plan_files import plan_test_file
 _PASSED_PHASES = frozenset({"complete", "delivered"})
 
 
-def _attempt_argv(orch_id: str, task: OrchestratorTask, *, test: bool) -> list[str]:
+def _attempt_argv(
+    orch_id: str,
+    task: OrchestratorTask,
+    *,
+    test: bool,
+    force_disable_tests: bool = False,
+) -> list[str]:
     """The saved `_orchestrator-task` invocation for the task's next attempt."""
     resume = task.next_attempt or {}
     argv = [
@@ -34,7 +40,9 @@ def _attempt_argv(orch_id: str, task: OrchestratorTask, *, test: bool) -> list[s
     ]
     if resume.get("plan_file"):
         argv += ["--plan", str(resume["plan_file"])]
-    if test:
+    if force_disable_tests:
+        argv.append("--force-disable-tests")
+    if test and not force_disable_tests:
         argv.append("--test")
     if task.run_ids:
         argv.append("--preexisting")
@@ -103,7 +111,12 @@ def launch_attempt(  # ruff: ignore[too-many-arguments]
             branch,
             start_point=record.integration["branch"],
         )
-        argv = _attempt_argv(orch_id, task, test=bool(record.options.get("test")))
+        argv = _attempt_argv(
+            orch_id,
+            task,
+            test=bool(record.options.get("test")),
+            force_disable_tests=bool(record.options.get("force_disable_tests")),
+        )
         run_id = launcher(
             repo, argv, seed=RunSeed("orchestrator", task.request, worktree, branch)
         )

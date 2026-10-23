@@ -19,9 +19,9 @@ in local/user config or the environment, never shared config.
 `[[lint]]` accepts `command`, `args`, `cwd`, `include`, `exclude`, `env`,
 `timeout`, and `gate` (default true). Include/exclude are repository-relative
 prefixes. Per-file lint respects cwd/prefixes; project-wide runs every entry.
-Timeout is per-entry or `lint_timeout` (default 60 seconds).
+Timeout is per-entry or `lint_timeout` (default 60 seconds). [Hook evidence and test policy](VERIFICATION.md).
 
-`meow run --test` enables tester validation after passing review.
+`meow run --test` enables tester validation after passing review; `--force-disable-tests` overrides it.
 `meow review --plan PATH --test` is report-only unless `--fix` is added;
 other review sources and review-file reject tester mode.
 Without configured commands the tester may inspect/run documented tests.

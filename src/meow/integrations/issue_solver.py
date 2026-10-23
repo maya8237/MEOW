@@ -89,6 +89,7 @@ async def run_issue_solver(  # ruff: ignore[too-many-arguments]
     *,
     approve_plan: Callable[[Path], bool] | None = None,
     test: bool = False,
+    force_disable_tests: bool = False,
     run_id: str | None = None,
     workflow: str | None = None,
     inputs: dict[str, str] | None = None,
@@ -114,6 +115,7 @@ async def run_issue_solver(  # ruff: ignore[too-many-arguments]
             approve_plan,
             run_id=run_id,
             **({"test": True} if test else {}),
+            **({"force_disable_tests": True} if force_disable_tests else {}),
             **({"workflow": workflow} if workflow else {}),
             **({"inputs": inputs} if inputs else {}),
         )
@@ -129,6 +131,7 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
     issue_key: str | None,
     approve_plan: Callable[[Path], bool] | None,
     test: bool = False,
+    force_disable_tests: bool = False,
     run_id: str | None = None,
     workflow: str | None = None,
     inputs: dict[str, str] | None = None,
@@ -176,6 +179,7 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
         source="jira",
         **run_options,
         **({"test": True} if test else {}),
+        **({"force_disable_tests": True} if force_disable_tests else {}),
         **({"workflow": workflow} if workflow else {}),
         **({"inputs": inputs} if inputs else {}),
     )

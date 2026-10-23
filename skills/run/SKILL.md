@@ -98,6 +98,8 @@ When the user requests `--test`, or asks to run tests, test it, or validate
 behavior, pass `--test` to
 `meow run` (including Jira and `--resume-at review` flows); configured servers
 stay alive throughout tester validation.
+If the user asks to disable tests, pass `--force-disable-tests`: it overrides
+`--test`, skips the AI tester and configured test/browser gates, and keeps lint/build.
 
 For ordinary sprints, run from the project root (separate SDK sessions, headless):
 

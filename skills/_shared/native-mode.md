@@ -3,7 +3,8 @@
 Read this for native execution. `plan`, `review`, and `lint`
 default to native; `run` defaults to CLI. You execute native roles in this
 session or fresh subagents. Orchestrator task sprints remain detached CLI
-workers. Custom workflow trees execute through `meow run --workflow NAME`.
+workers. Named workflows, including `quick`, execute through CLI. Quick uses a
+short plan → approval (`-m` pauses) → ≤3 generate/verify/review rounds → checks → delivery.
 
 Future-time requests use [schedule](../schedule/SKILL.md) before starting work.
 Configuration and definition formats live in [INTEGRATIONS.md](../../docs/INTEGRATIONS.md)
@@ -121,6 +122,8 @@ dispatch a fresh reviewer, validate. PASS ends the loop. FAIL supplies the full
 review text to the next fix step: "The reviewer found issues. Fix them, then
 stop." Verify findings; report unsupported/out-of-scope ones. At the limit,
 report `max_rounds`, remaining findings, and review path.
+Failed checks skip reviewer dispatch and feed command output to the next fix round.
+Reuse current evidence after report-only writes; source edits rerun checks.
 
 ## Checkpoints, tester mode, and delivery
 
@@ -133,8 +136,9 @@ interrupted worktrees. Inspect journals with `meow status RUN_ID` or
 Before native run preparation, inspect `meow native verify`. `--test` or
 `tester.configured: true` routes runs to CLI so configured servers stay alive
 throughout tester validation; native execution cannot own that lifecycle.
-Only configured `[tester] tests` enable the tester; other tester settings route
-to CLI without enabling it.
+Configured tests auto-enable it for behavior changes when workflow `auto_test` is true;
+quick requires `--test`. `--force-disable-tests` also routes to CLI: forward it to
+disable tester/test/browser gates and servers while keeping lint/build.
 Preserve plan/Jira/worktree options and saved IDs. Continue a native checkpoint
 with `meow resume RUN_ID --continue --repair` because it has no Claude session
 IDs. Review tester mode requires an explicit plan:

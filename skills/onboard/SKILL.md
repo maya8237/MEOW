@@ -179,6 +179,8 @@ When an optional feature is accepted, use the matching documented path:
   install it with `meow hooks install claude --only lint` after approval.
   Show its event, command, and effects; verify its status and keep failures
   advisory unless made a gate explicitly. CLI runs already use SDK lint hooks.
+  Both hooks record `.meow/lint-ledger.jsonl`; verify reuses lint only with an
+  active installation and matching successful content/config evidence.
 
 If architecture or other project knowledge is requested, inspect the existing
 source and docs first, create only the accepted document, mark uncertainty, and

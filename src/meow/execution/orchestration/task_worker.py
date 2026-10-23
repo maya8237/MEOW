@@ -25,6 +25,11 @@ async def run_task_attempt(repo: Path, run_id: str, args: argparse.Namespace) ->
         use_worktree=False,
         push=False,
         test=args.test,
+        **(
+            {"force_disable_tests": True}
+            if getattr(args, "force_disable_tests", False)
+            else {}
+        ),
         resume_at=args.resume_at,
         plan_file=Path(args.plan) if args.plan else None,
         worktree_preexisting=args.preexisting,

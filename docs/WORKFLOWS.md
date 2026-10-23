@@ -8,11 +8,11 @@ meow run "Add a dark mode toggle" --name dark-mode --workflow quick
 meow run "Audit the API" --workflow review-and-fix --no-worktree --input topic=API
 ```
 
-- `default`: knowledge → shaping → plan/approval → task graph → generation/review → checks → delivery.
+- `default`: knowledge → shaping → plan/approval → tasks → loop{generate, verify, review} → checks → delivery.
 - `quick`: short plan (`-m` pauses to approve), then ≤3 rounds of generate → checks → review
   (review waits for passing checks), final checks, delivery. No knowledge/shaping/task
   graph; configured tests don't enable the AI tester.
-- `review-and-fix`: reviews existing code first, fixes later failures, checks, no automatic delivery.
+- `review-and-fix`: verifies/reviews existing code first, fixes failures, final checks; no delivery.
   `--test` works without a plan, using the request as its basis.
 
 Plan-based reviewers/testers also receive the original request, including on
@@ -28,7 +28,7 @@ sequential generation and journals the reason; absent graphs need no repair.
 `--workflow NAME` overrides `[workflow].default` (otherwise `"default"`).
 Repeated `--input name=value` supplies identifier-keyed strings; values may
 contain `=` or be empty, and last wins. Inputs persist with journal redaction.
-Workflow flags support Jira/background runs but reject lint-fix.
+Workflow flags support Jira/background runs but reject lint-fix. [Test selection and hook reuse](VERIFICATION.md).
 Top-level `auto_test = false`: only `--test` enables the AI tester, not configured
 `[[tester.tests]]`. `short_plan = true` asks the planner for a brief plan.
 
@@ -180,8 +180,8 @@ policy; discovered agent names are valid roles, unknown names fail config.
 `tasks` integrates task worktrees; `generate` implements/fixes;
 `review` reviews/optionally tests; `verify` runs the checks inside a loop and
 fails the round with their output; `checks` records current lint/test/build/browser
-evidence, reusing `verify` results when no existing source changed since; `deliver` performs verified delivery. Include checks when completion
-needs deterministic verification. Reviewer PASS is required by checks only if
+evidence, reusing `verify` results when existing source/config are unchanged (resume reruns).
+`deliver` performs verified delivery. Reviewer PASS is required by checks only if
 builtin.review exists. Delivery gates must pass before checks/delivery.
 
 Builtins retain phase names. Custom stages journal stage_started/stage_finished

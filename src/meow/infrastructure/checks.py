@@ -453,7 +453,7 @@ def completion_ready(  # ruff: ignore[too-many-arguments, too-many-positional-ar
 
 
 async def run_final_checks(
-    repo: Path, config: dict, *, fingerprint: str | None = None
+    repo: Path, config: dict, *, fingerprint: str | None = None, hook_lint: bool = False
 ) -> list[CheckResult]:
     """Run current gates after the last edit, reusing the managed test stage.
 
@@ -467,7 +467,9 @@ async def run_final_checks(
         return []
     for _attempt in range(3):
         baseline = await asyncio.to_thread(stage_baseline, repo)
-        results = await _run_check_batch(repo, config, checks, fingerprint=fingerprint)
+        results = await _run_check_batch(
+            repo, config, checks, fingerprint=fingerprint, hook_lint=hook_lint
+        )
         revision = await asyncio.to_thread(code_revision, repo)
         current_fingerprint = fingerprint or config_fingerprint(repo)
         if all(
@@ -510,13 +512,48 @@ async def reusable_results(
     return [replace(result, revision=revision) for result in reusable if result]
 
 
-async def _run_check_batch(  # ruff: ignore[complex-structure, too-many-branches]
-    repo: Path, config: dict, checks: list[Check], *, fingerprint: str | None = None
+async def cached_workflow_results(repo: Path, config: dict) -> list[CheckResult] | None:
+    """Share in-memory verify evidence with reviewer/tester preparation."""
+    cached = config.get("_workflow_checks")
+    if cached is None:
+        return None
+    previous, baseline = cached
+    return await reusable_results(repo, config, previous, baseline)
+
+
+async def _run_check_batch(  # ruff: ignore[complex-structure, too-many-branches, too-many-arguments, too-many-statements] -- preserve one ordered batch for all evidence sources
+    repo: Path,
+    config: dict,
+    checks: list[Check],
+    *,
+    fingerprint: str | None = None,
+    hook_lint: bool = False,
 ) -> list[CheckResult]:
+    from meow.infrastructure.lint_ledger import verified_lint
+
     results = []
     revision = await asyncio.to_thread(code_revision, repo)
     fingerprint = fingerprint or config_fingerprint(repo)
+    covered = (
+        await asyncio.to_thread(verified_lint, repo, config) if hook_lint else None
+    )
     for check in checks:
+        if check.kind == "lint" and covered:
+            results.append(
+                CheckResult(
+                    "lint",
+                    check.command,
+                    check.required,
+                    0,
+                    0,
+                    "Verified by lint_after_edit hook ledger: " + ", ".join(covered),
+                    revision,
+                    fingerprint,
+                    False,
+                    check_identity(check),
+                )
+            )
+            continue
         if check.kind not in {"test", "browser"}:
             results.append(
                 await _run_check(

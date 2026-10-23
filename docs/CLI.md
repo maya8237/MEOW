@@ -68,7 +68,7 @@ Omit `--name` to derive a short request name. `--from BRANCH` (`-b`) selects the
 `--background` detaches a run and rejects manual approval and lint-fix.
 
 First use onboards the project. Checks and review precede commits and pushes.
-See [runs and recovery](RUNS.md).
+See [runs and recovery](RUNS.md) and [test selection / `--force-disable-tests`](VERIFICATION.md).
 
 ## Multi-sprint runs
 

@@ -215,6 +215,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     approve_plan: Callable[[Path], bool] | None = None,
     resume_at: str = "generate",
     test: bool = False,
+    force_disable_tests: bool = False,
     record_root: Path | None = None,
     commit: bool | None = None,
     push: bool | None = None,
@@ -252,8 +253,23 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     # before the repo itself had a config; keep reading it from there.
     settings_dir = config_root(config_dir, working_dir)
     record = store.load(run_id)
-    test = test or bool(record.results.get("test", False))
-    store.transition(record.id, "preparing", results={"test": test})
+    force_disable_tests = force_disable_tests or bool(
+        record.results.get("force_disable_tests")
+    )
+    test = test or bool(
+        record.results.get("test_requested", record.results.get("test", False))
+    )
+    if force_disable_tests:
+        test = False
+    store.transition(
+        record.id,
+        "preparing",
+        results={
+            "test": test,
+            "test_requested": test,
+            "force_disable_tests": force_disable_tests,
+        },
+    )
     check_cancel(store, record.id)
     # A run that plans from scratch gets its own worktree rather than reusing
     # an earlier one by name; continuing (--plan, --resume-at review)
@@ -346,11 +362,23 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     saved_workflow = record.results.get("workflow")
     definition = select_workflow(sprint.config, workflow, saved_workflow)
     warn_workflow(definition, catalog)
-    # Configured test commands turn the AI tester on unless the workflow opts out.
-    test = test or (
-        definition.auto_test and bool(sprint.config.get("tester", {}).get("tests"))
+    from meow.infrastructure.verification_policy import disable_tests
+
+    test_requested = test
+    skipped = disable_tests(sprint.config) if force_disable_tests else []
+    auto_test = definition.auto_test and bool(
+        sprint.config.get("tester", {}).get("tests")
     )
-    store.update_results(record.id, test=test)
+    test = not force_disable_tests and (test_requested or auto_test)
+    store.update_results(
+        record.id,
+        test=test,
+        test_requested=test_requested,
+        force_disable_tests=force_disable_tests,
+        skipped_checks=skipped,
+    )
+    if skipped:
+        logger.info("tests_disabled", skipped=skipped)
     steps = expand(definition, catalog)
     plan_given = plan_file is not None
     if (
@@ -390,6 +418,8 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
             "resume_review": resume_at == "review",
             "label_feature_name": feature_name,
             "short_plan": definition.short_plan,
+            "test_requested": test_requested,
+            "auto_test": auto_test,
             "inputs": inputs
             if inputs is not None
             else (saved_workflow or {}).get("inputs", {}),
