@@ -137,9 +137,9 @@ function Skills() {
         </p>
         <Command text={`/meow:run ${runExample}`} />
         <p>
-          Describe the change, expected behavior, and how to check it. The first
-          example starts from release and opens a PR/MR into dev; replace these
-          with your own branches.
+          Describe the change, expected behavior, and how to check it. The
+          detailed example starts from release and opens a PR/MR into dev;
+          replace these with your own branches.
         </p>
         <h3>Detailed prompt examples</h3>
         {runExamples.map(({ title, prompt }) => (
