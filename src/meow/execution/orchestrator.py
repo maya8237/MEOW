@@ -108,7 +108,11 @@ class ReviewTestResult:
 def _tester_results(
     reviewer_status: str, tester_status: str, evidence: VerificationStageEvidence
 ) -> dict:
-    result = {"reviewer": reviewer_status, "tester": tester_status}
+    result = {
+        "reviewer": reviewer_status,
+        "tester": tester_status,
+        "tester_commands": len(evidence.commands),
+    }
     if evidence.browser:
         browser = asdict(evidence.browser[0])
         browser["flows"] = list(browser["flows"])
