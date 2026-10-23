@@ -206,12 +206,10 @@ export default function DocsView({
             rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeSlug]}
             components={{
               img({ src = "", alt = "" }) {
-                // Repo-relative images do not exist in the UI; keep the alt text.
+                // Repo-relative images are not served here; skip them.
                 return /^https?:\/\//i.test(src) ? (
                   <img src={src} alt={alt} loading="lazy" />
-                ) : (
-                  alt && <span>{alt}</span>
-                );
+                ) : null;
               },
               a({ href = "", children }) {
                 const target = resolveDocLink(docs, current.path, href);
