@@ -195,3 +195,35 @@ def test_write_tests_is_off_by_default_and_opt_in():
     enabled = prompts.tester_prompt(report, write_tests=True)
     assert "Add new test files" in enabled
     assert "Do not create scratch files" not in enabled
+
+
+def test_changed_files_lists_uncommitted_and_untracked(tmp_path):
+    import subprocess
+
+    from meow.agents.tester import changed_files
+
+    def git(*argv):
+        subprocess.run(["git", "-C", str(tmp_path), *argv], check=True)
+
+    git("init", "-q")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (tmp_path / "a.py").write_text("x", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "init")
+    assert "none uncommitted" in changed_files(tmp_path)
+    (tmp_path / "a.py").write_text("y", encoding="utf-8")
+    (tmp_path / "new.py").write_text("z", encoding="utf-8")
+    listing = changed_files(tmp_path)
+    assert "a.py" in listing and "new.py" in listing
+
+
+def test_changed_files_is_capped(tmp_path):
+    import subprocess
+
+    from meow.agents.tester import changed_files
+
+    subprocess.run(["git", "-C", str(tmp_path), "init", "-q"], check=True)
+    for n in range(5):
+        (tmp_path / f"f{n}.py").write_text("x", encoding="utf-8")
+    assert "and 3 more" in changed_files(tmp_path, limit=2)
