@@ -114,3 +114,15 @@ test("a closing hash needs preceding whitespace", () => {
   expect(searchDocs(sample, "sharp")[0].heading).toBe("C#");
   expect(searchDocs(sample, "go")[0].heading).toBe("Go");
 });
+
+test("a title query yields one hit per section with a snippet", () => {
+  const hits = searchDocs(docs, "runs");
+  const own = hits.filter((hit) => hit.path === "docs/RUNS.md");
+  expect(own).toHaveLength(1);
+  expect(hits.every((hit) => hit.snippet)).toBe(true);
+});
+
+test("pre-heading content stays a section titled with the doc title", () => {
+  const hits = searchDocs(docs, "command line");
+  expect(hits[0]).toMatchObject({ heading: "CLI", anchor: "" });
+});

@@ -476,6 +476,7 @@ test("Docs navigation shows documentation, hides New item, and Ctrl+K focuses it
     await screen.findByRole("heading", { name: "Documentation" }),
   ).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "New item" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Refresh catalog" })).toBeNull();
   expect(screen.getByRole("button", { name: "Docs" })).toHaveAttribute(
     "aria-pressed",
     "true",

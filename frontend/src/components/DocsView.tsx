@@ -1,4 +1,4 @@
-import { RefObject, useEffect, useMemo, useState } from "react";
+import { RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { LoaderCircle, Search } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -44,12 +44,12 @@ export default function DocsView({ searchRef }: Props) {
       null
     : null;
 
+  const content = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!current) return;
-    const target = open.anchor
-      ? document.getElementById(open.anchor)
-      : document.querySelector(".docs-content");
-    target?.scrollIntoView?.();
+    const target = open.anchor ? document.getElementById(open.anchor) : null;
+    if (target) target.scrollIntoView?.();
+    else if (content.current) content.current.scrollTop = 0;
   }, [current, open]);
 
   function go(path: string, anchor = "") {
@@ -112,7 +112,7 @@ export default function DocsView({ searchRef }: Props) {
         </div>
         {query.trim() ? (
           hits.length ? (
-            <ul className="docs-list docs-hits">
+            <ul className="docs-list docs-hits" aria-label="Search results">
               {hits.map((hit, index) => (
                 <li key={`${hit.path}#${hit.anchor}:${index}`}>
                   <button
@@ -128,7 +128,7 @@ export default function DocsView({ searchRef }: Props) {
               ))}
             </ul>
           ) : (
-            <p className="docs-empty">
+            <p className="docs-empty" role="status" aria-live="polite">
               No documentation matches &quot;{query.trim()}&quot;.
             </p>
           )
@@ -139,7 +139,11 @@ export default function DocsView({ searchRef }: Props) {
           </>
         )}
       </nav>
-      <article className="docs-content" aria-label={current?.title}>
+      <article
+        ref={content}
+        className="docs-content"
+        aria-label={current?.title}
+      >
         {current && (
           <Markdown
             key={`${current.path}:${open.nonce}`}

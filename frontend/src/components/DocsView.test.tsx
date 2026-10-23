@@ -125,3 +125,49 @@ test("reports load failures", async () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Docs offline."),
   );
 });
+
+test("opening another doc resets the scroll position", async () => {
+  stubDocs(ok);
+  const user = userEvent.setup();
+  renderView();
+  await screen.findByText("Welcome to the readme.");
+  const article = screen.getByRole("article");
+  article.scrollTop = 500;
+  await user.click(screen.getByRole("button", { name: /plan/ }));
+  await screen.findByText("Skill body text.");
+  expect(article.scrollTop).toBe(0);
+});
+
+test("anchored links and hits scroll their heading into view", async () => {
+  stubDocs(ok);
+  const scroll = vi.fn();
+  const original = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = scroll;
+  try {
+    const user = userEvent.setup();
+    renderView();
+    await screen.findByText("Welcome to the readme.");
+    scroll.mockClear();
+    await user.click(screen.getByRole("link", { name: "CLI guide" }));
+    await screen.findByText("Commands.");
+    await waitFor(() => expect(scroll).toHaveBeenCalled());
+    expect(scroll.mock.contexts.at(-1)).toHaveProperty("id", "plan");
+  } finally {
+    Element.prototype.scrollIntoView = original;
+  }
+});
+
+test("search regions are labelled", async () => {
+  stubDocs(ok);
+  const user = userEvent.setup();
+  renderView();
+  await screen.findByText("Welcome to the readme.");
+  const box = screen.getByRole("searchbox", { name: "Search documentation" });
+  await user.type(box, "manually");
+  expect(
+    await screen.findByRole("list", { name: "Search results" }),
+  ).toBeInTheDocument();
+  await user.clear(box);
+  await user.type(box, "zzz");
+  expect(await screen.findByRole("status")).toHaveTextContent("zzz");
+});

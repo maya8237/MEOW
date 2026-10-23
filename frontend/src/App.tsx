@@ -258,15 +258,17 @@ export default function App() {
             </p>
           </div>
           <div className="header-actions">
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Refresh catalog"
-              disabled={busy}
-              onClick={() => setRevision((value) => value + 1)}
-            >
-              <RefreshCw className={busy ? "animate-spin" : ""} />
-            </Button>
+            {!showDocs && (
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Refresh catalog"
+                disabled={busy}
+                onClick={() => setRevision((value) => value + 1)}
+              >
+                <RefreshCw className={busy ? "animate-spin" : ""} />
+              </Button>
+            )}
             {!showDocs && (
               <Button
                 id="new-item"

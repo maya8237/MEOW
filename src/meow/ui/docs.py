@@ -26,6 +26,7 @@ def docs_root() -> Path | None:
     """Wheel data directory, else the checkout root, else nothing to serve."""
     if (RELEASE_DATA / "docs").is_dir():
         return RELEASE_DATA
+    # Checkout heuristic; a bare site-packages install has no docs/ here.
     checkout = Path(__file__).resolve().parents[3]
     if (checkout / "docs").is_dir():
         return checkout

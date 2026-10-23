@@ -64,6 +64,8 @@ function sections(doc: Doc) {
       result.push({ heading, anchor: slugger.slug(heading), lines: [] });
     } else result[result.length - 1].lines.push(line);
   }
+  // The title pseudo-section only exists when real content precedes any heading.
+  if (!result[0].lines.some((line) => line.trim())) result.shift();
   return result;
 }
 

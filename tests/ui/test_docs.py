@@ -104,3 +104,23 @@ def test_every_reader_guide_is_served():
     served = {doc["path"] for doc in build_docs()["guides"]}
 
     assert expected <= served
+
+
+def test_wheel_layout_is_served_from_release_data(tmp_path, monkeypatch):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "CLI.md").write_text("# CLI\n\nstub\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("# Readme\n", encoding="utf-8")
+    skill = tmp_path / "plugin" / "skills" / "x"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: x\ndescription: An x skill\n---\nBody\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(docs_module, "RELEASE_DATA", tmp_path)
+
+    result = build_docs()
+
+    assert docs_root() == tmp_path
+    assert [g["path"] for g in result["guides"]] == ["README.md", "docs/CLI.md"]
+    assert result["guides"][1]["text"] == "# CLI\n\nstub\n"
+    assert [s["path"] for s in result["skills"]] == ["skills/x/SKILL.md"]
+    assert result["skills"][0]["description"] == "An x skill"
