@@ -483,6 +483,33 @@ async def run_final_checks(
     return results
 
 
+async def reusable_results(
+    repo: Path,
+    config: dict,
+    previous: list[CheckResult],
+    baseline: StageBaseline | None,
+) -> list[CheckResult] | None:
+    """Earlier results re-stamped to the current tree, or None when they are stale.
+
+    `baseline` is the tree the earlier run finished on. An AI review or tester
+    only adds report files, so the results still describe the code being
+    delivered; any edit or deletion of existing source means the checks must run.
+    """
+    checks = configured_checks(config)
+    if baseline is None or not checks:
+        return None
+    fingerprint = config_fingerprint(repo)
+    latest = {result.identity: result for result in previous}
+    reusable = [latest.get(check_identity(check)) for check in checks]
+    if any(
+        result is None or result.config_fingerprint != fingerprint
+        for result in reusable
+    ) or not await asyncio.to_thread(_stage_source_unchanged, repo, baseline):
+        return None
+    revision = await asyncio.to_thread(code_revision, repo)
+    return [replace(result, revision=revision) for result in reusable if result]
+
+
 async def _run_check_batch(  # ruff: ignore[complex-structure, too-many-branches]
     repo: Path, config: dict, checks: list[Check], *, fingerprint: str | None = None
 ) -> list[CheckResult]:

@@ -9,7 +9,9 @@ meow run "Audit the API" --workflow review-and-fix --no-worktree --input topic=A
 ```
 
 - `default`: knowledge → shaping → plan/approval → task graph → generation/review → checks → delivery.
-- `quick`: omits knowledge/shaping.
+- `quick`: short plan (`-m` pauses to approve), then ≤3 rounds of generate → checks → review
+  (review waits for passing checks), final checks, delivery. No knowledge/shaping/task
+  graph; configured tests don't enable the AI tester.
 - `review-and-fix`: reviews existing code first, fixes later failures, checks, no automatic delivery.
   `--test` works without a plan, using the request as its basis.
 
@@ -177,8 +179,9 @@ policy; discovered agent names are valid roles, unknown names fail config.
 `builtin.knowledge` gathers evidence; `shape` resolves requirements/breadboards;
 `plan` writes/claims the plan; `approve_plan` invokes manual approval;
 `tasks` integrates task worktrees; `generate` implements/fixes;
-`review` reviews/optionally tests; `checks` records current lint/test/build/browser
-evidence; `deliver` performs verified delivery. Include checks when completion
+`review` reviews/optionally tests; `verify` runs the checks inside a loop and
+fails the round with their output; `checks` records current lint/test/build/browser
+evidence, reusing `verify` results when no existing source changed since; `deliver` performs verified delivery. Include checks when completion
 needs deterministic verification. Reviewer PASS is required by checks only if
 builtin.review exists. Delivery gates must pass before checks/delivery.
 

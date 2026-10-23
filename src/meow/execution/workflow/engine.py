@@ -76,6 +76,7 @@ class RunState:
     has_review: bool = False
     evidence: object = None
     checks_results: object = None
+    checks_baseline: object = None
 
     def __post_init__(self):
         if self.request:

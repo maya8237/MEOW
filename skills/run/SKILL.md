@@ -87,7 +87,8 @@ blocker, evidence, and continuation command; do not claim delivery.
 Choose a workflow when the user names one: pass `--workflow <name>` to
 `meow run`. Inspect available choices with `meow workflows list` and
 `meow workflows show <name>`. Shipped choices are `default` (the full run),
-`quick` (omits knowledge and shaping), and `review-and-fix` (reviews and fixes
+`quick` (short auto-approved plan, checks before review; `-m` still pauses for approval),
+and `review-and-fix` (reviews and fixes
 existing code, with checks and no automatic delivery). Without a flag, honor
 `[workflow] default` in config. Pass named inputs as repeated
 `--input name=value` flags. Custom workflows execute through CLI mode;

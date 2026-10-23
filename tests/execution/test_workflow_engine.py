@@ -460,3 +460,46 @@ def test_default_workflow_full_phase_order(tmp_path, mode):  # ruff: ignore[too-
         expected += ["tester_finished"]
     expected += ["checking", "checks_finished", "complete"]
     assert phases == expected
+
+
+def test_quick_skips_review_while_checks_fail(tmp_path):
+    from meow.execution.run_state import CheckResult
+    from meow.project.custom.definitions import discover
+    from meow.project.custom.sources import builtin_sources
+
+    def result(code):
+        return CheckResult("test", "pytest", True, code, 0.1, "boom", "r", "f")
+
+    catalog = discover(builtin_sources())
+    loop = next(
+        step
+        for step in expand(catalog.workflow("quick"), catalog)
+        if step.kind == "loop"
+    )
+    state = state_for(tmp_path, plan=True)
+    outcomes = iter([[result(1)], [result(0)]])
+
+    async def run_checks(*_args, **_kwargs):  # ruff: ignore[unused-async] -- double
+        return next(outcomes)
+
+    reviews = []
+
+    async def review(state, step):  # ruff: ignore[unused-async] -- double
+        reviews.append(state.round)
+        state.gate_result(step, "PASS", "STATUS: PASS")
+        return "PASS"
+
+    generate = AsyncMock()
+    with (
+        patch("meow.infrastructure.checks.configured_checks", return_value=[object()]),
+        patch("meow.execution.workflow.builtin_steps.run_final_checks", run_checks),
+        patch("meow.execution.workflow.builtin_steps.stage_baseline", MagicMock()),
+        patch("meow.execution.workflow.builtin_steps.generate", generate),
+        patch("meow.execution.workflow.builtin_steps.review", review),
+    ):
+        asyncio.run(run_workflow(state, (loop,)))
+
+    assert generate.await_count == EXPECTED_ROUNDS
+    assert reviews == [EXPECTED_ROUNDS]  # review waited for passing checks
+    assert state.statuses["review"]["status"] == "PASS"
+    assert state.statuses["verify"]["status"] == "PASS"
