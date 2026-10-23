@@ -5,23 +5,34 @@ import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
 import { Input } from "@/components/ui/input";
 import { Doc, Docs, loadDocs, resolveDocLink, searchDocs } from "@/lib/docs";
+import type { DocLocation } from "@/lib/docs-hash";
 
-type Props = { searchRef: RefObject<HTMLInputElement | null> };
-type Open = { path: string; anchor: string; nonce: number };
+type Props = {
+  searchRef: RefObject<HTMLInputElement | null>;
+  load?: (signal: AbortSignal) => Promise<Docs>;
+  location?: DocLocation;
+  onNavigate?: (loc: DocLocation) => void;
+};
+type Open = DocLocation & { nonce: number };
 
-export default function DocsView({ searchRef }: Props) {
+export default function DocsView({
+  searchRef,
+  load = loadDocs,
+  location,
+  onNavigate,
+}: Props) {
   const [docs, setDocs] = useState<Docs | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Open>({
-    path: "README.md",
-    anchor: "",
+    path: location?.path ?? "README.md",
+    anchor: location?.anchor ?? "",
     nonce: 0,
   });
 
   useEffect(() => {
     const controller = new AbortController();
-    loadDocs(controller.signal)
+    load(controller.signal)
       .then(setDocs)
       .catch((reason) => {
         if (!controller.signal.aborted)
@@ -32,7 +43,7 @@ export default function DocsView({ searchRef }: Props) {
           );
       });
     return () => controller.abort();
-  }, []);
+  }, [load]);
 
   const hits = useMemo(
     () => (docs && query.trim() ? searchDocs(docs, query) : []),
@@ -52,8 +63,21 @@ export default function DocsView({ searchRef }: Props) {
     else if (content.current) content.current.scrollTop = 0;
   }, [current, open]);
 
+  // Follow an externally controlled location; nonce re-runs the anchor scroll.
+  const wantPath = location?.path;
+  const wantAnchor = location?.anchor ?? "";
+  useEffect(() => {
+    if (wantPath === undefined) return;
+    setOpen((previous) =>
+      previous.path === wantPath && previous.anchor === wantAnchor
+        ? previous
+        : { path: wantPath, anchor: wantAnchor, nonce: previous.nonce + 1 },
+    );
+  }, [wantPath, wantAnchor]);
+
   function go(path: string, anchor = "") {
     setOpen((previous) => ({ path, anchor, nonce: previous.nonce + 1 }));
+    onNavigate?.({ path, anchor });
   }
 
   if (error)

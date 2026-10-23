@@ -171,3 +171,37 @@ test("search regions are labelled", async () => {
   await user.type(box, "zzz");
   expect(await screen.findByRole("status")).toHaveTextContent("zzz");
 });
+
+test("uses a custom loader instead of the local API", async () => {
+  const fetcher = vi.fn();
+  vi.stubGlobal("fetch", fetcher);
+  const load = vi.fn(async () => docs);
+  const onNavigate = vi.fn();
+  const user = userEvent.setup();
+  render(
+    <DocsView
+      searchRef={createRef<HTMLInputElement>()}
+      load={load}
+      onNavigate={onNavigate}
+    />,
+  );
+  await screen.findByText("Welcome to the readme.");
+  expect(load).toHaveBeenCalledWith(expect.any(AbortSignal));
+  expect(fetcher).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: /CLI/ }));
+  expect(onNavigate).toHaveBeenCalledWith({ path: "docs/CLI.md", anchor: "" });
+});
+
+test("follows the location prop and falls back to the first guide", async () => {
+  const load = async () => docs;
+  const ref = createRef<HTMLInputElement>();
+  const view = (path: string) => (
+    <DocsView searchRef={ref} load={load} location={{ path, anchor: "" }} />
+  );
+  const { rerender } = render(view("README.md"));
+  await screen.findByText("Welcome to the readme.");
+  rerender(view("skills/plan/SKILL.md"));
+  expect(await screen.findByText("Skill body text.")).toBeInTheDocument();
+  rerender(view("nope.md"));
+  expect(await screen.findByText("Welcome to the readme.")).toBeInTheDocument();
+});
