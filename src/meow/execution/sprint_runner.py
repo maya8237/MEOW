@@ -27,7 +27,10 @@ from meow.infrastructure.checks import (
 from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.node_dependencies import ensure_node_dependencies
-from meow.infrastructure.worktree import _is_linked_worktree, current_branch
+from meow.infrastructure.worktree import (
+    _is_linked_worktree,
+    current_branch,
+)
 from meow.infrastructure.worktree_names import request_name
 from meow.infrastructure.worktree_setup import (
     prepare_environment,
@@ -116,7 +119,17 @@ def _run_onboarding(
     return sprint, checks_dir
 
 
-async def run_sprint(  # ruff: ignore[too-many-arguments]
+def _new_delivery(config: dict, options: dict, target: str | None) -> dict:
+    if not options.get("use_worktree", True):
+        return {}
+    return {
+        "base": target or config["delivery"]["target_branch"],
+        "source_branch": options.get("source_branch"),
+        "pipeline_options": options.get("pipeline_options") or {},
+    }
+
+
+async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -- journal setup and terminal exception ownership stay together
     working_dir: Path,
     feature_name: str | None,
     request: str,
@@ -135,9 +148,9 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
     resume_at = options.get("resume_at", "generate")
     if resume_at not in {"generate", "review"}:
         raise ValueError(f"resume_at must be 'generate' or 'review', got {resume_at!r}")
-    select_workflow(
-        load_config(Path(record_root or working_dir)), options.get("workflow")
-    )
+    config = load_config(Path(record_root or working_dir))
+    select_workflow(config, options.get("workflow"))
+    target = options.pop("target_branch", None)
     store = RunStore(Path(record_root or working_dir).resolve())
     delivery = {
         field: options[option]
@@ -145,6 +158,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
         if options.get(option) is not None
     }
     if run_id is None:
+        delivery.update(_new_delivery(config, options, target))
         run_id = store.create(
             source=source,
             request=request,
@@ -157,6 +171,8 @@ async def run_sprint(  # ruff: ignore[too-many-arguments]
         record = store.load(run_id)
         store.transition(run_id, record.phase, delivery={**record.delivery, **delivery})
     try:
+        base = store.load(run_id).delivery.get("base", "none (not selected)")
+        print(f"[run] MR target: {base} (saved for resume).", flush=True)
         await _drive_sprint(
             working_dir,
             feature_name,
@@ -280,7 +296,6 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
                 else commit
             ),
             "push": record.delivery.get("push", True) if push is None else push,
-            **({"base": source_branch} if source_branch else {}),
             **({"pipeline_options": pipeline_options} if pipeline_options else {}),
         },
         results={"feature_name": effective_name} if effective_name else {},

@@ -21,6 +21,37 @@ from meow.project.onboarding import (
 FALLBACK_ROUNDS = 3
 
 
+@pytest.mark.parametrize("dev_ref", [None, "refs/heads/dev", "refs/remotes/origin/dev"])
+def test_auto_onboarding_saves_detected_merge_target(repo, dev_ref):
+    if dev_ref:
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=T",
+                "-c",
+                "user.email=t@e.c",
+                "commit",
+                "--allow-empty",
+                "-qm",
+                "initial",
+            ],
+            cwd=repo,
+            check=True,
+        )
+        subprocess.run(["git", "update-ref", dev_ref, "HEAD"], cwd=repo, check=True)
+    report = onboard_project(repo)
+    assert report.error is None
+    raw = tomllib.loads((repo / ".meow/config.toml").read_text(encoding="utf-8"))
+    assert raw["delivery"]["target_branch"] == ("dev" if dev_ref else "master")
+
+
+def test_auto_onboarding_keeps_configured_target(repo):
+    _write_config(repo, '[delivery]\ntarget_branch = "release"\n')
+    onboard_project(repo)
+    assert load_config(repo)["delivery"]["target_branch"] == "release"
+
+
 @pytest.fixture(autouse=True)
 def _no_user_config(tmp_path, monkeypatch):
     monkeypatch.setattr(

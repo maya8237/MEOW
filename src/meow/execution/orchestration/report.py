@@ -167,6 +167,7 @@ def outcome_lines(record: OrchestratorRecord) -> list[str]:
         f"- Phase: {record.phase}",
         f"- Source: {record.source}",
         f"- Base branch: {record.base_branch}",
+        f"- MR target: {record.options.get('target_branch') or record.base_branch}",
         f"- Integration branch: {record.integration.get('branch') or '-'}",
     ]
     if record.delivery.get("pushed_commit"):
@@ -211,6 +212,7 @@ def render_status(record: OrchestratorRecord) -> str:
         f"Mode: {record.mode}",
         f"Objective: {first_line(record.objective)}",
         f"Base: {record.base_branch} -> {record.integration.get('branch') or '-'}",
+        f"MR target: {record.options.get('target_branch') or record.base_branch}",
         f"Tasks: {merged_count(record)}/{len(record.tasks)} merged",
     ]
     for task in record.tasks:

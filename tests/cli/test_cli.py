@@ -161,13 +161,17 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     def test_ci_dispatch_skips_boot_and_uses_result_status(self, mock_run, mock_boot):
         mock_run.return_value.exit_code = 1
         with (
+            patch(
+                "meow.cli.cli.load_config",
+                return_value={"delivery": {"target_branch": "integration"}},
+            ),
             patch("sys.argv", ["meow", "review", "--ci"]),
             self.assertRaises(SystemExit) as raised,
         ):
             cli.cli_main()
         self.assertEqual(raised.exception.code, 1)
         self.assertFalse(mock_boot.called)
-        self.assertEqual(mock_run.call_args.args[3], "refs/remotes/origin/dev")
+        self.assertEqual(mock_run.call_args.args[3], "refs/remotes/origin/integration")
 
     def test_test_flag_is_permitted_for_plain_jira_and_explicit_plan_flows(self):
         parser = cli._build_arg_parser()
@@ -1195,11 +1199,12 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         mock_review.assert_not_called()
 
     @staticmethod
+    @patch("meow.infrastructure.worktree._is_linked_worktree", return_value=False)
     @patch("meow.execution.run_policy._ensure_clean_tree")
     @patch("meow.cli.cli._boot_repo")
     @patch("meow.cli.dispatch.run_sprint", new_callable=AsyncMock)
     def test_source_branch_is_passed_through_and_skips_the_clean_tree_check(
-        mock_sprint, mock_boot, mock_clean_tree
+        mock_sprint, mock_boot, mock_clean_tree, _mock_linked
     ):
         with patch(
             "sys.argv",
@@ -1230,11 +1235,12 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         )
 
     @staticmethod
+    @patch("meow.infrastructure.worktree._is_linked_worktree", return_value=False)
     @patch("meow.execution.run_policy._ensure_clean_tree")
     @patch("meow.cli.cli._boot_repo")
     @patch("meow.cli.dispatch.run_sprint", new_callable=AsyncMock)
     def test_source_branch_accepts_the_from_alias(
-        mock_sprint, mock_boot, mock_clean_tree
+        mock_sprint, mock_boot, mock_clean_tree, _mock_linked
     ):
         with patch(
             "sys.argv",

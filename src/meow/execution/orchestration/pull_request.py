@@ -134,13 +134,14 @@ class _Opening:
         self.remote = origin_url(repo)
         self.provider = detect_provider(self.remote, config) if self.remote else None
         self.branch = self.record.integration["branch"]
+        self.target = (
+            self.record.options.get("target_branch") or self.record.base_branch
+        )
 
     def link(self) -> str | None:
         if not self.remote:
             return None
-        return manual_pr_link(
-            self.remote, self.provider, self.record.base_branch, self.branch
-        )
+        return manual_pr_link(self.remote, self.provider, self.target, self.branch)
 
     async def create(self) -> dict:
         if not self.remote:
@@ -161,7 +162,7 @@ class _Opening:
             pull_request_title(self.record),
             render_report(self.repo, self.record),
             self.branch,
-            self.record.base_branch,
+            self.target,
             self.store.dir_for(self.orch_id) / "pull-request.json",
         )
         return {"url": url, "provider": self.provider}

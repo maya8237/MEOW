@@ -1,10 +1,10 @@
 # MR and pipeline verification
 
-After `builtin.deliver` pushes a plain `meow run --from BRANCH`, MEOW opens an
-MR/PR into `BRANCH`, validates the pipeline file, waits for the pipeline, and
+After `builtin.deliver` pushes a worktree run, MEOW opens an
+MR/PR into its saved target, validates the pipeline file, waits for the pipeline, and
 fixes code until the `meow-review` job passes. Any workflow containing
-`builtin.deliver` gets this. Without `--from`, nothing changes. Scheduled runs
-and `--jira` do not support `--from`. GitLab (`.gitlab-ci.yml`) and GitHub
+`builtin.deliver` gets this. Explicit in-place runs retain their delivery choices
+without opening an MR. GitLab (`.gitlab-ci.yml`) and GitHub
 (`.github/workflows/*.yml`) are supported.
 
 ## Flow
@@ -26,7 +26,20 @@ only, inside the deliver step.
 | Flag | Effect |
 |---|---|
 | `--no-pr` | Skip the MR and pipeline verification (also applies to orchestration) |
-| `--fix-non-meow-jobs` | Also fix other failing jobs (requires `--from`) |
+| `--target BRANCH` | Override the configured MR target for this run |
+| `--from BRANCH` | Start work from this branch; does not set the MR target |
+| `--fix-non-meow-jobs` | Also fix other failing jobs in a worktree run |
+
+The MR target is `--target`, otherwise `[delivery].target_branch`. Auto-onboarding
+saves `dev` if it exists locally or on origin, otherwise `master`. Existing config
+values are preserved; interactive onboarding offers to change the target.
+The same fallback applies to older configs without this setting. The current
+checkout and `--from` never override the MR target. The target is printed and
+saved before work starts, including background runs; resume keeps the saved value.
+
+```bash
+meow run "Add CSV export" --from release --target dev
+```
 
 `[pipeline]` in `.meow/config.toml`:
 

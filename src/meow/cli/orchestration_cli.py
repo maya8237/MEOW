@@ -102,6 +102,7 @@ def run_orchestration(args: argparse.Namespace, working_dir: Path) -> int:
             working_dir,
             _intake(args, tasks_file),
             base_branch=args.source_branch,
+            **({"target_branch": args.target_branch} if args.target_branch else {}),
             max_parallel=args.max_parallel,
             test=args.test,
             open_pr=False if args.no_pr else None,
@@ -133,7 +134,10 @@ def _manual_link(working_dir: Path, record: OrchestratorRecord) -> str | None:
         return None
     provider = detect_provider(url, load_config(working_dir))
     return manual_pr_link(
-        url, provider, record.base_branch, record.integration["branch"]
+        url,
+        provider,
+        record.options.get("target_branch") or record.base_branch,
+        record.integration["branch"],
     )
 
 

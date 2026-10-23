@@ -138,6 +138,8 @@ def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-bra
         f"Recovery: {recovery_command(record)}",
     ]
     lines.extend(_decision_lines(record))
+    if record.delivery.get("base"):
+        lines.append(f"MR target: {record.delivery['base']}")
     worker = inspect_worker(record)
     workflow = record.results.get("workflow")
     if workflow:

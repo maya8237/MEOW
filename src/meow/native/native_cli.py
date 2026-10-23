@@ -163,6 +163,9 @@ def _add_checkpoint(sub) -> None:
     parser.add_argument("--round", type=int)
     parser.add_argument("--reviewer", choices=("PASS", "FAIL"))
     parser.add_argument("--tester", choices=("PASS", "FAIL"))
+    parser.add_argument(
+        "--target", dest="target_branch", help="PR/MR target for a new run."
+    )
     finish = sub.add_parser(
         "finalize", help="Run current gates and finish a native run."
     )
@@ -303,6 +306,7 @@ def _add_orchestrate_init(commands) -> None:
     parser.add_argument("--objective", default=None, help="Free-text objective.")
     parser.add_argument("--tasks", dest="tasks_file", default=None, help="Tasks file.")
     parser.add_argument("--from", dest="base", default=None, help="Base branch.")
+    parser.add_argument("--target", default=None, help="PR/MR target branch.")
     parser.add_argument("--max-parallel", dest="max_parallel", type=int, default=None)
     parser.add_argument("--test", action="store_true", help="Run tests in each task.")
     parser.add_argument("--no-pr", dest="no_pr", action="store_true")
@@ -453,6 +457,7 @@ def _checkpoint(args, working_dir: Path, active: Path) -> dict:
         round_num=args.round,
         reviewer=args.reviewer,
         tester=args.tester,
+        target_branch=args.target_branch,
     )
 
 
@@ -498,6 +503,7 @@ _ORCHESTRATE_HANDLERS = {
         objective=args.objective,
         tasks_file=_resolve(args.tasks_file, active),
         base=args.base,
+        target=args.target,
         max_parallel=args.max_parallel,
         test=args.test,
         no_pr=args.no_pr,

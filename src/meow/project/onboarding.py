@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meow.hooks.claude import inspect_claude_hooks
+from meow.infrastructure.worktree import default_target_branch
 from meow.project.config import _merge_config, config_paths
 from meow.project.migration import migrate_legacy_config
 from meow.project.repos import remember
@@ -176,7 +177,9 @@ def is_onboarded(root: Path) -> bool:
     return (root / CONFIG_RELPATH).is_file() and boundary_ok(root)
 
 
-def _config_text(lint: tuple[str, str] | None, existing: set[str]) -> str:
+def _config_text(
+    lint: tuple[str, str] | None, existing: set[str], target: str | None
+) -> str:
     """Minimal shared config, leaving out anything local/user config already sets."""
     lines = [
         "# Created automatically by meow on the first run.",
@@ -203,6 +206,13 @@ def _config_text(lint: tuple[str, str] | None, existing: set[str]) -> str:
             "[[lint]]",
             f'command = "{lint[0]}"',
             f'fix_flag = "{lint[1]}"',
+        ]
+    if target is not None:
+        lines += [
+            "",
+            "# Default PR/MR target; override per run with --target BRANCH.",
+            "[delivery]",
+            f'target_branch = "{target}"',
         ]
     return "\n".join(lines) + "\n"
 
@@ -263,9 +273,21 @@ def _apply(
     if error is None and write_config and migrate_legacy_config(root):
         files.append(CONFIG_RELPATH)
     if error is None and write_config and not config.is_file():
-        existing = {key for table in _config_tables(root) for key in table}
+        tables = _config_tables(root)
+        existing = {key for table in tables for key in table}
         config.parent.mkdir(parents=True, exist_ok=True)
-        config.write_text(_config_text(lint, existing), encoding="utf-8")
+        config.write_text(
+            _config_text(
+                lint,
+                existing,
+                None
+                if any(
+                    _present(table, ("delivery", "target_branch")) for table in tables
+                )
+                else default_target_branch(root),
+            ),
+            encoding="utf-8",
+        )
         files.append(CONFIG_RELPATH)
     local = root / LOCAL_CONFIG_RELPATH
     if error is None and not local.is_file():
@@ -359,8 +381,9 @@ _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
         "Configure [orchestrator] for multi-sprint runs (docs/ORCHESTRATION.md).",
     ),
     "delivery": (
-        ("delivery",),
-        f"Set [delivery].target_branch for CI review when needed ({_GUIDE}).",
+        ("delivery", "target_branch"),
+        "Choose [delivery].target_branch (existing dev, otherwise master by default); "
+        "--target overrides it per run.",
     ),
     "worktree_setup": (
         ("worktree_setup",),

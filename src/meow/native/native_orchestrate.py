@@ -201,6 +201,7 @@ def _create_record(
         options={
             "test": fields["test"],
             "pr": not fields["no_pr"] and settings["open_pr"],
+            "target_branch": fields["target"] or config["delivery"]["target_branch"],
         },
     )
 
@@ -211,6 +212,7 @@ def init(  # ruff: ignore[too-many-arguments]
     objective: str | None = None,
     tasks_file: Path | None = None,
     base: str | None = None,
+    target: str | None = None,
     max_parallel: int | None = None,
     test: bool = False,
     no_pr: bool = False,
@@ -236,6 +238,7 @@ def init(  # ruff: ignore[too-many-arguments]
             "objective": objective or _tasks_objective(tasks_file, keys),
             "source": _source(objective, keys),
             "base": base_branch,
+            "target": target,
             "max_parallel": max_parallel,
             "test": test,
             "no_pr": no_pr,
@@ -724,15 +727,14 @@ def deliver(repo: Path, orch_id: str) -> dict:
     branch = record.integration["branch"]
     url = origin_url(repo) or ""
     skip = _skip_reason(record, provider)
+    target = record.options.get("target_branch") or record.base_branch
     return {
         "branch": branch,
-        "base": record.base_branch,
+        "base": target,
         "title": pull_request_title(record),
         "body": render_report(repo, record),
         "provider": provider,
-        "manual_link": manual_pr_link(url, provider, record.base_branch, branch)
-        if url
-        else None,
+        "manual_link": manual_pr_link(url, provider, target, branch) if url else None,
         "open_pr": skip is None,
         "skip_reason": skip,
     }

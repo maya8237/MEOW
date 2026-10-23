@@ -25,7 +25,7 @@ export const skillGroups = [
       [
         "run",
         "Build something",
-        "Plan, build, check, and review a change. Standard runs commit and push; you open the PR/MR yourself. Full sprint orchestration also opens one PR (GitHub) or MR (GitLab) automatically after the combined work passes review, unless disabled.",
+        "Plan, build, review, and deliver a change. Worktree runs push, open a PR (GitHub) or MR (GitLab), then verify its CI pipeline.",
         "Add CSV export",
       ],
       [
@@ -69,9 +69,9 @@ export const skillGroups = [
 
 export const runExamples = [
   {
-    title: "Build a feature",
+    title: "Build a feature and open a PR/MR",
     prompt:
-      "/meow:run Add CSV export to the Orders page. Export only the currently filtered rows, include column headers, and escape commas and quotes. Show an empty state when there are no results. Add tests for filters, empty results, and quoted values.",
+      "/meow:run Add CSV export to the Orders page. Export only the currently filtered rows, include column headers, and escape commas and quotes. Show an empty state when there are no results. Add tests for filters, empty results, and quoted values. --from release --target dev",
   },
   {
     title: "Fix a bug",

@@ -19,7 +19,7 @@ from meow.infrastructure.checks import (
     run_final_checks,
     stage_baseline,
 )
-from meow.infrastructure.worktree import current_branch
+from meow.infrastructure.worktree import _is_linked_worktree, current_branch
 from meow.project.config import config_paths, config_root, load_config
 from meow.project.plan_files import plan_review_file
 
@@ -91,6 +91,7 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
     round_num: int | None = None,
     reviewer: str | None = None,
     tester: str | None = None,
+    target_branch: str | None = None,
 ) -> dict:
     """Persist one native phase using the CLI run journal schema."""
     if phase == "complete":
@@ -108,6 +109,16 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
             repo=repo,
             worktree=active_dir,
             branch=current_branch(active_dir),
+            delivery=(
+                {
+                    "base": target_branch
+                    or load_config(config_root(repo, active_dir))["delivery"][
+                        "target_branch"
+                    ]
+                }
+                if _is_linked_worktree(active_dir)
+                else {}
+            ),
         )
         run_id = record.id
     else:

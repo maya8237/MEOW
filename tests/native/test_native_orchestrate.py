@@ -256,7 +256,15 @@ def test_init_records_the_options(git_repo):
 
     record = OrchestratorStore(repo).load(result["id"])
     assert record.max_parallel == PARALLEL
-    assert record.options == {"test": True, "pr": False}
+    assert record.options == {"test": True, "pr": False, "target_branch": "master"}
+
+
+def test_native_orchestration_target_is_separate_from_start(git_repo):
+    repo, _ = git_repo
+    result = orch.init(repo, objective="Build login", base="main", target="dev")
+    record = OrchestratorStore(repo).load(result["id"])
+    assert record.base_branch == "main"
+    assert record.options["target_branch"] == "dev"
 
 
 def test_save_tasks_accepts_valid_output(git_repo):
@@ -869,7 +877,7 @@ def test_deliver_pushes_and_describes_the_pull_request(git_repo):
     record = store.load(orch_id)
     branch = f"orchestrator/{orch_id}"
     assert payload["branch"] == branch
-    assert payload["base"] == record.base_branch
+    assert payload["base"] == record.options["target_branch"] == "master"
     assert payload["title"] == "Orchestrator: Add login"
     assert payload["body"]
     assert (payload["provider"], payload["open_pr"]) == (None, False)

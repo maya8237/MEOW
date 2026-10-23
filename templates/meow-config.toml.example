@@ -99,6 +99,8 @@ default = []
 # tool = "Bash"
 # action = "deny"
 
-# Optional: the branch `meow review --ci` reviews against (default "dev").
+# Default PR/MR target and CI review branch. Auto-onboarding saves "dev" if
+# it exists locally or on origin, otherwise "master". --target overrides it
+# for one run; --from only selects the starting branch.
 # [delivery]
 # target_branch = "dev"
