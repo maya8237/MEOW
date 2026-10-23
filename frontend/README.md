@@ -44,9 +44,11 @@ logo, and bundled JetBrains Mono fonts; the UI makes no CDN requests.
 - `App.tsx`: catalog state, navigation, filters, polling, and save selection.
 - `components/ItemDetail.tsx`: workflow steps, metadata, commands, and source.
 - `components/CreateDialog.tsx`: validated creation and repo-specific sources.
+- `components/DocsView.tsx`: searchable guides and skills rendered from `/api/docs`.
 - `components/CopyButton.tsx`: clipboard feedback and recovery.
 - `components/ui/`: shadcn/ui primitives installed from its registry.
 - `lib/catalog.ts`: API types and request helpers.
+- `lib/docs.ts`: docs loading, link resolution, and section search.
 - `styles.css`: MEOW theme, layout, and responsive styles.
 
 To add a shadcn component, run `npx shadcn@latest add COMPONENT` and use

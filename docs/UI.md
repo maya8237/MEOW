@@ -73,3 +73,11 @@ Session details show the time, **Edit time**, and cancellation controls.
 **Save time** changes only the pending trigger's time, preserving recipe and ID;
 started/completed/cancelled schedules cannot be edited.
 See [CLI scheduling](CLI.md#scheduling-a-run) for platform and lifecycle rules.
+
+## Docs
+
+The **Docs** page shows this project's own Markdown guides and skills,
+read from the installed package, with no hand-copied text.
+Search covers every section; choose a hit to open it at that heading.
+Ctrl K focuses the search. Links between docs open in-app; external links
+open in a new tab. Raw HTML in Markdown is not rendered.

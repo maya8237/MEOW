@@ -103,3 +103,14 @@ test("searchDocs covers intro sections, skills and duplicate headings", () => {
   expect(searchDocs(docs, "first")[0].anchor).toBe("x");
   expect(searchDocs(docs, "second")[0].anchor).toBe("x-1");
 });
+
+test("a closing hash needs preceding whitespace", () => {
+  const sample: Docs = {
+    guides: [
+      { path: "a.md", title: "A", text: "## C#\n\nsharp\n\n## Go ##\n\ngo" },
+    ],
+    skills: [],
+  };
+  expect(searchDocs(sample, "sharp")[0].heading).toBe("C#");
+  expect(searchDocs(sample, "go")[0].heading).toBe("Go");
+});

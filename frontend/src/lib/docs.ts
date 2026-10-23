@@ -42,7 +42,8 @@ export function resolveDocLink(docs: Docs, fromPath: string, href: string) {
 const plain = (heading: string) =>
   heading
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[`*_~]/g, "")
+    .replace(/[`*~]/g, "")
+    .replace(/(^|\W)_+|_+(?=\W|$)/g, "$1")
     .trim();
 
 function sections(doc: Doc) {
@@ -57,7 +58,7 @@ function sections(doc: Doc) {
         fence = "";
     }
     const match =
-      fence || marker ? null : /^ {0,3}#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
+      fence || marker ? null : /^ {0,3}#{1,6}\s+(.*?)(?:\s+#+)?\s*$/.exec(line);
     if (match) {
       const heading = plain(match[1]);
       result.push({ heading, anchor: slugger.slug(heading), lines: [] });

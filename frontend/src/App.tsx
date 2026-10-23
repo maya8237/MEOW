@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   BookOpen,
+  BookText,
   Bot,
   FolderGit2,
   LoaderCircle,
@@ -29,6 +30,7 @@ import CreateDialog from "@/components/CreateDialog";
 import ItemDetail from "@/components/ItemDetail";
 import CopyButton from "@/components/CopyButton";
 import SessionsView from "@/components/SessionsView";
+import DocsView from "@/components/DocsView";
 import SessionLauncher from "@/components/SessionLauncher";
 import { Recipe } from "@/lib/sessions";
 
@@ -50,6 +52,7 @@ export default function App() {
   const [repo, setRepo] = useState("");
   const [kind, setKind] = useState<Kind>("workflows");
   const [showSessions, setShowSessions] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope | "">("");
   const [selected, setSelected] = useState("");
@@ -176,9 +179,10 @@ export default function App() {
                 key={entry.key}
                 type="button"
                 className="nav-item"
-                aria-pressed={!showSessions && kind === entry.key}
+                aria-pressed={!showSessions && !showDocs && kind === entry.key}
                 onClick={() => {
                   setShowSessions(false);
+                  setShowDocs(false);
                   setKind(entry.key);
                   setSelected("");
                   setSaved(null);
@@ -198,11 +202,25 @@ export default function App() {
             aria-pressed={showSessions}
             onClick={() => {
               setShowSessions(true);
+              setShowDocs(false);
               setSaved(null);
             }}
           >
             <Workflow />
             <span>Sessions</span>
+          </button>
+          <button
+            type="button"
+            className="nav-item"
+            aria-pressed={showDocs}
+            onClick={() => {
+              setShowDocs(true);
+              setShowSessions(false);
+              setSaved(null);
+            }}
+          >
+            <BookText />
+            <span>Docs</span>
           </button>
         </nav>
         <div className="navigation-bottom">
@@ -224,11 +242,19 @@ export default function App() {
       <main className="workspace">
         <header className="workspace-header">
           <div>
-            <h1>{showSessions ? "Sessions" : tab.label}</h1>
+            <h1>
+              {showDocs
+                ? "Documentation"
+                : showSessions
+                  ? "Sessions"
+                  : tab.label}
+            </h1>
             <p>
-              {showSessions
-                ? "Launch commands, follow output, and manage attempts."
-                : tab.description}
+              {showDocs
+                ? "Guides, commands, flags, and skills."
+                : showSessions
+                  ? "Launch commands, follow output, and manage attempts."
+                  : tab.description}
             </p>
           </div>
           <div className="header-actions">
@@ -241,16 +267,18 @@ export default function App() {
             >
               <RefreshCw className={busy ? "animate-spin" : ""} />
             </Button>
-            <Button
-              id="new-item"
-              onClick={() =>
-                showSessions ? setLauncher({}) : setCreating(true)
-              }
-              disabled={!data || !!data.error}
-            >
-              <Plus />
-              {showSessions ? "New session" : "New item"}
-            </Button>
+            {!showDocs && (
+              <Button
+                id="new-item"
+                onClick={() =>
+                  showSessions ? setLauncher({}) : setCreating(true)
+                }
+                disabled={!data || !!data.error}
+              >
+                <Plus />
+                {showSessions ? "New session" : "New item"}
+              </Button>
+            )}
           </div>
         </header>
         {error && (
@@ -318,7 +346,9 @@ export default function App() {
             </Button>
           </div>
         )}
-        {showSessions ? (
+        {showDocs ? (
+          <DocsView searchRef={search} />
+        ) : showSessions ? (
           data ? (
             <SessionsView
               repo={repo}
@@ -544,6 +574,7 @@ export default function App() {
             setFocusSessionId(id);
             setLauncher(null);
             setShowSessions(true);
+            setShowDocs(false);
             setRevision((value) => value + 1);
           }}
         />

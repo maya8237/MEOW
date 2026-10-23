@@ -453,3 +453,36 @@ test("a verified Claude agent Run preselects the agent option", async () => {
   expect(screen.getByLabelText("Execution mode")).toHaveValue("claude");
   expect(screen.getByText("Agent: explorer")).toBeInTheDocument();
 });
+
+test("Docs navigation shows documentation, hides New item, and Ctrl+K focuses its search", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) =>
+      String(input).startsWith("/api/docs")
+        ? new Response(
+            JSON.stringify({
+              guides: [{ path: "README.md", title: "MEOW", text: "# MEOW" }],
+              skills: [],
+            }),
+          )
+        : new Response(JSON.stringify(catalog)),
+    ),
+  );
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "quick" });
+  await user.click(screen.getByRole("button", { name: "Docs" }));
+  expect(
+    await screen.findByRole("heading", { name: "Documentation" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "New item" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Docs" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  const box = await screen.findByRole("searchbox", {
+    name: "Search documentation",
+  });
+  await user.keyboard("{Control>}k{/Control}");
+  expect(box).toHaveFocus();
+});
