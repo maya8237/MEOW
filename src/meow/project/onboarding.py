@@ -1,4 +1,4 @@
-"""Deterministic first-run onboarding for a project.
+"""Repeatable base onboarding and read-only feature discovery for a project.
 
 Sets up the shared MEOW boundary without any agent or prompt: the `.gitignore`
 rules that keep `.meow/config.toml` trackable while ignoring runtime state, and
@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meow.hooks.claude import inspect_claude_hooks
-from meow.project.config import config_paths
+from meow.project.config import _merge_config, config_paths
 from meow.project.migration import migrate_legacy_config
 from meow.project.repos import remember
 
@@ -37,7 +37,7 @@ SKIPPED_FEATURES = (
     "GitLab",
     "GitHub",
     "Tester mode",
-    "Claude hooks",
+    "Claude lint hook",
     "Worktree setup",
 )
 
@@ -153,6 +153,8 @@ def _has_eslint(root: Path) -> bool:
     try:
         package = json.loads((root / "package.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
+        return False
+    if not isinstance(package, dict):
         return False
     groups = (package.get("dependencies"), package.get("devDependencies"))
     return any(isinstance(group, dict) and "eslint" in group for group in groups)
@@ -274,7 +276,7 @@ def _apply(
 
 
 def onboard_project(root: Path, *, write_config: bool = True) -> OnboardingReport:
-    """Repair the boundary, then write a minimal config. Never overwrites."""
+    """Refresh the boundary and missing configs; preserve existing config files."""
     root = Path(root)
     lint = detect_lint(root)
     files: list[str] = []
@@ -309,6 +311,8 @@ def onboard_if_needed(active_dir: Path, config_dir: Path) -> dict | None:
 
 
 _GUIDE = "docs/INTEGRATIONS.md"
+# Add optional capabilities here when introducing them, so installer and skill
+# reruns discover the same current options without storing an onboarding version.
 _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
     "jira": (
         ("jira",),
@@ -326,7 +330,7 @@ _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
     "tester_tests": (
         ("tester", "tests"),
         "Add [[tester.tests]] commands, verify with `meow native verify`, "
-        "then run with `--test`.",
+        "and note that configured tests enable Tester mode on every run.",
     ),
     "tester_mcp": (
         ("tester", "mcp"),
@@ -336,7 +340,28 @@ _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
         ("tester", "browser"),
         f"Add [tester.browser] ({_GUIDE}) for browser-driven checks.",
     ),
+    "tester_dev_server": (
+        ("tester", "dev_server"),
+        f"Add [[tester.dev_server]] ({_GUIDE}), then verify accepted server commands.",
+    ),
     "build": (("build",), "Add [[build]] commands that must pass before delivery."),
+    "lint": (
+        ("lint",),
+        "Add [[lint]] using the project's established command and real fix flag.",
+    ),
+    "models": (("models",), f"Configure role-specific [models] ({_GUIDE})."),
+    "workflow": (
+        ("workflow",),
+        "Select [workflow].default or use `/meow:customize` (docs/WORKFLOWS.md).",
+    ),
+    "orchestrator": (
+        ("orchestrator",),
+        "Configure [orchestrator] for multi-sprint runs (docs/ORCHESTRATION.md).",
+    ),
+    "delivery": (
+        ("delivery",),
+        f"Set [delivery].target_branch for CI review when needed ({_GUIDE}).",
+    ),
     "worktree_setup": (
         ("worktree_setup",),
         "Add [worktree_setup] copy/commands, verified in a disposable worktree.",
@@ -362,14 +387,11 @@ def _nonempty(value: object) -> bool:
     return bool(value)
 
 
-def _present(tables: list[dict], path: tuple[str, ...]) -> bool:
-    for table in tables:
-        value: object = table
-        for key in path:
-            value = value.get(key) if isinstance(value, dict) else None
-        if _nonempty(value):
-            return True
-    return False
+def _present(table: dict, path: tuple[str, ...]) -> bool:
+    value: object = table
+    for key in path:
+        value = value.get(key) if isinstance(value, dict) else None
+    return _nonempty(value)
 
 
 def _config_tables(root: Path) -> list[dict]:
@@ -385,19 +407,24 @@ def _config_tables(root: Path) -> list[dict]:
 def feature_gaps(root: Path) -> dict[str, dict]:
     """Report which optional capabilities the project has configured.
 
-    Only key presence is read from config files; values (which may hold
-    credentials) are never copied into the result.
+    Merge explicit settings with normal config priority, including appended
+    skills. Presence is not verification; secret values never enter the result.
     """
     root = Path(root)
     tables = _config_tables(root)
+    config: dict = {}
+    for table in reversed(tables):
+        config = _merge_config(config, table)
     gaps = {
-        key: {"configured": _present(tables, path), "enable": enable}
+        key: {"configured": _present(config, path), "enable": enable}
         for key, (path, enable) in _GAPS.items()
     }
+    # Runtime accumulates custom sources from every layer before merging config.
+    gaps["custom"]["configured"] = any(_present(table, ("custom",)) for table in tables)
     hooks = inspect_claude_hooks(root)
     gaps["hooks"] = {
         "configured": any(v in {"active", "modified"} for v in hooks.values()),
-        "enable": "Review and install the Claude hooks (docs/INTEGRATIONS.md).",
+        "enable": "For Claude Code editing, install the lint hook (docs/CLI.md).",
     }
     gaps["architecture_doc"] = {
         "configured": (root / "docs" / "ARCHITECTURE.md").is_file(),

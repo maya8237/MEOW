@@ -5,20 +5,8 @@ from pathlib import Path
 
 MANIFEST = ".meow/claude-hooks.json"
 SETTINGS = ".claude/settings.local.json"
-SUPPORTED_EVENTS = {"PostToolUse", "Stop", "SessionEnd"}
-COMMANDS = {
-    "lint": "meow native hook lint_after_edit",
-    "shaping": "meow native hook shaping_ripple",
-    "plan_capture": "meow native hook capture_completed_plan",
-    "plan_stop": "meow native hook validate_plan_stop",
-}
-EVENTS = {
-    "lint": "PostToolUse",
-    "shaping": "PostToolUse",
-    "plan_capture": "PostToolUse",
-    "plan_stop": "Stop",
-}
-_MATCHED = {"lint", "shaping", "plan_capture"}
+COMMANDS = {"lint": "meow native hook lint_after_edit"}
+EVENTS = {"lint": "PostToolUse"}
 
 
 def _load(path: Path) -> dict:
@@ -32,7 +20,7 @@ def _load(path: Path) -> dict:
 
 def _entry(name: str) -> dict:
     return {
-        "matcher": "Write|Edit" if name in _MATCHED else "",
+        "matcher": "Write|Edit",
         "hooks": [{"type": "command", "command": COMMANDS[name]}],
     }
 
@@ -109,10 +97,20 @@ def install_claude_hooks(  # ruff: ignore[complex-structure, too-many-statements
     manifest_entries = _load(root / MANIFEST).get("entries", [])
     if not isinstance(manifest_entries, list):
         raise ValueError("Claude hook manifest entries must be an array")
+    # Reinstall removes retired hooks only where the manifest proves ownership.
+    for item in list(manifest_entries):
+        old_entry = item.get("entry") if isinstance(item, dict) else None
+        if (
+            isinstance(old_entry, dict)
+            and isinstance(item.get("event"), str)
+            and _entry_command(old_entry) not in COMMANDS.values()
+        ):
+            manifest_entries.remove(item)
+            stale = hooks.get(item["event"])
+            while isinstance(stale, list) and old_entry in stale:
+                stale.remove(old_entry)
     for name in names:
         event = EVENTS[name]
-        if event not in SUPPORTED_EVENTS:
-            raise ValueError(f"unsupported Claude Code event: {event}")
         entries = hooks.setdefault(event, [])
         if not isinstance(entries, list):
             raise ValueError(f"Claude settings hook event {event} must be an array")

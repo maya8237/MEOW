@@ -7,6 +7,12 @@ Claude Code skills from the MEOW plugin. Each has a CLI equivalent; flags are in
 Build a feature, resolve Jira issues, or coordinate an objective into one reviewed delivery.
 Example: `/meow:run Add CSV export`. [Reference](../skills/run/SKILL.md)
 
+Standard runs commit and push after checks pass; you open the PR/MR yourself.
+Full sprint orchestration also opens one PR (GitHub) or MR (GitLab) for the
+combined result by default. If creation fails, MEOW reports the reason and a
+manual link; `--no-pr` disables creation. Provider setup is in
+[ORCHESTRATION.md](ORCHESTRATION.md#delivery).
+
 Give MEOW the change, expected behavior, and checks. Examples:
 
 ```text
@@ -45,7 +51,8 @@ Example: `/meow:lint`. [Reference](../skills/lint/SKILL.md)
 
 ## /meow:onboard
 
-Add integrations and optional features to a project, or set up one never onboarded.
+Set up a project or rerun after upgrading MEOW to review available features.
+Preserve existing settings and configure only selected additions or changes.
 Example: `/meow:onboard`. [Reference](../skills/onboard/SKILL.md)
 
 ## /meow:customize

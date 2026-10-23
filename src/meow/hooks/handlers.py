@@ -7,8 +7,6 @@ from typing import Any
 
 from meow.infrastructure.lint import run_lint_on_file
 from meow.project.config import load_config
-from meow.project.plan_files import is_plan_file_name
-from meow.project.plan_state import PlanStore
 
 
 def _post_tool_context(text: str) -> dict:
@@ -48,40 +46,6 @@ def _edited_path(event: dict) -> str | None:
         or event.get("path")
     )
     return value if isinstance(value, str) and value else None
-
-
-def _plan_path(event: dict, root: Path) -> Path | None:
-    """The plan a hook event names: an explicit `plan_file`/`plan`, else the
-    plan file Claude Code just edited, which must sit directly in the plan
-    directory. Raises ValueError when the project config is invalid."""
-    value = event.get("plan_file") or event.get("plan")
-    edited = False
-    if not isinstance(value, str) or not value:
-        value, edited = _edited_path(event), True
-    if not value:
-        return None
-    path = Path(value)
-    path = path if path.is_absolute() else root / path
-    path = path.resolve()
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return None
-    if edited and not _is_plan_in_docs(path, root):
-        return None
-    return path
-
-
-def _docs_dir(root: Path) -> Path:
-    return (root / load_config(root)["docs_dir"]).resolve()
-
-
-def _is_plan_in_docs(path: Path, root: Path) -> bool:
-    return (
-        path.suffix == ".md"
-        and is_plan_file_name(path.name)
-        and path.parent == _docs_dir(root)
-    )
 
 
 def lint_after_edit(event: dict) -> dict:  # ruff: ignore[too-many-return-statements]
@@ -127,95 +91,6 @@ def _lint_result(path: str, failures: list[str]) -> dict:
     return result
 
 
-def shaping_ripple(event: dict) -> dict:
-    event, error = _event(event)
-    if error:
-        return error
-    path = _edited_path(event) or ""
-    if not any(
-        token in path.lower() for token in ("shape", "breadboard", "requirements")
-    ):
-        return {"ok": True, "quiet": True}
-    message = (
-        "Shaping artifact changed; review affected places, affordances, and wiring."
-    )
-    return {"ok": True, "advisory": True, "message": message} | _post_tool_context(
-        message
-    )
-
-
-def capture_completed_plan(event: dict) -> dict:  # ruff: ignore[too-many-return-statements, complex-structure]
-    event, error = _event(event)
-    if error:
-        return error
-    root = _root(event)
-    if root is None:
-        return {"ok": True, "quiet": True, "reason": "no project plan event"}
-    try:
-        path = _plan_path(event, root)
-    except ValueError as exc:
-        return {"ok": False, "kind": "diagnostic", "message": str(exc)}
-    if path is None:
-        return {"ok": True, "quiet": True, "reason": "no canonical plan event"}
-    if not path.is_file():
-        return {
-            "ok": False,
-            "kind": "diagnostic",
-            "message": f"plan does not exist: {path}",
-        }
-    try:
-        store = PlanStore(root)
-        current = store.read(path)
-        metadata = (
-            current
-            if current.lifecycle != "draft" or store.exists(path)
-            else store.transition(
-                path,
-                "draft",
-                event.get("run_id"),
-                note="Captured by Claude Code plan event",
-            )
-        )
-        return {"ok": True, "plan": str(path), "lifecycle": metadata.lifecycle}
-    except (OSError, ValueError) as exc:
-        return {"ok": False, "kind": "diagnostic", "message": str(exc)}
-
-
-def validate_plan_stop(event: dict) -> dict:  # ruff: ignore[too-many-return-statements, complex-structure]
-    event, error = _event(event)
-    if error:
-        return error
-    root = _root(event)
-    if root is None:
-        return {"ok": True, "quiet": True}
-    try:
-        path = _plan_path(event, root)
-        if path is None:
-            open_plans = PlanStore(root).open_plans(_docs_dir(root))
-            if len(open_plans) != 1:
-                return {"ok": True, "quiet": True}
-            path = open_plans[0]
-        metadata = PlanStore(root).read(path)
-    except (OSError, ValueError) as exc:
-        return {"ok": False, "kind": "diagnostic", "message": str(exc)}
-    if metadata.lifecycle != "complete":
-        message = (
-            f"Plan lifecycle is {metadata.lifecycle}; complete or "
-            "intentionally leave it in progress."
-        )
-        # `systemMessage` is the Stop-event field Claude Code shows the user.
-        return {
-            "ok": True,
-            "advisory": True,
-            "message": message,
-            "systemMessage": message,
-        }
-    return {"ok": True, "quiet": True, "lifecycle": metadata.lifecycle}
-
-
 HANDLERS: dict[str, Callable[[dict], dict]] = {
     "lint_after_edit": lint_after_edit,
-    "shaping_ripple": shaping_ripple,
-    "capture_completed_plan": capture_completed_plan,
-    "validate_plan_stop": validate_plan_stop,
 }

@@ -22,6 +22,11 @@ its skills in Claude Code. Open a new terminal or restart Claude Code.
 
 Open your project in Claude Code and run `/meow:onboard` to configure
 integrations and optional features. Basic setup also happens on first use.
+Installer project setup also refreshes remembered repositories, creates missing
+base files, and repairs outdated ignore rules while preserving existing configs.
+It lists configured and available features; use `/meow:onboard` in each project
+to configure selected additions. Rerunning either flow is safe; a current setup
+needs no file changes. Declining installer project setup leaves repos untouched.
 
 ## Update
 

@@ -1,6 +1,6 @@
 ---
 name: onboard
-description: Add integrations and optional features (add-ons) to an onboarded MEOW project, or set up a project that has never been onboarded, including configuration, skills, and verification.
+description: Use when setting up MEOW in a repository, refreshing an already onboarded repo after an upgrade, or adding or changing its settings, skills, integrations, and optional features.
 ---
 
 # Onboard a repository
@@ -13,16 +13,26 @@ Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 MEOW already performs the base setup itself on a project's first config-dependent
 command (the `.gitignore` boundary, a documented `.meow/config.toml`, and a
-comment-only `.meow/config.local.toml` when missing), so this skill is for
-add-ons. Run `meow native onboard-status --working-dir <project-root>`
+comment-only `.meow/config.local.toml` when missing). This skill can run repeatedly
+to refresh setup and configure add-ons, including after a MEOW upgrade.
+Run `meow native onboard-status --working-dir <project-root>`
 and read the JSON:
 
 - `onboarded: false`: the project has never been onboarded (or only partly).
   Follow the full flow below, including the base setup in steps 1-3.
-- `onboarded: true`: skip the base setup and never rewrite existing files.
-  Show every `gaps` entry with `configured: true` as already set, then offer each
-  `configured: false` entry as a yes/no add-on, using its `enable` text as the
-  next step. Configure accepted add-ons in step 3, then verify in step 4.
+- `onboarded: true`: inspect the existing setup, verify the ignore boundary,
+  and create missing base files such as the comment-only local template.
+  Preserve existing configuration; do not regenerate it or repeat installation.
+
+For either state, show `gaps` entries with `configured: true` as already set,
+not verified. Offer applicable `configured: false` entries as yes/no add-ons
+using their `enable` guidance, including features absent from the examples below.
+Use the current checklist on every rerun; do not infer missing features are new
+since a specific release or treat them as required. Configure accepted additions
+or requested changes in step 3, then verify in step 4. A fully current setup with
+no accepted changes needs no file edits; read-only verification still runs.
+Installer project setup uses the same checklist
+and refreshes remembered repos without replacing their configs.
 
 ## Operating mode and safety
 
@@ -68,16 +78,17 @@ An optional user-wide fallback lives at `~/.meow/config.toml` (`%USERPROFILE%\\.
 on Windows). Read it without overwriting it: local project config wins, then
 shared project config, then this user fallback.
 
-Write `docs/ARCHITECTURE.md` (module boundaries, dependencies) during setup
-for any project beyond a handful of files; skip it only for toy projects or
-when the user declines. Project documentation remains in `docs/`;
+Offer `docs/ARCHITECTURE.md` (module boundaries, dependencies) for any project
+beyond a handful of files. Create it only when accepted; on reruns preserve
+existing docs unless changes were requested. Project documentation remains in `docs/`;
 MEOW-generated project plans and runtime artifacts use `.meow/`.
 
 ## 2. Repair the ignore boundary independently
 
 Apply and verify [the shared ignore boundary](../_shared/project-setup.md)
 before writing MEOW state. Base setup creates a comment-only local config
-template when absent; never overwrite an existing shared or local config.
+template when absent. Preserve existing shared and local configs; accepted
+feature changes are targeted edits in step 3, never wholesale replacements.
 
 ## 3. Configure
 
@@ -88,6 +99,10 @@ or integration settings. If there is no established linter, report that and
 ask which dependency or command the user wants before adding one. Do not put
 API keys or personal tokens in the shared file.
 
+On reruns, edit only accepted settings in the appropriate layer, preserving
+unrelated values and comments. Reuse existing tables and entries; do not append
+duplicates. Already accepted changes do not need another confirmation.
+
 Use ignored local config for private MCP `env`, machine commands, API-key
 references, and personal installed skills. `agent_skills.default` and
 `agent_skills.<role>` append across layers; local entries do not remove
@@ -97,7 +112,7 @@ portable environment references. Do not assume another user has a local skill.
 
 Offer optional features as concise yes/no choices. Applicable choices include
 Jira, GitLab, GitHub, Automatic scheduled Jira runs, worktree setup, additional design
-docs, testing infrastructure, Tester mode, Claude hooks, and another feature
+docs, testing infrastructure, Tester mode, the Claude lint hook, and another feature
 the user explicitly named. Scheduled runs use Windows Task Scheduler on
 Windows, or systemd user timers on Linux, through `/meow:schedule` and
 `meow schedule add`. External cron/systemd jobs remain an option for recurring
@@ -148,9 +163,10 @@ When an optional feature is accepted, use the matching documented path:
   worktree before enabling it for runs.
 - Tester mode: inspect test/server/MCP readiness with `meow native verify`
   (it starts none of them), then verify accepted commands before enabling tests.
-- Hooks: show the selected Claude hook events, commands, and effects; install
-  only approved hooks, verify their status, and keep hook failures advisory
-  unless the user explicitly makes them a gate.
+- Lint hook: offer it for Claude Code editing when per-file lint is configured;
+  install it with `meow hooks install claude --only lint` after approval.
+  Show its event, command, and effects; verify its status and keep failures
+  advisory unless made a gate explicitly. CLI runs already use SDK lint hooks.
 
 If architecture or other project knowledge is requested, inspect the existing
 source and docs first, create only the accepted document, mark uncertainty, and
@@ -160,9 +176,10 @@ onboarding.
 ## 4. Verify
 
 Run `meow --help` and `meow native verify --work-dir <project-root>` after
-setup. Report each failed or unchecked component and continue independent
-work. A configured MCP is not proof of connectivity until a real tool call
-succeeds.
+setup, then rerun `meow native onboard-status --working-dir <project-root>` to
+confirm accepted settings appear. Report each failed or unchecked component and
+continue independent work. A configured MCP is not proof of connectivity until
+a real tool call succeeds.
 
 If verification reports a failure, capture the exact component and leave
 independent setup intact. In interactive mode ask whether to fix the failure

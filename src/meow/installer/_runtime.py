@@ -15,7 +15,7 @@ from meow.installer.bun import (
     start_bun_migration,
 )
 from meow.project.claude_settings import path_key, register_checkout_plugin
-from meow.project.onboarding import onboard_project
+from meow.project.onboarding import feature_gaps, onboard_project
 from meow.project.repos import _saved, remember
 
 NEWLINE = chr(10)
@@ -122,6 +122,23 @@ def _print_report(path: Path, report, output: Callable[[str], None]) -> None:
     output(f"{path}: onboarded ({changed}); lint: {lint}")
 
 
+def _print_features(project: Path, output: Callable[[str], None]) -> None:
+    gaps = feature_gaps(project)
+    configured = [
+        key.replace("_", " ") for key, gap in gaps.items() if gap["configured"]
+    ]
+    available = [
+        key.replace("_", " ") for key, gap in gaps.items() if not gap["configured"]
+    ]
+    if configured:
+        output(f"  Already configured: {', '.join(configured)} (not verified).")
+    if available:
+        output(f"  Available add-ons: {', '.join(available)}.")
+        output(
+            "  Run `claude /meow:onboard` in this project to configure chosen add-ons."
+        )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Register MEOW for Claude Code and onboard project directories."
@@ -162,7 +179,8 @@ def _wants_projects_now(
 ) -> bool:
     try:
         answer = ask(
-            "Set up MEOW in your projects now? You can also do it later with "
+            "Refresh registered MEOW projects and set up new ones now? "
+            "You can also do it later with "
             "`claude /meow:onboard`. [Y/n]: "
         )
     except EOFError:
@@ -201,14 +219,21 @@ def _onboard_one(project: Path, output: Callable[[str], None]) -> bool:
     """Onboard one project; True when it was set up (not skipped or failed)."""
     try:
         report = onboard_project(project)
+        _print_report(project, report, output)
+        if report.error:
+            return False
+        _print_features(project, output)
     except (OSError, ValueError, RuntimeError) as exc:
         output(f"{project}: onboarding failed ({exc})")
         return False
-    _print_report(project, report, output)
-    if report.error:
-        return False
     remember(project)
     return True
+
+
+def _project_destinations(ask, output, ask_path):
+    yield from (Path(saved).resolve() for saved in _saved())
+    for raw in _project_patterns(ask_path or ask, output):
+        yield from expand_project_pattern(raw, ask=ask, output=output)
 
 
 def _onboard_projects(
@@ -217,18 +242,18 @@ def _onboard_projects(
     ask_path: Callable[[str], str] | None = None,
     onboarded: list[Path] | None = None,
 ) -> None:
-    """Onboard the projects the user enters, recording each success in ``onboarded``."""
+    """Refresh registered repos and entered paths, recording each success once."""
     done = onboarded if onboarded is not None else []
     if not _wants_projects_now(ask, output):
         return
-    seen: set[Path] = set()
-    for raw in _project_patterns(ask_path or ask, output):
-        for project in expand_project_pattern(raw, ask=ask, output=output):
-            if project in seen:
-                continue
-            seen.add(project)
-            if _onboard_one(project, output):
-                done.append(project)
+    seen: set[str] = set()
+    for project in _project_destinations(ask, output, ask_path):
+        key = path_key(project)
+        if key in seen:
+            continue
+        seen.add(key)
+        if _onboard_one(project, output):
+            done.append(project)
 
 
 def _print_next_steps(output: Callable[[str], None]) -> None:

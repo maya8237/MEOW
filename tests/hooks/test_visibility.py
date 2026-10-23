@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from meow.cli.cli import _build_arg_parser, _dispatch
 from meow.hooks.claude import (
     COMMANDS,
@@ -12,21 +14,18 @@ from meow.hooks.claude import (
 
 
 def test_inspect_hooks_reports_absent_without_writes(tmp_path):
-    assert inspect_claude_hooks(tmp_path) == {name: "missing" for name in COMMANDS}
+    assert inspect_claude_hooks(tmp_path) == {"lint": "missing"}
     assert not (tmp_path / SETTINGS).exists()
 
 
-def test_inspect_hooks_detects_active_missing_and_modified(tmp_path):
-    install_claude_hooks(tmp_path, ["lint", "shaping"])
+def test_inspect_hooks_detects_active_and_modified(tmp_path):
+    install_claude_hooks(tmp_path, ["lint"])
     assert inspect_claude_hooks(tmp_path)["lint"] == "active"
     settings_path = tmp_path / SETTINGS
     settings = json.loads(settings_path.read_text())
     settings["hooks"]["PostToolUse"][0]["matcher"] = "Write"
     settings_path.write_text(json.dumps(settings))
-    statuses = inspect_claude_hooks(tmp_path)
-    assert statuses["lint"] == "modified"
-    assert statuses["shaping"] == "active"
-    assert statuses["plan_capture"] == "missing"
+    assert inspect_claude_hooks(tmp_path)["lint"] == "modified"
 
 
 def test_inspect_hooks_reports_malformed_manifest_without_writes(tmp_path):
@@ -60,29 +59,21 @@ def test_repeated_install_preserves_unrelated_user_hook(tmp_path):
     assert inspect_claude_hooks(tmp_path)["lint"] == "active"
 
 
-def test_removed_hook_is_missing_when_another_hook_shares_event(tmp_path):
-    install_claude_hooks(tmp_path, ["lint", "shaping"])
+def test_removed_hook_is_missing_when_user_hook_shares_event(tmp_path):
+    install_claude_hooks(tmp_path, ["lint"])
     settings_path = tmp_path / SETTINGS
     settings = json.loads(settings_path.read_text())
-    settings["hooks"]["PostToolUse"].pop(0)
+    settings["hooks"]["PostToolUse"] = [
+        {"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "mine"}]}
+    ]
     settings_path.write_text(json.dumps(settings))
-    statuses = inspect_claude_hooks(tmp_path)
-    assert statuses["lint"] == "missing"
-    assert statuses["shaping"] == "active"
+    assert inspect_claude_hooks(tmp_path)["lint"] == "missing"
 
 
-def test_separate_install_calls_keep_manifest_ownership(tmp_path):
-    install_claude_hooks(tmp_path, ["lint"])
-    install_claude_hooks(tmp_path, ["shaping"])
-    statuses = inspect_claude_hooks(tmp_path)
-    assert statuses["lint"] == "active"
-    assert statuses["shaping"] == "active"
-
-
-def _old_stop_install(root):
+def _wrong_event_install(root):
     old = {
         "matcher": "",
-        "hooks": [{"type": "command", "command": COMMANDS["plan_capture"]}],
+        "hooks": [{"type": "command", "command": COMMANDS["lint"]}],
     }
     (root / ".claude").mkdir(parents=True, exist_ok=True)
     (root / ".meow").mkdir(parents=True, exist_ok=True)
@@ -92,98 +83,39 @@ def _old_stop_install(root):
     )
 
 
-def test_plan_capture_installs_on_post_tool_use_and_plan_stop_on_stop(tmp_path):
-    install_claude_hooks(tmp_path, ["plan_capture", "plan_stop"])
-    hooks = json.loads((tmp_path / SETTINGS).read_text())["hooks"]
-    assert [e["matcher"] for e in hooks["PostToolUse"]] == ["Write|Edit"]
-    assert hooks["PostToolUse"][0]["hooks"][0]["command"] == COMMANDS["plan_capture"]
-    assert len(hooks["Stop"]) == 1
-    assert hooks["Stop"][0]["hooks"][0]["command"] == COMMANDS["plan_stop"]
-
-
-def test_install_migrates_old_stop_based_plan_capture(tmp_path):
-    _old_stop_install(tmp_path)
-    install_claude_hooks(tmp_path, ["plan_capture"])
+def test_reinstall_repairs_event_binding(tmp_path):
+    _wrong_event_install(tmp_path)
+    install_claude_hooks(tmp_path, ["lint"])
     hooks = json.loads((tmp_path / SETTINGS).read_text())["hooks"]
     assert hooks["Stop"] == []
     assert len(hooks["PostToolUse"]) == 1
     manifest = json.loads((tmp_path / MANIFEST).read_text())
     assert [i["event"] for i in manifest["entries"]] == ["PostToolUse"]
-    before = ((tmp_path / SETTINGS).read_text(), (tmp_path / MANIFEST).read_text())
-    install_claude_hooks(tmp_path, ["plan_capture"])
-    after = ((tmp_path / SETTINGS).read_text(), (tmp_path / MANIFEST).read_text())
-    assert before == after
 
 
-def test_install_skips_manifest_item_without_event(tmp_path):
-    _old_stop_install(tmp_path)
+@pytest.mark.parametrize("event", [None, ["Stop"]])
+def test_install_skips_manifest_item_without_string_event(tmp_path, event):
+    _wrong_event_install(tmp_path)
     manifest_path = tmp_path / MANIFEST
     manifest = json.loads(manifest_path.read_text())
-    del manifest["entries"][0]["event"]
+    manifest["entries"][0]["event"] = event
     manifest_path.write_text(json.dumps(manifest))
 
-    result = install_claude_hooks(tmp_path, list(COMMANDS))
+    result = install_claude_hooks(tmp_path, ["lint"])
 
-    assert result["installed"] == list(COMMANDS)
+    assert result["installed"] == ["lint"]
     entries = json.loads((tmp_path / SETTINGS).read_text())["hooks"]["PostToolUse"]
-    assert (
-        sum(
-            entry["hooks"][0]["command"] == COMMANDS["plan_capture"]
-            for entry in entries
-        )
-        == 1
-    )
-
-
-def test_install_skips_manifest_item_with_non_string_event(tmp_path):
-    _old_stop_install(tmp_path)
-    manifest_path = tmp_path / MANIFEST
-    manifest = json.loads(manifest_path.read_text())
-    manifest["entries"][0]["event"] = ["Stop"]
-    manifest_path.write_text(json.dumps(manifest))
-
-    result = install_claude_hooks(tmp_path, list(COMMANDS))
-
-    assert result["installed"] == list(COMMANDS)
-    entries = json.loads((tmp_path / SETTINGS).read_text())["hooks"]["PostToolUse"]
-    assert (
-        sum(
-            entry["hooks"][0]["command"] == COMMANDS["plan_capture"]
-            for entry in entries
-        )
-        == 1
-    )
-
-
-def test_migration_preserves_foreign_and_lookalike_stop_entries(tmp_path):
-    _old_stop_install(tmp_path)
-    settings_path = tmp_path / SETTINGS
-    settings = json.loads(settings_path.read_text())
-    foreign = {"matcher": "", "hooks": [{"type": "command", "command": "mine"}]}
-    lookalike = {
-        "matcher": "",
-        "hooks": [
-            {"type": "command", "command": COMMANDS["plan_capture"]},
-            {"type": "command", "command": "mine-too"},
-        ],
-    }
-    settings["hooks"]["Stop"].extend([foreign, lookalike])
-    settings_path.write_text(json.dumps(settings))
-
-    install_claude_hooks(tmp_path, ["plan_capture"])
-
-    hooks = json.loads(settings_path.read_text())["hooks"]
-    assert hooks["Stop"] == [foreign, lookalike]
+    assert len(entries) == 1
+    assert entries[0]["hooks"][0]["command"] == COMMANDS["lint"]
 
 
 def test_inspect_reports_wrong_event_as_modified(tmp_path):
-    _old_stop_install(tmp_path)
-    assert inspect_claude_hooks(tmp_path)["plan_capture"] == "modified"
+    _wrong_event_install(tmp_path)
+    assert inspect_claude_hooks(tmp_path)["lint"] == "modified"
 
 
-def test_uninstall_removes_old_and_new_entries(tmp_path):
-    _old_stop_install(tmp_path)
-    install_claude_hooks(tmp_path, ["plan_capture", "plan_stop"])
+def test_uninstall_removes_owned_entries(tmp_path):
+    _wrong_event_install(tmp_path)
     uninstall_claude_hooks(tmp_path)
     hooks = json.loads((tmp_path / SETTINGS).read_text())["hooks"]
     assert all(not v for v in hooks.values())

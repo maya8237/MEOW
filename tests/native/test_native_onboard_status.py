@@ -37,6 +37,24 @@ def test_onboard_status_reports_onboarded(repo):
     assert data["boundary_ok"] is True
 
 
+def test_onboard_status_exposes_available_features_without_writing(repo):
+    onboard_project(repo)
+    shared = repo / ".meow" / "config.toml"
+    before = shared.read_bytes()
+    local = repo / ".meow" / "config.local.toml"
+    local.unlink()
+
+    code, out, err = run_native("onboard-status", "--working-dir", str(repo))
+
+    assert code == 0, err
+    data = json.loads(out)
+    assert data["onboarded"] is True
+    assert data["gaps"]["tester_dev_server"]["configured"] is False
+    assert data["gaps"]["workflow"]["configured"] is False
+    assert shared.read_bytes() == before
+    assert not local.exists()
+
+
 def _committed_repo(root):
     for args in (
         ("config", "user.email", "t@example.com"),

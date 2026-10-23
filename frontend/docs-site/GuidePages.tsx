@@ -85,7 +85,9 @@ function Start() {
             <p>Open your project in Claude Code and run:</p>
             <Command text="/meow:onboard" />
             <p className="guide-note">
-              It walks you through setup, integrations, and optional features.
+              Run once per project to configure settings, skills, integrations,
+              and optional features. Later tasks reuse this setup; run
+              onboarding again to add or change something.
             </p>
           </li>
           <li>
@@ -94,7 +96,8 @@ function Start() {
             <Command text="/meow:run Add CSV export" />
             <p className="guide-note">
               Feature runs use a separate worktree, then commit and push after
-              checks pass.
+              checks pass. Full sprint orchestration also opens a PR/MR by
+              default.
             </p>
           </li>
         </ol>

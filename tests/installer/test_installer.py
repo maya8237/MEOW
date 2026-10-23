@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 
 import pytest
 
@@ -12,6 +13,103 @@ from meow.project.onboarding import OnboardingReport
 @pytest.fixture(autouse=True)
 def _private_repo_registry(tmp_path, monkeypatch):
     monkeypatch.setattr(repos_module, "registry_path", lambda: tmp_path / "repos.toml")
+    monkeypatch.setattr(
+        "meow.project.config.user_config_path", lambda: tmp_path / "user.toml"
+    )
+
+
+def _registered_project(tmp_path, name):
+    project = tmp_path / name
+    project.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+    assert _runtime.onboard_project(project).error is None
+    repos_module.remember(project)
+    return project
+
+
+def test_setup_refreshes_registered_repo_and_reports_available_features(tmp_path):
+    project = _registered_project(tmp_path, "existing")
+    local = project / ".meow" / "config.local.toml"
+    local.unlink()
+    shared = project / ".meow" / "config.toml"
+    shared.write_text("# customized\nmax_rounds = 3\n", encoding="utf-8")
+    original = shared.read_bytes()
+    output, done = [], []
+    answers = iter(("y", str(project), str(project / "."), ""))
+
+    _runtime._onboard_projects(lambda _: next(answers), output.append, onboarded=done)
+
+    assert local.is_file()
+    assert shared.read_bytes() == original
+    assert done == [project]
+    assert sum(f"{project}: onboarded" in line for line in output) == 1
+    assert any("tester dev server" in line for line in output)
+    assert any("claude /meow:onboard" in line for line in output)
+
+
+def test_refresh_is_noop_and_preserves_private_config(tmp_path):
+    project = _registered_project(tmp_path, "existing")
+    local = project / ".meow" / "config.local.toml"
+    local.write_text(
+        '[github.mcp]\ncommand = "npx"\n[github.mcp.env]\nTOKEN = "private-token"\n',
+        encoding="utf-8",
+    )
+    paths = [project / ".gitignore", project / ".meow" / "config.toml", local]
+    original = [path.read_bytes() for path in paths]
+    for _ in range(2):
+        answers = iter(("y", ""))
+        output, done = [], []
+        _runtime._onboard_projects(
+            lambda _, answers=answers: next(answers), output.append, onboarded=done
+        )
+        assert done == [project]
+        assert any("no files changed" in line for line in output)
+        assert any("Already configured: github" in line for line in output)
+        assert "private-token" not in "\n".join(output)
+        assert [path.read_bytes() for path in paths] == original
+
+
+def test_refresh_continues_after_invalid_registered_repo(tmp_path):
+    broken = tmp_path / "not-git"
+    broken.mkdir()
+    repos_module.remember(broken)
+    project = _registered_project(tmp_path, "healthy")
+    missing = project / ".meow" / "config.local.toml"
+    missing.unlink()
+    answers = iter(("y", ""))
+    output, done = [], []
+
+    _runtime._onboard_projects(lambda _: next(answers), output.append, onboarded=done)
+
+    assert missing.is_file()
+    assert done == [project]
+    assert any(str(broken) in line and "skipped" in line for line in output)
+
+
+def test_declining_setup_does_not_refresh_registered_projects(tmp_path):
+    project = _registered_project(tmp_path, "existing")
+    local = project / ".meow" / "config.local.toml"
+    local.unlink()
+
+    _runtime._onboard_projects(lambda _: "n", lambda _: None)
+
+    assert not local.exists()
+
+
+@pytest.mark.parametrize("manifest", ["[]", "null", "42"])
+def test_refresh_continues_with_non_object_package_manifest(tmp_path, manifest):
+    malformed = _registered_project(tmp_path, "malformed")
+    (malformed / "package.json").write_text(manifest, encoding="utf-8")
+    healthy = _registered_project(tmp_path, "healthy")
+    missing = healthy / ".meow" / "config.local.toml"
+    missing.unlink()
+    answers = iter(("y", ""))
+    done = []
+
+    _runtime._onboard_projects(lambda _: next(answers), lambda _: None, onboarded=done)
+
+    assert done == [malformed, healthy]
+    assert missing.is_file()
 
 
 def test_append_plugin_dir_preserves_existing_env_entries_and_settings(tmp_path):

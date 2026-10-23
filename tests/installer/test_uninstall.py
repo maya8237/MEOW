@@ -78,11 +78,11 @@ def test_un_onboard_removes_project_setup_and_preserves_other_hooks(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
     (project / ".gitignore").write_text("dist/\n" + "\n".join(BOUNDARY) + "\n")
-    install_claude_hooks(project, ["lint", "plan_stop"])
+    install_claude_hooks(project, ["lint"])
     settings = project / ".claude/settings.local.json"
     data = json.loads(settings.read_text())
     other = {"hooks": [{"type": "command", "command": "echo keep"}]}
-    data["hooks"]["Stop"].append(other)
+    data["hooks"]["Stop"] = [other]
     data["enabledPlugins"] = {"meow-local@meow-local": True, "other@other": True}
     settings.write_text(json.dumps(data))
     (project / ".meow/config.toml").write_text("max_rounds = 8")

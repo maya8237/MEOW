@@ -36,7 +36,7 @@ these directories consistent across calls.
 | `onboard-status` | Base setup state and optional add-on gaps |
 | `knowledge-audit` / `knowledge-check` / `knowledge-create` | Audit, validate, or create selected project knowledge |
 | `shape-assess` / `shape-create` / `shape-reflect` | Requirements shaping artifacts |
-| `hook NAME` | Claude hook handlers: `lint_after_edit`, `shaping_ripple`, `capture_completed_plan` (PostToolUse `Write|Edit`), `validate_plan_stop` (Stop) |
+| `hook lint_after_edit` | Claude Code per-file lint after PostToolUse `Write|Edit` |
 | `run COMMAND` | Supervisor helpers; see below |
 
 `prepare` applies setup before returning. Failed setup retains the worktree for

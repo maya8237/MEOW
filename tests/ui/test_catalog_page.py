@@ -72,7 +72,9 @@ def test_catalog_reports_configuration_errors(tmp_path):
 @pytest.fixture
 def running(project):
     server = _Server(0, Path(project))
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    )
     thread.start()
     try:
         yield server
@@ -333,7 +335,9 @@ def test_create_skill_without_any_config_needs_no_custom_table(tmp_path):
 
 def _create(project_dir, kind, payload):
     server = _Server(0, project_dir)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    )
     thread.start()
     try:
         return _post(server.server_port, f"/api/{kind}", payload)

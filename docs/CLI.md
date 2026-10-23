@@ -142,12 +142,11 @@ strings (last value wins). Default selection, scopes, schemas, catalog commands,
 and resume rules are in [WORKFLOWS.md](WORKFLOWS.md).
 
 `meow hooks status claude` reads `active`/`missing`/`modified` state.
-`install claude --only NAME` installs accepted hooks; repeat `--only`.
-`uninstall claude` removes only owned entries. Hooks are optional.
-Names: `lint`, `shaping`, `plan_capture`, `plan_stop`.
-Lint/shaping PostToolUse findings use `additionalContext`; plan Stop advisories
-use `systemMessage`. Capture runs after plan Write/Edit only without a sidecar;
-Stop checks exactly one open plan. Reinstall migrates old event bindings.
+`meow hooks install claude` installs the optional lint hook (`--only lint` also
+works). It runs configured per-file lint after `Write|Edit` and returns unfixed
+issues through `additionalContext`. MEOW SDK sessions have their own lint hook.
+Reinstall removes obsolete manifest-owned hooks; `uninstall claude` removes
+all owned entries, including hooks installed by older versions.
 
 Quality concerns cite paths, evidence, impact, and follow-up; they are advisory,
 deduplicated per run, and visible in verbose status. There is no numerical score.

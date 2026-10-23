@@ -202,7 +202,7 @@ def test_report_lists_skipped_optional_features(repo):
         "GitLab",
         "GitHub",
         "Tester mode",
-        "Claude hooks",
+        "Claude lint hook",
         "Worktree setup",
     } <= skipped
 
@@ -224,7 +224,13 @@ def test_feature_gaps_reports_configured_and_missing(repo):
         "tester_tests",
         "tester_mcp",
         "tester_browser",
+        "tester_dev_server",
         "build",
+        "lint",
+        "models",
+        "workflow",
+        "orchestrator",
+        "delivery",
         "worktree_setup",
         "permissions",
         "agent_skills",
@@ -251,6 +257,57 @@ def test_feature_gaps_counts_local_config(repo):
         '[agent_skills]\ndefault = ["x"]\n', encoding="utf-8"
     )
     assert feature_gaps(repo)["agent_skills"]["configured"] is True
+
+
+def test_feature_gaps_discovers_additions_without_changing_existing_setup(repo):
+    onboard_project(repo)
+    shared = repo / ".meow" / "config.toml"
+    original = shared.read_bytes()
+    gaps = feature_gaps(repo)
+    assert gaps["tester_dev_server"]["configured"] is False
+    assert gaps["workflow"]["configured"] is False
+    assert gaps["orchestrator"]["configured"] is False
+    assert shared.read_bytes() == original
+    local = repo / ".meow" / "config.local.toml"
+    local.write_text(
+        '[[tester.dev_server]]\ncommand = "npm run dev"\n'
+        '[workflow]\ndefault = "my-workflow"\n'
+        "[orchestrator]\nmax_parallel = 2\n",
+        encoding="utf-8",
+    )
+    updated = feature_gaps(repo)
+    assert updated["tester_dev_server"]["configured"] is True
+    assert updated["workflow"]["configured"] is True
+    assert updated["orchestrator"]["configured"] is True
+    assert shared.read_bytes() == original
+
+
+def test_feature_gaps_respects_local_empty_override_and_appended_skills(
+    repo, tmp_path, monkeypatch
+):
+    fallback = tmp_path / "user.toml"
+    fallback.write_text(
+        '[[build]]\ncommand = "user-build"\n[agent_skills]\ndefault = ["user-skill"]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("meow.project.config.user_config_path", lambda: fallback)
+    _write_config(repo, '[[build]]\ncommand = "project-build"\n')
+    local = repo / ".meow" / "config.local.toml"
+    local.write_text("build = []\n[agent_skills]\ndefault = []\n", encoding="utf-8")
+
+    gaps = feature_gaps(repo)
+
+    assert gaps["build"]["configured"] is False
+    assert gaps["agent_skills"]["configured"] is True
+
+
+def test_feature_gaps_keeps_custom_sources_from_lower_layers(repo):
+    _write_config(repo, '[custom]\nskills = ["team-skills"]\n')
+    (repo / ".meow" / "config.local.toml").write_text(
+        "[custom]\nskills = []\n", encoding="utf-8"
+    )
+
+    assert feature_gaps(repo)["custom"]["configured"] is True
 
 
 def test_feature_gaps_architecture_doc(repo):

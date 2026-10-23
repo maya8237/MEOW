@@ -347,7 +347,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     install.add_argument(
         "--only",
         action="append",
-        choices=("lint", "shaping", "plan_capture", "plan_stop"),
+        choices=("lint",),
     )
     install.add_argument("--dry-run", action="store_true")
     _add_common_args(install)

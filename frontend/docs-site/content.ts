@@ -8,7 +8,7 @@ export const skillGroups = [
       [
         "onboard",
         "Set up your project",
-        "Choose integrations and optional features.",
+        "Run once per project to configure its settings, skills, integrations, and optional features. Later tasks reuse that setup. Run onboarding again when you want to add or change something.",
         "",
       ],
       [
@@ -25,7 +25,7 @@ export const skillGroups = [
       [
         "run",
         "Build something",
-        "Plan, build, check, and review a change.",
+        "Plan, build, check, and review a change. Standard runs commit and push; you open the PR/MR yourself. Full sprint orchestration also opens one PR (GitHub) or MR (GitLab) automatically after the combined work passes review, unless disabled.",
         "Add CSV export",
       ],
       [

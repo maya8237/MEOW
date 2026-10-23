@@ -120,7 +120,7 @@ def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
         if args.host != "claude":
             raise ValueError("unsupported host")
         if args.hooks_command == "install":
-            selected = args.only or ["lint", "shaping", "plan_capture", "plan_stop"]
+            selected = args.only or ["lint"]
             print(
                 json.dumps(
                     install_claude_hooks(working_dir, selected, dry_run=args.dry_run)
