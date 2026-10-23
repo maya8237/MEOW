@@ -10,6 +10,7 @@ from meow.agents.planner import PlannerAgent, require_plan_file
 from meow.agents.reviewer import ReviewerAgent
 from meow.agents.tester import VerificationAgent
 from meow.execution.delivery import deliver_verified_run
+from meow.execution.final_delivery import run_final_delivery
 from meow.execution.orchestrator import (
     PlanNotApprovedError,
     _adopt_artifacts,
@@ -273,7 +274,7 @@ async def checks(state):
         )
 
 
-async def deliver(state):  # ruff: ignore[unused-async]
+async def deliver(state):
     state.block_delivery()
     if state.checks_results is None:
         return
@@ -282,12 +283,14 @@ async def deliver(state):  # ruff: ignore[unused-async]
     if state.store.load(state.run_id).phase != "checks_finished":
         state.journal("checks_finished")
     delivery = state.store.load(state.run_id).delivery
-    deliver_verified_run(
+    delivered = deliver_verified_run(
         state.store,
         state.run_id,
         commit=delivery.get("enabled"),
         push=delivery.get("push", True),
     )
+    if delivered:
+        await run_final_delivery(state)
 
 
 async def run_builtin(state, step):
