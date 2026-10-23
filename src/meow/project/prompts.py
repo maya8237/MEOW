@@ -184,9 +184,14 @@ def no_prompt_review_instructions(
     return _reviewer_fragment("no_prompt", agent, has_diff=has_diff, docs_dir=docs_dir)
 
 
-def tester_prompt(report_file: Path, *, agent: CustomAgent | None = None) -> str:
+def tester_prompt(
+    report_file: Path, *, write_tests: bool = False, agent: CustomAgent | None = None
+) -> str:
     """Instructions for the exploratory tester role and its private report."""
-    return render_agent(_agent(agent, "tester"), {"report_file": report_file})
+    return render_agent(
+        _agent(agent, "tester"),
+        {"report_file": report_file, "write_tests": write_tests},
+    )
 
 
 def explorer_prompt(active_dir: Path, *, agent: CustomAgent | None = None) -> str:

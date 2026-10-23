@@ -31,6 +31,7 @@ TESTER_KEYS = frozenset({
     "base_url",
     "architecture_files",
     "browser",
+    "write_tests",
 })
 
 
@@ -248,6 +249,9 @@ def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[too-man
         raise ValueError(
             f"{CONFIG_FILENAME}: [tester] 'base_url' must be a non-empty string"
         )
+    write_tests = raw.get("write_tests", False)
+    if not isinstance(write_tests, bool):
+        raise ValueError(f"{CONFIG_FILENAME}: [tester] 'write_tests' must be a boolean")
     browser = raw.get("browser")
     if browser is not None:
         if not isinstance(browser, dict):
@@ -316,6 +320,7 @@ def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[too-man
         "base_url": base_url,
         "architecture_files": architecture,
         "browser": browser,
+        "write_tests": write_tests,
     }
 
 

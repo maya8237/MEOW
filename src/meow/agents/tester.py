@@ -69,7 +69,13 @@ class VerificationAgent(Agent):
         allowed_tools.extend(f"mcp__{name}__*" for name in servers)
         return self.definition_options(
             agent,
-            system_prompt=tester_prompt(report_file, agent=agent),
+            system_prompt=tester_prompt(
+                report_file,
+                write_tests=self.context.config.get("tester", {}).get(
+                    "write_tests", False
+                ),
+                agent=agent,
+            ),
             allowed_tools=allowed_tools,
             **extra,
         )

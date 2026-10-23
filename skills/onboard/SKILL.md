@@ -126,6 +126,8 @@ Windows, or systemd user timers on Linux, through `/meow:schedule` and
 runs. Tester mode is optional and should only be
 enabled after its commands are verified. Warn that configured
 `[[tester.tests]]` commands enable the tester on every run, without `--test`.
+Offer `[tester] write_tests` (default false) only if the user wants the tester
+to add new tests to the repository.
 
 For every accepted feature that needs an MCP (Jira, GitLab, GitHub, Tester
 mode), check first whether the session has its tools and whether the CLI
