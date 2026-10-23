@@ -471,6 +471,51 @@ def _normalize_orchestrator_config(user_config: dict) -> dict:
     }
 
 
+PIPELINE_DEFAULTS = {
+    "open_mr": True,
+    "max_fix_rounds": 3,
+    "start_timeout": 300,
+    "timeout": 3600,
+    "poll_seconds": 15,
+    "fix_non_meow_jobs": False,
+}
+
+
+def _pipeline_value(table: dict, key: str):
+    default = PIPELINE_DEFAULTS[key]
+    value = table.get(key, default)
+    if isinstance(default, bool):
+        valid, need = isinstance(value, bool), "true or false"
+    elif key == "max_fix_rounds":
+        valid = isinstance(value, int) and not isinstance(value, bool) and value >= 0
+        need = "an integer >= 0"
+    else:
+        valid = (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value > 0
+        )
+        need = "a number > 0"
+    if not valid:
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [pipeline].{key} must be {need}, got {value!r}."
+        )
+    return value
+
+
+def _normalize_pipeline_config(user_config: dict) -> dict:
+    """Validate `[pipeline]` and fill in the pinned defaults."""
+    table = user_config.get("pipeline", {})
+    if not isinstance(table, dict):
+        raise ValueError(f"{CONFIG_FILENAME}: [pipeline] must be a table")
+    unknown = sorted(set(table) - set(PIPELINE_DEFAULTS))
+    if unknown:
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [pipeline] has unknown keys: {', '.join(unknown)}"
+        )
+    return {key: _pipeline_value(table, key) for key in PIPELINE_DEFAULTS}
+
+
 def _validate_max_rounds(config: dict) -> None:
     """Reject a non-positive or non-integer `max_rounds` up front.
 
