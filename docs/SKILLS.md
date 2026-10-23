@@ -5,7 +5,7 @@ Claude Code skills from the MEOW plugin. Each has a CLI equivalent; flags are in
 ## /meow:run
 
 Build a feature, resolve Jira issues, or coordinate an objective into one reviewed delivery.
-Example: `/meow:run Add CSV export`. [Reference](../skills/run/SKILL.md)
+Example: `/meow:run Fix the login redirect loop`. [Reference](../skills/run/SKILL.md)
 
 Worktree runs open a PR (GitHub) or MR (GitLab) after pushing, then verify its CI
 pipeline and fix failing MEOW review jobs within the configured round limit.
@@ -19,9 +19,16 @@ Only `Verified by pipeline` confirms CI verification. See
 Give MEOW the change, expected behavior, and checks. Examples:
 
 ```text
-/meow:run Add CSV export to the Orders page. Export only the currently filtered
-rows, include column headers, and escape commas and quotes. Show an empty state
-when there are no results. Add tests for filters, empty results, and quoted values.
+/meow:run Add a dark mode toggle to the settings page
+```
+
+A detailed prompt gives the change, expected behavior, and checks:
+
+```text
+/meow:run Add a password reset flow. Users request a reset link by email, the
+link expires after 30 minutes and works once, and the new password must meet the
+existing password rules. Show the same confirmation message whether or not the
+email exists. Add tests for expired, reused, and invalid links.
 --from release --target dev
 ```
 
@@ -43,7 +50,7 @@ deliver one reviewed branch and PR.
 ## /meow:plan
 
 Write a sprint plan and testable Sprint Contract before implementation.
-Example: `/meow:plan Add CSV export`. [Reference](../skills/plan/SKILL.md)
+Example: `/meow:plan Add rate limiting to the public API`. [Reference](../skills/plan/SKILL.md)
 
 ## /meow:review
 
@@ -84,4 +91,4 @@ Example: `/meow:integrate-ci-review`. [Reference](../skills/integrate-ci-review/
 ## /meow:schedule
 
 Schedule a request, workflow, or issue for later, or list, reschedule, and cancel triggers.
-Example: `/meow:schedule run "Add CSV export" at 09:00`. [Reference](../skills/schedule/SKILL.md)
+Example: `/meow:schedule run "Update the API docs" at 09:00`. [Reference](../skills/schedule/SKILL.md)

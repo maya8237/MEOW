@@ -5,7 +5,7 @@ export const runSkill = [
   "run",
   "Build something",
   "Plan, build, review, and deliver a change. Worktree runs push, open a PR (GitHub) or MR (GitLab), then verify its CI pipeline.",
-  "Add CSV export",
+  "Fix the login redirect loop",
 ] as const;
 
 export const skillGroups = [
@@ -33,7 +33,7 @@ export const skillGroups = [
         "plan",
         "Think it through first",
         "Create a plan before implementation.",
-        "Add CSV export",
+        "Add rate limiting to the public API",
       ],
       [
         "review",
@@ -62,7 +62,7 @@ export const skillGroups = [
         "schedule",
         "Run work later",
         "Schedule a task for a time you choose.",
-        'run "Add CSV export" at 09:00',
+        'run "Update the API docs" at 09:00',
       ],
     ],
   },
@@ -70,9 +70,13 @@ export const skillGroups = [
 
 export const runExamples = [
   {
-    title: "Build a feature and open a PR/MR",
+    title: "A simple request",
+    prompt: "/meow:run Add a dark mode toggle to the settings page",
+  },
+  {
+    title: "A detailed request that opens a PR/MR",
     prompt:
-      "/meow:run Add CSV export to the Orders page. Export only the currently filtered rows, include column headers, and escape commas and quotes. Show an empty state when there are no results. Add tests for filters, empty results, and quoted values. --from release --target dev",
+      "/meow:run Add a password reset flow. Users request a reset link by email, the link expires after 30 minutes and works once, and the new password must meet the existing password rules. Show the same confirmation message whether or not the email exists. Add tests for expired, reused, and invalid links. --from release --target dev",
   },
   {
     title: "Fix a bug",

@@ -15,7 +15,7 @@ Use **CLI mode** (bottom) only if the user explicitly asks for it. Dependency or
 1. The feature request is whatever text the user gave. If none, ask for a
    one-line description. The project uses `.meow/config.toml` at its root;
    onboarding can create it for a new project.
-2. Slugify a feature name (e.g. `add-csv-export`) and run
+2. Slugify a feature name (e.g. `add-dark-mode`) and run
    `meow native prepare --name "<name>" --fresh --allow-dirty --work-dir "<project-path>"`
    (`meow plan` never required a clean tree). `--fresh` never reuses an
    existing worktree: a taken name becomes `<name>-2`, ... -- use the JSON

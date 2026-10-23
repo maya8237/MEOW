@@ -94,8 +94,15 @@
   image-rendering: pixelated;
   margin-right: 2rem;
 }
+.guide-primary,
+.guide-inline-link {
+  box-sizing: border-box;
+  min-width: 11.5rem;
+  text-align: center;
+}
 .guide-primary {
   display: inline-block;
+  border: 1px solid var(--primary);
   background: var(--primary);
   color: var(--primary-foreground);
   padding: 0.75rem 1.25rem;
@@ -106,7 +113,7 @@
 .guide-inline-link {
   display: inline-block;
   margin: 0.75rem 0 0.75rem 0.75rem;
-  padding: 0.7rem 1.2rem;
+  padding: 0.75rem 1.25rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   font-weight: 600;

@@ -4,7 +4,7 @@ A run executes a named TOML workflow. MEOW retains preparation, worktree/setup,
 onboarding, plan ownership, and terminal-state policy.
 
 ```bash
-meow run "Add CSV export" --name csv-export --workflow quick
+meow run "Add a dark mode toggle" --name dark-mode --workflow quick
 meow run "Audit the API" --workflow review-and-fix --no-worktree --input topic=API
 ```
 

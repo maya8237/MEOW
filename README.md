@@ -44,7 +44,7 @@ Basic project setup also happens automatically on first use.
 Tell MEOW what you want:
 
 ```text
-/meow:run Add CSV export
+/meow:run Add a dark mode toggle to the settings page
 ```
 
 Feature runs use a separate worktree. After checks pass, MEOW pushes the branch,

@@ -52,8 +52,8 @@ Runs execute automatically; `-m` adds a plan approval pause. `-u` means update.
 ## Build and plan
 
 ```bash
-meow run "Add CSV export" --name csv-export
-meow plan "Add CSV export" --name csv-export
+meow run "Add a dark mode toggle" --name dark-mode
+meow plan "Add a dark mode toggle" --name dark-mode
 ```
 
 Normal runs use a worktree and commit/push after verification.
@@ -116,7 +116,7 @@ others are `<flavor>.<8-hex-id>.review.md`. Legacy fixed names still resume.
 ### Scheduling a run
 
 ```bash
-meow schedule add --at "2026-12-01T09:00:00+02:00" -- run "Add CSV export" --name csv-export
+meow schedule add --at "2026-12-01T09:00:00+02:00" -- run "Add a dark mode toggle" --name dark-mode
 meow schedule list --work-dir /project
 meow schedule edit ID --at "10:00" --work-dir /project
 meow schedule cancel ID --work-dir /project

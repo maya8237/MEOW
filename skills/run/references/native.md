@@ -37,7 +37,7 @@ For a saved native run, inspect and continue that same ID with `meow resume <run
    PASS (step 5), finalize commits and pushes the branch; report one line:
    `{"issue": "<key>", "branch":
    "<branch>"}` instead of step 5's normal report.
-2. Pick a safe feature name (slugify the request, e.g. `add-csv-export`). Run
+2. Pick a safe feature name (slugify the request, e.g. `add-dark-mode`). Run
    `meow native prepare --name "<name>" --fresh --work-dir "<project-path>"`.
    `--fresh` gives a new run its own worktree (`<name>-2`, ... if the name is
    taken) and the JSON `name` is the one used -- take `plan_file` and

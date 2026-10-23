@@ -38,7 +38,7 @@ checkout and `--from` never override the MR target. The target is printed and
 saved before work starts, including background runs; resume keeps the saved value.
 
 ```bash
-meow run "Add CSV export" --from release --target dev
+meow run "Add a dark mode toggle" --from release --target dev
 ```
 
 `[pipeline]` in `.meow/config.toml`:
