@@ -5,7 +5,7 @@ export const runSkill = [
   "run",
   "Build something",
   "Plan, build, review, and deliver a change. Worktree runs push, open a PR (GitHub) or MR (GitLab), then verify its CI pipeline.",
-  "Fix the login redirect loop",
+  "Add retry with backoff to the HTTP client",
 ] as const;
 
 export const skillGroups = [
