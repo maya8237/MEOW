@@ -6,7 +6,12 @@ from pathlib import Path
 from claude_agent_sdk import ClaudeAgentOptions
 
 from meow.agents.base import Agent
-from meow.agents.reviewer import PLAIN_STATUS_LINE, _verdict_status, force_fail
+from meow.agents.reviewer import (
+    PLAIN_STATUS_LINE,
+    _run_git_retrying,
+    _verdict_status,
+    force_fail,
+)
 from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.project.plan_files import plan_test_file, stage_file
 from meow.project.prompts import tester_prompt
@@ -44,6 +49,27 @@ def architecture_context(
             "No architecture document is available; proceed using repository evidence."
         )
     return "\n\n".join(sections)
+
+
+def changed_files(active_dir: Path, limit: int = 200) -> str:
+    """Uncommitted changes in the worktree, for the tester to target its checks."""
+    try:
+        done = _run_git_retrying([
+            "git",
+            "-C",
+            str(active_dir),
+            "status",
+            "--short",
+            "--untracked-files=all",
+        ])
+    except OSError:
+        return "(unavailable)"
+    lines = done.stdout.splitlines() if done.returncode == 0 else []
+    if not lines:
+        return "(none uncommitted; inspect the repository for the code under test)"
+    extra = len(lines) - limit
+    shown = "\n".join(lines[:limit])
+    return shown + (f"\n... and {extra} more" if extra > 0 else "")
 
 
 class VerificationAgent(Agent):
@@ -145,6 +171,7 @@ class VerificationAgent(Agent):
         prompt = (
             basis + f"Active worktree: {active_dir}\n\nArchitecture context:\n"
             f"{architecture}\n\n"
+            f"Changed files (git status):\n{changed_files(active_dir)}\n\n"
             f"Configured test directories: "
             f"{', '.join(map(str, configured_dirs)) or '(none)'}\n"
             f"Base URLs: {', '.join(base_urls) or '(none)'}\n\n"
