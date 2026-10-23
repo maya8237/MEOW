@@ -80,7 +80,7 @@ The **Docs** page shows this project's own Markdown guides and skills,
 read from the installed package, with no hand-copied text.
 Search covers every section; choose a hit to open it at that heading.
 Ctrl K focuses the search. Links between docs open in-app; external links
-open in a new tab. Raw HTML in Markdown is not rendered.
+open in a new tab. Raw HTML blocks and tags are omitted from the reader.
 
 The hosted site linked from **Online docs** starts with short setup, skills,
 and customization pages. **Reference** opens the complete searchable guides;

@@ -20,6 +20,10 @@ const docs: Docs = {
         "",
         "<b>raw html</b>",
         "",
+        '<p align="center">',
+        '  <img src="logo.png" width="160" alt="MEOW pixel cat logo" />',
+        "</p>",
+        "",
         "## The `snake_case` flag",
         "",
         "Details.",
@@ -65,6 +69,8 @@ test("lists guides and skills and renders the README", async () => {
   expect(within(skills).getByText("plan")).toBeInTheDocument();
   expect(screen.getByText("Welcome to the readme.")).toBeInTheDocument();
   expect(screen.queryByText("raw html", { selector: "b" })).toBeNull();
+  expect(screen.queryByText(/<p align=/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/<img src=/)).not.toBeInTheDocument();
 });
 
 test("navigates by skill and in-doc links; unknown and external links", async () => {

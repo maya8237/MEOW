@@ -170,6 +170,7 @@ export default function DocsView({
       >
         {current && (
           <Markdown
+            skipHtml
             key={`${current.path}:${open.nonce}`}
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeSlug]}

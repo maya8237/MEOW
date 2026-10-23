@@ -142,7 +142,18 @@ test("offers all skills with short examples and links to full Markdown", async (
   ).toBeInTheDocument();
   expect(
     screen.getAllByRole("link", { name: "Full skill instructions on GitHub" }),
-  ).toHaveLength(9);
+  ).toHaveLength(8);
+  expect(screen.queryByText("/meow:migration")).not.toBeInTheDocument();
+  const skillLinks = screen.getAllByRole("link", {
+    name: "Full skill instructions on GitHub",
+  });
+  expect(skillLinks.at(-1)).toHaveAttribute(
+    "href",
+    "https://github.com/maya8237/MEOW/blob/main/skills/schedule/SKILL.md",
+  );
+  expect(
+    screen.getByText(/saves a PASS\/FAIL report as a downloadable CI artifact/),
+  ).toBeInTheDocument();
   expect(screen.getByText("/meow:onboard")).toBeInTheDocument();
   expect(screen.getByText("/meow:lint")).toBeInTheDocument();
   expect(fetchMock).not.toHaveBeenCalled();
@@ -163,6 +174,32 @@ test("offers all skills with short examples and links to full Markdown", async (
   );
 });
 
+test("expands detailed run examples and copies a complete prompt", async () => {
+  window.location.hash = "#skills";
+  const user = userEvent.setup();
+  const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  render(<Site />);
+  await user.click(screen.getByText("Detailed prompt examples"));
+  const examples = screen
+    .getByText("Detailed prompt examples")
+    .closest("details")!;
+  expect(examples).toHaveAttribute("open");
+  expect(
+    within(examples).getByRole("heading", { name: "Fix a bug" }),
+  ).toBeVisible();
+  const prompt = within(examples).getByText(
+    /^\/meow:run Fix duplicate submissions/,
+  );
+  await user.click(
+    within(prompt.parentElement!).getByRole("button", { name: "Copy" }),
+  );
+  expect(write).toHaveBeenCalledWith(
+    expect.stringContaining(
+      "Add regression tests for double-clicks and failed requests.",
+    ),
+  );
+});
+
 test("opens reference on demand and returns to the beginner guide", async () => {
   const user = userEvent.setup();
   render(<Site />);
@@ -180,4 +217,19 @@ test("opens reference on demand and returns to the beginner guide", async () => 
     await screen.findByRole("heading", { name: "Your first steps" }),
   ).toBeInTheDocument();
   expect(screen.queryByText("Welcome to the readme.")).not.toBeInTheDocument();
+});
+
+test("opens skills using the hero link and supports direct reference links", async () => {
+  const user = userEvent.setup();
+  render(<Site />);
+  await user.click(screen.getByRole("link", { name: "Explore the skills" }));
+  expect(
+    await screen.findByRole("heading", { name: "What would you like to do?" }),
+  ).toBeInTheDocument();
+  expect(window.location.hash).toBe("#skills");
+  await user.click(screen.getByRole("link", { name: "CLI guide" }));
+  expect(
+    await screen.findByText("Approve plans manually."),
+  ).toBeInTheDocument();
+  expect(window.location.hash).toBe("#/docs/CLI.md");
 });

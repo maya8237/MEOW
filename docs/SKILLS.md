@@ -7,6 +7,27 @@ Claude Code skills from the MEOW plugin. Each has a CLI equivalent; flags are in
 Build a feature, resolve Jira issues, or coordinate an objective into one reviewed delivery.
 Example: `/meow:run Add CSV export`. [Reference](../skills/run/SKILL.md)
 
+Give MEOW the change, expected behavior, and checks. Examples:
+
+```text
+/meow:run Add CSV export to the Orders page. Export only the currently filtered
+rows, include column headers, and escape commas and quotes. Show an empty state
+when there are no results. Add tests for filters, empty results, and quoted values.
+```
+
+```text
+/meow:run Fix duplicate submissions when a user double-clicks Save on the profile
+form. Reproduce the bug, disable Save while the request is pending, and allow
+retry after a failure. Add regression tests for double-clicks and failed requests.
+```
+
+```text
+/meow:run Add two independently scoped features: email/password sign-in with
+sign-out and protected pages, and an audit log for account changes. Keep secrets
+out of logs and test access permissions. Use full sprint orchestration and
+deliver one reviewed branch and PR.
+```
+
 ## /meow:plan
 
 Write a sprint plan and testable Sprint Contract before implementation.
@@ -21,11 +42,6 @@ Example: `/meow:review`. [Reference](../skills/review/SKILL.md)
 
 Find and fix the configured lint findings in the current session.
 Example: `/meow:lint`. [Reference](../skills/lint/SKILL.md)
-
-## /meow:schedule
-
-Schedule a request, workflow, or issue for later, or list, reschedule, and cancel triggers.
-Example: `/meow:schedule run "Add CSV export" at 09:00`. [Reference](../skills/schedule/SKILL.md)
 
 ## /meow:onboard
 
@@ -44,5 +60,13 @@ Example: `/meow:migration`. [Reference](../skills/migration/SKILL.md)
 
 ## /meow:integrate-ci-review
 
-Add MEOW's CI review job to GitHub Actions or GitLab CI.
+Add a code review job to GitHub Actions or GitLab CI. It reviews proposed changes
+against the branch you’re merging into and saves a PASS/FAIL report as a
+downloadable CI artifact. Optionally post inline comments on pull/merge requests.
+The job reports findings without applying code fixes.
 Example: `/meow:integrate-ci-review`. [Reference](../skills/integrate-ci-review/SKILL.md)
+
+## /meow:schedule
+
+Schedule a request, workflow, or issue for later, or list, reschedule, and cancel triggers.
+Example: `/meow:schedule run "Add CSV export" at 09:00`. [Reference](../skills/schedule/SKILL.md)

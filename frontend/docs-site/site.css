@@ -263,6 +263,22 @@
 .guide-detail:hover {
   color: var(--primary);
 }
+.guide-run-examples {
+  margin: 1rem 0;
+}
+.guide-run-examples summary {
+  color: var(--primary);
+  font-size: 0.9375rem;
+}
+.guide-run-examples > p {
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+}
+.guide-run-examples h4 {
+  margin-top: 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
 .guide-customize {
   display: flex;
   align-items: flex-start;

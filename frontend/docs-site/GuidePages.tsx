@@ -2,7 +2,7 @@ import { useState } from "react";
 import { BookOpen, Shapes, SlidersHorizontal } from "lucide-react";
 import CopyButton from "@/components/CopyButton";
 import logo from "../../src/meow/ui/logo.png";
-import { skillGroups, sourceUrl } from "./content";
+import { runExamples, skillGroups, sourceUrl } from "./content";
 
 export type Page = "start" | "skills" | "customize";
 
@@ -137,6 +137,21 @@ function Skills() {
                 <Command
                   text={`/meow:${name}${example ? ` ${example}` : ""}`}
                 />
+                {name === "run" && (
+                  <details className="guide-run-examples">
+                    <summary>Detailed prompt examples</summary>
+                    <p>
+                      Describe the change, expected behavior, and how to check
+                      it.
+                    </p>
+                    {runExamples.map(({ title, prompt }) => (
+                      <section key={title}>
+                        <h4>{title}</h4>
+                        <Command text={prompt} />
+                      </section>
+                    ))}
+                  </details>
+                )}
                 <a
                   className="guide-detail"
                   href={sourceUrl(`skills/${name}/SKILL.md`)}
