@@ -175,12 +175,22 @@ function Skills() {
                 <Command
                   text={`/meow:${name}${example ? ` ${example}` : ""}`}
                 />
-                <a
-                  className="guide-detail"
-                  href={sourceUrl(`skills/${name}/SKILL.md`)}
-                >
-                  Full skill instructions on GitHub
-                </a>
+                <div className="guide-skill-links">
+                  {name === "customize" && (
+                    <a
+                      className="guide-detail guide-detail-main"
+                      href="#customize"
+                    >
+                      See the Customize page
+                    </a>
+                  )}
+                  <a
+                    className="guide-detail"
+                    href={sourceUrl(`skills/${name}/SKILL.md`)}
+                  >
+                    Full skill instructions on GitHub
+                  </a>
+                </div>
               </section>
             ))}
           </div>

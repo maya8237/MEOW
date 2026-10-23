@@ -280,6 +280,15 @@
   color: var(--muted-foreground);
   font-size: 0.8125rem;
 }
+.guide-skill-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+.guide-detail-main {
+  color: var(--primary);
+  font-weight: 600;
+}
 .guide-detail:hover {
   color: var(--primary);
 }
