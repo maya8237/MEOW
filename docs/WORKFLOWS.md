@@ -29,9 +29,8 @@ sequential generation and journals the reason; absent graphs need no repair.
 Repeated `--input name=value` supplies identifier-keyed strings; values may
 contain `=` or be empty, and last wins. Inputs persist with journal redaction.
 Workflow flags support Jira/background runs but reject lint-fix.
-
-Top-level `auto_test = false` stops configured `[[tester.tests]]` from enabling the
-AI tester (only `--test` does); `short_plan = true` asks the planner for a brief plan.
+Top-level `auto_test = false`: only `--test` enables the AI tester, not configured
+`[[tester.tests]]`. `short_plan = true` asks the planner for a brief plan.
 
 ## Resolution and editing
 
