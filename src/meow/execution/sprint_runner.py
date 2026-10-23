@@ -318,8 +318,6 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     sprint, checks_dir = _run_onboarding(
         store, record.id, sprint, (active_dir, settings_dir)
     )
-    test = test or bool(sprint.config.get("tester", {}).get("tests"))
-    store.update_results(record.id, test=test)
     describe_lint_plan(sprint.config["lint"])
     check_cancel(store, record.id)
 
@@ -327,6 +325,11 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     sprint.config["customizations"] = catalog
     saved_workflow = record.results.get("workflow")
     definition = select_workflow(sprint.config, workflow, saved_workflow)
+    # Configured test commands turn the AI tester on unless the workflow opts out.
+    test = test or (
+        definition.auto_test and bool(sprint.config.get("tester", {}).get("tests"))
+    )
+    store.update_results(record.id, test=test)
     steps = expand(definition, catalog)
     plan_given = plan_file is not None
     if (
@@ -365,6 +368,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
             "plan_given": plan_given,
             "resume_review": resume_at == "review",
             "label_feature_name": feature_name,
+            "short_plan": definition.short_plan,
             "inputs": inputs
             if inputs is not None
             else (saved_workflow or {}).get("inputs", {}),

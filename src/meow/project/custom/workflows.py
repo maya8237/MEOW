@@ -26,6 +26,7 @@ BUILTIN_STEPS = frozenset(
         "tasks",
         "generate",
         "review",
+        "verify",
         "checks",
         "deliver",
     )
@@ -39,6 +40,7 @@ RUN_VARIABLES = frozenset({
     "bug_mode",
     "round",
     "checks_configured",
+    "short_plan",
     "steps",
     "inputs",
 })
@@ -72,6 +74,8 @@ class WorkflowFile:
     file: Path
     source: CustomSource
     ejected_from: str | None = None
+    auto_test: bool = True
+    short_plan: bool = False
 
 
 def _positive(value, field: str, path: Path, *, integer=False):
@@ -88,6 +92,13 @@ def _text(value, field: str, path: Path, *, required=False):
         return None
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{path}: {field} must be non-empty text")
+    return value
+
+
+def _flag(data: dict, key: str, default: bool, path: Path) -> bool:
+    value = data.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{path}: {key} must be true or false")
     return value
 
 
@@ -159,7 +170,14 @@ def load_workflow(path: Path, source: CustomSource) -> WorkflowFile:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (tomllib.TOMLDecodeError, UnicodeError) as exc:
         raise ValueError(f"{path}: {exc}") from exc
-    if set(data) - {"name", "description", "steps", "ejected_from"}:
+    if set(data) - {
+        "name",
+        "description",
+        "steps",
+        "ejected_from",
+        "auto_test",
+        "short_plan",
+    }:
         raise ValueError(f"{path}: unsupported workflow keys")
     name = _name(data.get("name", path.stem), path)
     if name != path.stem:
@@ -171,6 +189,8 @@ def load_workflow(path: Path, source: CustomSource) -> WorkflowFile:
         path,
         source,
         _text(data.get("ejected_from"), "ejected_from", path),
+        _flag(data, "auto_test", True, path),
+        _flag(data, "short_plan", False, path),
     )
 
 

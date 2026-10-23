@@ -24,6 +24,7 @@ PROMPT_VARIABLES = frozenset({
     "test",
     "check_worktree_hygiene",
     "write_tests",
+    "short_plan",
     # Plan and verdict files
     "plan_file",
     "review_file",

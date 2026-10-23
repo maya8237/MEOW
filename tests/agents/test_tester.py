@@ -227,3 +227,14 @@ def test_changed_files_is_capped(tmp_path):
     for n in range(5):
         (tmp_path / f"f{n}.py").write_text("x", encoding="utf-8")
     assert "and 3 more" in changed_files(tmp_path, limit=2)
+
+
+def test_short_plan_prompt_is_opt_in():
+    from meow.project.custom.definitions import discover
+    from meow.project.custom.rendering import render_agent
+    from meow.project.custom.sources import builtin_sources
+
+    planner = discover(builtin_sources()).agent("planner")
+    base = {"plan_file": Path("p.md")}
+    assert "Keep this plan short" not in render_agent(planner, base)
+    assert "Keep this plan short" in render_agent(planner, {**base, "short_plan": True})

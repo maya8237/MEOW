@@ -92,6 +92,7 @@ class RunState:
             "bug_mode": bool(self.sprint.config.get("_bug_mode")),
             "checks_configured": bool(configured_checks(self.sprint.config)),
             "inputs": {},
+            "short_plan": False,
             **self.flags,
             "review_first": bool(
                 self.flags.get("resume_review") or self.flags.get("parallel")
