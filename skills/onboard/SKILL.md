@@ -104,6 +104,9 @@ Windows, or systemd user timers on Linux, through `/meow:schedule` and
 runs. Tester mode is optional and should only be
 enabled after its commands are verified. Warn that configured
 `[[tester.tests]]` commands enable the tester on every run, without `--test`.
+If step 1 found a test command (`pytest`, `npm test`, `make test`), propose it as a
+`[[tester.tests]]` entry, run it once to confirm it works, and add it only on
+approval.
 Offer `[tester] write_tests` (default false) only if the user wants the tester
 to add new tests to the repository.
 
