@@ -30,6 +30,8 @@ packages = ["src/meow"]
 "scripts/release" = "meow/_release/launcher"
 "requirements-release.txt" = "meow/_release/requirements-release.txt"
 "LICENSE" = "meow/_release/LICENSE"
+"docs" = "meow/_release/docs"
+"README.md" = "meow/_release/README.md"
 
 [tool.hatch.build.targets.sdist]
 exclude = [

@@ -218,6 +218,10 @@ def get(server, url: str):  # ruff: ignore[complex-structure, too-many-return-st
         from meow.ui.cli_options import cli_options
 
         return HTTPStatus.OK, cli_options()
+    if parts == ["", "api", "docs"]:
+        from meow.ui.docs import build_docs
+
+        return HTTPStatus.OK, build_docs()
     if parts == ["", "api", "capabilities"]:
         repo = _repo(server, query.get("repo"))
         return HTTPStatus.OK, {
