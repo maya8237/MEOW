@@ -441,3 +441,27 @@ def test_push_fix_commits_and_pushes_changes(tmp_path):
     assert git(remote, "rev-parse", "refs/heads/meow/feature") == sha
     assert git(active, "log", "-1", "--format=%s") == "MEOW run x: pipeline fix round 1"
     assert store.load(run_id).delivery["commit"] != sha
+
+
+@pytest.mark.parametrize("how", ["unpushed_fix", "fixer_commit"])
+def test_push_fix_pushes_local_commit_ahead_of_remote(tmp_path, how):
+    active, remote, store, run_id = delivered_worktree(tmp_path)
+    (active / "file.txt").write_text(how, encoding="utf-8")
+    git(active, "commit", "-qam", f"{how} commit")
+    local = git(active, "rev-parse", "HEAD")
+
+    sha = push_fix(store, run_id, "MEOW run x: pipeline fix round 1")
+
+    assert sha == local
+    assert git(remote, "rev-parse", "refs/heads/meow/feature") == local
+
+
+def test_push_fix_refuses_a_switched_branch(tmp_path):
+    active, remote, store, run_id = delivered_worktree(tmp_path)
+    git(active, "switch", "-qc", "other")
+    (active / "file.txt").write_text("fixed", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="checked-out branch changed"):
+        push_fix(store, run_id, "MEOW run x: pipeline fix round 1")
+    assert git(remote, "branch", "--list", "other") == ""
+    assert git(active, "status", "--porcelain")

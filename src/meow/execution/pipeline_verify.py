@@ -55,6 +55,29 @@ def _one_line(text: str) -> str:
     return str(_safe(_safe_text(first, os.environ, limit=_DETAIL_LIMIT)))
 
 
+def _agent_failure(exc: Exception) -> str:
+    return "fix agent failed: " + (_one_line(str(exc)) or type(exc).__name__)
+
+
+async def _close(stack: AsyncExitStack) -> str:
+    """Close fixer sessions; '' or the `not_verified` detail."""
+    try:
+        await stack.aclose()
+    except RunCancelled:
+        raise
+    except Exception as exc:  # a session that cannot close cleanly
+        return _agent_failure(exc)
+    return ""
+
+
+async def _run(loop: "_Loop") -> PipelineOutcome:
+    try:
+        return await loop.run()
+    except _PROVIDER_ERRORS as exc:
+        detail = _one_line(str(exc)) or type(exc).__name__
+        return loop.outcome("not_verified", detail=detail)
+
+
 def _in_progress(snapshot: PipelineSnapshot, judged: Classification) -> bool:
     if snapshot.jobs:
         return judged.running
@@ -132,7 +155,7 @@ class _Loop:
 
     async def _wait_phase(self) -> PipelineSnapshot | PipelineOutcome:
         self.announce(f"Pipeline running on {self.sha[:7]} (fix {self._round_text()}).")
-        self.journal("pipeline_waiting", status="waiting")
+        self.journal("pipeline_waiting", status="waiting", failing=[], detail="")
         started = self.clock()
         while True:
             check_cancel(self.store, self.run_id)
@@ -230,9 +253,13 @@ class _Loop:
             return self.outcome("not_verified", failing, "fix rounds exhausted")
         if announce:
             self.announce(announce)
-        self.journal("pipeline_fixing", status="fixing")
-        agent = await self._agent(kind)
-        await cancellable(self.store, self.run_id, agent.fix(problems))
+        self.journal("pipeline_fixing", status="fixing", failing=[], detail="")
+        failed = await self._run_fixer(kind, problems)
+        if failed:
+            return self.outcome("not_verified", failing, failed)
+        return self._push(failing)
+
+    def _push(self, failing: tuple) -> PipelineOutcome | bool:
         message = f"MEOW run {self.run_id}: pipeline fix round {self.rounds + 1}"
         try:
             sha = push_fix(self.store, self.run_id, message)
@@ -246,6 +273,18 @@ class _Loop:
         self.rounds, self.sha = self.rounds + 1, sha
         self.journal("pipeline_fixing", status="fixed")
         return True
+
+    async def _run_fixer(self, kind: str, problems: str) -> str:
+        """'' on success, else the `not_verified` detail; never raises but
+        for cancellation."""
+        try:
+            agent = await self._agent(kind)
+            await cancellable(self.store, self.run_id, agent.fix(problems))
+        except RunCancelled:
+            raise
+        except Exception as exc:  # SDK, connection or turn failure
+            return _agent_failure(exc)
+        return ""
 
     async def _agent(self, kind: str) -> LintFixAgent | ReviewFixAgent:
         """One session per fixer across rounds, closed when the loop ends."""
@@ -270,15 +309,16 @@ async def verify_pipeline(  # ruff: ignore[too-many-arguments, too-many-position
     `delivery["pipeline"]["rounds"]` is read first, so a resume keeps the
     count; the final outcome is journaled there too.
     """
-    async with AsyncExitStack() as stack:
-        loop = _Loop(
-            store, run_id, provider, fixers, settings, announce, sleep, clock, stack
-        )
-        try:
-            outcome = await loop.run()
-        except _PROVIDER_ERRORS as exc:
-            detail = _one_line(str(exc)) or type(exc).__name__
-            outcome = loop.outcome("not_verified", detail=detail)
+    stack = AsyncExitStack()
+    loop = _Loop(
+        store, run_id, provider, fixers, settings, announce, sleep, clock, stack
+    )
+    try:
+        outcome = await _run(loop)
+    finally:
+        closed = await _close(stack)
+    if closed:
+        outcome = loop.outcome("not_verified", outcome.failing, closed)
     loop.journal(
         store.load(run_id).phase,
         status=outcome.status,

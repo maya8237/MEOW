@@ -65,17 +65,21 @@ class FakeProvider:
 
 
 class FakeFixer:
-    def __init__(self, calls: list):
+    def __init__(self, calls: list, error: BaseException | None = None):
         self.calls = calls
+        self.error = error
+        self.exited = False
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, *exc):
-        return None
+        self.exited = True
 
     async def fix(self, problems: str) -> str:
         self.calls.append(problems)
+        if self.error is not None:
+            raise self.error
         return "fixed"
 
 
@@ -388,3 +392,71 @@ def test_cancellation_propagates(harness):
     with pytest.raises(RunCancelled):
         harness.run(provider)
     assert harness.store.load(harness.run_id).phase == "cancelled"
+
+
+def test_fix_push_failure_is_not_verified(harness, monkeypatch):
+    def failing_push(*args):
+        raise RuntimeError("git push failed: denied")
+
+    monkeypatch.setattr(pipeline_verify, "push_fix", failing_push)
+
+    outcome = harness.run(FakeProvider(snapshots=[REVIEW_FAILED]))
+
+    assert outcome.status == "not_verified"
+    assert outcome.detail == "fix push failed: git push failed: denied"
+
+
+def test_fixer_error_is_not_verified(harness):
+    fixer = FakeFixer(harness.review_calls, RuntimeError("turn timed out\nmore"))
+    harness.fixers = lambda: PipelineFixers(lint=None, review=lambda: fixer)
+
+    outcome = harness.run(FakeProvider(snapshots=[REVIEW_FAILED]))
+
+    assert outcome.status == "not_verified"
+    assert outcome.detail == "fix agent failed: turn timed out"
+    assert fixer.exited
+    assert harness.pushes == []
+
+
+def test_fixer_session_close_error_is_not_verified(harness):
+    class BadClose(FakeFixer):
+        async def __aexit__(self, *exc):
+            raise ConnectionError("session gone")
+
+    fixer = BadClose(harness.review_calls)
+    harness.fixers = lambda: PipelineFixers(lint=None, review=lambda: fixer)
+
+    outcome = harness.run(FakeProvider(snapshots=[REVIEW_FAILED, GREEN]))
+
+    assert outcome.status == "not_verified"
+    assert outcome.detail == "fix agent failed: session gone"
+
+
+def test_fixer_cancellation_propagates_and_closes_session(harness):
+    fixer = FakeFixer(harness.review_calls, RunCancelled("cancelled"))
+    harness.fixers = lambda: PipelineFixers(lint=None, review=lambda: fixer)
+
+    with pytest.raises(RunCancelled):
+        harness.run(FakeProvider(snapshots=[REVIEW_FAILED]))
+    assert fixer.exited
+
+
+def test_journal_clears_stale_detail_while_waiting(harness):
+    store, run_id = harness.store, harness.run_id
+    stale = {"rounds": 1, "detail": "timed out", "failing": ["unit-tests"]}
+    store.transition(
+        run_id,
+        "pipeline_waiting",
+        delivery={**store.load(run_id).delivery, "pipeline": stale},
+    )
+    seen = []
+
+    class Watching(FakeProvider):
+        def find_pipeline(self, sha):
+            seen.append(store.load(run_id).delivery["pipeline"])
+            return super().find_pipeline(sha)
+
+    harness.run(Watching())
+
+    assert seen[0]["detail"] == ""
+    assert seen[0]["failing"] == []
