@@ -73,7 +73,8 @@ existing code, with checks and no automatic delivery). Without a flag, honor
 `--input name=value` flags. Custom workflows execute through CLI mode;
 the native protocol does not interpret their step trees.
 
-When the user requests `--test`, pass it through to
+When the user requests `--test`, or asks to run tests, test it, or validate
+behavior, pass `--test` to
 `meow run` (including Jira and `--resume-at review` flows); configured servers
 stay alive throughout tester validation.
 
