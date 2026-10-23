@@ -36,6 +36,7 @@ from meow.infrastructure.worktree_setup import (
 )
 from meow.project.config import config_paths, config_root, load_config
 from meow.project.custom.definitions import discover
+from meow.project.custom.diagnostics import warn_workflow
 from meow.project.custom.sources import builtin_sources
 from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
 from meow.project.onboarding import onboard_if_needed
@@ -331,6 +332,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     sprint.config["customizations"] = catalog
     saved_workflow = record.results.get("workflow")
     definition = select_workflow(sprint.config, workflow, saved_workflow)
+    warn_workflow(definition, catalog)
     steps = expand(definition, catalog)
     plan_given = plan_file is not None
     if (

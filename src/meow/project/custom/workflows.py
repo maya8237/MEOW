@@ -44,7 +44,7 @@ RUN_VARIABLES = frozenset({
 })
 _KINDS = frozenset({"uses", "agent", "gate", "loop", "parallel", "call"})
 _BLOCKS = frozenset({"advise", "loop", "delivery", "run"})
-_BUILTIN_AGENTS = {
+BUILTIN_AGENTS = {
     "builtin.plan": ("planner",),
     "builtin.generate": ("generator", "review-fixer"),
     "builtin.review": ("reviewer", "tester"),
@@ -302,7 +302,7 @@ def fingerprint(workflow: WorkflowFile, catalog: "Customizations") -> str:  # ru
             for name in (
                 (step.target,)
                 if step.kind in {"agent", "gate"}
-                else _BUILTIN_AGENTS.get(step.target, ())
+                else BUILTIN_AGENTS.get(step.target, ())
             ):
                 agent_file(name)
 

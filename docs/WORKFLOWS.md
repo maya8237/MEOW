@@ -48,8 +48,13 @@ config root even when tasks execute in other worktrees.
 list/show/validate/eject. All accept `--work-dir PATH`. Eject copies the shipped
 definition even when another scope overrides it, defaults to project scope,
 accepts local/user, and refuses overwrite. Copies record
-`ejected_from = "builtin:name@<sha256>"`; show/validate warn when that origin
-changes. Inspect differences and update deliberately; upgrades do not merge copies.
+`ejected_from = "builtin:name@<sha256>"`; run startup and show/validate warn when
+that origin changes or disappears, with paths for inspecting the copy. Workflow
+diagnostics include called workflows and agents, and identify ejected agents the
+selected workflow does not use (another workflow may use them). Conditional steps,
+delegates, task workers, and delivery fixers count as possible uses. Valid copies
+continue unchanged across upgrades; missing references fail before agents start.
+Handwritten definitions without origin metadata have no drift/unused warning.
 
 ## Agents
 

@@ -2,11 +2,11 @@
 
 import difflib
 import hashlib
-import sys
 from pathlib import Path
 
 from meow.project.config import load_config, user_config_path
 from meow.project.custom.definitions import discover
+from meow.project.custom.diagnostics import warn_definition, warn_workflow
 from meow.project.custom.sources import builtin_sources, conventional_dir
 from meow.project.custom.workflows import validate
 
@@ -20,23 +20,6 @@ def _lookup(catalog, kind, name):
 
 def _shipped(kind, name):
     return _lookup(discover(builtin_sources()), kind, name)
-
-
-def drift(item, kind):
-    """Warn about an ejected definition whose shipped origin changed."""
-    if not item.ejected_from:
-        return
-    try:
-        shipped = _shipped(kind, item.name)
-        current = hashlib.sha256(shipped.file.read_bytes()).hexdigest()
-        expected = f"builtin:{item.name}@{current}"
-    except ValueError:
-        expected = None
-    if item.ejected_from != expected:
-        print(
-            f"Drift: {item.file}: shipped {item.name} changed; inspect your copy.",
-            file=sys.stderr,
-        )
 
 
 def eject(kind, name, scope, project_dir):
@@ -64,16 +47,23 @@ def _list(items, catalog):
         print(message)
 
 
-def _validate(items, catalog, kind):
+def _validate(items, catalog):
     problems = []
     for item in items:
-        drift(item, kind)
+        warn_workflow(item, catalog)
         errors = validate(item, catalog)
         problems.extend(errors)
         if not errors:
             print(f"{item.name}: valid")
     if problems:
         raise ValueError("\n".join(problems))
+
+
+def _warn(item, catalog, kind):
+    if kind == "workflows":
+        warn_workflow(item, catalog)
+    else:
+        warn_definition(item, kind)
 
 
 def catalog_command(args, project_dir: Path) -> None:
@@ -88,10 +78,10 @@ def catalog_command(args, project_dir: Path) -> None:
         return
     if action == "validate":
         selected = [_lookup(catalog, kind, args.name)] if args.name else items
-        _validate(selected, catalog, kind)
+        _validate(selected, catalog)
         return
     item = _lookup(catalog, kind, args.name)
-    drift(item, kind)
+    _warn(item, catalog, kind)
     text = item.file.read_text(encoding="utf-8")
     if action == "show":
         print(f"# {item.name} ({item.source.scope}): {item.file}\n{text}")
