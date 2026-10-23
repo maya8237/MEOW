@@ -32,6 +32,8 @@ _ACTIVE_PHASES = frozenset({
     "reviewer_started",
     "checking",
     "tasks_waiting",
+    "pipeline_waiting",
+    "pipeline_fixing",
 })
 _SECRET_KEY = re.compile(
     r"(?:token|secret|password|credential|api.?key|authorization)", re.I

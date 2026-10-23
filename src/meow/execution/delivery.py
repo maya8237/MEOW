@@ -95,6 +95,22 @@ def commit_worktree(active: Path, message: list[str]) -> str:
     return _git(active, "rev-parse", "HEAD").stdout.strip()
 
 
+def push_fix(store: RunStore, run_id: str, message: str) -> str | None:
+    """Commit and push a pipeline fix; `None` (no push) when nothing changed.
+
+    The caller journals the returned sha.
+    """
+    with delivery_lock(store, run_id):
+        active = Path(store.load(run_id).worktree)
+        before = _git(active, "rev-parse", "HEAD").stdout.strip()
+        after = commit_worktree(active, ["-m", message])
+        if after == before:
+            return None
+        branch, remote = _branch_and_remote(active)
+        _git(active, "push", "-u", remote, branch)
+        return after
+
+
 def deliver_verified_run(
     store: RunStore, run_id: str, *, commit: bool | None = None, push: bool = True
 ) -> bool:

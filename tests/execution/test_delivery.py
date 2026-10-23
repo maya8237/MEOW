@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from meow.execution.delivery import commit_worktree, deliver_verified_run
+from meow.execution.delivery import commit_worktree, deliver_verified_run, push_fix
 from meow.execution.run_state import RunStore
 
 MAX_HANG_SECONDS = 15
@@ -411,3 +411,33 @@ def test_commit_worktree_keeps_shared_project_definitions(tmp_path, action):
     assert relative in changed.splitlines()
     if action != "delete":
         assert git(repo, "show", f"HEAD:{relative}") == "after"
+
+
+def delivered_worktree(tmp_path: Path) -> tuple[Path, Path, RunStore, str]:
+    repo, remote = repository(tmp_path)
+    active = tmp_path / "feature"
+    git(repo, "worktree", "add", "--detach", str(active))
+    (active / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, active)
+    assert deliver_verified_run(store, run_id) is True
+    return active, remote, store, run_id
+
+
+def test_push_fix_returns_none_when_clean(tmp_path):
+    _active, remote, store, run_id = delivered_worktree(tmp_path)
+    before = git(remote, "rev-parse", "refs/heads/meow/feature")
+
+    assert push_fix(store, run_id, "MEOW run x: pipeline fix round 1") is None
+    assert git(remote, "rev-parse", "refs/heads/meow/feature") == before
+
+
+def test_push_fix_commits_and_pushes_changes(tmp_path):
+    active, remote, store, run_id = delivered_worktree(tmp_path)
+    (active / "file.txt").write_text("fixed", encoding="utf-8")
+
+    sha = push_fix(store, run_id, "MEOW run x: pipeline fix round 1")
+
+    assert sha == git(active, "rev-parse", "HEAD")
+    assert git(remote, "rev-parse", "refs/heads/meow/feature") == sha
+    assert git(active, "log", "-1", "--format=%s") == "MEOW run x: pipeline fix round 1"
+    assert store.load(run_id).delivery["commit"] != sha
