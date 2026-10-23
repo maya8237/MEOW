@@ -1,5 +1,6 @@
 """Fixtures for orchestrator tests: a git repo, a bare origin, a fake launcher."""
 
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -47,9 +48,30 @@ def make_repo(tmp_path: Path, gitignore: str = GITIGNORE) -> tuple[Path, Path]:
     return repo.resolve(), remote
 
 
+@pytest.fixture(scope="session")
+def _git_repo_template(tmp_path_factory) -> tuple[Path, Path]:
+    """Build the default repository once per session; `git_repo` copies it.
+
+    Each `git` call is a process spawn, which is slow on Windows runners, so
+    copying files is much cheaper than replaying the setup for every test."""
+    return make_repo(tmp_path_factory.mktemp("git-template"))
+
+
 @pytest.fixture
-def git_repo(tmp_path: Path) -> tuple[Path, Path]:
-    return make_repo(tmp_path)
+def git_repo(
+    tmp_path: Path, _git_repo_template: tuple[Path, Path]
+) -> tuple[Path, Path]:
+    template_repo, template_remote = _git_repo_template
+    repo = tmp_path / "repo"
+    remote = tmp_path / "remote.git"
+    shutil.copytree(template_repo, repo)
+    shutil.copytree(template_remote, remote)
+    config = repo / ".git" / "config"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(str(template_remote), str(remote)),
+        encoding="utf-8",
+    )
+    return repo.resolve(), remote
 
 
 def new_orchestrator(  # ruff: ignore[too-many-arguments]
