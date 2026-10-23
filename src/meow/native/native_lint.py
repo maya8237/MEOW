@@ -55,7 +55,7 @@ def lint(working_dir: Path, active_dir: Path, options: LintOptions) -> dict:
     findings; `options.fix` first applies each command's own fix flag.
 
     `options.all_blocking` treats every command as blocking regardless of
-    `gate`, ignoring the review-only gate/informational split: CLI mode's
+    `gate`, ignoring the sprint review's gate/informational split: CLI mode's
     `meow run --lint-fix` fixes/reports every configured command unconditionally
     (`gate` only means "this command's failure fails a sprint review"), so
     the `lint-fix` skill's native mode passes `all_blocking=True` to match
