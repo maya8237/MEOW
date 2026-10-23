@@ -6,12 +6,15 @@ import { runExamples, runSkill, skillGroups, sourceUrl } from "./content";
 
 export type Page = "start" | "skills" | "customize";
 
-function Command({ text }: { text: string }) {
+function Command({ text, prefix }: { text: string; prefix?: string }) {
   const [error, setError] = useState("");
   return (
     <div className="guide-command-wrap">
       <div className="guide-command">
-        <code>{text}</code>
+        <code>
+          {prefix && <span className="guide-path-root">{prefix}</span>}
+          {text}
+        </code>
         <CopyButton text={text} onError={setError} />
       </div>
       {error && <p role="alert">{error}</p>}
@@ -191,7 +194,7 @@ function Skills() {
 const scopeRows = [
   {
     scope: "Project",
-    note: "Shared with your team through git.",
+    note: "Inside your project repo; committed and shared with your team.",
     files: [
       [".meow/config.toml", "Settings"],
       [".meow/agents/", "Agent roles (.toml)"],
@@ -200,7 +203,7 @@ const scopeRows = [
   },
   {
     scope: "Local",
-    note: "Just for you in this project; ignored by git.",
+    note: "Inside your project repo; just for you, ignored by git.",
     files: [
       [".meow/config.local.toml", "Settings"],
       [".meow/local/agents/", "Agent roles (.toml)"],
@@ -209,7 +212,7 @@ const scopeRows = [
   },
   {
     scope: "User",
-    note: "Applies to all your projects.",
+    note: "In your home folder, outside any repo; applies to all projects.",
     files: [
       ["~/.meow/config.toml", "Settings"],
       ["~/.meow/agents/", "Agent roles (.toml)"],
@@ -253,7 +256,15 @@ function Scopes() {
           {files.map(([path, what]) => (
             <div className="guide-path" key={path}>
               <span>{what}</span>
-              <Command key={shell} text={systemPath(path, shell)} />
+              <Command
+                key={shell}
+                prefix={
+                  path.startsWith(".")
+                    ? `your-project${shell === "bash" ? "/" : "\\"}`
+                    : undefined
+                }
+                text={systemPath(path, shell)}
+              />
             </div>
           ))}
         </div>

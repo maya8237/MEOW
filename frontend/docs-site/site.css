@@ -297,6 +297,9 @@
 .guide-path .guide-command code {
   color: var(--primary);
 }
+.guide-path-root {
+  color: var(--muted-foreground);
+}
 .guide-path .guide-command-wrap {
   margin: 0.35rem 0;
 }
