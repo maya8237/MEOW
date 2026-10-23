@@ -155,10 +155,12 @@ function Skills() {
           </section>
         ))}
         <p className="guide-note">
-          Without a branch, MEOW opens the PR/MR into your configured target
-          (set during onboarding). In-place runs do not open one. PR/MR creation
-          and pipeline checks require your provider connection; if they fail,
-          MEOW reports the reason and available links.{" "}
+          Every request, simple or detailed, runs in its own worktree and, once
+          checks pass, opens a PR/MR into your configured target (set during
+          onboarding) and verifies its pipeline. Name a branch in your prompt
+          only to change where work starts or where the PR/MR goes. PR/MR
+          creation and pipeline checks require your provider connection; if they
+          fail, MEOW reports the reason and available links.{" "}
           <a href={sourceUrl("docs/PIPELINE.md")}>PR/MR & pipeline guide</a>
         </p>
         <a className="guide-detail" href={sourceUrl("skills/run/SKILL.md")}>

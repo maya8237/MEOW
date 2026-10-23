@@ -74,7 +74,7 @@ export const runExamples = [
     prompt: "/meow:run Add a dark mode toggle to the settings page",
   },
   {
-    title: "A detailed request that opens a PR/MR",
+    title: "A detailed request with branches",
     prompt:
       "/meow:run Add a password reset flow. Users request a reset link by email, the link expires after 30 minutes and works once, and the new password must meet the existing password rules. Show the same confirmation message whether or not the email exists. Add tests for expired, reused, and invalid links. Start from the release branch and open the PR into dev.",
   },
