@@ -9,6 +9,7 @@ from meow.project.custom import frontmatter
 # stay maintainer-only.
 GUIDES = (
     "README.md",
+    "docs/INSTALL.md",
     "docs/CLI.md",
     "docs/RUNS.md",
     "docs/WORKFLOWS.md",

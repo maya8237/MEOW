@@ -6,13 +6,10 @@
 
 > Tell MEOW what you want. Get the finished branch.
 
-MEOW is a workflow harness for Claude that plans, implements, tests, reviews,
-and delivers software changes in isolated worktrees.
+MEOW helps Claude plan, build, test, and review your code.
+Use it from Claude Code with a few simple skills.
 
-Running a built-in workflow starts a loop: MEOW implements, reviews, and fixes
-the work until review passes, or the configured round limit is reached. It does
-not stop after a single attempt. Once review passes, MEOW runs the final checks
-before delivery. Custom workflows control their own loop stages.
+[Start here](https://maya8237.github.io/MEOW/) · [Skills](docs/SKILLS.md) · [Customize](skills/customize/SKILL.md)
 
 ## Install
 
@@ -28,102 +25,58 @@ irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | i
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 ```
 
-The installer needs Python 3.12 or newer (it uses the newest it finds; set
-`MEOW_PYTHON` to choose one). It puts MEOW in `~/.meow`, adds the `meow` command to your PATH,
-and sets up its skills in Claude Code. Open a new terminal or restart Claude Code
-to get started.
+You’ll need **Python 3.12+** and **Claude Code with authentication set up**.
+Restart Claude Code after installation. [Installation details](docs/INSTALL.md).
 
-## Run
+## Set up your project
 
-Claude Code:
+Open your project in Claude Code and run:
+
+```text
+/meow:onboard
+```
+
+MEOW walks you through setup, integrations, and optional features.
+Basic project setup also happens automatically on first use.
+
+## Try a skill
+
+Tell MEOW what you want:
 
 ```text
 /meow:run Add CSV export
 ```
 
-Terminal or CI:
+Feature runs use a separate worktree, then commit and push after checks pass.
 
-```bash
-meow run "Add CSV export" --name csv-export
+- `/meow:plan` — think through a change before building.
+- `/meow:review` — review existing code and fix findings.
+- `/meow:lint` — fix your project’s lint findings.
+- `/meow:schedule` — run a task later.
+
+[See all skills and examples](docs/SKILLS.md).
+
+## Make it yours
+
+```text
+/meow:customize
 ```
 
-By default, `meow run` handles the request as one sprint: plan, implement,
-check, and review.
+Ask for a skill for your coding conventions, a reviewer with a specific focus,
+or a workflow with your own steps. [Customization guide](skills/customize/SKILL.md).
 
-Add `-o/--orchestrate` to split an objective into tasks, run
-each as a full sprint in its own worktree, and merge passing tasks. MEOW
-reviews the combined result before pushing one branch and opening one PR/MR.
+## Reference
 
-Projects are set up automatically on first use. Use `/meow:onboard` to configure
-integrations and optional features.
+- [CLI commands and flags](docs/CLI.md)
+- [Runs and recovery](docs/RUNS.md)
+- [Configuration and integrations](docs/INTEGRATIONS.md)
+- [Agents and workflows](docs/WORKFLOWS.md)
+- [Multi-task orchestration](docs/ORCHESTRATION.md)
+- [Update and uninstall](docs/INSTALL.md#update)
 
-## Common commands
+## Contribute
 
-| Need | Command |
-| --- | --- |
-| Build a feature | `/meow:run ...` or `meow run ...` |
-| Plan only | `/meow:plan ...` or `meow plan ...` |
-| Schedule a run | `/meow:schedule ...` or `meow schedule add --at "09:00" -- run "Add CSV export" --name csv-export` |
-| Review | `/meow:review ...` or `meow review ...` |
-| Integrate CI review | `/meow:integrate-ci-review` |
-| Fix lint | `/meow:lint` |
-| Queue work | `meow queue "..."` |
-| Check or continue | `meow status` or `meow resume RUN_ID` |
-
-### Common flags
-
-| Flag | Purpose |
-| --- | --- |
-| `--orchestrate` / `-o` | Coordinate multiple sprints and deliver one reviewed branch and PR/MR |
-| `--max-parallel N` | Limit concurrent sprints with `--orchestrate` (default: 3) |
-| `-n` / `--no-worktree` | Work in the current checkout without committing or pushing |
-| `-nc` / `--no-worktree-commit` | Work in the current checkout and commit without pushing |
-| `-np` / `--no-worktree-push` | Work in the current checkout, commit, and push |
-| `-m` / `--manually-approve-plan` | Approve the plan before implementation |
-| `--name NAME` | Name the feature branch and worktree |
-| `--from BRANCH` / `-b BRANCH` | Choose the starting branch |
-| `--update` / `-u` | Update MEOW with `meow --update` |
-| `--help` / `-h` | Show help for a command |
-
-See the [CLI guide](docs/CLI.md) for worktrees, background runs, recovery,
-orchestration, and advanced options.
-Normal feature runs create a worktree and commit/push after verification.
-
-## Configuration and integrations
-
-- `.meow/config.toml` — shareable project settings.
-- `.meow/config.local.toml` — ignored machine- or user-specific settings.
-- `~/.meow/config.toml` — user fallback settings.
-
-MEOW supports Jira, GitLab, GitHub, configured tests and builds, browser
-tester checks, Claude Code hooks, and scheduled Jira runs. See the
-[integration guide](docs/INTEGRATIONS.md).
-
-## Uninstall
-
-### PowerShell
-
-```powershell
-irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.ps1 | iex
-```
-
-### Bash
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.sh | sh
-```
-
-It asks before changing anything. It removes the MEOW release, `meow`/`mw` on
-PATH, the Claude Code plugin and skill registrations, scheduled MEOW runs, and
-(optionally) `~/.meow` data, Bun shared-store settings, and each project's
-`.meow/`, hooks, and plugin entries.
-
-## Docs
-
-- [Online docs](https://maya8237.github.io/MEOW/)
 - [Architecture](docs/ARCHITECTURE.md)
-- [CLI guide](docs/CLI.md)
-- [Integrations](docs/INTEGRATIONS.md)
 - [Project instructions](AGENTS.md)
 - [Contributing](CONTRIBUTING.md)
 - [Roadmap](docs/ROADMAP.md)

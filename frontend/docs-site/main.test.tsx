@@ -29,6 +29,7 @@ const docs: Docs = {
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   window.location.hash = "";
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   fetchMock = vi.fn(async () => new Response(JSON.stringify(docs)));
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -36,15 +37,22 @@ afterEach(() => {
   window.location.hash = "";
 });
 
-test("loads ./docs.json relatively and shows the README", async () => {
+test("starts with setup instead of loading the full reference", () => {
   render(<Site />);
-  expect(await screen.findByText("Welcome to the readme.")).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledTimes(1);
-  expect(fetchMock.mock.calls[0][0]).toBe("./docs.json");
   expect(
-    screen.getByRole("heading", { name: "MEOW documentation" }),
+    screen.getByRole("heading", { name: "Your first steps" }),
   ).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /github/i })).toHaveAttribute(
+  expect(screen.getByText("/meow:onboard")).toBeInTheDocument();
+  expect(screen.getByText("/meow:run Add CSV export")).toBeInTheDocument();
+  expect(screen.queryByText("Welcome to the readme.")).not.toBeInTheDocument();
+  expect(fetchMock).not.toHaveBeenCalled();
+  const nav = screen.getByRole("navigation", { name: "Main navigation" });
+  expect(
+    within(nav)
+      .getAllByRole("link")
+      .map((a) => a.textContent),
+  ).toEqual(["Start here", "Skills", "Customize", "Reference"]);
+  expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute(
     "href",
     expect.stringContaining("github.com"),
   );
@@ -64,9 +72,11 @@ test("opens the guide and heading named by the initial hash", async () => {
 });
 
 test("writes the hash when a guide is clicked", async () => {
+  window.location.hash = "#/README.md";
   const user = userEvent.setup();
   render(<Site />);
   await screen.findByText("Welcome to the readme.");
+  expect(fetchMock.mock.calls[0][0]).toBe("./docs.json");
   const nav = screen.getByRole("navigation", { name: "Documentation" });
   await user.click(within(nav).getByRole("button", { name: /CLI/ }));
   expect(window.location.hash).toBe("#/docs/CLI.md");
@@ -75,7 +85,6 @@ test("writes the hash when a guide is clicked", async () => {
 
 test("re-renders when the hash changes", async () => {
   render(<Site />);
-  await screen.findByText("Welcome to the readme.");
   act(() => {
     window.location.hash = "#/skills/plan/SKILL.md";
     window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -84,6 +93,7 @@ test("re-renders when the hash changes", async () => {
 });
 
 test("shows an error when docs.json cannot be loaded", async () => {
+  window.location.hash = "#/README.md";
   fetchMock.mockImplementation(
     async () =>
       new Response(JSON.stringify({ error: "Documentation unavailable" }), {
@@ -94,4 +104,80 @@ test("shows an error when docs.json cannot be loaded", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Documentation unavailable",
   );
+});
+
+test("switches install commands and copies the selected command", async () => {
+  const user = userEvent.setup();
+  const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  render(<Site />);
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "Your terminal" }),
+    "bash",
+  );
+  const command =
+    "curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh";
+  const code = screen.getByText(command);
+  await user.click(
+    within(code.parentElement!).getByRole("button", { name: "Copy" }),
+  );
+  expect(write).toHaveBeenCalledWith(command);
+  expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "Your terminal" }),
+    "powershell",
+  );
+  expect(
+    screen.queryByRole("button", { name: "Copied" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText(/^irm https:/)).toBeInTheDocument();
+});
+
+test("offers all skills with short examples and links to full Markdown", async () => {
+  const user = userEvent.setup();
+  render(<Site />);
+  const nav = screen.getByRole("navigation", { name: "Main navigation" });
+  await user.click(within(nav).getByRole("link", { name: "Skills" }));
+  expect(
+    await screen.findByRole("heading", { name: "What would you like to do?" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getAllByRole("link", { name: "Full skill instructions on GitHub" }),
+  ).toHaveLength(9);
+  expect(screen.getByText("/meow:onboard")).toBeInTheDocument();
+  expect(screen.getByText("/meow:lint")).toBeInTheDocument();
+  expect(fetchMock).not.toHaveBeenCalled();
+  await user.click(within(nav).getByRole("link", { name: "Customize" }));
+  expect(
+    await screen.findByRole("heading", { name: "Your project. Your way." }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("/meow:customize")).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "Agent & workflow formats" }),
+  ).toHaveAttribute(
+    "href",
+    "https://github.com/maya8237/MEOW/blob/main/docs/WORKFLOWS.md",
+  );
+  expect(within(nav).getByRole("link", { name: "Customize" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+});
+
+test("opens reference on demand and returns to the beginner guide", async () => {
+  const user = userEvent.setup();
+  render(<Site />);
+  const nav = screen.getByRole("navigation", { name: "Main navigation" });
+  await user.click(within(nav).getByRole("link", { name: "Reference" }));
+  expect(await screen.findByText("Welcome to the readme.")).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "Read this file on GitHub" }),
+  ).toHaveAttribute(
+    "href",
+    "https://github.com/maya8237/MEOW/blob/main/README.md",
+  );
+  await user.click(within(nav).getByRole("link", { name: "Start here" }));
+  expect(
+    await screen.findByRole("heading", { name: "Your first steps" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Welcome to the readme.")).not.toBeInTheDocument();
 });

@@ -34,6 +34,10 @@ latest plan. Default `--resume-at generate` replans unless a plan is supplied.
 
 ## Verification and delivery
 
+Built-in workflows implement, review, and fix until review passes or the
+configured round limit is reached. A passing review is followed by final checks
+before delivery. Custom workflows control their own loop stages.
+
 Completion requires an independent reviewer PASS, enabled tester PASS, and
 current required lint/test/build evidence. Advisory failures remain visible.
 Normal runs commit and push to `origin` from their worktree.

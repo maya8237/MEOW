@@ -51,5 +51,15 @@ logo, and bundled JetBrains Mono fonts; the UI makes no CDN requests.
 - `lib/docs.ts`: docs loading, link resolution, and section search.
 - `styles.css`: MEOW theme, layout, and responsive styles.
 
+## Hosted docs
+
+`docs-site/` provides a short beginner guide, a skill picker, and customization
+examples. Detailed instructions stay in the original Markdown; **Reference**
+opens the shared searchable reader and existing `#/path:heading` links still work.
+Edit the beginner copy in `GuidePages.tsx` and skill summaries in `content.ts`.
+Run `npm run build:docs-site` with MEOW's Python environment active to generate
+`dist-docs/`. Preview with `npx vite preview --mode docs-site`; the output is
+deployed by `.github/workflows/pages.yml` and is not committed.
+
 To add a shadcn component, run `npx shadcn@latest add COMPONENT` and use
 `@/lib/utils` for the `cn` utility. Add only components used by the UI.
