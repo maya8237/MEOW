@@ -140,7 +140,7 @@ Runs execute automatically and commit/push verified work from their worktree.
 `-n` leaves changes uncommitted; `-nc` / `--no-worktree-commit` operates in the
 selected checkout and commits only; `-np` / `--no-worktree-push` operates there
 and commits/pushes. Existing linked worktrees selected with `--work-dir` are
-used directly. Add `-m` for plan approval, or `--background` to detach a run;
+used directly. Add `-m` for plan approval (also when the user asks to review or approve the plan first), or `--background` to detach a run;
 background runs reject manual approval and lint-fix. `meow -u` updates MEOW.
 Successful runs automatically retain the result and clean integrated task artifacts.
 Use `meow cleanup [RUN_ID]` to retry cleanup; omitted IDs scan saved runs.

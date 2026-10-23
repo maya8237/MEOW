@@ -35,6 +35,14 @@ Start from the release branch and open the PR into dev.
 Here the work starts from `release` and the PR/MR targets `dev`.
 
 ```text
+/meow:run Add rate limiting to the public API: 100 requests per minute per API
+key, with a clear error when the limit is hit. Show me the plan and wait for my
+approval before you build anything.
+```
+
+Asking to approve the plan first pauses the run for your approval.
+
+```text
 /meow:run Fix duplicate submissions when a user double-clicks Save on the profile
 form. Reproduce the bug, disable Save while the request is pending, and allow
 retry after a failure. Add regression tests for double-clicks and failed requests.

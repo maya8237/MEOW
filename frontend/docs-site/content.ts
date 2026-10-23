@@ -79,6 +79,11 @@ export const runExamples = [
       "/meow:run Add a password reset flow. Users request a reset link by email, the link expires after 30 minutes and works once, and the new password must meet the existing password rules. Show the same confirmation message whether or not the email exists. Add tests for expired, reused, and invalid links. Start from the release branch and open the PR into dev.",
   },
   {
+    title: "Approve the plan first",
+    prompt:
+      "/meow:run Add rate limiting to the public API: 100 requests per minute per API key, with a clear error when the limit is hit. Show me the plan and wait for my approval before you build anything.",
+  },
+  {
     title: "Fix a bug",
     prompt:
       "/meow:run Fix duplicate submissions when a user double-clicks Save on the profile form. Reproduce the bug, disable Save while the request is pending, and allow retry after a failure. Add regression tests for double-clicks and failed requests.",
