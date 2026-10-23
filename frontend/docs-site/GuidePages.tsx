@@ -98,7 +98,9 @@ function Start() {
           <li>
             <h3>Ask for your first change</h3>
             <p>Tell MEOW what you want to build.</p>
-            <Command text="/meow:run Add CSV export" />
+            <Command text="/meow:run Fix the login redirect loop" />
+            <p>Or give more detail about what you need and how to check it:</p>
+            <Command text={runExamples[1].prompt} />
             <p className="guide-note">
               Feature runs use a separate worktree, then commit and push after
               checks pass, open a PR/MR into your configured target, and verify

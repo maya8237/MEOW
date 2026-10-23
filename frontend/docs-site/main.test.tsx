@@ -43,7 +43,9 @@ test("starts with setup instead of loading the full reference", () => {
     screen.getByRole("heading", { name: "Your first steps" }),
   ).toBeInTheDocument();
   expect(screen.getByText("/meow:onboard")).toBeInTheDocument();
-  expect(screen.getByText("/meow:run Add CSV export")).toBeInTheDocument();
+  expect(
+    screen.getByText("/meow:run Fix the login redirect loop"),
+  ).toBeInTheDocument();
   expect(screen.queryByText("Welcome to the readme.")).not.toBeInTheDocument();
   expect(fetchMock).not.toHaveBeenCalled();
   const nav = screen.getByRole("navigation", { name: "Main navigation" });
