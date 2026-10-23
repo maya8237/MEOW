@@ -20,7 +20,7 @@ from tests.orchestration.review_fakes import ReviewScript, ScriptedPullRequest
 
 MAX_SLEEPS = 200
 PR_URL = "https://example.test/pr/1"
-GITHUB_CONFIG = '[github.mcp]\ncommand = "x"\n'
+GITHUB_CONFIG = '[github.mcp]\ncommand = "x"\n\n[delivery]\ntarget_branch = "main"\n'
 OBJECTIVE = IntakeRequest("objective", objective="Build it")
 
 

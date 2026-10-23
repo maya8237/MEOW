@@ -1,8 +1,21 @@
 """Shared pytest fixtures."""
 
+import logging
+
 import pytest
+import structlog
 
 from meow.project import repos
+
+
+@pytest.fixture(autouse=True)
+def _restore_logging():
+    """`configure_logging()` binds a handler to whatever stderr is current; a
+    test that leaves it behind would later write to a closed capture stream."""
+    handlers, level = logging.root.handlers[:], logging.root.level
+    yield
+    logging.root.handlers, logging.root.level = handlers, level
+    structlog.reset_defaults()
 
 
 @pytest.fixture(autouse=True)
