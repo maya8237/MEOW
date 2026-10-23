@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "build:docs-site": "python -c \"import json,os;from meow.ui.docs import build_docs;os.makedirs('docs-site/public',exist_ok=True);json.dump(build_docs(),open('docs-site/public/docs.json','w',encoding='utf-8'))\" && tsc --noEmit && vite build --mode docs-site",
+    "build:docs-site": "python -c \"import json,os;from meow.ui.docs import build_docs;os.makedirs('docs-site/public',exist_ok=True);json.dump(build_docs(),open('docs-site/public/docs.json','w',encoding='utf-8'))\" && tsc --noEmit && vite build --mode docs-site && node -e \"const fs=require('fs'),d='dist-docs/assets';if(!fs.readdirSync(d).filter(f=>f.endsWith('.css')).some(f=>fs.readFileSync(d+'/'+f,'utf8').includes('animate-spin')))throw new Error('hosted CSS is missing src utilities')\"",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",

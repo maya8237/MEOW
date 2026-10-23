@@ -82,3 +82,16 @@ test("re-renders when the hash changes", async () => {
   });
   expect(await screen.findByText("Body.")).toBeInTheDocument();
 });
+
+test("shows an error when docs.json cannot be loaded", async () => {
+  fetchMock.mockImplementation(
+    async () =>
+      new Response(JSON.stringify({ error: "Documentation unavailable" }), {
+        status: 404,
+      }),
+  );
+  render(<Site />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Documentation unavailable",
+  );
+});

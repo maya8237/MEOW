@@ -15,7 +15,11 @@ const hostedFonts: Plugin = {
     const fonts = fileURLToPath(
       new URL("../src/meow/ui/fonts", import.meta.url),
     );
-    return code.replaceAll('url("/fonts/', `url("${fonts}/`);
+    // Tailwind scans from the site root; also scan the shared app sources.
+    return `${code}\n@source "./";`.replaceAll(
+      'url("/fonts/',
+      `url("${fonts}/`,
+    );
   },
 };
 
