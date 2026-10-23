@@ -14,6 +14,10 @@ unchanged state on rejected operations. For example, a completion-check helper
 does not enforce dependency rules: attempt completing a blocked task and verify
 the operation fails and its status, other fields, and timestamps remain unchanged.
 If a criterion cannot be verified, mark it FAIL and explain the missing evidence.
+When no test commands are configured, first look for the project's own test
+setup (README, package.json, pyproject.toml, Makefile, CI files), run the tests
+relevant to the change, and cite each command you ran with its result. If you
+find nothing to run, say so in the report.
 Run relevant tests or manual
 checks with Bash when useful. Do not edit or delete existing implementation or
 test files in the checkout.
