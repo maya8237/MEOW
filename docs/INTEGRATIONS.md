@@ -25,6 +25,8 @@ Timeout is per-entry or `lint_timeout` (default 60 seconds).
 `meow review --plan PATH --test` is report-only unless `--fix` is added;
 other review sources and review-file reject tester mode.
 Without configured commands the tester may inspect/run documented tests.
+`[tester] write_tests = true` (default false) lets the tester add new test
+files for the change; it still may not edit or delete existing files.
 Native tester flows route through CLI for server lifecycle.
 
 ```toml

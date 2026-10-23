@@ -222,6 +222,7 @@ def test_feature_gaps_reports_configured_and_missing(repo):
         "gitlab",
         "github",
         "tester_tests",
+        "tester_write_tests",
         "tester_mcp",
         "tester_browser",
         "build",

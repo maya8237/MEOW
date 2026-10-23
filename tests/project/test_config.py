@@ -246,6 +246,15 @@ class LoadConfigOsValidationTests(unittest.TestCase):
         self.assertEqual(config["docs_dir"], r"C:\Users\alice/meow-docs")
         self.assertEqual(config["tester"]["base_url"], "http://localhost:3000/api")
 
+    def test_tester_write_tests_defaults_false_and_must_be_boolean(self):
+        self.assertIs(_normalize_tester_config({})["write_tests"], False)
+        self.assertIs(
+            _normalize_tester_config({"tester": {"write_tests": True}})["write_tests"],
+            True,
+        )
+        with self.assertRaises(ValueError):
+            _normalize_tester_config({"tester": {"write_tests": "yes"}})
+
     def test_load_config_merges_shared_and_local_meow_toml(self):
         with tempfile.TemporaryDirectory() as tmp:
             working_dir = Path(tmp)

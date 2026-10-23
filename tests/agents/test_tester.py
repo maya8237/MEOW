@@ -9,6 +9,7 @@ from meow.infrastructure.test_runner import (
     VerificationCommandEvidence,
     VerificationStageEvidence,
 )
+from meow.project import prompts
 
 
 class Context:
@@ -184,3 +185,13 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_write_tests_is_off_by_default_and_opt_in():
+    report = Path("report.md")
+    default = prompts.tester_prompt(report)
+    assert "Do not create scratch files" in default
+    assert "Add new test files" not in default
+    enabled = prompts.tester_prompt(report, write_tests=True)
+    assert "Add new test files" in enabled
+    assert "Do not create scratch files" not in enabled

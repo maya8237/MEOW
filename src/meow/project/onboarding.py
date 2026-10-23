@@ -328,6 +328,11 @@ _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
         "Add [[tester.tests]] commands, verify with `meow native verify`, "
         "then run with `--test`.",
     ),
+    "tester_write_tests": (
+        ("tester", "write_tests"),
+        "Set write_tests = true under [tester] so the tester adds new tests "
+        "for the change (off by default).",
+    ),
     "tester_mcp": (
         ("tester", "mcp"),
         "Add [[tester.mcp]] launchers for the tester role, then `meow native verify`.",
