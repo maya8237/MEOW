@@ -4,7 +4,7 @@
   <img src="logo.png" width="160" alt="MEOW pixel cat logo" />
 </p>
 
-> Describe a feature. Get it built, reviewed, and delivered.
+> Describe a feature. Get a finished MR.
 
 MEOW plans, builds, tests, and reviews complete features, then opens a PR.
 Use it from Claude Code with a few simple skills.
