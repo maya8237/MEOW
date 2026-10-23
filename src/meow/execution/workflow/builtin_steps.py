@@ -276,6 +276,11 @@ async def checks(state):
 
 async def deliver(state):
     state.block_delivery()
+    if state.store.load(state.run_id).delivery.get("pushed"):
+        # Resumed after the push: HEAD moved past the reviewed revision, so the
+        # evidence re-check would wrongly fail an already-delivered run.
+        await run_final_delivery(state)
+        return
     if state.checks_results is None:
         return
     if not evidence_ready(state):

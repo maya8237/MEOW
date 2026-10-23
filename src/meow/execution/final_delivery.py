@@ -3,6 +3,7 @@ then let the pipeline verify it (`run_final_delivery`, after `deliver`)."""
 
 import os
 import re
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 
@@ -20,11 +21,14 @@ from meow.execution.pipeline_verify import (
     PipelineOutcome,
     verify_pipeline,
 )
+from meow.execution.pipeline_verify import _one_line as _capped_line
 from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled
+from meow.infrastructure.logging import get_logger
 from meow.integrations.pipeline_api import PipelineUnavailable, connect
 from meow.project.config_schema import PIPELINE_DEFAULTS
 
+logger = get_logger(__name__)
 _TITLE_LIMIT = 72
 _USERINFO = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^/\s@]*@", re.IGNORECASE)
 _HEADER = re.compile(
@@ -48,7 +52,8 @@ def _scrub(text: str) -> str:
 
 
 def _one_line(exc: Exception) -> str:
-    return _scrub(" ".join(str(exc).split())) or type(exc).__name__
+    """One scrubbed, env-redacted line capped like the pipeline loop's details."""
+    return _capped_line(_scrub(" ".join(str(exc).split()))) or type(exc).__name__
 
 
 def _body(record) -> str:
@@ -121,18 +126,33 @@ async def open_run_merge_request(
 
 
 _SKIPPED = "Merge request and pipeline verification skipped (--no-pr / open_mr=false)."
-_RERUN_DETAILS = frozenset({"fix rounds exhausted", "timed out"})
+_ADVICE = "fix the failing jobs on the MR branch, or re-run the pipeline."
+
+
+def _warn(exc: Exception) -> None:
+    with suppress(OSError):  # logging to a closed stream must not fail the stage
+        logger.warning("final_delivery_journal_failed", error=_one_line(exc))
+
+
+def _journal(store: RunStore, run_id: str, phase: str | None, **delivery) -> bool:
+    """Merge `delivery` into the journal; a write failure is logged, never raised."""
+    try:
+        record = store.load(run_id)
+        merged = {**record.delivery, **delivery}
+        store.transition(run_id, phase or record.phase, delivery=merged)
+    except Exception as exc:  # the stage must not fail an already-pushed run
+        _warn(exc)
+        return False
+    return True
 
 
 def _announcer(store: RunStore, run_id: str):
     """Print a `[delivery]` line and mirror it to `delivery["stage"]`."""
 
     def announce(text: str) -> None:
-        print(f"[delivery] {text}", flush=True)
-        record = store.load(run_id)
-        store.transition(
-            run_id, record.phase, delivery={**record.delivery, "stage": text}
-        )
+        with suppress(OSError):  # a closed stdout (BrokenPipeError) loses the line
+            print(f"[delivery] {text}", flush=True)
+        _journal(store, run_id, None, stage=text)
 
     return announce
 
@@ -141,7 +161,7 @@ def _not_verified(detail: str) -> PipelineOutcome:
     return PipelineOutcome("not_verified", 0, "", (), detail)
 
 
-def _final_text(outcome: PipelineOutcome, run_id: str) -> str:
+def _final_text(outcome: PipelineOutcome, mr_url: str | None) -> str:
     """The closing line; only a `verified` outcome reads "Verified by pipeline:"."""
     if outcome.status == "verified":
         return f"Verified by pipeline: {outcome.url}"
@@ -155,10 +175,10 @@ def _final_text(outcome: PipelineOutcome, run_id: str) -> str:
     unnamed = [name for name in outcome.failing if name not in text]
     if unnamed:
         text += "; failing jobs: " + ", ".join(unnamed)
+    if mr_url:
+        text += f". MR: {mr_url}"
     if outcome.url:
-        text += f"; pipeline: {outcome.url}"
-    if outcome.detail in _RERUN_DETAILS:
-        text += f"; rerun with: meow resume {run_id} --continue"
+        text += f". See {outcome.url}; {_ADVICE}"
     return text
 
 
@@ -173,6 +193,7 @@ def _fixers(worktree: Path, config: dict) -> PipelineFixers:
 
 async def _verify(state, settings: dict, announce) -> PipelineOutcome:
     store, run_id, config = state.store, state.run_id, state.sprint.config
+    _journal(store, run_id, "pipeline_waiting")  # active: `meow cancel` works
     record = store.load(run_id)
     announce(
         "Feature complete. MEOW loop finished; entering final delivery "
@@ -208,12 +229,14 @@ def _settle(store: RunStore, run_id: str, outcome: PipelineOutcome) -> PipelineO
 
     Keeps the journaled round count when the stage ended before the loop did.
     """
-    delivery = store.load(run_id).delivery
-    stored = delivery.get("pipeline")
-    stored = stored if isinstance(stored, dict) else {}
-    outcome = replace(
-        outcome, rounds=max(outcome.rounds, int(stored.get("rounds") or 0))
-    )
+    try:
+        stored = store.load(run_id).delivery.get("pipeline")
+        stored = stored if isinstance(stored, dict) else {}
+        rounds = max(outcome.rounds, int(stored.get("rounds") or 0))
+    except Exception as exc:  # an unreadable journal keeps the outcome as is
+        _warn(exc)
+        rounds = outcome.rounds
+    outcome = replace(outcome, rounds=rounds)
     pipeline = {
         "status": outcome.status,
         "rounds": outcome.rounds,
@@ -221,7 +244,7 @@ def _settle(store: RunStore, run_id: str, outcome: PipelineOutcome) -> PipelineO
         "failing": list(outcome.failing),
         "detail": outcome.detail,
     }
-    store.transition(run_id, "delivered", delivery={**delivery, "pipeline": pipeline})
+    _journal(store, run_id, "delivered", pipeline=pipeline)
     return outcome
 
 
@@ -234,6 +257,14 @@ def _stored_verified(delivery: dict) -> PipelineOutcome | None:
     return PipelineOutcome(
         "verified", rounds, url, failing, str(stored.get("detail") or "")
     )
+
+
+def _mr_url(store: RunStore, run_id: str) -> str | None:
+    try:
+        pr = store.load(run_id).delivery.get("pr")
+    except Exception:  # the final line is still printed without the MR link
+        return None
+    return pr.get("url") if isinstance(pr, dict) else None
 
 
 async def run_final_delivery(state) -> PipelineOutcome | None:
@@ -257,5 +288,5 @@ async def run_final_delivery(state) -> PipelineOutcome | None:
     if outcome is None:
         outcome = await _guarded(state, settings, announce)
     outcome = _settle(store, run_id, outcome)
-    announce(_final_text(outcome, run_id))
+    announce(_final_text(outcome, _mr_url(store, run_id)))
     return outcome

@@ -409,7 +409,7 @@ def test_unvalidated_is_qualified(stage, monkeypatch, capsys):
     assert last.endswith(PIPE_URL)
 
 
-def test_exhausted_lists_failing_jobs_and_resume_hint(stage, monkeypatch, capsys):
+def test_exhausted_lists_failing_jobs_and_links(stage, monkeypatch, capsys):
     outcome = PipelineOutcome(
         "not_verified", 3, PIPE_URL, ("meow-review", "unit"), "fix rounds exhausted"
     )
@@ -419,7 +419,11 @@ def test_exhausted_lists_failing_jobs_and_resume_hint(stage, monkeypatch, capsys
     last = capsys.readouterr().out.splitlines()[-1]
     assert last.startswith("[delivery] Not verified by pipeline: fix rounds exhausted")
     assert "meow-review" in last and "unit" in last
-    assert f"meow resume {state.run_id} --continue" in last
+    assert f"MR: {MR_URL}" in last and f"See {PIPE_URL};" in last
+    assert last.endswith(
+        "fix the failing jobs on the MR branch, or re-run the pipeline."
+    )
+    assert "meow resume" not in last
     pipeline = state.store.load(state.run_id).delivery["pipeline"]
     assert pipeline == {
         "status": "not_verified",
@@ -457,6 +461,7 @@ def test_mr_failure_skips_verification(stage, monkeypatch, capsys):
     assert out.splitlines()[-1] == (
         "[delivery] Not verified by pipeline: merge request not opened: boom"
     )
+    assert "meow resume" not in out
 
 
 def test_already_verified_is_not_rerun(stage, monkeypatch, capsys):
@@ -553,3 +558,56 @@ def test_failure_before_loop_keeps_round_counter(stage, monkeypatch):
     state = stage.make({"pipeline": stored})
     assert go(state).rounds == rounds
     assert state.store.load(state.run_id).delivery["pipeline"]["rounds"] == rounds
+
+
+def test_run_is_cancellable_while_opening_the_mr(stage, monkeypatch):
+    phases = []
+    original = final_delivery.open_run_merge_request
+
+    async def opening(store, run_id, config, agents):
+        phases.append(store.load(run_id).phase)
+        return await original(store, run_id, config, agents)
+
+    monkeypatch.setattr(final_delivery, "open_run_merge_request", opening)
+    fake_verify(monkeypatch, stage, PipelineOutcome("verified", 0, PIPE_URL, (), ""))
+    state = stage.make()
+    go(state)
+    assert phases == ["pipeline_waiting"]
+    assert state.store.load(state.run_id).phase == "delivered"
+
+
+def test_long_unexpected_error_is_capped_and_redacted(stage, monkeypatch, capsys):
+    monkeypatch.setenv("SOME_ENV_VALUE", "envsecret42")
+
+    async def verify(*args, **kwargs):
+        await asyncio.sleep(0)
+        raise RuntimeError("x" * 5000 + " envsecret42")
+
+    monkeypatch.setattr(final_delivery, "verify_pipeline", verify)
+    state = stage.make()
+    outcome = go(state)
+    limit = 300
+    assert len(outcome.detail) <= limit + len("...")
+    assert "envsecret42" not in outcome.detail
+    assert "envsecret42" not in capsys.readouterr().out
+    saved = state.store.load(state.run_id).delivery["pipeline"]["detail"]
+    assert saved == outcome.detail
+
+
+def test_broken_stdout_and_journal_failures_never_raise(stage, monkeypatch):
+    fake_verify(monkeypatch, stage, PipelineOutcome("verified", 0, PIPE_URL, (), ""))
+    state = stage.make()
+
+    def broken_print(*args, **kwargs):
+        raise BrokenPipeError
+
+    monkeypatch.setattr("builtins.print", broken_print)
+    transition = state.store.transition
+
+    def failing(run_id, phase, **patch):
+        if phase == "delivered":
+            raise OSError("disk full")
+        return transition(run_id, phase, **patch)
+
+    monkeypatch.setattr(state.store, "transition", failing)
+    assert go(state).status == "verified"
