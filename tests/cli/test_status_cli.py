@@ -31,6 +31,19 @@ def test_status_latest_and_verbose(tmp_path, capsys):
     assert "Transitions" in verbose and "unavailable" in verbose
 
 
+def test_status_labels_tester_without_configured_commands(tmp_path, capsys):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    store.update_results(record.id, tester="PASS", tester_commands=0)
+    status(tmp_path, record.id)
+    assert "Tester: PASS (no configured test commands)" in capsys.readouterr().out
+    store.update_results(record.id, tester_commands=2)
+    status(tmp_path, record.id)
+    assert "Tester: PASS\n" in capsys.readouterr().out
+
+
 def test_status_missing_record_is_safe(tmp_path, capsys):
     assert status(tmp_path, "unknown") != 0
     assert "meow status" in capsys.readouterr().err

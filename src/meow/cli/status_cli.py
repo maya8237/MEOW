@@ -153,6 +153,13 @@ def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-bra
         lines.append(f"Worker log: {worker.log or 'unavailable'}")
         if worker.pid is not None:
             lines.append(f"Worker PID: {worker.pid}")
+    if "tester_commands" in record.results:
+        note = (
+            ""
+            if record.results["tester_commands"]
+            else " (no configured test commands)"
+        )
+        lines.append(f"Tester: {record.results.get('tester', 'unavailable')}{note}")
     lines.extend(_gate_lines(record.results))
     lines.extend(_pipeline_lines(record.delivery))
     lines.extend(f"Quality concern: {item.path} — {item.impact}" for item in concerns)
