@@ -237,3 +237,7 @@ __marimo__/
 !.meow/agents/
 !.meow/workflows/
 .claude/settings.local.json
+
+# Hosted docs site build output
+/frontend/docs-site/public/docs.json
+/frontend/dist-docs/
