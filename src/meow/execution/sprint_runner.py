@@ -205,6 +205,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     required_session_roles: set[str] | None = None,
     workflow: str | None = None,
     inputs: dict[str, str] | None = None,
+    pipeline_options: dict[str, bool] | None = None,
 ) -> None:
     """Plan (unless `plan_file` is given) then implement it in a round loop.
 
@@ -271,12 +272,15 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
         worktree=str(active_dir),
         branch=branch,
         delivery={
+            **record.delivery,
             "enabled": (
                 record.delivery.get("enabled", _is_linked_worktree(active_dir))
                 if commit is None
                 else commit
             ),
             "push": record.delivery.get("push", True) if push is None else push,
+            **({"base": source_branch} if source_branch else {}),
+            **({"pipeline_options": pipeline_options} if pipeline_options else {}),
         },
         results={"feature_name": effective_name} if effective_name else {},
     )

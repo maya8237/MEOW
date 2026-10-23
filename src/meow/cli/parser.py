@@ -660,5 +660,14 @@ def _add_orchestration_args(parser: argparse.ArgumentParser) -> None:
         "--no-pr",
         dest="no_pr",
         action="store_true",
-        help="Orchestration only: push the integration branch without opening a PR.",
+        help="Push without opening a PR/MR (orchestration or `run --from`).",
+    )
+    parser.add_argument(
+        "--fix-non-meow-jobs",
+        dest="fix_non_meow_jobs",
+        action="store_true",
+        help=(
+            "With --from: also fix failing pipeline jobs other than meow-review "
+            "(never deploy/release/publish/rollback jobs)."
+        ),
     )

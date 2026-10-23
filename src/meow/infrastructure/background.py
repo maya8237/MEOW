@@ -303,7 +303,11 @@ def worker_main(  # ruff: ignore[too-many-statements]
 ) -> int:
     """Run saved invocation in the detached process, never prompting."""
     from meow.cli.parser import _build_arg_parser
-    from meow.cli.validation import _resolve_input_path, parse_inputs
+    from meow.cli.validation import (
+        _resolve_input_path,
+        parse_inputs,
+        pipeline_overrides,
+    )
     from meow.execution.sprint_runner import run_sprint
     from meow.integrations.issue_solver import run_issue_solver
 
@@ -350,6 +354,11 @@ def worker_main(  # ruff: ignore[too-many-statements]
                     ),
                     **({"workflow": args.workflow} if args.workflow else {}),
                     **({"inputs": parse_inputs(args.input)} if args.input else {}),
+                    **(
+                        {"pipeline_options": opts}
+                        if (opts := pipeline_overrides(args))
+                        else {}
+                    ),
                 )
             )
         return 0

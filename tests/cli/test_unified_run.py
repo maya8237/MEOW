@@ -64,7 +64,7 @@ def test_orchestration_rejects_sprint_only_flags(flags):
     assert info.value.code == EXIT_USAGE
 
 
-@pytest.mark.parametrize("flag", ["--max-parallel", "--dry-run", "--no-pr"])
+@pytest.mark.parametrize("flag", ["--max-parallel", "--dry-run"])
 def test_supervisor_options_do_not_silently_change_engine(flag):
     parser = _build_arg_parser()
     values = [flag, "2"] if flag == "--max-parallel" else [flag]

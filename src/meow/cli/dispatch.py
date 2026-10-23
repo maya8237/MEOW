@@ -8,7 +8,7 @@ from pathlib import Path
 
 from meow.cli.queue_cli import queue
 from meow.cli.review_cli import run_review_command
-from meow.cli.validation import _resolve_input_path, parse_inputs
+from meow.cli.validation import _resolve_input_path, parse_inputs, pipeline_overrides
 from meow.execution.orchestrator import PlanNotApprovedError
 from meow.execution.plan_approval import _prompt_plan_approval
 from meow.execution.sprint_runner import run_plan, run_sprint
@@ -68,6 +68,11 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
                 **({"workflow": args.workflow} if args.workflow else {}),
                 **({"inputs": parse_inputs(args.input)} if args.input else {}),
                 **({"test": True} if args.test else {}),
+                **(
+                    {"pipeline_options": opts}
+                    if (opts := pipeline_overrides(args))
+                    else {}
+                ),
             )
         )
     except PlanNotApprovedError as exc:
