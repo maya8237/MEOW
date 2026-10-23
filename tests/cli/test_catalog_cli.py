@@ -19,7 +19,7 @@ def test_workflow_and_inputs_reach_run_sprint(tmp_path):
         "Audit",
         "-n",
         "--workflow",
-        "review-only",
+        "review-and-fix",
         "--input",
         "topic=a=b",
         "--input",
@@ -27,7 +27,7 @@ def test_workflow_and_inputs_reach_run_sprint(tmp_path):
     ])
     with patch("meow.cli.dispatch.run_sprint", new=AsyncMock()) as run:
         _dispatch_plain_build(args, tmp_path, use_worktree=False)
-    assert run.await_args.kwargs["workflow"] == "review-only"
+    assert run.await_args.kwargs["workflow"] == "review-and-fix"
     assert run.await_args.kwargs["inputs"] == {"topic": "a=b", "severity": "high"}
 
 
@@ -46,7 +46,7 @@ def command(tmp_path, *args):
 def test_catalog_lists_shipped_workflows_and_shows_resolved_override(tmp_path, capsys):
     command(tmp_path, "workflows", "list")
     output = capsys.readouterr().out
-    assert all(name in output for name in ("default", "quick", "review-only"))
+    assert all(name in output for name in ("default", "quick", "review-and-fix"))
     directory = tmp_path / ".meow" / "workflows"
     directory.mkdir(parents=True)
     (directory / "quick.toml").write_text(

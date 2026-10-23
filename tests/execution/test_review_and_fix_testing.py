@@ -6,11 +6,11 @@ from meow.execution.sprint_runner import run_sprint
 from meow.project.plan_files import stage_file
 
 
-def test_review_only_supports_testing_without_a_plan(tmp_path):
+def test_review_and_fix_supports_testing_without_a_plan(tmp_path):
     directory = tmp_path / ".meow"
     directory.mkdir()
     (directory / "config.toml").write_text(
-        '[workflow]\ndefault="review-only"', encoding="utf-8"
+        '[workflow]\ndefault="review-and-fix"', encoding="utf-8"
     )
     report = stage_file(tmp_path / ".meow" / "plans", "tester")
 

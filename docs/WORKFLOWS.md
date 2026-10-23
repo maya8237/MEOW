@@ -5,12 +5,12 @@ onboarding, plan ownership, and terminal-state policy.
 
 ```bash
 meow run "Add CSV export" --name csv-export --workflow quick
-meow run "Audit the API" --workflow review-only --no-worktree --input topic=API
+meow run "Audit the API" --workflow review-and-fix --no-worktree --input topic=API
 ```
 
 - `default`: knowledge → shaping → plan/approval → task graph → generation/review → checks → delivery.
 - `quick`: omits knowledge/shaping.
-- `review-only`: reviews existing code first, fixes later failures, checks, no automatic delivery.
+- `review-and-fix`: reviews existing code first, fixes later failures, checks, no automatic delivery.
   `--test` works without a plan, using the request as its basis.
 
 Plan-based reviewers/testers also receive the original request, including on

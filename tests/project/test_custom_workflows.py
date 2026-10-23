@@ -20,7 +20,7 @@ def catalog(tmp_path, text):
 
 def test_shipped_workflows_validate_and_quick_omits_preplan(tmp_path):
     definitions = discover(builtin_sources())
-    for name in ("default", "quick", "review-only"):
+    for name in ("default", "quick", "review-and-fix"):
         assert validate(definitions.workflow(name), definitions) == []
     quick = expand(definitions.workflow("quick"), definitions)
     assert "builtin.knowledge" not in {step.target for step in quick}

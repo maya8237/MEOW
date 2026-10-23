@@ -1,4 +1,4 @@
-description = "Review existing code and fix findings until it passes."
+description = "Review existing code, fix findings until review passes, then run checks."
 
 [[steps]]
 id = "rounds"
