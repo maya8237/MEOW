@@ -14,7 +14,7 @@ skills, models, and permissions. Dependency or install problems: [dependencies](
 Show the user where each scope's customizations and configuration live (the
 table below). On Windows, write user paths as `$env:USERPROFILE\.meow\...`,
 not `~`. `meow agents list` and `meow workflows list` report what is in effect
-and its scope. Last, mention that `meow ui` (`--no-browser` prints the URL)
+and its scope. Built-ins are viewed with `list`/`show` and changed by ejecting a copy into a scope (section 2). Last, mention that `meow ui` (`--no-browser` prints the URL)
 shows the same catalog visually and manages workflows and sessions.
 
 ## 1. Resolve the request and scope

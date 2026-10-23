@@ -269,6 +269,32 @@ function Scopes() {
           ))}
         </div>
       ))}
+      <div className="guide-scope-row">
+        <h3>
+          Built-in <small>Ship with MEOW; not edited in place.</small>
+        </h3>
+        <p>
+          See what&apos;s included, then eject a copy into a scope to change it.
+          Your copy replaces the built-in everywhere that scope applies.
+        </p>
+        {[
+          ["List workflows", "meow workflows list"],
+          ["Read a workflow", "meow workflows show quick"],
+          ["Change a workflow", "meow workflows eject quick --scope project"],
+          ["List agent roles", "meow agents list"],
+          ["Change an agent", "meow agents eject reviewer --scope project"],
+        ].map(([what, command]) => (
+          <div className="guide-path" key={command}>
+            <span>{what}</span>
+            <Command text={command} />
+          </div>
+        ))}
+        <p className="guide-note">
+          Use <code>--scope local</code> or <code>--scope user</code> to keep
+          the copy private or personal. The copy lands in that scope&apos;s
+          agents or workflows folder above.
+        </p>
+      </div>
     </section>
   );
 }
