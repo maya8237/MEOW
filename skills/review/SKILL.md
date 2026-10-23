@@ -148,7 +148,8 @@ verification and coverage bindings; remote reviews use only the supplied diff.
 
 ## CLI mode
 
-When the user requests tester mode for an explicit plan, pass `--test` to
+When the user requests tester mode, or asks to run tests or validate behavior,
+for an explicit plan, pass `--test` to
 `meow review --plan PATH --test` (optionally with `--fix`). This uses the
 CLI orchestration so configured servers remain available to the tester agent.
 Tester mode is not available for implicit plan discovery or other review

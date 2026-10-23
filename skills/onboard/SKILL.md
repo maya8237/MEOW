@@ -102,7 +102,8 @@ the user explicitly named. Scheduled runs use Windows Task Scheduler on
 Windows, or systemd user timers on Linux, through `/meow:schedule` and
 `meow schedule add`. External cron/systemd jobs remain an option for recurring
 runs. Tester mode is optional and should only be
-enabled after its commands are verified.
+enabled after its commands are verified. Warn that configured
+`[[tester.tests]]` commands enable the tester on every run, without `--test`.
 
 For every accepted feature that needs an MCP (Jira, GitLab, GitHub, Tester
 mode), check first whether the session has its tools and whether the CLI

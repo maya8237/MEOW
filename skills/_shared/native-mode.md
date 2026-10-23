@@ -133,6 +133,8 @@ interrupted worktrees. Inspect journals with `meow status RUN_ID` or
 Before native run preparation, inspect `meow native verify`. `--test` or
 `tester.configured: true` routes runs to CLI so configured servers stay alive
 throughout tester validation; native execution cannot own that lifecycle.
+Only configured `[tester] tests` enable the tester; other tester settings route
+to CLI without enabling it.
 Preserve plan/Jira/worktree options and saved IDs. Continue a native checkpoint
 with `meow resume RUN_ID --continue --repair` because it has no Claude session
 IDs. Review tester mode requires an explicit plan:
