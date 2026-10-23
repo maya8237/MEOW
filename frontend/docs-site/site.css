@@ -279,6 +279,34 @@
 .guide-detail:hover {
   color: var(--primary);
 }
+.guide-scope-row h3 small {
+  margin-left: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+.guide-scope-row {
+  margin-top: 1.5rem;
+}
+.guide-path {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
+}
+.guide-path .guide-command code {
+  color: var(--primary);
+}
+.guide-path .guide-command-wrap {
+  margin: 0.35rem 0;
+}
+.guide-ui {
+  margin-top: 2rem;
+  color: var(--muted-foreground);
+}
+.guide-ui h2 {
+  font-size: 1rem;
+}
 .guide-run,
 .guide-scopes {
   background: var(--surface);
@@ -488,6 +516,10 @@
   }
   .guide-command code {
     flex-basis: 100%;
+  }
+  .guide-path {
+    grid-template-columns: 1fr;
+    gap: 0;
   }
   .guide-skills,
   .guide-examples,

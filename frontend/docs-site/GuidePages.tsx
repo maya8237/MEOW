@@ -188,6 +188,93 @@ function Skills() {
   );
 }
 
+const scopeRows = [
+  {
+    scope: "Project",
+    note: "Shared with your team through git.",
+    files: [
+      [".meow/config.toml", "Settings"],
+      [".meow/agents/", "Agent roles (.toml)"],
+      [".meow/workflows/", "Workflows (.toml)"],
+    ],
+  },
+  {
+    scope: "Local",
+    note: "Just for you in this project; ignored by git.",
+    files: [
+      [".meow/config.local.toml", "Settings"],
+      [".meow/local/agents/", "Agent roles (.toml)"],
+      [".meow/local/workflows/", "Workflows (.toml)"],
+    ],
+  },
+  {
+    scope: "User",
+    note: "Applies to all your projects.",
+    files: [
+      ["~/.meow/config.toml", "Settings"],
+      ["~/.meow/agents/", "Agent roles (.toml)"],
+      ["~/.meow/workflows/", "Workflows (.toml)"],
+    ],
+  },
+] as const;
+
+function systemPath(path: string, shell: string) {
+  if (shell === "bash") return path;
+  const win = path.replaceAll("/", "\\");
+  return win.startsWith("~") ? `$env:USERPROFILE${win.slice(1)}` : win;
+}
+
+function Scopes() {
+  const [shell, setShell] = useState("powershell");
+  return (
+    <section className="guide-scopes" aria-labelledby="scopes-title">
+      <div className="guide-install-heading">
+        <h2 id="scopes-title">Where your customizations live</h2>
+        <label>
+          <span className="sr-only">Your terminal</span>
+          <select
+            value={shell}
+            onChange={(event) => setShell(event.target.value)}
+          >
+            <option value="powershell">PowerShell</option>
+            <option value="bash">Bash</option>
+          </select>
+        </label>
+      </div>
+      <p>
+        Higher scopes replace lower ones: local, then project, then user, then
+        MEOW&apos;s built-ins. Copy a path to open or add a file.
+      </p>
+      {scopeRows.map(({ scope, note, files }) => (
+        <div className="guide-scope-row" key={scope}>
+          <h3>
+            {scope} <small>{note}</small>
+          </h3>
+          {files.map(([path, what]) => (
+            <div className="guide-path" key={path}>
+              <span>{what}</span>
+              <Command key={shell} text={systemPath(path, shell)} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function MeowUi() {
+  return (
+    <section className="guide-ui" aria-labelledby="ui-title">
+      <h2 id="ui-title">Prefer a visual view?</h2>
+      <p>
+        <code>meow ui</code> lists every skill, agent, and workflow with its
+        scope, and lets you manage workflows and runs.
+      </p>
+      <Command text="meow ui" />
+    </section>
+  );
+}
+
 function Customize() {
   return (
     <>
@@ -198,26 +285,6 @@ function Customize() {
           right definition.
         </p>
       </div>
-      <section className="guide-scopes" aria-labelledby="scopes-title">
-        <h2 id="scopes-title">See what&apos;s customized</h2>
-        <p>
-          Open the MEOW UI to see every skill, agent, and workflow with its
-          user, project, or local scope, and to manage workflows and runs.
-        </p>
-        <Command text="meow ui" />
-        <ul>
-          <li>
-            <strong>User</strong> (all your projects): <code>~/.meow/</code>
-          </li>
-          <li>
-            <strong>Project</strong> (shared in git): <code>.meow/</code>
-          </li>
-          <li>
-            <strong>Local</strong> (just you, ignored by git):{" "}
-            <code>.meow/local/</code>
-          </li>
-        </ul>
-      </section>
       <section className="guide-customize" aria-labelledby="customize-title">
         <SlidersHorizontal aria-hidden="true" />
         <div>
@@ -266,6 +333,8 @@ function Customize() {
           </p>
         </div>
       </nav>
+      <Scopes />
+      <MeowUi />
     </>
   );
 }

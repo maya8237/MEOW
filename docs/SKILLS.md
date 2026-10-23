@@ -72,7 +72,6 @@ Example: `/meow:onboard`. [Reference](../skills/onboard/SKILL.md)
 ## /meow:customize
 
 Create, override, attach, or remove skills, agents, and workflows in any scope.
-See what each user, project, and local scope customizes with `meow ui`.
 Example: `/meow:customize`. [Reference](../skills/customize/SKILL.md)
 
 ## /meow:migration

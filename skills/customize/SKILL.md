@@ -11,17 +11,11 @@ skills, models, and permissions. Dependency or install problems: [dependencies](
 
 ## See what is customized, by scope
 
-Start here: show the user where each scope's customizations and configuration
-live and what is in effect.
-
-- `meow ui` opens the local UI (add `--no-browser` to print the URL). Its
-  catalog lists every workflow, agent, and skill with its user, project, or
-  local scope, shows steps and source, and offers `+ New` to copy a definition
-  or create a skill. The Sessions page launches and controls workflow runs.
-- Without the UI: `meow agents list`, `meow workflows list`, and `show NAME`
-  report the effective definition and its scope.
-- Config: user `~/.meow/config.toml`, project `.meow/config.toml`, local
-  `.meow/config.local.toml`; the scope table below lists definition folders.
+Show the user where each scope's customizations and configuration live (the
+table below). On Windows, write user paths as `$env:USERPROFILE\.meow\...`,
+not `~`. `meow agents list` and `meow workflows list` report what is in effect
+and its scope. Last, mention that `meow ui` (`--no-browser` prints the URL)
+shows the same catalog visually and manages workflows and sessions.
 
 ## 1. Resolve the request and scope
 

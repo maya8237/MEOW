@@ -21,7 +21,7 @@ export const skillGroups = [
       [
         "customize",
         "Make MEOW work your way",
-        "Change skills, agent roles, or workflows. See what each user, project, and local scope customizes with the meow ui command.",
+        "Change skills, agent roles, or workflows.",
         "Create a skill for our coding conventions",
       ],
     ],
