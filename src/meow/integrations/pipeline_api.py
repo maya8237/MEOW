@@ -105,6 +105,7 @@ def connect(remote_url: str, config: dict, env: Mapping[str, str]) -> PipelinePr
         detect_provider,
         parse_remote,
     )
+    from meow.integrations.pipeline_github import connect_github
     from meow.integrations.pipeline_gitlab import connect_gitlab
 
     provider = detect_provider(remote_url, config)
@@ -114,5 +115,5 @@ def connect(remote_url: str, config: dict, env: Mapping[str, str]) -> PipelinePr
             f"no GitHub or GitLab integration matches {remote_url!r}"
         )
     if provider == "github":
-        raise PipelineUnavailable("GitHub pipeline support not available")
+        return connect_github(parsed, config, env)
     return connect_gitlab(parsed, config, env)

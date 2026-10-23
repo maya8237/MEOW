@@ -163,8 +163,9 @@ def test_connect_token_and_api_sources():
 def test_connect_unmatched_and_github():
     with pytest.raises(PipelineUnavailable, match="no GitHub or GitLab"):
         connect("/local/path", {}, {})
-    with pytest.raises(PipelineUnavailable, match="GitHub pipeline support"):
-        connect("git@github.com:o/r.git", {}, {"MEOW_GITHUB_TOKEN": "t"})
+    assert connect("git@github.com:o/r.git", {}, {"MEOW_GITHUB_TOKEN": "t"}).name == (
+        "github"
+    )
 
 
 def test_get_text_rejects_non_https():
