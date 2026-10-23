@@ -94,31 +94,35 @@
   image-rendering: pixelated;
   margin-right: 2rem;
 }
+.guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
 .guide-primary,
 .guide-inline-link {
   box-sizing: border-box;
-  min-width: 11.5rem;
-  text-align: center;
-}
-.guide-primary {
-  display: inline-block;
-  border: 1px solid var(--primary);
-  background: var(--primary);
-  color: var(--primary-foreground);
-  padding: 0.75rem 1.25rem;
-  border-radius: 8px;
-  font-weight: 600;
-  text-decoration: none;
-}
-.guide-inline-link {
-  display: inline-block;
-  margin: 0.75rem 0 0.75rem 0.75rem;
-  padding: 0.75rem 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12rem;
+  height: 3rem;
+  margin: 0;
+  padding: 0 1.25rem;
   border: 1px solid var(--border);
   border-radius: 8px;
+  font-size: 1rem;
   font-weight: 600;
-  color: var(--foreground);
+  line-height: 1;
   text-decoration: none;
+}
+.guide-primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.guide-inline-link {
+  color: var(--foreground);
 }
 .guide-inline-link:hover {
   border-color: var(--primary);
@@ -505,10 +509,9 @@
   .guide-hero p {
     font-size: 1rem;
   }
+  .guide-primary,
   .guide-inline-link {
-    margin-left: 0;
-    display: block;
-    text-align: center;
+    width: 100%;
   }
   .guide-steps > li {
     padding-left: 2.75rem;

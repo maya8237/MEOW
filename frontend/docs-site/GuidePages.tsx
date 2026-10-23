@@ -68,12 +68,14 @@ function Start() {
             MEOW helps Claude plan, build, and review your code. Start with one
             request.
           </p>
-          <a className="guide-primary" href="#setup">
-            Set up MEOW
-          </a>
-          <a className="guide-inline-link" href="#skills">
-            Explore the skills
-          </a>
+          <div className="guide-actions">
+            <a className="guide-primary" href="#setup">
+              Set up MEOW
+            </a>
+            <a className="guide-inline-link" href="#skills">
+              Explore the skills
+            </a>
+          </div>
         </div>
         <img src={logo} alt="MEOW pixel cat" width="200" height="200" />
       </section>
@@ -140,9 +142,8 @@ function Skills() {
         </p>
         <Command text={`/meow:run ${runExample}`} />
         <p>
-          Describe the change, expected behavior, and how to check it. The
-          detailed example starts from release and opens a PR/MR into dev;
-          replace these with your own branches.
+          Describe the change, expected behavior, and how to check it. You can
+          also name the branch to start from and where the PR/MR should go.
         </p>
         <h3>Detailed prompt examples</h3>
         {runExamples.map(({ title, prompt }) => (
@@ -152,12 +153,10 @@ function Skills() {
           </section>
         ))}
         <p className="guide-note">
-          --target overrides your configured MR target. Onboarding defaults it
-          to dev if it exists, otherwise master. --from only chooses where work
-          starts. The target is saved for resume; existing worktrees are reused.
-          In-place runs do not open an MR, and --no-pr skips MR creation. PR/MR
-          creation and pipeline checks require your provider connection. If they
-          fail, MEOW reports the reason and available links.{" "}
+          Without a branch, MEOW opens the PR/MR into your configured target
+          (set during onboarding). In-place runs do not open one. PR/MR creation
+          and pipeline checks require your provider connection; if they fail,
+          MEOW reports the reason and available links.{" "}
           <a href={sourceUrl("docs/PIPELINE.md")}>PR/MR & pipeline guide</a>
         </p>
         <a className="guide-detail" href={sourceUrl("skills/run/SKILL.md")}>
