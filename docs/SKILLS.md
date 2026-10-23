@@ -29,7 +29,7 @@ A detailed prompt gives the change, expected behavior, and checks:
 link expires after 30 minutes and works once, and the new password must meet the
 existing password rules. Show the same confirmation message whether or not the
 email exists. Add tests for expired, reused, and invalid links.
---from release --target dev
+Start from the release branch and open the PR into dev.
 ```
 
 Here the work starts from `release` and the PR/MR targets `dev`.
