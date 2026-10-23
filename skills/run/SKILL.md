@@ -51,6 +51,17 @@ meow run --jira PROJ-1 PROJ-2
 meow run --tasks tasks.toml
 ```
 
+With `--from BRANCH`, final delivery opens an MR/PR into `BRANCH` and fixes
+code until the pipeline's `meow-review` job passes. Tell the user the MEOW loop
+(generate, review, checks) has finished and the feature is done, and that the
+work is now in final delivery, being verified through the MR pipeline. Relay
+the `[delivery]` lines as they appear. Never say the work is verified,
+delivered and verified, or done-and-verified unless the output contains
+`Verified by pipeline`; for `Not verified by pipeline`, report the reason and
+the MR/pipeline URLs. Pass `--no-pr` only if the user does not want an MR, and
+`--fix-non-meow-jobs` only if they explicitly ask to fix unrelated (non-MEOW)
+jobs; deploy jobs are never fixed. Details: [pipeline](../../docs/PIPELINE.md).
+
 Full orchestration uses isolated detached CLI sprints, pushes only after the
 combined objective passes review, and opens one PR unless `--no-pr` is given.
 It accepts `--from`, `--max-parallel`, `--dry-run`, and `--test`; `--dry-run`

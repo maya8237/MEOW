@@ -95,6 +95,46 @@ def commit_worktree(active: Path, message: list[str]) -> str:
     return _git(active, "rev-parse", "HEAD").stdout.strip()
 
 
+def _last_pushed(active: Path, recorded: str, remote: str, branch: str) -> str:
+    """The journaled pushed sha, else the remote-tracking ref, else ''."""
+    for candidate in (recorded, f"refs/remotes/{remote}/{branch}"):
+        if not candidate:
+            continue
+        found = _git(
+            active,
+            "rev-parse",
+            "--verify",
+            "-q",
+            f"{candidate}^{{commit}}",
+            check=False,
+        )
+        if not found.returncode:
+            return found.stdout.strip()
+    return ""
+
+
+def push_fix(store: RunStore, run_id: str, message: str) -> str | None:
+    """Commit and push a pipeline fix on the run's own branch.
+
+    Pushes whenever HEAD differs from the last pushed sha (so an earlier
+    unpushed or fixer-made commit is delivered); `None` (no push) when equal.
+    Raises `RuntimeError` when the checked-out branch is not the run's branch.
+    The caller journals the returned sha.
+    """
+    with delivery_lock(store, run_id):
+        record = store.load(run_id)
+        active = Path(record.worktree)
+        branch, remote = _branch_and_remote(active)
+        if branch != record.delivery.get("branch", branch):
+            raise RuntimeError("checked-out branch changed")
+        after = commit_worktree(active, ["-m", message])
+        recorded = str(record.delivery.get("commit") or "")
+        if after == _last_pushed(active, recorded, remote, branch):
+            return None
+        _git(active, "push", "-u", remote, branch)
+        return after
+
+
 def deliver_verified_run(
     store: RunStore, run_id: str, *, commit: bool | None = None, push: bool = True
 ) -> bool:

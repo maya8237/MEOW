@@ -93,4 +93,8 @@ For a saved native run, inspect and continue that same ID with `meow resume <run
    back `exhausted`, say the sprint did not pass after `max_rounds` rounds and
    point at the review file for the last feedback. A successful finalize in a
    separate worktree commits and pushes its branch.
+   With `--from`, say the loop finished and final delivery is being verified,
+   then open the MR/PR into that branch with connected tools and report the
+   pipeline status. MEOW's pipeline-fix loop is CLI-only; never claim
+   "Verified by pipeline" unless the pipeline actually passed.
 

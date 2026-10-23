@@ -146,7 +146,13 @@ gates. PASS checkpoints bind the report fingerprint; finalization checks it
 again and routes configured tester projects to CLI even with `--tester PASS`.
 Report success only when `finalize` returns `complete: true`.
 Separate-worktree finalization commits and pushes; in-place runs do not
-automatically deliver. Claude owns transcripts; journals retain role/session
+automatically deliver.
+With `--from`, the loop is finished and final delivery is being verified through
+the MR pipeline: open the MR/PR with connected tools and report the pipeline
+status. The pipeline-fix loop is CLI-only ([pipeline](../../docs/PIPELINE.md));
+claim "Verified by pipeline" only when it actually passed.
+
+Claude owns transcripts; journals retain role/session
 references, and missing SDK usage is `unavailable`.
 Successful finalization cleans integrated task artifacts and retains the result.
 `meow cleanup [RUN_ID]` retries cleanup; preserved workers include a reason.

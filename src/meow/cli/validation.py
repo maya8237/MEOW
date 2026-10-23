@@ -69,12 +69,21 @@ def _validate_build_flags(parser: argparse.ArgumentParser, args) -> None:
             )
 
 
+def pipeline_overrides(args) -> dict[str, bool]:
+    """Pipeline options the user set on the CLI; unset ones stay config-owned."""
+    return {
+        **({"open_mr": False} if args.no_pr else {}),
+        **({"fix_non_meow_jobs": True} if args.fix_non_meow_jobs else {}),
+    }
+
+
 def _validate_workflow_flags(parser, args):
-    if args.max_parallel is not None or args.dry_run or args.no_pr:
+    if args.max_parallel is not None or args.dry_run:
         parser.error(
-            "--max-parallel, --dry-run and --no-pr require --orchestrate "
-            "or a collection source"
+            "--max-parallel and --dry-run require --orchestrate or a collection source"
         )
+    if args.fix_non_meow_jobs and not args.source_branch:
+        parser.error("--fix-non-meow-jobs requires --from")
     try:
         parse_inputs(args.input)
     except ValueError as exc:
@@ -123,6 +132,7 @@ def _validate_orchestration_flags(parser, args):
         ("--background", lambda a: a.background),
         ("--lint-fix", lambda a: a.lint_fix),
         ("--report-only", lambda a: a.report_only),
+        ("--fix-non-meow-jobs", lambda a: a.fix_non_meow_jobs),
     )
     if misused := _misused_flags(args, checks):
         parser.error("orchestration does not support " + ", ".join(misused))

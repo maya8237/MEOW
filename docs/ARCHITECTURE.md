@@ -20,6 +20,9 @@ top-level alias or compatibility modules.
   `sprint_runner.py` run/plan flows, and `run_state.py` the journal.
   `execution/workflow/` owns the expanded
   step engine, built-in operation adapters, and loop session pools.
+  `final_delivery.py` opens the run's MR and closes the deliver step;
+  `pipeline_verify.py` owns the bounded wait/fix loop and outcomes,
+  `pipeline_classify.py` job classification (see [pipeline](PIPELINE.md)).
   `execution/orchestration/` owns the orchestrator: its journal and driver
   lock, task scheduling and child processes, merges into the integration
   branch, triage, the shared supervisor `tick()`, the whole-objective review,
@@ -30,7 +33,8 @@ top-level alias or compatibility modules.
   `scheduling.py` owns durable one-shot schedules and execution claims;
   `scheduled_tasks.py` registers Windows Task Scheduler and Linux systemd triggers.
 - `integrations/`: Jira issue solving, GitLab/GitHub/CI review, documentation
-  updates, and knowledge documents.
+  updates, and knowledge documents. `pipeline_*.py` are the GitLab/GitHub
+  pipeline providers behind `pipeline_verify.py`.
 - `native/`: deterministic helpers behind `meow native ...` for in-session
   skills, including `native_orchestrate.py` for `/meow:run --orchestrate`.
 - `project/`: config models/schema, custom skill and agent discovery

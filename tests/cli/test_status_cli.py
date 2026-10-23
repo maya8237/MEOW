@@ -287,3 +287,37 @@ def test_status_of_unknown_run_still_fails_with_orchestrators_present(tmp_path, 
     assert status(tmp_path, "unknown") != 0
 
     assert "meow status" in capsys.readouterr().err
+
+
+def test_status_shows_pipeline_outcome_and_merge_request(tmp_path, capsys):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    store.transition(
+        record.id,
+        "delivered",
+        delivery={
+            "pr": {"url": "https://gitlab.com/a/b/-/merge_requests/7"},
+            "pipeline": {"status": "not_verified", "detail": "fix rounds exhausted"},
+        },
+    )
+    assert status(tmp_path, record.id) == 0
+    out = capsys.readouterr().out
+    assert "Pipeline: not verified (fix rounds exhausted)" in out
+    assert "Merge request: https://gitlab.com/a/b/-/merge_requests/7" in out
+
+
+def test_status_pipeline_verified_and_absent(tmp_path, capsys):
+    store = RunStore(tmp_path)
+    plain = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    assert status(tmp_path, plain.id) == 0
+    assert "Pipeline:" not in capsys.readouterr().out
+    store.transition(
+        plain.id, "delivered", delivery={"pipeline": {"status": "verified"}}
+    )
+    assert status(tmp_path, plain.id) == 0
+    out = capsys.readouterr().out
+    assert "Pipeline: verified\n" in out and "Merge request" not in out

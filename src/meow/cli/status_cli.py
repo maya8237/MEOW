@@ -81,6 +81,19 @@ def _decision_lines(record: RunRecord) -> list[str]:
     ]
 
 
+def _pipeline_lines(delivery: dict) -> list[str]:
+    """The final-delivery outcome: pipeline status and the opened MR."""
+    pipeline = delivery.get("pipeline") if isinstance(delivery, dict) else None
+    if not isinstance(pipeline, dict) or not pipeline.get("status"):
+        return []
+    line = "Pipeline: " + str(pipeline["status"]).replace("_", " ")
+    if pipeline.get("detail"):
+        line += f" ({pipeline['detail']})"
+    pr = delivery.get("pr")
+    url = pr.get("url") if isinstance(pr, dict) else None
+    return [line, *([f"Merge request: {url}"] if url else [])]
+
+
 def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches, too-many-locals]
     record: RunRecord, *, verbose: bool = False, concerns: tuple[Concern, ...] = ()
 ) -> str:
@@ -139,6 +152,7 @@ def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-bra
         if worker.pid is not None:
             lines.append(f"Worker PID: {worker.pid}")
     lines.extend(_gate_lines(record.results))
+    lines.extend(_pipeline_lines(record.delivery))
     lines.extend(f"Quality concern: {item.path} — {item.impact}" for item in concerns)
     tasks = record.results.get("tasks")
     if isinstance(tasks, dict) and tasks:
