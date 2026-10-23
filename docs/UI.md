@@ -81,3 +81,7 @@ read from the installed package, with no hand-copied text.
 Search covers every section; choose a hit to open it at that heading.
 Ctrl K focuses the search. Links between docs open in-app; external links
 open in a new tab. Raw HTML in Markdown is not rendered.
+
+The same docs are published at the hosted site linked from **Online docs**
+(GitHub Pages, deployed from `main`). The local app only links to it and
+never fetches it, so Docs works offline.

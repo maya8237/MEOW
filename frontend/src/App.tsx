@@ -29,6 +29,7 @@ import {
 import CreateDialog from "@/components/CreateDialog";
 import ItemDetail from "@/components/ItemDetail";
 import CopyButton from "@/components/CopyButton";
+import OnlineDocsLink from "@/components/OnlineDocsLink";
 import SessionsView from "@/components/SessionsView";
 import SessionLauncher from "@/components/SessionLauncher";
 import { Recipe } from "@/lib/sessions";
@@ -258,6 +259,7 @@ export default function App() {
             </p>
           </div>
           <div className="header-actions">
+            {showDocs && <OnlineDocsLink />}
             {!showDocs && (
               <Button
                 variant="outline"

@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import App from "./App";
+import { DOCS_SITE_URL } from "@/lib/links";
 
 const workflow = {
   name: "quick",
@@ -486,4 +487,24 @@ test("Docs navigation shows documentation, hides New item, and Ctrl+K focuses it
   });
   await user.keyboard("{Control>}k{/Control}");
   expect(box).toHaveFocus();
+});
+
+test("Docs shows an Online docs link without fetching the hosted site", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+    String(input).startsWith("/api/docs")
+      ? new Response(JSON.stringify({ guides: [], skills: [] }))
+      : new Response(JSON.stringify(catalog)),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "quick" });
+  await user.click(screen.getByRole("button", { name: "Docs" }));
+  const link = await screen.findByRole("link", { name: "Online docs" });
+  expect(link).toHaveAttribute("href", DOCS_SITE_URL);
+  expect(link).toHaveAttribute("target", "_blank");
+  expect(link.getAttribute("rel")).toContain("noreferrer");
+  expect(
+    fetchMock.mock.calls.some(([input]) => String(input).startsWith("http")),
+  ).toBe(false);
 });

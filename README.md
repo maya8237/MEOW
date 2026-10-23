@@ -120,6 +120,7 @@ PATH, the Claude Code plugin and skill registrations, scheduled MEOW runs, and
 
 ## Docs
 
+- [Online docs](https://maya8237.github.io/MEOW/)
 - [Architecture](docs/ARCHITECTURE.md)
 - [CLI guide](docs/CLI.md)
 - [Integrations](docs/INTEGRATIONS.md)
