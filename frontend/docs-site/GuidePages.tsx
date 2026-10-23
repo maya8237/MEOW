@@ -96,9 +96,22 @@ function Start() {
             <h3>Let MEOW get to know your project</h3>
             <p>Open your project in Claude Code and run:</p>
             <Command text="/meow:onboard" />
+            <p>MEOW checks your project and sets up:</p>
+            <ul>
+              <li>Your lint command, so findings get fixed automatically.</li>
+              <li>Your test commands, if you want MEOW to run tests.</li>
+              <li>The branch your PRs/MRs target.</li>
+              <li>
+                Jira, GitHub, or GitLab, so MEOW can read issues and open
+                PRs/MRs.
+              </li>
+              <li>
+                Scheduled runs and a lint hook for Claude Code, if you want
+                them.
+              </li>
+            </ul>
             <p className="guide-note">
-              Run once per project to configure settings, skills, integrations,
-              and optional features. Later tasks reuse this setup; run
+              Run once per project. Every add-on is optional and asks first; run
               onboarding again to add or change something.
             </p>
           </li>
