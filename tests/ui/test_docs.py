@@ -91,3 +91,16 @@ def test_api_docs_endpoint(tmp_path):
 @pytest.mark.parametrize("name", ["README.md", "docs/CLI.md"])
 def test_guide_paths_are_forward_slashed(name):
     assert name in {doc["path"] for doc in build_docs()["guides"]}
+
+
+def test_every_reader_guide_is_served():
+    maintainer = {"ARCHITECTURE", "RELEASING", "ROADMAP"}
+    expected = {
+        f"docs/{p.name}"
+        for p in (REPO / "docs").glob("*.md")
+        if p.stem not in maintainer
+    }
+
+    served = {doc["path"] for doc in build_docs()["guides"]}
+
+    assert expected <= served

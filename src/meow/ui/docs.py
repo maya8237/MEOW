@@ -5,18 +5,20 @@ from pathlib import Path
 from meow.installer.releases import RELEASE_DATA
 from meow.project.custom import frontmatter
 
-# Reader-facing guides in display order; the rest of docs/ is maintainer-only.
+# Reader-facing guides in display order. ARCHITECTURE, RELEASING and ROADMAP
+# stay maintainer-only.
 GUIDES = (
     "README.md",
-    "docs/SKILLS.md",
     "docs/CLI.md",
+    "docs/RUNS.md",
     "docs/WORKFLOWS.md",
+    "docs/ORCHESTRATION.md",
     "docs/CUSTOM.md",
     "docs/INTEGRATIONS.md",
-    "docs/ORCHESTRATION.md",
-    "docs/RUNS.md",
-    "docs/UI.md",
+    "docs/CLEANUP.md",
     "docs/WORKTREE_SETUP.md",
+    "docs/UI.md",
+    "docs/SKILLS.md",
 )
 
 
