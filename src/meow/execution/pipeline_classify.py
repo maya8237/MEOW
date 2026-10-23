@@ -28,7 +28,9 @@ def never_fixed(job: PipelineJob) -> bool:
 
 def classify(snapshot: PipelineSnapshot, *, fix_non_meow: bool) -> Classification:
     jobs = snapshot.jobs
-    review = next((job for job in jobs if is_review_job(job)), None)
+    reviews = [job for job in jobs if is_review_job(job)]
+    failed_reviews = [job for job in reviews if job.status == "failed"]
+    review = (failed_reviews or reviews or [None])[0]
     other_failed = tuple(
         job for job in jobs if job.status == "failed" and not is_review_job(job)
     )
@@ -36,7 +38,7 @@ def classify(snapshot: PipelineSnapshot, *, fix_non_meow: bool) -> Classificatio
     return Classification(
         running=any(job.status == "running" for job in jobs),
         review=review,
-        review_failed=review is not None and review.status == "failed",
+        review_failed=bool(failed_reviews),
         other_failed=other_failed,
         fixable_other=fixable if fix_non_meow else (),
     )

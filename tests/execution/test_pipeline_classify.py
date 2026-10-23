@@ -68,3 +68,25 @@ def test_skipped_and_canceled_jobs_are_not_failures():
     assert result.other_failed == ()
     assert result.review_failed is False
     assert result.running is False
+
+
+def test_later_failed_review_job_is_a_review_failure():
+    passing = job("meow-review", "success")
+    failing = job("meow_review", "failed", stage="review")
+    result = classify(snap(passing, failing), fix_non_meow=False)
+    assert result.review_failed is True
+    assert result.review.name == "meow_review"
+    assert result.other_failed == ()
+
+
+def test_first_review_job_used_when_all_pass():
+    first, second = job("meow-review"), job("meow_review")
+    result = classify(snap(first, second), fix_non_meow=False)
+    assert result.review_failed is False
+    assert result.review == first
+
+
+def test_failed_review_job_preferred_over_passing_first():
+    failing = job("meow-review", "failed")
+    result = classify(snap(failing, job("meow_review")), fix_non_meow=False)
+    assert result.review == failing
