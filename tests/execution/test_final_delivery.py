@@ -448,6 +448,19 @@ def test_missing_token_is_not_verified_not_crash(stage, monkeypatch, capsys):
     assert state.store.load(state.run_id).phase == "delivered"
 
 
+def test_mr_failure_final_line_carries_manual_link(stage, monkeypatch, capsys):
+    stage.agent.error = RuntimeError("boom")
+    fake_verify(monkeypatch, stage, PipelineOutcome("verified", 0, PIPE_URL, (), ""))
+    state = stage.make()
+    go(state)
+    link = state.store.load(state.run_id).delivery["pr_manual_link"]
+    assert link
+    last = capsys.readouterr().out.splitlines()[-1]
+    assert last.startswith("[delivery] Not verified by pipeline: ")
+    assert f"Open it manually: {link}" in last
+    assert "Verified by pipeline:" not in last.replace("Not verified", "")
+
+
 def test_mr_failure_skips_verification(stage, monkeypatch, capsys):
     stage.agent.error = RuntimeError("boom")
     fake_verify(monkeypatch, stage, PipelineOutcome("verified", 0, PIPE_URL, (), ""))
@@ -458,7 +471,7 @@ def test_mr_failure_skips_verification(stage, monkeypatch, capsys):
     assert not stage.verify and not stage.connect
     out = capsys.readouterr().out
     assert "MR opened" not in out
-    assert out.splitlines()[-1] == (
+    assert out.splitlines()[-1].startswith(
         "[delivery] Not verified by pipeline: merge request not opened: boom"
     )
     assert "meow resume" not in out

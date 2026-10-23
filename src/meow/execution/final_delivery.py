@@ -161,7 +161,15 @@ def _not_verified(detail: str) -> PipelineOutcome:
     return PipelineOutcome("not_verified", 0, "", (), detail)
 
 
-def _final_text(outcome: PipelineOutcome, mr_url: str | None) -> str:
+def _mr_suffix(mr_url: str | None, manual_link: str | None) -> str:
+    if mr_url:
+        return f". MR: {mr_url}"
+    return f". Open it manually: {manual_link}" if manual_link else ""
+
+
+def _final_text(
+    outcome: PipelineOutcome, mr_url: str | None, manual_link: str | None = None
+) -> str:
     """The closing line; only a `verified` outcome reads "Verified by pipeline:"."""
     if outcome.status == "verified":
         return f"Verified by pipeline: {outcome.url}"
@@ -175,8 +183,7 @@ def _final_text(outcome: PipelineOutcome, mr_url: str | None) -> str:
     unnamed = [name for name in outcome.failing if name not in text]
     if unnamed:
         text += "; failing jobs: " + ", ".join(unnamed)
-    if mr_url:
-        text += f". MR: {mr_url}"
+    text += _mr_suffix(mr_url, manual_link)
     if outcome.url:
         text += f". See {outcome.url}; {_ADVICE}"
     return text
@@ -259,12 +266,17 @@ def _stored_verified(delivery: dict) -> PipelineOutcome | None:
     )
 
 
-def _mr_url(store: RunStore, run_id: str) -> str | None:
+def _mr_links(store: RunStore, run_id: str) -> tuple[str | None, str | None]:
+    """The opened MR url and the manual link recorded when it could not open."""
     try:
-        pr = store.load(run_id).delivery.get("pr")
-    except Exception:  # the final line is still printed without the MR link
-        return None
-    return pr.get("url") if isinstance(pr, dict) else None
+        delivery = store.load(run_id).delivery
+    except Exception:  # the final line is still printed without the links
+        return None, None
+    pr, manual = delivery.get("pr"), delivery.get("pr_manual_link")
+    return (
+        pr.get("url") if isinstance(pr, dict) else None,
+        manual if isinstance(manual, str) else None,
+    )
 
 
 async def run_final_delivery(state) -> PipelineOutcome | None:
@@ -288,5 +300,5 @@ async def run_final_delivery(state) -> PipelineOutcome | None:
     if outcome is None:
         outcome = await _guarded(state, settings, announce)
     outcome = _settle(store, run_id, outcome)
-    announce(_final_text(outcome, _mr_url(store, run_id)))
+    announce(_final_text(outcome, *_mr_links(store, run_id)))
     return outcome

@@ -10,7 +10,8 @@ and `--jira` do not support `--from`. GitLab (`.gitlab-ci.yml`) and GitHub
 ## Flow
 
 1. Push the verified branch (never undone by later steps).
-2. Open the MR/PR; failure records `pr_error` and a manual link.
+2. Open the MR/PR; failure records `pr_error` and a manual link, printed as
+   `Open it manually: LINK` on the final line.
 3. Validate the pipeline file; invalid files are fixed (`lint_fixer`).
 4. Wait for the pipeline of the pushed commit.
 5. If the review job failed, fix, push, and wait again (`review_fixer`).
@@ -24,7 +25,7 @@ only, inside the deliver step.
 
 | Flag | Effect |
 |---|---|
-| `--no-pr` | Skip the MR and pipeline verification |
+| `--no-pr` | Skip the MR and pipeline verification (also applies to orchestration) |
 | `--fix-non-meow-jobs` | Also fix other failing jobs (requires `--from`) |
 
 `[pipeline]` in `.meow/config.toml`:
@@ -43,7 +44,7 @@ only, inside the deliver step.
 Environment first: `MEOW_GITLAB_TOKEN` or `MEOW_GITHUB_TOKEN`; then
 `[gitlab.mcp.env].GITLAB_TOKEN` or `[github.mcp.env].GITHUB_PERSONAL_ACCESS_TOKEN`.
 The token must read pipelines and jobs. Without one the run ends
-`Not verified by pipeline: ...` with a manual MR link; the push stays.
+`Not verified by pipeline: ...` naming the variable, plus the MR URL; the push stays.
 
 ## Pipeline file validation
 
@@ -74,19 +75,22 @@ Printed as `[delivery] ...` and mirrored to `delivery.stage` (`meow status`):
 
 | Outcome | Final line | Meaning |
 |---|---|---|
-| verified | `Verified by pipeline: URL` | Review job passed; nothing unfixed failed |
+| verified | `Verified by pipeline: URL` | The pipeline passed. With a `meow-review` job that job passed; without one, no MEOW review ran in CI |
 | unvalidated | `Verified by pipeline (pipeline file not validated: ...)` | As verified, but the file could not be linted |
-| not verified | `Not verified by pipeline: REASON` | Failing jobs left, rounds exhausted, review job canceled or skipped, timeout, fix push failed, no token, MR not opened |
+| not verified | `Not verified by pipeline: REASON` | Failing jobs left, rounds exhausted, review job canceled or skipped, no jobs (`pipeline has no jobs`), timeout, fix push failed, no token (names the variable), MR not opened (reason plus `Open it manually: LINK`) |
 | unverified | `Not verified by pipeline: REASON` | The review job could not run (auth, infra); no code edits |
-| no pipeline | `Not verified by pipeline: no pipeline started ...` | No CI file or MR pipelines disabled |
+| no pipeline | `Not verified by pipeline: no pipeline started for SHA7` | Nothing started within `start_timeout` (no CI file, or MR pipelines disabled) |
 
 Only `Verified by pipeline` means verified. Never describe other outcomes as
 verified or done-and-verified.
 
 ## Not automatic
 
-- A not-verified run is complete: `meow resume --continue` does not retry it.
-  Fix the failing jobs on the MR branch, or re-run the pipeline.
+- A finished not-verified run is complete: `meow resume --continue` does not
+  retry it. Fix the failing jobs on the MR branch, or re-run the pipeline.
+- A run interrupted mid-stage (cancelled or crashed while waiting or fixing)
+  resumes with `meow resume ID --continue`: it re-enters the stage, keeps the
+  round count, and does not reopen the MR.
 - A custom workflow `timeout` on the `deliver` step cancels the stage and fails
   the already-pushed run; do not set one.
 - Native sessions have no fix loop: they open the MR with connected tools and
