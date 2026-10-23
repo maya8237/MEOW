@@ -1,3 +1,4 @@
+import { createElement, type ReactNode } from "react";
 import GithubSlugger from "github-slugger";
 import { request } from "@/lib/catalog";
 
@@ -79,20 +80,59 @@ function snippetAround(body: string, lower: string, terms: string[]) {
 export function searchDocs(docs: Docs, query: string): Hit[] {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) return [];
-  const hits: Hit[] = [];
+  const scored: { hit: Hit; score: number }[] = [];
   for (const doc of [...docs.guides, ...docs.skills]) {
     for (const { heading, anchor, lines } of sections(doc)) {
       const body = lines.join("\n").replace(/\s+/g, " ").trim();
-      const lower = `${heading}\n${body}`.toLowerCase();
+      const lowerHeading = heading.toLowerCase();
+      const lowerBody = body.toLowerCase();
+      const lower = `${lowerHeading}\n${lowerBody}`;
       if (!terms.every((term) => lower.includes(term))) continue;
-      hits.push({
-        path: doc.path,
-        title: doc.title,
-        heading,
-        anchor,
-        snippet: snippetAround(body, body.toLowerCase(), terms),
+      const score =
+        terms.filter((term) => lowerHeading.includes(term)).length * 3 +
+        (anchor === "" ? 2 : 0) +
+        (lowerHeading === terms.join(" ") ? 5 : 0);
+      scored.push({
+        hit: {
+          path: doc.path,
+          title: doc.title,
+          heading,
+          anchor,
+          snippet: snippetAround(body, lowerBody, terms),
+        },
+        score,
       });
     }
   }
-  return hits;
+  return scored
+    .map((entry, index) => ({ ...entry, index }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map(({ hit }) => hit);
+}
+
+// Group hits per document, in order of each document's best hit.
+export function hitGroups(hits: Hit[]) {
+  const groups = new Map<
+    string,
+    { path: string; title: string; hits: Hit[] }
+  >();
+  for (const hit of hits) {
+    const group = groups.get(hit.path);
+    if (group) group.hits.push(hit);
+    else
+      groups.set(hit.path, { path: hit.path, title: hit.title, hits: [hit] });
+  }
+  return [...groups.values()];
+}
+
+export function highlight(text: string, query: string): ReactNode[] {
+  const terms = query.trim().split(/\s+/).filter(Boolean);
+  if (!terms.length) return [text];
+  const escaped = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = new RegExp(`(${escaped.join("|")})`, "gi");
+  return text
+    .split(pattern)
+    .map((part, index) =>
+      index % 2 ? createElement("mark", { key: index }, part) : part,
+    );
 }

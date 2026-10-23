@@ -68,7 +68,7 @@ test("lists guides and skills and renders the README", async () => {
   const skills = screen.getByRole("list", { name: "Skills" });
   expect(within(skills).getByText("plan")).toBeInTheDocument();
   expect(screen.getByText("Welcome to the readme.")).toBeInTheDocument();
-  expect(screen.queryByText("raw html", { selector: "b" })).toBeNull();
+  expect(screen.getByText("raw html", { selector: "b" })).toBeTruthy();
   expect(screen.queryByText(/<p align=/)).not.toBeInTheDocument();
   expect(screen.queryByText(/<img src=/)).not.toBeInTheDocument();
 });
@@ -210,4 +210,21 @@ test("follows the location prop and falls back to the first guide", async () => 
   expect(await screen.findByText("Skill body text.")).toBeInTheDocument();
   rerender(view("nope.md"));
   expect(await screen.findByText("Welcome to the readme.")).toBeInTheDocument();
+});
+
+test("search groups hits by document and marks the selected result", async () => {
+  stubDocs(ok);
+  const user = userEvent.setup();
+  renderView();
+  await screen.findByText("Welcome to the readme.");
+  await user.type(screen.getByRole("searchbox"), "plan");
+  const results = screen.getByLabelText("Search results");
+  await user.click(within(results).getByRole("button", { name: /Plan skill/ }));
+  expect(
+    within(screen.getByRole("article")).getByText("Skill body text."),
+  ).toBeInTheDocument();
+  expect(
+    within(results).getByRole("button", { name: /Plan skill/ }),
+  ).toHaveAttribute("aria-current", "true");
+  expect(results).toHaveTextContent("Viewing plan");
 });

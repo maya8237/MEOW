@@ -174,16 +174,17 @@ test("offers all skills with short examples and links to full Markdown", async (
   );
 });
 
-test("expands detailed run examples and copies a complete prompt", async () => {
+test("shows run examples by default and copies a complete prompt", async () => {
   window.location.hash = "#skills";
   const user = userEvent.setup();
   const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
   render(<Site />);
-  await user.click(screen.getByText("Detailed prompt examples"));
   const examples = screen
-    .getByText("Detailed prompt examples")
-    .closest("details")!;
-  expect(examples).toHaveAttribute("open");
+    .getByRole("heading", { name: "/meow:run" })
+    .closest("section")!;
+  expect(
+    screen.getByRole("heading", { name: "All skills" }),
+  ).toBeInTheDocument();
   expect(
     within(examples).getByRole("heading", { name: "Fix a bug" }),
   ).toBeVisible();

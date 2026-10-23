@@ -1658,10 +1658,39 @@ h3 svg {
 }
 .docs-content {
   overflow-y: auto;
-  padding: 24px 32px 48px;
+  padding: 24px max(32px, calc((100% - 960px) / 2)) 48px;
   min-width: 0;
-  max-width: 880px;
   overflow-wrap: anywhere;
+}
+.docs-content img {
+  max-width: 100%;
+  height: auto;
+}
+.docs-content details {
+  margin: 1em 0;
+}
+.docs-content summary {
+  cursor: pointer;
+}
+.docs-viewing {
+  margin: 0;
+  padding: 10px 16px 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.docs-viewing strong {
+  color: var(--foreground);
+}
+.docs-hit-group[aria-current="true"] > .docs-group {
+  color: var(--primary);
+}
+.docs-hit-group[aria-current="true"] > .docs-group::before {
+  content: "● ";
+}
+.docs-entry mark {
+  background: #b7a6ef40;
+  color: inherit;
+  border-radius: 2px;
 }
 .docs-content h1,
 .docs-content h2,

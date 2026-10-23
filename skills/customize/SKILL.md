@@ -9,6 +9,20 @@ Definitions load on every run; no reinstall is needed. Use `docs/WORKFLOWS.md`
 for agent/workflow formats and `docs/INTEGRATIONS.md` for configured sources,
 skills, models, and permissions. Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
+## See what is customized, by scope
+
+Start here: show the user where each scope's customizations and configuration
+live and what is in effect.
+
+- `meow ui` opens the local UI (add `--no-browser` to print the URL). Its
+  catalog lists every workflow, agent, and skill with its user, project, or
+  local scope, shows steps and source, and offers `+ New` to copy a definition
+  or create a skill. The Sessions page launches and controls workflow runs.
+- Without the UI: `meow agents list`, `meow workflows list`, and `show NAME`
+  report the effective definition and its scope.
+- Config: user `~/.meow/config.toml`, project `.meow/config.toml`, local
+  `.meow/config.local.toml`; the scope table below lists definition folders.
+
 ## 1. Resolve the request and scope
 
 Use a skill for reusable instructions, an agent definition for a role with its

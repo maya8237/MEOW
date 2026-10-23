@@ -105,8 +105,17 @@
 }
 .guide-inline-link {
   display: inline-block;
-  margin: 0.75rem 0 0.75rem 1.5rem;
+  margin: 0.75rem 0 0.75rem 0.75rem;
+  padding: 0.7rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-weight: 600;
   color: var(--foreground);
+  text-decoration: none;
+}
+.guide-inline-link:hover {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .guide-setup {
   scroll-margin-top: 1.5rem;
@@ -262,6 +271,27 @@
 }
 .guide-detail:hover {
   color: var(--primary);
+}
+.guide-run,
+.guide-scopes {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+}
+.guide-run h3 {
+  margin-top: 1.5rem;
+}
+.guide-run h4 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.guide-scopes ul {
+  padding-left: 1.25rem;
+}
+.guide-all-heading {
+  margin: 2.5rem 0 0.5rem;
 }
 .guide-run-examples {
   margin: 1rem 0;
@@ -440,6 +470,7 @@
   .guide-inline-link {
     margin-left: 0;
     display: block;
+    text-align: center;
   }
   .guide-steps > li {
     padding-left: 2.75rem;

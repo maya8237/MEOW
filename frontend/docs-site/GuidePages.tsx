@@ -2,7 +2,7 @@ import { useState } from "react";
 import { BookOpen, Shapes, SlidersHorizontal } from "lucide-react";
 import CopyButton from "@/components/CopyButton";
 import logo from "../../src/meow/ui/logo.png";
-import { runExamples, skillGroups, sourceUrl } from "./content";
+import { runExamples, runSkill, skillGroups, sourceUrl } from "./content";
 
 export type Page = "start" | "skills" | "customize";
 
@@ -123,12 +123,45 @@ function Start() {
 }
 
 function Skills() {
+  const [, runTitle, runDescription, runExample] = runSkill;
   return (
     <>
       <div className="guide-page-heading">
         <h1>What would you like to do?</h1>
         <p>Type a skill in Claude Code, then describe what you need.</p>
       </div>
+      <section className="guide-run" aria-labelledby="run-title">
+        <h2 id="run-title">/meow:run</h2>
+        <p className="guide-run-lead">
+          {runTitle}. {runDescription}
+        </p>
+        <Command text={`/meow:run ${runExample}`} />
+        <p>
+          Describe the change, expected behavior, and how to check it. The first
+          example starts from release and opens a PR/MR into dev; replace these
+          with your own branches.
+        </p>
+        <h3>Detailed prompt examples</h3>
+        {runExamples.map(({ title, prompt }) => (
+          <section key={title}>
+            <h4>{title}</h4>
+            <Command text={prompt} />
+          </section>
+        ))}
+        <p className="guide-note">
+          --target overrides your configured MR target. Onboarding defaults it
+          to dev if it exists, otherwise master. --from only chooses where work
+          starts. The target is saved for resume; existing worktrees are reused.
+          In-place runs do not open an MR, and --no-pr skips MR creation. PR/MR
+          creation and pipeline checks require your provider connection. If they
+          fail, MEOW reports the reason and available links.{" "}
+          <a href={sourceUrl("docs/PIPELINE.md")}>PR/MR & pipeline guide</a>
+        </p>
+        <a className="guide-detail" href={sourceUrl("skills/run/SKILL.md")}>
+          Full skill instructions on GitHub
+        </a>
+      </section>
+      <h2 className="guide-all-heading">All skills</h2>
       {skillGroups.map(({ title, skills }) => (
         <section className="guide-skill-group" key={title}>
           <h2>{title}</h2>
@@ -140,40 +173,6 @@ function Skills() {
                 <Command
                   text={`/meow:${name}${example ? ` ${example}` : ""}`}
                 />
-                {name === "run" && (
-                  <details className="guide-run-examples">
-                    <summary>Detailed prompt examples</summary>
-                    <p>
-                      Describe the change, expected behavior, and how to check
-                      it.
-                    </p>
-                    <p>
-                      The example starts from release and opens a PR/MR into
-                      dev. Replace these with your own branches.
-                    </p>
-                    <p>
-                      --target overrides your configured MR target. Onboarding
-                      defaults it to dev if it exists, otherwise master. --from
-                      only chooses where work starts. The target is saved for
-                      resume; existing worktrees are reused. In-place runs do
-                      not open an MR, and --no-pr skips MR creation.
-                    </p>
-                    {runExamples.map(({ title, prompt }) => (
-                      <section key={title}>
-                        <h4>{title}</h4>
-                        <Command text={prompt} />
-                      </section>
-                    ))}
-                    <p>
-                      PR/MR creation and pipeline checks require your provider
-                      connection. If they fail, MEOW reports the reason and
-                      available links.{" "}
-                      <a href={sourceUrl("docs/PIPELINE.md")}>
-                        PR/MR & pipeline guide
-                      </a>
-                    </p>
-                  </details>
-                )}
                 <a
                   className="guide-detail"
                   href={sourceUrl(`skills/${name}/SKILL.md`)}
@@ -199,6 +198,26 @@ function Customize() {
           right definition.
         </p>
       </div>
+      <section className="guide-scopes" aria-labelledby="scopes-title">
+        <h2 id="scopes-title">See what&apos;s customized</h2>
+        <p>
+          Open the MEOW UI to see every skill, agent, and workflow with its
+          user, project, or local scope, and to manage workflows and runs.
+        </p>
+        <Command text="meow ui" />
+        <ul>
+          <li>
+            <strong>User</strong> (all your projects): <code>~/.meow/</code>
+          </li>
+          <li>
+            <strong>Project</strong> (shared in git): <code>.meow/</code>
+          </li>
+          <li>
+            <strong>Local</strong> (just you, ignored by git):{" "}
+            <code>.meow/local/</code>
+          </li>
+        </ul>
+      </section>
       <section className="guide-customize" aria-labelledby="customize-title">
         <SlidersHorizontal aria-hidden="true" />
         <div>

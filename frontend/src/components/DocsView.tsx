@@ -2,9 +2,19 @@ import { RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { LoaderCircle, Search } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import { Input } from "@/components/ui/input";
-import { Doc, Docs, loadDocs, resolveDocLink, searchDocs } from "@/lib/docs";
+import {
+  Doc,
+  Docs,
+  highlight,
+  hitGroups,
+  loadDocs,
+  resolveDocLink,
+  searchDocs,
+} from "@/lib/docs";
 import type { DocLocation } from "@/lib/docs-hash";
 
 type Props = {
@@ -136,21 +146,42 @@ export default function DocsView({
         </div>
         {query.trim() ? (
           hits.length ? (
-            <ul className="docs-list docs-hits" aria-label="Search results">
-              {hits.map((hit, index) => (
-                <li key={`${hit.path}#${hit.anchor}:${index}`}>
-                  <button
-                    type="button"
-                    className="docs-entry"
-                    onClick={() => go(hit.path, hit.anchor)}
-                  >
-                    <span>{hit.heading}</span>
-                    <small>{hit.title}</small>
-                    <p>{hit.snippet}</p>
-                  </button>
-                </li>
+            <div className="docs-hits" aria-label="Search results" role="list">
+              <p className="docs-viewing">
+                Viewing <strong>{current?.title}</strong>
+              </p>
+              {hitGroups(hits).map((entry) => (
+                <section
+                  key={entry.path}
+                  role="listitem"
+                  className="docs-hit-group"
+                  aria-current={
+                    entry.path === current?.path ? "true" : undefined
+                  }
+                >
+                  <h2 className="docs-group">{entry.title}</h2>
+                  <ul className="docs-list">
+                    {entry.hits.map((hit) => (
+                      <li key={`${hit.path}#${hit.anchor}`}>
+                        <button
+                          type="button"
+                          className="docs-entry"
+                          aria-current={
+                            hit.path === open.path && hit.anchor === open.anchor
+                              ? "true"
+                              : undefined
+                          }
+                          onClick={() => go(hit.path, hit.anchor)}
+                        >
+                          <span>{hit.heading}</span>
+                          <p>{highlight(hit.snippet, query)}</p>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               ))}
-            </ul>
+            </div>
           ) : (
             <p className="docs-empty" role="status" aria-live="polite">
               No documentation matches &quot;{query.trim()}&quot;.
@@ -170,11 +201,18 @@ export default function DocsView({
       >
         {current && (
           <Markdown
-            skipHtml
             key={`${current.path}:${open.nonce}`}
             remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeSlug]}
+            rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeSlug]}
             components={{
+              img({ src = "", alt = "" }) {
+                // Repo-relative images do not exist in the UI; keep the alt text.
+                return /^https?:\/\//i.test(src) ? (
+                  <img src={src} alt={alt} loading="lazy" />
+                ) : (
+                  alt && <span>{alt}</span>
+                );
+              },
               a({ href = "", children }) {
                 const target = resolveDocLink(docs, current.path, href);
                 if (target)

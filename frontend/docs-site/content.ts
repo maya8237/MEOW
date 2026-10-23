@@ -1,6 +1,13 @@
 export const REPO_URL = "https://github.com/maya8237/MEOW";
 export const sourceUrl = (path: string) => `${REPO_URL}/blob/main/${path}`;
 
+export const runSkill = [
+  "run",
+  "Build something",
+  "Plan, build, review, and deliver a change. Worktree runs push, open a PR (GitHub) or MR (GitLab), then verify its CI pipeline.",
+  "Add CSV export",
+] as const;
+
 export const skillGroups = [
   {
     title: "Set up & make it yours",
@@ -8,26 +15,20 @@ export const skillGroups = [
       [
         "onboard",
         "Set up your project",
-        "Run once per project to configure its settings, skills, integrations, and optional features. Later tasks reuse that setup. Run onboarding again when you want to add or change something.",
+        "Checks your project, writes the MEOW config, and offers optional add-ons such as Jira, GitHub or GitLab, scheduling, and the lint hook. Run once per project; rerun to add or change something.",
         "",
       ],
       [
         "customize",
         "Make MEOW work your way",
-        "Change skills, agent roles, or workflows.",
+        "Change skills, agent roles, or workflows. See what each user, project, and local scope customizes with the meow ui command.",
         "Create a skill for our coding conventions",
       ],
     ],
   },
   {
-    title: "Your everyday tools",
+    title: "Plan, review, and clean up",
     skills: [
-      [
-        "run",
-        "Build something",
-        "Plan, build, review, and deliver a change. Worktree runs push, open a PR (GitHub) or MR (GitLab), then verify its CI pipeline.",
-        "Add CSV export",
-      ],
       [
         "plan",
         "Think it through first",
