@@ -44,7 +44,7 @@ test("starts with setup instead of loading the full reference", () => {
   ).toBeInTheDocument();
   expect(screen.getByText("/meow:onboard")).toBeInTheDocument();
   expect(
-    screen.getByText("/meow:run Fix the login redirect loop"),
+    screen.getByText("/meow:run Add pagination to the users API endpoint"),
   ).toBeInTheDocument();
   expect(screen.queryByText("Welcome to the readme.")).not.toBeInTheDocument();
   expect(fetchMock).not.toHaveBeenCalled();

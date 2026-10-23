@@ -98,9 +98,9 @@ function Start() {
           <li>
             <h3>Ask for your first change</h3>
             <p>Tell MEOW what you want to build.</p>
-            <Command text="/meow:run Fix the login redirect loop" />
+            <Command text="/meow:run Add pagination to the users API endpoint" />
             <p>Or give more detail about what you need and how to check it:</p>
-            <Command text="/meow:run Send an email when an order ships. Send one email per order with the tracking link, skip customers who opted out of notifications, and retry failed sends up to three times. Add tests for opt-out and retry behavior." />
+            <Command text="/meow:run Add cursor-based pagination to GET /users. Accept limit (default 20, max 100) and cursor query parameters, return next_cursor in the response, and reject invalid cursors with a 400. Update the OpenAPI spec and add tests for the first page, last page, and invalid cursors." />
             <p className="guide-note">
               Feature runs use a separate worktree, then commit and push after
               checks pass, open a PR/MR into your configured target, and verify
