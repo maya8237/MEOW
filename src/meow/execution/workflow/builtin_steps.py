@@ -25,6 +25,7 @@ from meow.infrastructure.checks import (
     adopt_stage_artifacts,
     completion_ready,
     configured_checks,
+    reusable_results,
     run_final_checks,
     stage_baseline,
 )
@@ -252,6 +253,30 @@ def evidence_ready(state):
     )
 
 
+def _verify_verdict(results) -> tuple[str, str]:
+    failed = [item for item in results if item.required and not item.passed]
+    if not failed:
+        return "PASS", "SUMMARY: Automated checks passed.\nSTATUS: PASS"
+    details = "\n\n".join(
+        f"{item.kind} `{item.command}` "
+        + ("timed out" if item.timed_out else f"exited {item.exit_code}")
+        + f":\n{item.output[-2000:]}"
+        for item in failed
+    )
+    return "FAIL", f"SUMMARY: Automated checks failed.\nSTATUS: FAIL\n{details}"
+
+
+async def verify(state, step):
+    """Run the configured gates before the AI review so a failure costs no agent."""
+    active = state.sprint.active_working_dir()
+    state.journal("checking")
+    state.checks_results = await run_final_checks(active, state.sprint.config)
+    state.checks_baseline = await asyncio.to_thread(stage_baseline, active)
+    status, verdict = _verify_verdict(state.checks_results)
+    state.gate_result(replace(step, blocks="loop"), status, verdict)
+    return status
+
+
 async def checks(state):
     state.block_delivery()
     if not config_paths(state.checks_dir):
@@ -259,7 +284,17 @@ async def checks(state):
     state.journal("checking")
     active = state.sprint.active_working_dir()
     baseline = await asyncio.to_thread(stage_baseline, active)
-    state.checks_results = await run_final_checks(active, state.sprint.config)
+    reused = await reusable_results(
+        active,
+        state.sprint.config,
+        state.checks_results or [],
+        state.checks_baseline,
+    )
+    state.checks_results = (
+        reused
+        if reused is not None
+        else await run_final_checks(active, state.sprint.config)
+    )
     await asyncio.to_thread(
         adopt_stage_artifacts, state.store, state.run_id, active, baseline
     )
@@ -293,6 +328,8 @@ async def deliver(state):  # ruff: ignore[unused-async]
 async def run_builtin(state, step):
     if step.target == "builtin.review":
         return await review(state, step)
+    if step.target == "builtin.verify":
+        return await verify(state, step)
     functions = {
         "knowledge": knowledge,
         "shape": shape,

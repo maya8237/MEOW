@@ -153,6 +153,21 @@ def test_fingerprint_includes_configured_compatibility_delegates(tmp_path):
     assert fingerprint(catalog.workflow("default"), catalog) != before
 
 
+def test_quick_checks_before_review_and_keeps_plan_approval():
+    definitions = discover(builtin_sources())
+    quick = definitions.workflow("quick")
+    targets = [step.target for step in expand(quick, definitions)]
+    loop = next(step for step in expand(quick, definitions) if step.kind == "loop")
+    assert [s.target for s in loop.body] == [
+        "builtin.generate",
+        "builtin.verify",
+        "builtin.review",
+    ]
+    assert "builtin.approve_plan" in targets  # -m / --manually-approve-plan
+    assert "builtin.tasks" not in targets
+    assert quick.auto_test is False and quick.short_plan is True
+
+
 def test_workflow_flags_default_and_parse(tmp_path):
     plain = catalog(tmp_path, '[[steps]]\nid = "a"\nuses = "builtin.generate"')
     workflow = plain.workflow("custom")
