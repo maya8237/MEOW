@@ -31,6 +31,26 @@ def project(tmp_path):
         )
     ]
     install_claude_hooks(tmp_path, ["lint"])
+    subprocess.run(
+        ["git", "add", ".meow/config.toml", ".claude/settings.local.json"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "setup",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+    source.write_text("x = 2\n", encoding="utf-8")
     return source, config
 
 
@@ -73,7 +93,7 @@ def test_uncertain_hook_evidence_falls_back(tmp_path, gap):  # ruff: ignore[comp
     hook(tmp_path, source, config)
     ledger = tmp_path / ".meow/lint-ledger.jsonl"
     if gap == "content":
-        source.write_text("x = 2\n", encoding="utf-8")
+        source.write_text("x = 3\n", encoding="utf-8")
     elif gap == "config":
         config["lint"] = [replace(config["lint"][0], timeout=1)]
     elif gap == "missing":
@@ -101,4 +121,28 @@ def test_sdk_only_evidence_is_recorded_but_requires_active_installation(tmp_path
     (tmp_path / ".claude/settings.local.json").write_text("{}", encoding="utf-8")
     hook(tmp_path, source, config)
     assert (tmp_path / ".meow/lint-ledger.jsonl").exists()
+    assert lint_ledger.verified_lint(tmp_path, config) is None
+
+
+@pytest.mark.parametrize("commit", [False, True])
+def test_external_lint_config_changes_invalidate_hook_proof(tmp_path, commit):
+    source, config = project(tmp_path)
+    hook(tmp_path, source, config)
+    (tmp_path / ".ruff.toml").write_text('lint.select=["ALL"]\n', encoding="utf-8")
+    if commit:
+        subprocess.run(["git", "add", ".ruff.toml"], cwd=tmp_path, check=True)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-qm",
+                "rules",
+            ],
+            cwd=tmp_path,
+            check=True,
+        )
     assert lint_ledger.verified_lint(tmp_path, config) is None

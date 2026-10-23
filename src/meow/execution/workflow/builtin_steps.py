@@ -24,6 +24,7 @@ from meow.execution.orchestrator import (
 from meow.infrastructure.cancellation import RunCancelled
 from meow.infrastructure.checks import (
     adopt_stage_artifacts,
+    checks_current,
     completion_ready,
     configured_checks,
     reusable_results,
@@ -303,6 +304,19 @@ async def verify(state, step):
         state.checks_baseline,
     )
     status, verdict = _verify_verdict(state.checks_results)
+    if status == "PASS" and not checks_current(
+        state.checks_results,
+        configured_checks(state.sprint.config),
+        active,
+        state.checks_baseline.revision,
+    ):
+        status, verdict = (
+            "FAIL",
+            (
+                "SUMMARY: Checks changed source or configuration; evidence is stale.\n"
+                "STATUS: FAIL\nFix checks that keep modifying source, then reverify."
+            ),
+        )
     state.gate_result(replace(step, blocks="loop"), status, verdict)
     return status
 

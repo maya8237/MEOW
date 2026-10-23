@@ -4,7 +4,8 @@ The built-in workflows run configured lint/test/build/browser commands inside
 each fix round, before AI review. A required failure skips review and becomes
 feedback for the next generator turn. Advisory failures remain visible.
 Final checks reuse results only while configuration and existing source remain
-unchanged; report-only additions are tolerated. Resume reruns commands because
+unchanged; recognized reports and configured browser artifacts are tolerated.
+New source/tests rerun checks. Resume reruns commands because
 the reuse baseline is in memory. Source edits/deletions invalidate evidence.
 
 ## AI tester
@@ -48,10 +49,11 @@ The `verify` step can use that ledger instead of duplicate lint only when:
 
 - The Claude lint installation is active and its manifest is valid.
 - Every lint entry is per-file.
-- Every changed file matching lint has successful evidence for its current
+- Every changed file matches lint and has successful evidence for its current
   content and the same lint configuration, including timeout.
 
-Missing/malformed evidence, deletions, read errors, or project-wide lint
+Missing/malformed evidence, unmatched edits (including linter rules), commits,
+deletions, read errors, or project-wide lint
 commands fall back to full lint. Installing a hook alone proves nothing.
 SDK hooks write the same evidence, allowing CLI runs to benefit when the
 installation is active. Status reports `hook-verified` or `run`.

@@ -226,7 +226,8 @@ async def run_lint_on_file(  # ruff: ignore[complex-structure, too-many-branches
             commands,
             timeout,
             edited,
-            ok=not problems and all(value == content_hash(edited) for value in hashes),
+            ok=not problems
+            and all(value and value == content_hash(edited) for value in hashes),
         )
     return problems
 

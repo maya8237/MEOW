@@ -23,6 +23,7 @@ from meow.project.config_models import (
     resolve_command_cwd,
 )
 from meow.project.config_schema import _command_fields, _positive_timeout, _typed_bool
+from meow.project.plan_files import is_review_report
 
 
 @dataclass(frozen=True)
@@ -504,12 +505,29 @@ async def reusable_results(
     latest = {result.identity: result for result in previous}
     reusable = [latest.get(check_identity(check)) for check in checks]
     if any(
-        result is None or result.config_fingerprint != fingerprint
+        result is None
+        or result.config_fingerprint != fingerprint
+        or result.revision != baseline.revision
         for result in reusable
-    ) or not await asyncio.to_thread(_stage_source_unchanged, repo, baseline):
+    ) or not await asyncio.to_thread(_reusable_tree, repo, config, baseline):
         return None
     revision = await asyncio.to_thread(code_revision, repo)
     return [replace(result, revision=revision) for result in reusable if result]
+
+
+def _reusable_tree(repo: Path, config: dict, baseline: StageBaseline) -> bool:
+    if not _stage_source_unchanged(repo, baseline):
+        return False
+    root = repo.resolve()
+    added = set(_code_paths(root)) - set(baseline.paths)
+    browser = config.get("tester", {}).get("browser") or {}
+    artifacts = {(root / path).resolve() for path in browser.get("artifacts", [])}
+    docs = root / config.get("docs_dir", ".meow/plans")
+    return all(
+        is_review_report(path, docs)
+        or (path.resolve().is_relative_to(root) and path.resolve() in artifacts)
+        for path in added
+    )
 
 
 async def cached_workflow_results(repo: Path, config: dict) -> list[CheckResult] | None:

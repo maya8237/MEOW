@@ -191,6 +191,7 @@ def _verified(tmp_path):
 
 def test_results_are_reused_when_a_stage_only_adds_files(tmp_path):
     config, results, baseline = _verified(tmp_path)
+    config["docs_dir"] = "."
     (tmp_path / "review.md").write_text("report", encoding="utf-8")
 
     reused = asyncio.run(reusable_results(tmp_path, config, results, baseline))
@@ -215,6 +216,17 @@ def test_results_are_not_reused_without_a_baseline(tmp_path):
     assert asyncio.run(reusable_results(tmp_path, config, results, None)) is None
 
 
+@pytest.mark.parametrize(
+    "name", ["feature_new.py", "tests/test_added.py", "docs/example.py"]
+)
+def test_new_source_files_invalidate_reuse(tmp_path, name):
+    config, results, baseline = _verified(tmp_path)
+    added = tmp_path / name
+    added.parent.mkdir(parents=True, exist_ok=True)
+    added.write_text("assert False\n", encoding="utf-8")
+    assert asyncio.run(reusable_results(tmp_path, config, results, baseline)) is None
+
+
 def test_verify_fails_the_loop_gate_with_failing_output(tmp_path):
     from meow.execution.workflow.builtin_steps import verify
     from meow.project.custom.workflows import Step
@@ -227,3 +239,26 @@ def test_verify_fails_the_loop_gate_with_failing_output(tmp_path):
     status, verdict = gates[0]
     assert status == "FAIL" and "exited 3" in verdict and "boom" in verdict
     assert state.checks_baseline is not None
+
+
+def test_nonconverging_checks_cannot_pass_verify_or_be_reused(tmp_path):
+    from meow.execution.workflow.builtin_steps import verify
+    from meow.project.custom.workflows import Step
+
+    state, _, _ = _state(tmp_path, "open('source.py', 'a').write('# change\\n')")
+    gates = []
+    state.gate_result = lambda step, status, verdict: gates.append(status)
+    step = Step(kind="uses", id="verify", target="builtin.verify")
+    assert asyncio.run(verify(state, step)) == "FAIL"
+    assert gates == ["FAIL"]
+    assert (
+        asyncio.run(
+            reusable_results(
+                tmp_path,
+                state.sprint.config,
+                state.checks_results,
+                state.checks_baseline,
+            )
+        )
+        is None
+    )

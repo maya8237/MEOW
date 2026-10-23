@@ -9,9 +9,16 @@ from meow.execution.run_state import RunStore
 from meow.execution.sprint import Sprint
 from meow.execution.sprint_runner import run_sprint
 from meow.execution.workflow.engine import RunState, run_workflow
-from meow.infrastructure.checks import Check, code_revision
+from meow.infrastructure.checks import (
+    Check,
+    code_revision,
+    run_final_checks,
+    stage_baseline,
+)
 from meow.infrastructure.review_verification import review_evidence
+from meow.infrastructure.test_runner import prepared_test_stage
 from meow.project.config import load_config
+from meow.project.config_models import VerificationCommand
 from meow.project.custom.workflows import expand
 
 
@@ -56,7 +63,9 @@ def test_failed_checks_skip_review_and_passing_checks_are_reused(tmp_path, workf
     async def review(*args, **kwargs):
         assert not (await review_evidence(tmp_path, config)).blocking_failed
         reviewed.append(source.read_text(encoding="utf-8"))
-        (tmp_path / "review.md").write_text("report", encoding="utf-8")
+        report_dir = tmp_path / config["docs_dir"]
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / "review.md").write_text("report", encoding="utf-8")
         store.update_results(
             record.id, reviewer="PASS", reviewer_revision=code_revision(tmp_path)
         )
@@ -108,3 +117,33 @@ def test_force_disabled_policy_survives_resume_and_overrides_explicit_test(tmp_p
         )
     )
     assert store.load(record.id).results["test"] is False
+
+
+def test_tester_reuses_commands_but_reruns_after_source_changes(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow/config.toml").write_text("", encoding="utf-8")
+    source = tmp_path / "source.py"
+    source.write_text("before", encoding="utf-8")
+    counter = tmp_path.parent / (tmp_path.name + "-commands.txt")
+    code = (
+        f"from pathlib import Path; p=Path({str(counter)!r}); "
+        "p.write_text(p.read_text()+'x' if p.exists() else 'x')"
+    )
+    config = load_config(tmp_path)
+    config["tester"]["tests"] = [
+        VerificationCommand(tmp_path, sys.executable, ("-c", code))
+    ]
+
+    async def exercise():
+        results = await run_final_checks(tmp_path, config)
+        config["_workflow_checks"] = results, stage_baseline(tmp_path)
+        async with prepared_test_stage(tmp_path, config) as evidence:
+            assert evidence.commands[0].exit_code == 0
+        assert counter.read_text(encoding="utf-8") == "x"
+        source.write_text("after", encoding="utf-8")
+        async with prepared_test_stage(tmp_path, config) as evidence:
+            assert evidence.commands[0].exit_code == 0
+        assert counter.read_text(encoding="utf-8") == "xx"
+
+    asyncio.run(exercise())
