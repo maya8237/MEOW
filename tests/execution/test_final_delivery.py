@@ -186,3 +186,46 @@ def test_token_text_is_redacted(setup):
     error = store.load(rid).delivery["pr_error"]
     assert "secret" not in error and "s3" not in error
     assert "\n" not in error and "GITLAB_TOKEN" in error
+
+
+@pytest.mark.parametrize(
+    ("text", "secret"),
+    [
+        ("GITLAB_TOKEN=abc123", "abc123"),
+        ('{"token": "abc123"}', "abc123"),
+        ('{"password": "abc123"}', "abc123"),
+        ("Authorization: Bearer abc123", "abc123"),
+        ("token: Bearer abc123", "abc123"),
+        ("PRIVATE-TOKEN: abc123", "abc123"),
+        ("JOB-TOKEN=abc123", "abc123"),
+        ("failed at https://oauth2:abc123@host/g/r.git now", "abc123"),
+    ],
+)
+def test_credential_forms_scrubbed(setup, text, secret):
+    store, rid = setup()
+    run(store, rid, FakeAgent(RuntimeError(f"bad\n{text}")))
+    delivery = store.load(rid).delivery
+    assert secret not in delivery["pr_error"]
+    assert secret not in str(delivery["pr_manual_link"])
+    assert "\n" not in delivery["pr_error"]
+
+
+def test_remote_userinfo_never_persisted(setup, monkeypatch):
+    remote = "https://oauth2:glpat-secret@gitlab.com/team/app.git"
+    monkeypatch.setattr(final_delivery, "origin_url", lambda repo: remote)
+    store, rid = setup()
+    run(store, rid, FakeAgent(RuntimeError(f"cannot reach {remote}")))
+    delivery = store.load(rid).delivery
+    assert "glpat-secret" not in delivery["pr_error"]
+    assert "glpat-secret" not in delivery["pr_manual_link"]
+    assert "gitlab.com/team/app" in delivery["pr_manual_link"]
+
+
+def test_unknown_host_remote_userinfo_scrubbed(setup, monkeypatch):
+    remote = "https://oauth2:glpat-secret@example.org/a/b.git"
+    monkeypatch.setattr(final_delivery, "origin_url", lambda repo: remote)
+    store, rid = setup()
+    run(store, rid, FakeAgent())
+    delivery = store.load(rid).delivery
+    assert "glpat-secret" not in delivery["pr_error"]
+    assert "example.org" in delivery["pr_error"]

@@ -15,14 +15,29 @@ from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled
 
 _TITLE_LIMIT = 72
+_USERINFO = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^/\s@]*@", re.IGNORECASE)
+_HEADER = re.compile(
+    r"\b(authorization|private-token|job-token)\b(['\"]?\s*[=:]\s*['\"]?)"
+    r"(?:(?:bearer|basic|token)\s+)?[^\s'\",}]+",
+    re.IGNORECASE,
+)
+_SCHEME = re.compile(r"\b(bearer|basic)\s+[^\s'\",}]+", re.IGNORECASE)
 _SECRET = re.compile(
-    r"(\b\w*(?:TOKEN|KEY|SECRET|PASSWORD)\w*\s*[=:]\s*)\S+", re.IGNORECASE
+    r"(\b\w*(?:TOKEN|KEY|SECRET|PASSWORD)\w*['\"]?\s*[=:]\s*['\"]?)"
+    r"(?:(?:bearer|basic)\s+)?[^\s'\",}]+",
+    re.IGNORECASE,
 )
 
 
+def _scrub(text: str) -> str:
+    text = _USERINFO.sub(r"\1", text)
+    text = _HEADER.sub(r"\1\2***", text)
+    text = _SECRET.sub(r"\1***", text)
+    return _SCHEME.sub(r"\1 ***", text)
+
+
 def _one_line(exc: Exception) -> str:
-    text = " ".join(str(exc).split())
-    return _SECRET.sub(r"\1***", text) or type(exc).__name__
+    return _scrub(" ".join(str(exc).split())) or type(exc).__name__
 
 
 def _body(record) -> str:
@@ -48,7 +63,8 @@ async def _open(  # ruff: ignore[too-many-arguments, too-many-positional-argumen
         raise RuntimeError("no origin remote is configured")
     if provider is None:
         raise RuntimeError(
-            f"no GitHub or GitLab integration matches the origin remote {remote}"
+            "no GitHub or GitLab integration matches the origin remote "
+            f"{_USERINFO.sub(r'\\1', remote)}"
         )
     mcp = provider_mcp(config, provider)
     context = ProjectContext(Path(record.worktree), config, use_worktree=True)
