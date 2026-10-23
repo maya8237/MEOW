@@ -218,3 +218,18 @@ def test_capture_redirect_handler_raises():
     with pytest.raises(pipeline_api._Redirect) as hop:
         handler.redirect_request(None, None, 302, "", {}, "https://cdn/z")
     assert hop.value.location == "https://cdn/z"
+
+
+@pytest.mark.parametrize(
+    ("url", "api"),
+    [
+        ("https://gitlab.example.com", "https://gitlab.example.com/api/v4"),
+        ("https://gitlab.example.com/", "https://gitlab.example.com/api/v4"),
+        ("https://gitlab.example.com/api/v4", "https://gitlab.example.com/api/v4"),
+        ("https://gitlab.example.com/api/v4/", "https://gitlab.example.com/api/v4"),
+        ("https://example.com/gitlab", "https://example.com/gitlab/api/v4"),
+    ],
+)
+def test_connect_api_base_not_doubled(url, api):
+    cfg = {"gitlab": {"mcp": {"env": {"GITLAB_TOKEN": "b", "GITLAB_URL": url}}}}
+    assert connect("https://gitlab.example.com/g/r.git", cfg, {}).api == api

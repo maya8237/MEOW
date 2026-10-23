@@ -109,4 +109,5 @@ def connect_gitlab(
     if not token:
         raise PipelineUnavailable("MEOW_GITLAB_TOKEN is not set")
     base = str(mcp_env.get("GITLAB_URL") or f"https://{host}").rstrip("/")
+    base = base.removesuffix("/api/v4").rstrip("/")
     return GitlabPipeline(f"{base}/api/v4", project, token)
