@@ -450,6 +450,23 @@ def current_branch(directory: Path, default: str = "detached") -> str:
     return result.stdout.strip() or default
 
 
+def default_target_branch(directory: Path) -> str:
+    """Prefer an existing local or origin dev branch, otherwise master."""
+    if not any(
+        (parent / ".git").exists() for parent in (directory, *directory.parents)
+    ):
+        return "master"
+    try:
+        if any(
+            _ref_exists("git", directory, ref)
+            for ref in ("refs/heads/dev", "refs/remotes/origin/dev")
+        ):
+            return "dev"
+    except OSError:
+        pass
+    return "master"
+
+
 def _ref_exists(git: str, working_dir: Path, ref: str) -> bool:
     result = _run_git([git, "rev-parse", "--verify", "--quiet", ref], cwd=working_dir)
     return result.returncode == 0

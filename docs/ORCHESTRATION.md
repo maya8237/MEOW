@@ -19,11 +19,15 @@ With `--from`, select the main checkout rather than an existing linked worktree.
 | Flag | Meaning |
 |---|---|
 | `--from BRANCH` | Base, default current branch; required for detached HEAD |
+| `--target BRANCH` | MR target, otherwise `[delivery].target_branch` |
 | `--max-parallel N` | Concurrency, default 3 from config |
 | `--dry-run` | Save decomposition and stop; resume continues it |
 | `--test` | Configured/exploratory testing in each task |
 | `--no-pr` | Push without opening a PR |
 | `meow resume ID --continue --task T --request TEXT` | Reset a blocked task (default blocker task), optionally replace request |
+
+The starting base and MR target are independent. Auto-onboarding sets the target
+to existing `dev`, otherwise `master`. The chosen target is saved for resume.
 
 Sprint-only name/worktree/plan/workflow flags, manual approval, and `--background`
 are rejected. Jira is read-only and requires `[jira]`/`[jira.mcp]` in CLI mode.

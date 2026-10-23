@@ -47,7 +47,8 @@ Tell MEOW what you want:
 /meow:run Add CSV export
 ```
 
-Feature runs use a separate worktree, then commit and push after checks pass.
+Feature runs use a separate worktree. After checks pass, MEOW pushes the branch,
+opens a PR/MR into your configured target, and verifies its CI pipeline.
 
 - `/meow:plan` — think through a change before building.
 - `/meow:review` — review existing code and fix findings.

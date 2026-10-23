@@ -4,6 +4,7 @@ import platform
 import tomllib
 from pathlib import Path
 
+from meow.infrastructure.worktree import default_target_branch
 from meow.project.command_policy import _os_mismatch, _validate_os_compatibility
 from meow.project.config_env import _expand_config_environment
 from meow.project.config_files import (
@@ -58,7 +59,7 @@ DEFAULT_CONFIG = {
         "integrator": None,
         "pull_request": None,
     },
-    "delivery": {"target_branch": "dev"},
+    "delivery": {"target_branch": None},
     "workflow": {"default": "default"},
 }
 
@@ -176,7 +177,9 @@ def load_config(working_dir: Path) -> dict:
     delivery = user_config.get("delivery", {})
     if not isinstance(delivery, dict):
         raise ValueError(f"{_CONFIG_FILENAME}: [delivery] must be a table")
-    target = delivery.get("target_branch", "dev")
+    target = delivery.get("target_branch")
+    if target is None:
+        target = default_target_branch(Path(working_dir))
     if not isinstance(target, str) or not target or target.startswith("-"):
         raise ValueError(
             f"{_CONFIG_FILENAME}: [delivery].target_branch must be a branch name"

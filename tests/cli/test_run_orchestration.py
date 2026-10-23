@@ -171,9 +171,22 @@ def test_explicit_base_allows_dirty_checkout(repo, monkeypatch):
 def test_explicit_base_rejects_linked_checkout(repo, monkeypatch):
     monkeypatch.setattr(orchestration_cli, "start_orchestrator", never_called)
     git(repo, "worktree", "add", "--detach", str(repo.parent / "linked"))
-
     with pytest.raises(ValueError, match="--from requires a new worktree"):
         run_orchestration(parse("Add login", "--from", "HEAD"), repo.parent / "linked")
+
+
+def test_explicit_base_and_target_are_separate(repo, monkeypatch):
+    record = delivered(repo)
+    calls = []
+    monkeypatch.setattr(
+        orchestration_cli, "start_orchestrator", fake_start(record.id, 0, calls)
+    )
+    assert (
+        run_orchestration(parse("Add login", "--from", "HEAD", "--target", "dev"), repo)
+        == 0
+    )
+    assert calls[0]["base_branch"] == "HEAD"
+    assert calls[0]["target_branch"] == "dev"
 
 
 def test_objective_is_preserved(repo, monkeypatch):

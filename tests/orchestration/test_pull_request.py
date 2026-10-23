@@ -103,12 +103,30 @@ def with_origin(monkeypatch, origin):
     monkeypatch.setattr(pull_request_module, "origin_url", lambda repo: origin)
 
 
-def run_open(tmp_path, stub, config_extra):
-    repo, store, oid = record_for(tmp_path, objective="Add login")
+def run_open(tmp_path, stub, config_extra, **changes):
+    repo, store, oid = record_for(tmp_path, objective="Add login", **changes)
     config = {**orchestrator_config(repo), **config_extra}
     agents = SimpleNamespace(pull_request=stub.factory)
     asyncio.run(open_pull_request(repo, store, oid, config, agents))
     return repo, store, oid
+
+
+@pytest.mark.parametrize("error", [None, "rate limited"])
+def test_saved_target_is_used_for_opening_and_manual_links(
+    tmp_path, monkeypatch, error
+):
+    stub = ScriptedPullRequest(url="https://github.com/o/r/pull/7", error=error)
+    with_origin(monkeypatch, "git@github.com:o/r.git")
+    _repo, store, oid = run_open(
+        tmp_path, stub, GITHUB_MCP, options={"target_branch": "dev"}
+    )
+
+    assert store.load(oid).base_branch == "main"
+    assert stub.calls[0][3] == "dev"
+    if error:
+        assert store.load(oid).delivery["pr_manual_link"] == (
+            f"https://github.com/o/r/compare/dev...orchestrator/{oid}?expand=1"
+        )
 
 
 def test_stub_agent_success_records_url(tmp_path, monkeypatch):

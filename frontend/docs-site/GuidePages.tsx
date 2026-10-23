@@ -96,8 +96,8 @@ function Start() {
             <Command text="/meow:run Add CSV export" />
             <p className="guide-note">
               Feature runs use a separate worktree, then commit and push after
-              checks pass. Full sprint orchestration also opens a PR/MR by
-              default.
+              checks pass, open a PR/MR into your configured target, and verify
+              its CI pipeline. Use --target BRANCH to override the target.
             </p>
           </li>
         </ol>
@@ -147,12 +147,31 @@ function Skills() {
                       Describe the change, expected behavior, and how to check
                       it.
                     </p>
+                    <p>
+                      The example starts from release and opens a PR/MR into
+                      dev. Replace these with your own branches.
+                    </p>
+                    <p>
+                      --target overrides your configured MR target. Onboarding
+                      defaults it to dev if it exists, otherwise master. --from
+                      only chooses where work starts. The target is saved for
+                      resume; existing worktrees are reused. In-place runs do
+                      not open an MR, and --no-pr skips MR creation.
+                    </p>
                     {runExamples.map(({ title, prompt }) => (
                       <section key={title}>
                         <h4>{title}</h4>
                         <Command text={prompt} />
                       </section>
                     ))}
+                    <p>
+                      PR/MR creation and pipeline checks require your provider
+                      connection. If they fail, MEOW reports the reason and
+                      available links.{" "}
+                      <a href={sourceUrl("docs/PIPELINE.md")}>
+                        PR/MR & pipeline guide
+                      </a>
+                    </p>
                   </details>
                 )}
                 <a

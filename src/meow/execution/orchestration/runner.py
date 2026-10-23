@@ -510,6 +510,7 @@ async def start_orchestrator(  # ruff: ignore[too-many-arguments] -- the pinned 
     intake: IntakeRequest,
     *,
     base_branch: str | None = None,
+    target_branch: str | None = None,
     max_parallel: int | None = None,
     test: bool = False,
     open_pr: bool | None = None,
@@ -537,6 +538,7 @@ async def start_orchestrator(  # ruff: ignore[too-many-arguments] -- the pinned 
         options={
             "test": test,
             "pr": settings["open_pr"] if open_pr is None else open_pr,
+            "target_branch": target_branch or config["delivery"]["target_branch"],
         },
     )
     driver = _Driver(repo, record.id, config, _wiring(agents, launcher, sleep))

@@ -11,6 +11,24 @@ from meow.infrastructure.checks import config_fingerprint
 from meow.native.native_state import checkpoint
 
 
+@pytest.mark.parametrize("target", [None, "release"])
+def test_native_worktree_target_is_saved_and_survives_config_change(git_repo, target):
+    repo, _remote = git_repo
+    active = repo.parent / "existing-feature"
+    subprocess.run(
+        ["git", "-C", str(repo), "worktree", "add", "-b", "feature", str(active)],
+        check=True,
+    )
+    created = checkpoint(repo, active, "preparing", target_branch=target)
+    run_id = created["run_id"]
+    assert RunStore(repo).load(run_id).delivery["base"] == (target or "master")
+    (repo / ".meow/config.toml").write_text(
+        '[delivery]\ntarget_branch = "changed"\n', encoding="utf-8"
+    )
+    checkpoint(repo, active, "planning", run_id=run_id)
+    assert RunStore(repo).load(run_id).delivery["base"] == (target or "master")
+
+
 def test_native_checkpoint_create_and_interrupted_mutation(tmp_path):
     subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
     (tmp_path / ".meow").mkdir()

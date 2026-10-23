@@ -57,6 +57,9 @@ For a saved native run, inspect and continue that same ID with `meow resume <run
    Immediately call `meow native checkpoint preparing --request "<request>"
    --work-dir "<project-path>" --active-dir "<active_dir>"` and keep its
    `run_id`. Reuse `--run-id <run_id>` for every later checkpoint.
+   Pass `--target BRANCH` on this first checkpoint when explicitly requested;
+   otherwise it saves the configured target. On resume, use the journal's
+   MR target shown by `meow status <run_id>`, never recompute it.
    **Resume check:** run `meow native latest-plan --work-dir
    "<project-path>" --active-dir "<active_dir>"`. If it returns a plan and that
    file has a numbered task list and a `## Sprint Contract`, the plan is ready:
@@ -93,8 +96,9 @@ For a saved native run, inspect and continue that same ID with `meow resume <run
    back `exhausted`, say the sprint did not pass after `max_rounds` rounds and
    point at the review file for the last feedback. A successful finalize in a
    separate worktree commits and pushes its branch.
-   With `--from`, say the loop finished and final delivery is being verified,
-   then open the MR/PR into that branch with connected tools and report the
+   State the saved MR target; `--from` only chooses the starting branch.
+   For worktree delivery, say the loop finished and final delivery is being
+   verified, then open the MR/PR into that target and report the
    pipeline status. MEOW's pipeline-fix loop is CLI-only; never claim
    "Verified by pipeline" unless the pipeline actually passed.
 

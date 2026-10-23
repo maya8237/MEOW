@@ -103,6 +103,13 @@ On reruns, edit only accepted settings in the appropriate layer, preserving
 unrelated values and comments. Reuse existing tables and entries; do not append
 duplicates. Already accepted changes do not need another confirmation.
 
+Show the effective `[delivery].target_branch` and ask in interactive mode:
+"Keep this default PR/MR target, or change it?" Auto-onboarding saves `dev` if
+it exists locally or on origin, otherwise `master`. Keep an existing choice
+unless the user requests a change; update only that setting after approval.
+Explain that `--target BRANCH` overrides it for one run; `--from` only selects
+the starting branch. Automatic mode keeps the detected or configured value.
+
 Use ignored local config for private MCP `env`, machine commands, API-key
 references, and personal installed skills. `agent_skills.default` and
 `agent_skills.<role>` append across layers; local entries do not remove

@@ -12,6 +12,7 @@ GUIDES = (
     "docs/INSTALL.md",
     "docs/CLI.md",
     "docs/RUNS.md",
+    "docs/PIPELINE.md",
     "docs/WORKFLOWS.md",
     "docs/ORCHESTRATION.md",
     "docs/CUSTOM.md",

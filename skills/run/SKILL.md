@@ -51,7 +51,16 @@ meow run --jira PROJ-1 PROJ-2
 meow run --tasks tasks.toml
 ```
 
-With `--from BRANCH`, final delivery opens an MR/PR into `BRANCH` and fixes
+`--from BRANCH` selects the starting branch; `--target BRANCH` selects the MR/PR
+target. Recognize "start from release, merge into dev" as
+`--from release --target dev`. Without `--target`, use `[delivery].target_branch`,
+auto-onboarded to existing `dev`, otherwise `master`; never infer the target from
+`--from` or the current checkout. Keep existing worktree reuse unchanged.
+The target is printed and saved in the journal; resume the saved run without
+choosing a new target. In-place flags do not open an MR. `--no-pr` disables
+MR creation and pipeline verification.
+
+Final delivery opens the MR/PR into the saved target and fixes
 code until the pipeline's `meow-review` job passes. Tell the user the MEOW loop
 (generate, review, checks) has finished and the feature is done, and that the
 work is now in final delivery, being verified through the MR pipeline. Relay

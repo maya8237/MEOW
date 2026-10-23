@@ -166,13 +166,21 @@ def _add_feature_args(parser: argparse.ArgumentParser, *, delivery: bool = False
         dest="source_branch",
         default=None,
         help=(
-            "Create a fresh worktree from this branch, preserving existing "
-            "worktrees. Requires the main checkout with worktrees enabled. "
-            "Skips the uncommitted-changes check because local edits stay "
-            "in the original checkout. Orchestration also uses this base "
-            "and skips the check."
+            "Start a fresh worktree from this branch. Requires the main "
+            "checkout with worktrees enabled. Does not choose the MR target."
         ),
     )
+
+    if delivery:
+        parser.add_argument(
+            "--target",
+            dest="target_branch",
+            default=None,
+            help=(
+                "PR/MR target branch (default: [delivery].target_branch). "
+                "Independent of --from."
+            ),
+        )
 
 
 def _add_manual_approval_arg(parser: argparse.ArgumentParser) -> None:
@@ -491,7 +499,7 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         help=(
             "CI target Git ref (default: refs/remotes/origin/<[delivery]."
-            "target_branch>, which defaults to dev)."
+            "target_branch>, default: existing dev, otherwise master)."
         ),
     )
     review_parser.add_argument(
@@ -660,14 +668,14 @@ def _add_orchestration_args(parser: argparse.ArgumentParser) -> None:
         "--no-pr",
         dest="no_pr",
         action="store_true",
-        help="Push without opening a PR/MR (orchestration or `run --from`).",
+        help="Push without opening a PR/MR or verifying its pipeline.",
     )
     parser.add_argument(
         "--fix-non-meow-jobs",
         dest="fix_non_meow_jobs",
         action="store_true",
         help=(
-            "With --from: also fix failing pipeline jobs other than meow-review "
+            "Also fix failing pipeline jobs other than meow-review "
             "(never deploy/release/publish/rollback jobs)."
         ),
     )

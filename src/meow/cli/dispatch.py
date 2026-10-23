@@ -58,6 +58,7 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
                 use_worktree=use_worktree,
                 plan_file=plan_file,
                 source_branch=args.source_branch,
+                **({"target_branch": args.target_branch} if args.target_branch else {}),
                 approve_plan=approve_plan,
                 resume_at=args.resume_at,
                 **(

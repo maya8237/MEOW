@@ -77,13 +77,31 @@ def pipeline_overrides(args) -> dict[str, bool]:
     }
 
 
+def _validate_target_flag(parser, args):
+    if args.target_branch is not None:
+        if (
+            not args.target_branch.strip()
+            or args.target_branch.startswith("-")
+            or re.search(r"\s", args.target_branch)
+        ):
+            parser.error("--target requires a branch name")
+        if (
+            args.no_worktree
+            or args.lint_fix
+            or (args.jira is not None and not uses_orchestration(args))
+        ):
+            parser.error("--target requires a worktree feature run")
+
+
 def _validate_workflow_flags(parser, args):
     if args.max_parallel is not None or args.dry_run:
         parser.error(
             "--max-parallel and --dry-run require --orchestrate or a collection source"
         )
-    if args.fix_non_meow_jobs and not args.source_branch:
-        parser.error("--fix-non-meow-jobs requires --from")
+    if args.fix_non_meow_jobs and (
+        args.no_worktree or args.lint_fix or args.jira is not None
+    ):
+        parser.error("--fix-non-meow-jobs requires a worktree run")
     try:
         parse_inputs(args.input)
     except ValueError as exc:
@@ -95,6 +113,7 @@ def _validate_workflow_flags(parser, args):
 def _validate_run_flags(parser: argparse.ArgumentParser, args) -> None:
     if args.command != "run":
         return
+    _validate_target_flag(parser, args)
     if uses_orchestration(args):
         _validate_orchestration_flags(parser, args)
         return

@@ -23,7 +23,8 @@ of fighting for it.
    If nothing was given, ask for a one-line objective.
 2. **Start it.** Run `meow native run init --objective "<text>"` (or
    `--tasks <file>`), adding `--from <branch>` (base branch, default the current
-   one), `--max-parallel N`, `--test` (each task also runs the configured
+   one), `--target BRANCH` (MR target, otherwise `[delivery].target_branch`),
+   `--max-parallel N`, `--test` (each task also runs the configured
    tests), or `--no-pr` when the user asked for them. Without `--from`, the
    checkout must be clean. Keep `id` and `integration_worktree` from the JSON.
 3. **Decompose** (you are the decomposer). If `decomposer` is `null` the tasks

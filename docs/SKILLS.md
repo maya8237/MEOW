@@ -7,11 +7,14 @@ Claude Code skills from the MEOW plugin. Each has a CLI equivalent; flags are in
 Build a feature, resolve Jira issues, or coordinate an objective into one reviewed delivery.
 Example: `/meow:run Add CSV export`. [Reference](../skills/run/SKILL.md)
 
-Standard runs commit and push after checks pass; you open the PR/MR yourself.
-Full sprint orchestration also opens one PR (GitHub) or MR (GitLab) for the
-combined result by default. If creation fails, MEOW reports the reason and a
-manual link; `--no-pr` disables creation. Provider setup is in
-[ORCHESTRATION.md](ORCHESTRATION.md#delivery).
+Worktree runs open a PR (GitHub) or MR (GitLab) after pushing, then verify its CI
+pipeline and fix failing MEOW review jobs within the configured round limit.
+`--target BRANCH` overrides `[delivery].target_branch`; auto-onboarding sets it
+to existing `dev`, otherwise `master`. `--from` only chooses where work starts.
+The selected target survives resume. Explicit in-place runs keep their delivery
+choices; `--no-pr` disables MR creation. Failed creation reports a manual link.
+Only `Verified by pipeline` confirms CI verification. See
+[MR and pipeline verification](PIPELINE.md) for provider setup and outcomes.
 
 Give MEOW the change, expected behavior, and checks. Examples:
 
@@ -19,7 +22,10 @@ Give MEOW the change, expected behavior, and checks. Examples:
 /meow:run Add CSV export to the Orders page. Export only the currently filtered
 rows, include column headers, and escape commas and quotes. Show an empty state
 when there are no results. Add tests for filters, empty results, and quoted values.
+--from release --target dev
 ```
+
+Here the work starts from `release` and the PR/MR targets `dev`.
 
 ```text
 /meow:run Fix duplicate submissions when a user double-clicks Save on the profile
@@ -51,8 +57,9 @@ Example: `/meow:lint`. [Reference](../skills/lint/SKILL.md)
 
 ## /meow:onboard
 
-Set up a project or rerun after upgrading MEOW to review available features.
-Preserve existing settings and configure only selected additions or changes.
+Run once per project to configure its settings, skills, integrations, and optional
+features. Later tasks reuse that setup. Rerun after upgrading to review available
+features or add/change setup; existing settings are preserved.
 Example: `/meow:onboard`. [Reference](../skills/onboard/SKILL.md)
 
 ## /meow:customize

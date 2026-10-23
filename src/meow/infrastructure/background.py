@@ -111,17 +111,27 @@ def _create_run(
         )
     if seed is not None:
         raise BackgroundError("A run launch does not take a run seed")
+    from meow.cli.validation import pipeline_overrides
+    from meow.project.config import load_config
+
+    delivery = (
+        {"enabled": args.push is not None, "push": args.push is True}
+        if args.no_worktree
+        else {}
+    )
+    if not args.no_worktree and args.jira is None:
+        delivery.update(
+            base=args.target_branch or load_config(repo)["delivery"]["target_branch"],
+            source_branch=args.source_branch,
+            pipeline_options=pipeline_overrides(args),
+        )
     return store.create(
         source="jira" if args.jira is not None else "prompt",
         request=args.request or args.jira or "latest Jira issue",
         repo=repo,
         worktree=repo,
         branch="preparing",
-        delivery=(
-            {"enabled": args.push is not None, "push": args.push is True}
-            if args.no_worktree
-            else {}
-        ),
+        delivery=delivery,
     )
 
 

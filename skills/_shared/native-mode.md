@@ -147,7 +147,10 @@ again and routes configured tester projects to CLI even with `--tester PASS`.
 Report success only when `finalize` returns `complete: true`.
 Separate-worktree finalization commits and pushes; in-place runs do not
 automatically deliver.
-With `--from`, the loop is finished and final delivery is being verified through
+For worktree delivery, the first checkpoint saves `--target` or
+`[delivery].target_branch`, never `--from` (which only chooses the start).
+State the saved MR target from `meow status RUN_ID`, also on resume.
+The loop is finished and final delivery is being verified through
 the MR pipeline: open the MR/PR with connected tools and report the pipeline
 status. The pipeline-fix loop is CLI-only ([pipeline](../../docs/PIPELINE.md));
 claim "Verified by pipeline" only when it actually passed.

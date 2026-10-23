@@ -62,7 +62,7 @@ Normal runs use a worktree and commit/push after verification.
 `-np` / `--no-worktree-push` uses it and commits/pushes. These options are exclusive.
 An existing linked worktree selected with `-d PATH` is used directly.
 Omit `--name` to derive a short request name. `--from BRANCH` (`-b`) selects the starting branch.
-`--from` always creates a fresh worktree (in-place rejects it) and opens an MR verified by its pipeline: [PIPELINE](PIPELINE.md); `--no-pr`, `--fix-non-meow-jobs`.
+`--from` chooses the start in a new worktree. Existing linked worktrees are reused without `--from`. `--target` overrides `[delivery].target_branch` (auto-onboarded to existing `dev`, otherwise `master`). Targets survive resume; [MR/pipeline options](PIPELINE.md).
 `--plan PATH` supplies a plan; `--resume-at review` reviews existing work first.
 `--manually-approve-plan` (`-m`) pauses before implementation; plan-only rejects it.
 `--background` detaches a run and rejects manual approval and lint-fix.
@@ -169,7 +169,7 @@ inherit the host model, with fallback metadata. See the [native protocol](../ski
 ## CI review
 
 `meow review --ci` reviews a detached checkout matching `CI_COMMIT_SHA` against
-`refs/remotes/origin/<target>` (`[delivery].target_branch`, default `dev`).
+`refs/remotes/origin/<target>` (`[delivery].target_branch`, existing `dev` or `master`).
 Review uses local Git history without MCP and defaults to report-only.
 Use [the template](../templates/gitlab-ci-review.yml) for detached MR pipelines and
 non-target branch pushes. Fetch full history and the target without moving HEAD.

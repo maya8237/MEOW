@@ -97,8 +97,9 @@ artifacts under `.meow/` so checks do not alter the reviewed revision.
 `[agent_skills].default` and role lists append across config layers to resolved
 definition/custom skills. Agent overrides may replace built-in skill lists.
 Explicit `[models].role` wins over agent models.
-`[delivery].target_branch` defaults to `dev` and supplies the CI target
-unless `--target-ref` overrides it.
+`[delivery].target_branch` selects the default PR/MR target; `meow run --target`
+overrides it per run. Auto-onboarding saves existing `dev` (local or origin),
+otherwise `master`. It also supplies the CI target unless `--target-ref` overrides it.
 
 ## Custom skills and agents
 
