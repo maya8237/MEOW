@@ -4,9 +4,9 @@
   <img src="logo.png" width="160" alt="MEOW pixel cat logo" />
 </p>
 
-> Tell MEOW what you want. Get the finished branch.
+> Describe a feature. Get it built, reviewed, and delivered.
 
-MEOW helps Claude plan, build, test, and review your code.
+MEOW plans, builds, tests, and reviews complete features, then opens a PR.
 Use it from Claude Code with a few simple skills.
 
 [Start here](https://maya8237.github.io/MEOW/) · [Skills](docs/SKILLS.md) · [Customize](skills/customize/SKILL.md)

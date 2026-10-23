@@ -61,12 +61,13 @@ function Start() {
       <section className="guide-hero">
         <div>
           <h1>
-            A little help.
-            <br />A finished branch.
+            Describe a feature.
+            <br />
+            Get it built.
           </h1>
           <p>
-            MEOW helps Claude plan, build, and review your code. Start with one
-            request.
+            MEOW plans, builds, tests, and reviews complete features, then opens
+            a PR for you. Start with one request.
           </p>
           <div className="guide-actions">
             <a className="guide-primary" href="#setup">
