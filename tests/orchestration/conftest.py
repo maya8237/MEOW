@@ -66,11 +66,7 @@ def git_repo(
     remote = tmp_path / "remote.git"
     shutil.copytree(template_repo, repo)
     shutil.copytree(template_remote, remote)
-    config = repo / ".git" / "config"
-    config.write_text(
-        config.read_text(encoding="utf-8").replace(str(template_remote), str(remote)),
-        encoding="utf-8",
-    )
+    git(repo, "remote", "set-url", "origin", str(remote))
     return repo.resolve(), remote
 
 
