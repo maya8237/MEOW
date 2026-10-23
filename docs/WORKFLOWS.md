@@ -28,6 +28,9 @@ Repeated `--input name=value` supplies identifier-keyed strings; values may
 contain `=` or be empty, and last wins. Inputs persist with journal redaction.
 Workflow flags support Jira/background runs but reject lint-fix.
 
+Top-level `auto_test = false` stops configured `[[tester.tests]]` from enabling the
+AI tester (only `--test` does); `short_plan = true` asks the planner for a brief plan.
+
 ## Resolution and editing
 
 Whole files resolve by name, highest priority first:

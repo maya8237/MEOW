@@ -151,3 +151,23 @@ def test_fingerprint_includes_configured_compatibility_delegates(tmp_path):
     )
     catalog = load_config(tmp_path)["customizations"]
     assert fingerprint(catalog.workflow("default"), catalog) != before
+
+
+def test_workflow_flags_default_and_parse(tmp_path):
+    plain = catalog(tmp_path, '[[steps]]\nid = "a"\nuses = "builtin.generate"')
+    workflow = plain.workflow("custom")
+    assert workflow.auto_test is True and workflow.short_plan is False
+    custom = catalog(
+        tmp_path,
+        'auto_test = false\nshort_plan = true\n[[steps]]\nid = "a"\n'
+        'uses = "builtin.generate"',
+    )
+    workflow = custom.workflow("custom")
+    assert workflow.auto_test is False and workflow.short_plan is True
+
+
+def test_workflow_flags_must_be_booleans(tmp_path):
+    with pytest.raises(ValueError, match="auto_test must be true or false"):
+        catalog(
+            tmp_path, 'auto_test = "no"\n[[steps]]\nid = "a"\nuses = "builtin.generate"'
+        )
