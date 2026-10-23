@@ -2,7 +2,13 @@ import { useState } from "react";
 import { BookOpen, Shapes, SlidersHorizontal } from "lucide-react";
 import CopyButton from "@/components/CopyButton";
 import logo from "../../src/meow/ui/logo.png";
-import { runExamples, runSkill, skillGroups, sourceUrl } from "./content";
+import {
+  reviewExamples,
+  runExamples,
+  runSkill,
+  skillGroups,
+  sourceUrl,
+} from "./content";
 
 export type Page = "start" | "skills" | "customize";
 
@@ -63,7 +69,7 @@ function Start() {
           <h1>
             Describe a feature.
             <br />
-            Get it built.
+            Get a finished MR.
           </h1>
           <p>
             MEOW plans, builds, tests, and reviews complete features, then opens
@@ -97,7 +103,7 @@ function Start() {
             </p>
           </li>
           <li>
-            <h3>Ask for your first change</h3>
+            <h3>Give MEOW a feature or task</h3>
             <p>Tell MEOW what you want to build.</p>
             <Command text="/meow:run Add pagination to the users API endpoint" />
             <p>Or give more detail about what you need and how to check it:</p>
@@ -174,6 +180,10 @@ function Skills() {
                 <Command
                   text={`/meow:${name}${example ? ` ${example}` : ""}`}
                 />
+                {name === "review" &&
+                  reviewExamples.map((text) => (
+                    <Command key={text} text={text} />
+                  ))}
                 <div className="guide-skill-links">
                   {name === "customize" && (
                     <a

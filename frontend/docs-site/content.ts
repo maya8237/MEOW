@@ -38,7 +38,7 @@ export const skillGroups = [
       [
         "review",
         "Review your code",
-        "Review existing work and fix findings.",
+        "Review existing work and fix findings, or review a GitHub PR or GitLab MR from its link (report only).",
         "",
       ],
       [
@@ -68,6 +68,11 @@ export const skillGroups = [
   },
 ];
 
+export const reviewExamples = [
+  "/meow:review MR 42",
+  "/meow:review https://gitlab.com/your-group/your-repo/-/merge_requests/42",
+];
+
 export const runExamples = [
   {
     title: "A simple request",
@@ -82,6 +87,10 @@ export const runExamples = [
     title: "Approve the plan first",
     prompt:
       "/meow:run Add rate limiting to the public API: 100 requests per minute per API key, with a clear error when the limit is hit. Show me the plan and wait for my approval before you build anything.",
+  },
+  {
+    title: "From a Jira issue",
+    prompt: "/meow:run PROJ-123",
   },
   {
     title: "Fix a bug",
