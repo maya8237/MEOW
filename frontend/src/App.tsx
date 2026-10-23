@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   BookOpen,
@@ -30,10 +30,10 @@ import CreateDialog from "@/components/CreateDialog";
 import ItemDetail from "@/components/ItemDetail";
 import CopyButton from "@/components/CopyButton";
 import SessionsView from "@/components/SessionsView";
-import DocsView from "@/components/DocsView";
 import SessionLauncher from "@/components/SessionLauncher";
 import { Recipe } from "@/lib/sessions";
 
+const DocsView = lazy(() => import("@/components/DocsView"));
 const icons = { workflows: Workflow, agents: Bot, skills: BookOpen };
 type RunItem = {
   kind: "workflow" | "skill" | "agent";
@@ -349,7 +349,15 @@ export default function App() {
           </div>
         )}
         {showDocs ? (
-          <DocsView searchRef={search} />
+          <Suspense
+            fallback={
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <LoaderCircle className="animate-spin" /> Loading documentation…
+              </div>
+            }
+          >
+            <DocsView searchRef={search} />
+          </Suspense>
         ) : showSessions ? (
           data ? (
             <SessionsView
