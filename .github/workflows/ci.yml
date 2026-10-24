@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A newer push to a PR makes the older run's results moot; never cancel main or tags.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
@@ -42,7 +47,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.12", "3.13", "3.14"]
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
         exclude:
           # Only Windows is slow enough to be worth sharding.
           - os: ubuntu-latest
@@ -51,7 +56,11 @@ jobs:
             shard: 3
           - os: ubuntu-latest
             shard: 4
-    name: test (${{ matrix.os }}, ${{ matrix.python-version }}${{ matrix.os == 'windows-latest' && format(', shard {0}/4', matrix.shard) || '' }})
+          - os: ubuntu-latest
+            shard: 5
+          - os: ubuntu-latest
+            shard: 6
+    name: test (${{ matrix.os }}, ${{ matrix.python-version }}${{ matrix.os == 'windows-latest' && format(', shard {0}/6', matrix.shard) || '' }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -62,15 +71,24 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
+      # The venv sits beside uv's cache (both under RUNNER_TEMP) so packages are
+      # hardlinked instead of copied across drives, which is slow on Windows.
       - name: Install meow (editable, with dev extras)
-        run: uv pip install --system -e ".[dev]"
+        shell: bash
+        run: |
+          venv="$RUNNER_TEMP/venv"
+          uv venv --python-preference only-system "$venv"
+          bin="$venv/bin"
+          [ -d "$venv/Scripts" ] && bin="$venv/Scripts"
+          echo "$bin" >> "$GITHUB_PATH"
+          VIRTUAL_ENV="$venv" uv pip install -e ".[dev]"
       # pytest also collects the plain `def test_*` modules that unittest
       # discovery skips. Portable installers are exercised by release.yml.
       - name: Run the test suite
         id: test-suite
         shell: bash
         env:
-          MEOW_TEST_SHARD: ${{ matrix.os == 'windows-latest' && format('{0}/4', matrix.shard) || '1/1' }}
+          MEOW_TEST_SHARD: ${{ matrix.os == 'windows-latest' && format('{0}/6', matrix.shard) || '1/1' }}
         run: python -m pytest -q -n 4 --dist worksteal -p no:cacheprovider --durations=30 --durations-min=0.1 2>&1 | tee test-output.log
       # Job logs need sign-in; annotations are public, so surface the tail
       # of the captured output there on failure.

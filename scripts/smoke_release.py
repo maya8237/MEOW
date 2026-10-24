@@ -11,11 +11,14 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROBE_EXIT_CODE = 7
+SCENARIOS = {"all", "install", "reinstall", "other-python", "update"}
+SLOW_STEP_SECONDS = 5  # report only the steps worth optimizing
 SMOKE_PATCH_OFFSET = 100_000  # keeps the smoke version clear of anything published
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -77,9 +80,15 @@ def build_wheel(source: Path, destination: Path) -> str:
 
 
 def run(argv: list[str], env: dict, **kwargs) -> str:
+    started = time.monotonic()
     result = subprocess.run(
         argv, env=env, capture_output=True, text=True, timeout=900, **kwargs
     )
+    elapsed = time.monotonic() - started
+    if elapsed > SLOW_STEP_SECONDS:
+        print(
+            f"[{elapsed:5.1f}s] {Path(argv[0]).name} {' '.join(argv[1:3])}", flush=True
+        )
     if result.returncode:
         raise RuntimeError(f"{argv}:\n{result.stdout}\n{result.stderr}")
     return result.stdout
@@ -128,7 +137,8 @@ def check_install(home: Path, env: dict, version: str) -> None:
     assert (release / "plugin/skills/run/SKILL.md").is_file()
 
 
-def smoke(pip_only: bool = False) -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
+def smoke(scenario: str = "all", pip_only: bool = False) -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
+    assert scenario in SCENARIOS, f"unknown SMOKE_SCENARIO {scenario!r}"
     released = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"][
         "version"
     ]
@@ -186,6 +196,7 @@ def smoke(pip_only: bool = False) -> None:  # ruff: ignore[too-many-statements] 
             "PYTHONPATH": str(startup),
             "MEOW_PYTHON": sys.executable,
             "PIP_FIND_LINKS": str(wheels),
+            # The installer uses uv when it is on PATH, and uv ignores pip's variable.
             "UV_FIND_LINKS": str(wheels),
             "MEOW_RELEASE_MANIFEST_URL": base + "/latest.json",
         }
@@ -199,19 +210,19 @@ def smoke(pip_only: bool = False) -> None:  # ruff: ignore[too-many-statements] 
             check_launcher_arguments(home, env, temporary)
             config = home / ".meow/config.toml"
             config.write_text("# preserved user configuration\n")
-            bootstrap(env)
-            assert config.read_text() == "# preserved user configuration\n"
-            check_install(home, env, version)
-            check_other_python(home, env, version)
-            check_update(home, env, version)
+            if scenario in {"all", "reinstall"}:
+                bootstrap(env)
+                assert config.read_text() == "# preserved user configuration\n"
+                check_install(home, env, version)
+            if scenario in {"all", "other-python"}:
+                check_other_python(home, env, version)
+            if scenario in {"all", "update"}:
+                check_update(home, env, version)
             assert (home / ".meow/current-version").read_text().strip() == version
         finally:
             server.shutdown()
             server.server_close()
-    print(
-        "Release smoke passed: streamed install, CLI, alias, plugin, child "
-        "Python, reinstall, Python change, and update."
-    )
+    print(f"Release smoke passed ({scenario}): streamed install, CLI, alias, plugin.")
 
 
 def check_launcher_arguments(home: Path, env: dict, temporary: Path) -> None:
@@ -255,11 +266,11 @@ def check_update(home: Path, env: dict, version: str) -> None:
     previous = versions / "0.0.0"
     (versions / version).rename(previous)
     metadata = next((previous / "runtime").rglob("meow_harness-*.dist-info/METADATA"))
-    # uv hardlinks installed files from its shared cache: replace the file, never
-    # edit it in place, or every later install of this wheel reads the edit.
-    text = metadata.read_text()
+    text = metadata.read_text().replace(f"Version: {version}", "Version: 0.0.0")
+    # uv hardlinks installed files from its cache; replace the file so the
+    # cached copy keeps its real version.
     metadata.unlink()
-    metadata.write_text(text.replace(f"Version: {version}", "Version: 0.0.0"))
+    metadata.write_text(text)
     (home / ".meow/current-version").write_text("0.0.0\n")
     executable = home / ".meow/bin" / ("meow.exe" if os.name == "nt" else "meow")
     assert run([str(executable), "--version"], env).strip() == "meow 0.0.0"
@@ -279,7 +290,10 @@ def annotate_failure(error: BaseException) -> None:
 
 if __name__ == "__main__":
     try:
-        smoke(pip_only="--pip-only" in sys.argv[1:])
+        smoke(
+            os.environ.get("SMOKE_SCENARIO", "all"),
+            pip_only="--pip-only" in sys.argv[1:],
+        )
     except Exception as error:
         annotate_failure(error)
         raise
