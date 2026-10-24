@@ -53,6 +53,55 @@ class LintHookTests(unittest.IsolatedAsyncioTestCase):
             result["hookSpecificOutput"]["additionalContext"],
         )
 
+    async def test_auto_fix_that_rewrites_the_file_tells_the_model_to_reread(self):
+        root = Path(self._tmpdir.name)
+        target = root / "foo.py"
+        target.write_text("messy\n", encoding="utf-8")
+        script = _write_script(
+            self.scripts_dir,
+            "rewrite_on_fix.py",
+            "import pathlib, sys\n"
+            "if '--fix' in sys.argv:\n"
+            "    pathlib.Path(sys.argv[-1]).write_text('tidy\\n', encoding='utf-8')\n",
+        )
+        command = LintCommand(command=f"{sys.executable} {script}", fix_flag="--fix")
+        hook = make_lint_hook(root, [command], timeout=5)
+
+        result = await hook(
+            {"tool_name": "Write", "tool_input": {"file_path": str(target)}},
+            "id",
+            None,
+        )
+
+        self.assertEqual(target.read_text(encoding="utf-8"), "tidy\n")
+        self.assertIn(
+            "Lint auto-fixed",
+            result["hookSpecificOutput"]["additionalContext"],
+        )
+        self.assertNotIn(
+            "could not be auto-fixed",
+            result["hookSpecificOutput"]["additionalContext"],
+        )
+
+    async def test_long_report_is_truncated_to_bound_the_feedback(self):
+        script = _write_script(
+            self.scripts_dir,
+            "noisy.py",
+            "print('x' * 20000)\nraise SystemExit(1)\n",
+        )
+        command = LintCommand(command=f"{sys.executable} {script}")
+        hook = make_lint_hook(self.working_dir, [command], timeout=5)
+
+        result = await hook(
+            {"tool_name": "Write", "tool_input": {"file_path": "foo.py"}},
+            "id",
+            None,
+        )
+
+        context = result["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("[output truncated]", context)
+        self.assertLess(len(context), 5000)
+
     async def test_fix_mode_rechecks_and_reports_remaining_findings(self):
         script = _write_script(
             self.scripts_dir,

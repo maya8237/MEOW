@@ -242,15 +242,32 @@ async def _lint_or_skip(
         return []
 
 
-def make_lint_hook(working_dir: Path, commands: list[LintCommand], timeout: float = 60):
-    per_file = [entry for entry in commands if entry.per_file]
+MAX_FEEDBACK_CHARS = 4000  # per report: a verbose linter must not flood the turn
 
+
+def _bounded(report: str) -> str:
+    if len(report) <= MAX_FEEDBACK_CHARS:
+        return report
+    return report[:MAX_FEEDBACK_CHARS].rstrip() + "\n[output truncated]"
+
+
+def _file_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+def make_lint_hook(working_dir: Path, commands: list[LintCommand], timeout: float = 60):
     async def lint_edited_file(input_data, tool_use_id, context):
         file_path = input_data.get("tool_input", {}).get("file_path")
         if input_data.get("tool_name") not in {"Write", "Edit"} or not file_path:
             return {}
 
-        logger.debug("lint_hook_running", file=file_path, commands=len(per_file))
+        logger.debug("lint_hook_running", file=file_path, commands=len(commands))
+        target = Path(file_path.replace("\\", "/"))
+        target = target if target.is_absolute() else working_dir / target
+        written = _file_bytes(target)
         try:
             problems = await run_lint_on_file(working_dir, commands, file_path, timeout)
         except (
@@ -258,17 +275,30 @@ def make_lint_hook(working_dir: Path, commands: list[LintCommand], timeout: floa
         ) as exc:  # a file the OS won't let us inspect must not crash the turn
             logger.warning("lint_hook_failed", file=file_path, reason=str(exc))
             return {}
-        if not problems:
-            return {}  # clean or auto-fixed -- nothing fed back into context
 
-        return {
-            "hookSpecificOutput": {
-                "hookEventName": "PostToolUse",
-                "additionalContext": (
-                    f"Lint issues in {file_path} that could not be "
-                    "auto-fixed:\n" + "\n\n".join(problems)
-                ),
-            }
-        }
+        # The model's view of the file is stale once a fixer rewrote it.
+        auto_fixed = written is not None and _file_bytes(target) != written
+        return _hook_feedback(file_path, auto_fixed, problems)
 
     return lint_edited_file
+
+
+def _hook_feedback(file_path: str, auto_fixed: bool, problems: list[str]) -> dict:
+    notes = []
+    if auto_fixed:
+        notes.append(
+            f"Lint auto-fixed {file_path}; re-read it before editing it again."
+        )
+    if problems:
+        notes.append(
+            f"Lint issues in {file_path} that could not be auto-fixed:\n"
+            + "\n\n".join(_bounded(problem) for problem in problems)
+        )
+    if not notes:
+        return {}  # clean and unchanged -- nothing fed back into context
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": "\n\n".join(notes),
+        }
+    }
