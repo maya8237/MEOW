@@ -20,17 +20,14 @@ resume. They must verify every criterion from observed behavior; passing tests
 alone cannot excuse requirements lost/weakened in a plan. Ejected definitions
 replace this prose and need equivalent instructions.
 
-Planner task graphs are validated for dependencies/file ownership. Invalid
-graphs get one planner repair using `task_graph_repair` (custom fragment or
-shipped default), preserving plan/contract. Failed repair falls back to
-sequential generation and journals the reason; absent graphs need no repair.
+Invalid task dependencies/ownership get one `task_graph_repair` attempt, preserving
+the plan/contract. Failed repair journals the reason and uses sequential generation.
 
 `--workflow NAME` overrides `[workflow].default` (otherwise `"default"`).
 Repeated `--input name=value` supplies identifier-keyed strings; values may
 contain `=` or be empty, and last wins. Inputs persist with journal redaction.
-Workflow flags support Jira/background runs but reject lint-fix. [Test selection and hook reuse](VERIFICATION.md).
-Top-level `auto_test = false`: only `--test` enables the AI tester, not configured
-`[[tester.tests]]`. `short_plan = true` asks the planner for a brief plan.
+Workflow flags support Jira/background runs but reject lint-fix.
+See [verification](VERIFICATION.md) for `auto_test`, `short_plan`, test selection, and hook reuse.
 
 ## Resolution and editing
 
@@ -81,8 +78,7 @@ Write findings to {{output_file}}.
 '''
 ```
 
-Hyphens map to underscores for config/permission/session roles.
-Model order: explicit `[models].role`, agent model, role/reviewer fallback.
+Hyphens map to underscores for roles. Model order: `[models].role`, agent, role/reviewer fallback.
 `inherit` supplies no explicit model; built-in explorer uses haiku.
 Installed default/role skill lists combine with definition and discovered skills.
 
@@ -180,7 +176,7 @@ policy; discovered agent names are valid roles, unknown names fail config.
 `tasks` integrates task worktrees; `generate` implements/fixes;
 `review` reviews/optionally tests; `verify` runs the checks inside a loop and
 fails the round with their output; `checks` records current lint/test/build/browser
-evidence, reusing `verify` results when existing source/config are unchanged (resume reruns).
+evidence, reusing `verify` results only when source/config are unchanged (resume reruns).
 `deliver` performs verified delivery. Reviewer PASS is required by checks only if
 builtin.review exists. Delivery gates must pass before checks/delivery.
 
@@ -191,9 +187,8 @@ latest-plan lookup excludes them. All steps honor cancellation, accounting,
 and timeout. Only SDK crash recovery and explicit loops retry. Custom workflow
 steps run once per run, not once per task.
 
-Status shows workflow scope/name and stages. Journals retain the resolved
-fingerprint (including called workflows/roles/delegates), completed top-level
-IDs, and active loop/step. Resume reloads that workflow, rejects changed
+Status shows workflow and stages. Journals retain resolved fingerprints,
+completed top-level IDs, and active loop/step. Resume rejects changed
 definitions, skips completed top-level steps, and enters interrupted loops
 review-first. Evidence freshness/delivery guards still apply.
 Legacy journals select default regardless of current config; role session IDs
