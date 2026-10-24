@@ -63,6 +63,11 @@ jobs:
     name: test (${{ matrix.os }}, ${{ matrix.python-version }}${{ matrix.os == 'windows-latest' && format(', shard {0}/6', matrix.shard) || '' }})
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Disable Defender real-time scanning (faster file I/O on throwaway runners)
+        if: runner.os == 'Windows'
+        shell: powershell
+        continue-on-error: true
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
