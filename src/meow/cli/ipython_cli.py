@@ -14,7 +14,6 @@ _COMMANDS = (
     "worktree",
     "resume",
     "queue",
-    "hooks",
     "native",
 )
 
