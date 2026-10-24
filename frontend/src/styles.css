@@ -1474,16 +1474,11 @@ h3 svg {
   }
 }
 
-/* Mono display headings, status rails, and the copyable prompt. */
-.workspace-header h1,
-.session-detail-header h2,
+/* Mono for definition names (identifiers), status rails, and the copyable prompt. */
 .detail-title h2 {
   font-family: var(--mono);
   font-weight: 700;
   letter-spacing: -0.04em;
-}
-.workspace-header h1 {
-  font-size: 26px;
 }
 .sessions-item {
   --rail: transparent;
