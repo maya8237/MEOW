@@ -14,8 +14,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A newer push to a PR makes the older run's results moot; never cancel main or tags.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   validate:
+    # CI already runs this suite on every PR; the release gate only matters on tags.
+    if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:

@@ -11,11 +11,13 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROBE_EXIT_CODE = 7
+SLOW_STEP_SECONDS = 5  # report only the steps worth optimizing
 SMOKE_PATCH_OFFSET = 100_000  # keeps the smoke version clear of anything published
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -77,9 +79,15 @@ def build_wheel(source: Path, destination: Path) -> str:
 
 
 def run(argv: list[str], env: dict, **kwargs) -> str:
+    started = time.monotonic()
     result = subprocess.run(
         argv, env=env, capture_output=True, text=True, timeout=900, **kwargs
     )
+    elapsed = time.monotonic() - started
+    if elapsed > SLOW_STEP_SECONDS:
+        print(
+            f"[{elapsed:5.1f}s] {Path(argv[0]).name} {' '.join(argv[1:3])}", flush=True
+        )
     if result.returncode:
         raise RuntimeError(f"{argv}:\n{result.stdout}\n{result.stderr}")
     return result.stdout
