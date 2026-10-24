@@ -20,18 +20,35 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        shard: [1, 2, 3, 4]
+        exclude:
+          # Only Windows is slow enough to be worth sharding.
+          - os: ubuntu-latest
+            shard: 2
+          - os: ubuntu-latest
+            shard: 3
+          - os: ubuntu-latest
+            shard: 4
+    name: validate (${{ matrix.os }}${{ matrix.os == 'windows-latest' && format(', shard {0}/4', matrix.shard) || '' }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
-          cache-dependency-path: pyproject.toml
-      - run: python -m pip install -e ".[dev]"
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - run: uv pip install --system -e ".[dev]"
       - run: python -m pytest -q -n 4 --dist worksteal --durations=30
+        shell: bash
+        env:
+          MEOW_TEST_SHARD: ${{ matrix.os == 'windows-latest' && format('{0}/4', matrix.shard) || '1/1' }}
       - run: ruff check .
+        if: matrix.shard == 1
       - run: ruff format --check .
+        if: matrix.shard == 1
 
   smoke:
     strategy:
