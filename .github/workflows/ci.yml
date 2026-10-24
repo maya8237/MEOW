@@ -77,7 +77,7 @@ jobs:
         shell: bash
         run: |
           venv="$RUNNER_TEMP/venv"
-          uv venv --python "$(command -v python)" "$venv"
+          uv venv --python-preference only-system "$venv"
           bin="$venv/bin"
           [ -d "$venv/Scripts" ] && bin="$venv/Scripts"
           echo "$bin" >> "$GITHUB_PATH"
