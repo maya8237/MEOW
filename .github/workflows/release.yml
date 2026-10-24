@@ -66,10 +66,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-22.04-arm, windows-latest]
-        # Each scenario repeats the first install, but they run in parallel
-        # instead of one after another (every install is a full dependency install).
-        scenario: [install, reinstall, other-python, update, pip-only]
+        # Windows is the slow one, so its scenarios run as parallel jobs; each
+        # repeats the first install. Linux runs everything in one job apiece.
+        # 7 jobs, so CI (19) and Release together stay near the runner limit.
+        include:
+          - {os: ubuntu-22.04, scenario: all}
+          - {os: ubuntu-22.04-arm, scenario: all}
+          - {os: windows-latest, scenario: install}
+          - {os: windows-latest, scenario: reinstall}
+          - {os: windows-latest, scenario: other-python}
+          - {os: windows-latest, scenario: update}
+          - {os: windows-latest, scenario: pip-only}
     name: smoke (${{ matrix.os }}, ${{ matrix.scenario }})
     runs-on: ${{ matrix.os }}
     steps:
@@ -90,7 +97,7 @@ jobs:
       # Only the pip-only pass uses pip's download cache, and it runs under a
       # temporary HOME, so point the cache at a path that survives between runs.
       - uses: actions/cache@v4
-        if: matrix.scenario == 'pip-only'
+        if: matrix.scenario == 'pip-only' || matrix.scenario == 'all'
         with:
           path: ${{ runner.temp }}/pip-cache
           key: smoke-pip-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('requirements-release.txt') }}
@@ -100,7 +107,7 @@ jobs:
         env:
           SMOKE_SCENARIO: ${{ matrix.scenario }}
       - name: Install with uv hidden, so the pip path stays covered
-        if: matrix.scenario == 'pip-only'
+        if: matrix.scenario == 'pip-only' || matrix.scenario == 'all'
         run: python scripts/smoke_release.py --pip-only
         env:
           SMOKE_SCENARIO: install
