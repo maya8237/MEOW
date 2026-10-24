@@ -165,6 +165,26 @@
   width: 1px;
   background: var(--border);
 }
+.guide-steps ul {
+  list-style: disc;
+  margin: 0.5rem 0 0.75rem;
+  padding-left: 1.25rem;
+}
+.guide-steps ul li {
+  margin: 0.2rem 0;
+}
+.guide-badge {
+  display: inline-block;
+  margin-left: 0.6rem;
+  padding: 0.1rem 0.6rem;
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: middle;
+  white-space: nowrap;
+}
 .guide-steps h3 + p {
   margin-top: 0.4rem;
 }

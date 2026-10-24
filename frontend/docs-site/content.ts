@@ -15,7 +15,7 @@ export const skillGroups = [
       [
         "onboard",
         "Set up your project",
-        "Checks your project, writes the MEOW config, and offers optional add-ons: test commands (suggested from what it finds, and only added if you approve), a test-writing tester, Jira, GitHub or GitLab, scheduling, and the lint hook (lints each file as Claude edits it). Run once per project; rerun to add or change something.",
+        "Checks your project, writes the MEOW config, and offers optional add-ons: test commands (suggested from what it finds, and only added if you approve), a test-writing tester, Jira, GitHub or GitLab, and scheduling. Rerun to add or change something.",
         "",
       ],
       [

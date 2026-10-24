@@ -93,31 +93,23 @@ function Start() {
             <Install />
           </li>
           <li>
-            <h3>Let MEOW get to know your project</h3>
+            <h3>
+              Let MEOW get to know your project
+              <span className="guide-badge">Once per project</span>
+            </h3>
             <p>Open your project in Claude Code and run:</p>
             <Command text="/meow:onboard" />
-            <p>MEOW checks your project, then sets up:</p>
+            <p>
+              MEOW sets up your lint command and MR target branch, then offers
+              optional extras:
+            </p>
             <ul>
-              <li>Your lint command, so findings get fixed automatically.</li>
-              <li>The branch your MRs target.</li>
-            </ul>
-            <p>And offers, if you want them:</p>
-            <ul>
-              <li>
-                Your test commands. MEOW suggests the ones it finds, checks they
-                run, and adds them only if you approve.
-              </li>
-              <li>A tester that can write new tests (off by default).</li>
-              <li>Jira, GitHub, or GitLab, to read issues and open MRs.</li>
+              <li>Test commands it finds.</li>
+              <li>Jira, GitHub, or GitLab.</li>
               <li>Scheduled runs.</li>
-              <li>
-                A lint hook for Claude Code. It lints each file as Claude edits
-                it, and lets MEOW skip re-running lint that already passed.
-              </li>
             </ul>
             <p className="guide-note">
-              Run once per project. Every add-on asks first; run onboarding
-              again to add or change something.
+              Every extra asks first. Rerun onboarding to change something.
             </p>
           </li>
           <li>
@@ -196,7 +188,12 @@ function Skills() {
           <div className="guide-skills">
             {skills.map(([name, title, description, example]) => (
               <section className="guide-skill" key={name}>
-                <h3>{title}</h3>
+                <h3>
+                  {title}
+                  {name === "onboard" && (
+                    <span className="guide-badge">Once per project</span>
+                  )}
+                </h3>
                 <p>{description}</p>
                 <Command
                   text={`/meow:${name}${example ? ` ${example}` : ""}`}
