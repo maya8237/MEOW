@@ -17,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROBE_EXIT_CODE = 7
+SCENARIOS = {"all", "install", "reinstall", "other-python", "update"}
 SLOW_STEP_SECONDS = 5  # report only the steps worth optimizing
 SMOKE_PATCH_OFFSET = 100_000  # keeps the smoke version clear of anything published
 sys.path.insert(0, str(ROOT / "src"))
@@ -130,7 +131,8 @@ def check_install(home: Path, env: dict, version: str) -> None:
     assert (release / "plugin/skills/run/SKILL.md").is_file()
 
 
-def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
+def smoke(scenario: str = "all") -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
+    assert scenario in SCENARIOS, f"unknown SMOKE_SCENARIO {scenario!r}"
     released = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"][
         "version"
     ]
@@ -196,19 +198,19 @@ def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
             check_launcher_arguments(home, env, temporary)
             config = home / ".meow/config.toml"
             config.write_text("# preserved user configuration\n")
-            bootstrap(env)
-            assert config.read_text() == "# preserved user configuration\n"
-            check_install(home, env, version)
-            check_other_python(home, env, version)
-            check_update(home, env, version)
+            if scenario in {"all", "reinstall"}:
+                bootstrap(env)
+                assert config.read_text() == "# preserved user configuration\n"
+                check_install(home, env, version)
+            if scenario in {"all", "other-python"}:
+                check_other_python(home, env, version)
+            if scenario in {"all", "update"}:
+                check_update(home, env, version)
             assert (home / ".meow/current-version").read_text().strip() == version
         finally:
             server.shutdown()
             server.server_close()
-    print(
-        "Release smoke passed: streamed install, CLI, alias, plugin, child "
-        "Python, reinstall, Python change, and update."
-    )
+    print(f"Release smoke passed ({scenario}): streamed install, CLI, alias, plugin.")
 
 
 def check_launcher_arguments(home: Path, env: dict, temporary: Path) -> None:
@@ -274,7 +276,7 @@ def annotate_failure(error: BaseException) -> None:
 
 if __name__ == "__main__":
     try:
-        smoke()
+        smoke(os.environ.get("SMOKE_SCENARIO", "all"))
     except Exception as error:
         annotate_failure(error)
         raise

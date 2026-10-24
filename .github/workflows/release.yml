@@ -62,6 +62,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, ubuntu-22.04-arm, windows-latest]
+        # Each scenario repeats the first install, but they run in parallel
+        # instead of one after another (every install is a full pip run).
+        scenario: [install, reinstall, other-python, update]
+    name: smoke (${{ matrix.os }}, ${{ matrix.scenario }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -78,6 +82,7 @@ jobs:
       - name: Install from this checkout's source through the streamed installer
         run: python scripts/smoke_release.py
         env:
+          SMOKE_SCENARIO: ${{ matrix.scenario }}
           PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
           PIP_NO_COMPILE: '1'
 
