@@ -59,14 +59,6 @@ def check_for_updates() -> None:
         )
 
 
-def new_features(current: str, latest: str) -> list[str]:
-    """Onboarding features introduced after `current`, up to and including `latest`."""
-    from meow.project.onboarding import _SINCE
-
-    old, new = _version_parts(current), _version_parts(latest)
-    return sorted(k for k, v in _SINCE.items() if old < _version_parts(v) <= new)
-
-
 def update() -> int:
     from meow.installer.releases import install_release
 
@@ -78,9 +70,4 @@ def update() -> int:
     print(f"Upgrading MEOW {current} to release {latest}...")
     install_release(latest, digest)
     print(f"MEOW updated successfully to {latest}.")
-    if features := new_features(current, latest):
-        print(
-            f"New onboarding options: {', '.join(features)}. "
-            "Run /meow:onboard in each project to review them."
-        )
     return 0

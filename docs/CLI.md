@@ -41,8 +41,7 @@ a branch tip; it cannot accompany a project command. It installs that version's
 checksum-verified wheel from the package index into a venv built by the newest
 Python 3.12+ found. The installer registers the plugin before switching
 launchers in `~/.meow/bin`; config, caches, and earlier runtimes are retained.
-It then lists onboarding options added since the old version; run `/meow:onboard`
-per project to review them. Failures return nonzero. Keep runtimes used by workers/schedules. Rerun the installer
+Failures return nonzero. Keep runtimes used by workers/schedules. Rerun the installer
 for setup prompts or editable-install migration; remove obsolete launchers shadowing PATH.
 
 Public commands warn on stderr about newer versions, silently ignoring network
