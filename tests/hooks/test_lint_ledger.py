@@ -146,3 +146,19 @@ def test_external_lint_config_changes_invalidate_hook_proof(tmp_path, commit):
             check=True,
         )
     assert lint_ledger.verified_lint(tmp_path, config) is None
+
+
+def test_ledger_compacts_to_newest_entry_per_existing_file(tmp_path, monkeypatch):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    kept = tmp_path / "kept.py"
+    kept.write_text("x = 1\n", encoding="utf-8")
+    gone = tmp_path / "gone.py"
+    gone.write_text("y = 1\n", encoding="utf-8")
+    monkeypatch.setattr(lint_ledger, "COMPACT_BYTES", 1)
+    lint_ledger.record_lint(tmp_path, [], 60.0, gone, ok=True)
+    gone.unlink()
+    lint_ledger.record_lint(tmp_path, [], 60.0, kept, ok=False)
+    lint_ledger.record_lint(tmp_path, [], 60.0, kept, ok=True)
+    lines = (tmp_path / lint_ledger.LEDGER).read_text(encoding="utf-8").splitlines()
+    entries = [json.loads(line) for line in lines]
+    assert [(e["path"], e["ok"]) for e in entries] == [("kept.py", True)]

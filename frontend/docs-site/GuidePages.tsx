@@ -111,8 +111,8 @@ function Start() {
               <li>Jira, GitHub, or GitLab, to read issues and open MRs.</li>
               <li>Scheduled runs.</li>
               <li>
-                A lint hook for Claude Code, so lint that already passed isn’t
-                rerun.
+                A lint hook for Claude Code. It lints each file as Claude edits
+                it, and lets MEOW skip re-running lint that already passed.
               </li>
             </ul>
             <p className="guide-note">

@@ -1612,9 +1612,16 @@ h3 svg {
   min-height: 0;
 }
 .docs-pane {
+  display: flex;
+  flex-direction: column;
   border-right: 1px solid var(--border);
-  overflow-y: auto;
+  overflow: hidden;
   background: #1a2231;
+}
+.docs-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 .docs-group {
   margin: 0;

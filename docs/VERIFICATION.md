@@ -55,6 +55,7 @@ The `verify` step can use that ledger instead of duplicate lint only when:
 Missing/malformed evidence, unmatched edits (including linter rules), commits,
 deletions, read errors, or project-wide lint
 commands fall back to full lint. Installing a hook alone proves nothing.
+The ledger is compacted past 256 KB, keeping the newest entry per existing file.
 SDK hooks write the same evidence, allowing CLI runs to benefit when the
 installation is active. Status reports `hook-verified` or `run`.
 Final checks reuse current verify results; otherwise they run full lint.

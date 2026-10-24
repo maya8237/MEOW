@@ -10,6 +10,7 @@ from pathlib import Path
 from meow.infrastructure.verification_policy import changed_paths
 
 LEDGER = Path(".meow/lint-ledger.jsonl")
+COMPACT_BYTES = 256 * 1024
 
 
 def _head(repo: Path) -> str | None:
@@ -37,6 +38,18 @@ def lint_fingerprint(commands, timeout: float) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def _compact(repo: Path, ledger: Path) -> None:
+    """Keep only the newest entry per existing file; reuse reads nothing else."""
+    latest = {}
+    for line in ledger.read_text(encoding="utf-8").splitlines():
+        entry = json.loads(line)
+        if (repo / entry["path"]).exists():
+            latest[entry["path"]] = line
+    temp = ledger.with_suffix(".tmp")
+    temp.write_text("".join(f"{line}\n" for line in latest.values()), encoding="utf-8")
+    temp.replace(ledger)
+
+
 def record_lint(repo: Path, commands, timeout: float, path: Path, *, ok: bool) -> None:  # ruff: ignore[too-many-arguments] -- file proof includes its effective lint config
     """An evidence write failure must never prevent the edit's lint feedback."""
     try:
@@ -54,7 +67,9 @@ def record_lint(repo: Path, commands, timeout: float, path: Path, *, ok: bool) -
         ledger.parent.mkdir(parents=True, exist_ok=True)
         with ledger.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(entry) + "\n")
-    except (OSError, ValueError):
+        if ledger.stat().st_size > COMPACT_BYTES:
+            _compact(repo, ledger)
+    except (OSError, ValueError, KeyError):
         return
 
 

@@ -148,55 +148,62 @@ export default function DocsView({
             <kbd>Ctrl K</kbd>
           </div>
         </div>
-        {query.trim() ? (
-          hits.length ? (
-            <div className="docs-hits" aria-label="Search results" role="list">
-              <p className="docs-viewing">
-                Viewing <strong>{current?.title}</strong>
+        <div className="docs-scroll">
+          {query.trim() ? (
+            hits.length ? (
+              <div
+                className="docs-hits"
+                aria-label="Search results"
+                role="list"
+              >
+                <p className="docs-viewing">
+                  Viewing <strong>{current?.title}</strong>
+                </p>
+                {hitGroups(hits).map((entry) => (
+                  <section
+                    key={entry.path}
+                    role="listitem"
+                    className="docs-hit-group"
+                    aria-current={
+                      entry.path === current?.path ? "true" : undefined
+                    }
+                  >
+                    <h2 className="docs-group">{entry.title}</h2>
+                    <ul className="docs-list">
+                      {entry.hits.map((hit) => (
+                        <li key={`${hit.path}#${hit.anchor}`}>
+                          <button
+                            type="button"
+                            className="docs-entry"
+                            aria-current={
+                              hit.path === open.path &&
+                              hit.anchor === open.anchor
+                                ? "true"
+                                : undefined
+                            }
+                            onClick={() => go(hit.path, hit.anchor)}
+                          >
+                            <span>{hit.heading}</span>
+                            <p>{highlight(hit.snippet, query)}</p>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <p className="docs-empty" role="status" aria-live="polite">
+                No documentation matches &quot;{query.trim()}&quot;.
               </p>
-              {hitGroups(hits).map((entry) => (
-                <section
-                  key={entry.path}
-                  role="listitem"
-                  className="docs-hit-group"
-                  aria-current={
-                    entry.path === current?.path ? "true" : undefined
-                  }
-                >
-                  <h2 className="docs-group">{entry.title}</h2>
-                  <ul className="docs-list">
-                    {entry.hits.map((hit) => (
-                      <li key={`${hit.path}#${hit.anchor}`}>
-                        <button
-                          type="button"
-                          className="docs-entry"
-                          aria-current={
-                            hit.path === open.path && hit.anchor === open.anchor
-                              ? "true"
-                              : undefined
-                          }
-                          onClick={() => go(hit.path, hit.anchor)}
-                        >
-                          <span>{hit.heading}</span>
-                          <p>{highlight(hit.snippet, query)}</p>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
+            )
           ) : (
-            <p className="docs-empty" role="status" aria-live="polite">
-              No documentation matches &quot;{query.trim()}&quot;.
-            </p>
-          )
-        ) : (
-          <>
-            {group("Guides", docs.guides)}
-            {group("Skills", docs.skills)}
-          </>
-        )}
+            <>
+              {group("Guides", docs.guides)}
+              {group("Skills", docs.skills)}
+            </>
+          )}
+        </div>
       </nav>
       <article
         ref={content}
