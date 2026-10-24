@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Download } from "lucide-react";
+import CopyButton from "@/components/CopyButton";
 import { Button } from "@/components/ui/button";
 import { repoName } from "@/lib/catalog";
 import {
@@ -54,6 +55,7 @@ export default function SessionDetail({
   const [wrap, setWrap] = useState(true);
   const [copied, setCopied] = useState(false);
   const [retryOutput, setRetryOutput] = useState(0);
+  const [promptError, setPromptError] = useState("");
   const pane = useRef<HTMLPreElement>(null);
   const attempts = session?.attempts || [];
   const picked =
@@ -75,7 +77,10 @@ export default function SessionDetail({
       ? importedOutputUrl(importedRun.repo, importedRun.id)
       : "";
 
+  const prompt = (session?.recipe.request || importedRun?.request || "").trim();
+
   useEffect(() => {
+    setPromptError("");
     setAttemptId("");
     setOutput("");
     setOutputError("");
@@ -228,6 +233,24 @@ export default function SessionDetail({
           </p>
         </div>
       </header>
+      {prompt && (
+        <section className="session-prompt" aria-label="Prompt">
+          <div className="session-prompt-heading">
+            <h3>Prompt</h3>
+            <CopyButton
+              text={prompt}
+              label="Copy prompt"
+              onError={setPromptError}
+            />
+          </div>
+          <pre>{prompt}</pre>
+          {promptError && (
+            <p className="session-prompt-error" role="alert">
+              {promptError}
+            </p>
+          )}
+        </section>
+      )}
       {session && (
         <div className="session-facts">
           <span>{session.mode === "cli" ? "MEOW CLI" : "Claude Code"}</span>
@@ -327,7 +350,6 @@ export default function SessionDetail({
                 {session.recipe.mode === "cli" ? "MEOW CLI" : "Claude Code"} ·{" "}
                 {session.recipe.command}
               </p>
-              <pre>{session.recipe.request}</pre>
               <p>Repository: {labels.repo}</p>
               {session.recipe.options.permission_policy && (
                 <p>

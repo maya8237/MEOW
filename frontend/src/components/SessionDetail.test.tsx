@@ -237,3 +237,12 @@ test("returning to a previously viewed attempt reloads its output", async () => 
     ),
   );
 });
+
+test("copies the session prompt", async () => {
+  const record = session("s1", "a1", "Work");
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(chunk("")));
+  const user = userEvent.setup();
+  render(<SessionDetail repo={repo} session={record} repos={[repo]} />);
+  await user.click(screen.getByRole("button", { name: "Copy prompt" }));
+  expect(await navigator.clipboard.readText()).toBe("Do work");
+});

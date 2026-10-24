@@ -239,6 +239,7 @@ export default function SessionsView({ repo, catalog }: Props) {
                 <li key={entry.key}>
                   <button
                     className="sessions-item"
+                    data-state={state}
                     aria-current={
                       selection?.key === entry.key ? "true" : undefined
                     }

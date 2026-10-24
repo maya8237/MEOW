@@ -537,11 +537,11 @@ h3 svg {
   font-size: 10px;
   margin-top: 2px;
 }
-.step-arrow {
-  width: 14px;
-  height: 14px;
-  margin: 0 6px;
-  color: #687794;
+.step-flow li:not(:last-child)::after {
+  content: "";
+  width: 20px;
+  height: 1px;
+  background: #3e4960;
 }
 .hint {
   font-size: 12px;
@@ -1017,7 +1017,7 @@ h3 svg {
 .session-detail {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 310px);
-  grid-template-areas: "head head" "facts facts" "schedules schedules" "output side";
+  grid-template-areas: "head head" "prompt prompt" "facts facts" "schedules schedules" "output side";
   align-content: start;
   gap: 0 20px;
   max-width: 1500px;
@@ -1472,4 +1472,69 @@ h3 svg {
   .docs-content {
     padding: 16px;
   }
+}
+
+/* Mono display headings, status rails, and the copyable prompt. */
+.workspace-header h1,
+.session-detail-header h2,
+.detail-title h2 {
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+.workspace-header h1 {
+  font-size: 26px;
+}
+.sessions-item {
+  --rail: transparent;
+  box-shadow: inset 3px 0 var(--rail);
+}
+.sessions-item[data-state="running"],
+.sessions-item[data-state="starting"] {
+  --rail: #b7a6ef;
+}
+.sessions-item[data-state="succeeded"] {
+  --rail: #82c7a3;
+}
+.sessions-item[data-state="failed"],
+.sessions-item[data-state="needs_decision"] {
+  --rail: #f1a2a5;
+}
+.sessions-item[aria-current="true"] {
+  box-shadow: inset 3px 0 var(--rail, var(--primary));
+}
+.session-prompt {
+  grid-area: prompt;
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.session-prompt-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 0 14px;
+}
+.session-prompt-heading h3 {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.session-prompt pre {
+  max-height: 11em;
+  margin: 0;
+  padding: 6px 14px 12px;
+  overflow-y: auto;
+  color: var(--foreground);
+}
+.session-prompt-error {
+  margin: 0;
+  padding: 0 14px 10px;
+  color: #ffb7bc;
+  font-size: 12px;
 }

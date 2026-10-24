@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Code2, Workflow } from "lucide-react";
+import { Code2, Workflow } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -87,9 +87,6 @@ export default function ItemDetail({
                     <span>{stepKinds[step.kind] || step.kind}</span>
                   </div>
                 </div>
-                {index < (item.steps?.length || 0) - 1 && (
-                  <ArrowRight className="step-arrow" aria-hidden="true" />
-                )}
               </li>
             ))}
           </ol>
