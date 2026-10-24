@@ -182,10 +182,8 @@ When an optional feature is accepted, use the matching documented path:
   Both hooks record `.meow/lint-ledger.jsonl`; verify reuses lint only with an
   active installation and matching successful content/config evidence.
 
-If architecture or other project knowledge is requested, inspect the existing
-source and docs first, create only the accepted document, mark uncertainty, and
-review the result. Do not modify application code as part of documentation-only
-onboarding.
+For requested knowledge docs, inspect source/docs first, mark uncertainty, and review.
+Keep documentation-only onboarding free of application code changes.
 
 ## 4. Verify
 
@@ -195,9 +193,7 @@ confirm accepted settings appear. Report each failed or unchecked component and
 continue independent work. A configured MCP is not proof of connectivity until
 a real tool call succeeds.
 
-If verification reports a failure, capture the exact component and leave
-independent setup intact. In interactive mode ask whether to fix the failure
-component by component; in automatic mode leave unsafe or dependent settings
-disabled. Summarize changed files, configured features, command results,
-skipped choices, and the next command for each declined option. Never print
-secret values.
+Report failed/unchecked components and preserve independent setup. Ask about fixes
+in interactive mode; automatically leave unsafe/dependent settings disabled.
+Summarize files, features, command results, skipped choices, and next commands
+for declined options. Never print secret values.

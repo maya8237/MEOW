@@ -15,7 +15,6 @@ GUIDES = (
     "docs/PIPELINE.md",
     "docs/WORKFLOWS.md",
     "docs/VERIFICATION.md",
-    "docs/PIPELINE.md",
     "docs/ORCHESTRATION.md",
     "docs/CUSTOM.md",
     "docs/INTEGRATIONS.md",
