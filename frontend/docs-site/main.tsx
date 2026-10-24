@@ -101,6 +101,7 @@ export function Site() {
               load={loadSiteDocs}
               location={location}
               onNavigate={navigate}
+              sourceUrl={sourceUrl}
             />
           </>
         ) : (

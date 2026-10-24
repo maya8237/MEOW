@@ -24,7 +24,7 @@ export function loadDocs(signal?: AbortSignal) {
   return request<Docs>("/api/docs", { signal });
 }
 
-export function resolveDocLink(docs: Docs, fromPath: string, href: string) {
+export function resolveRepoPath(fromPath: string, href: string) {
   if (/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(href)) return null;
   const hash = href.indexOf("#");
   const target = hash < 0 ? href : href.slice(0, hash);
@@ -35,9 +35,16 @@ export function resolveDocLink(docs: Docs, fromPath: string, href: string) {
     if (part === "..") parts.pop();
     else if (part && part !== ".") parts.push(part);
   }
-  const path = parts.join("/");
-  const known = [...docs.guides, ...docs.skills].some((d) => d.path === path);
-  return known ? { path, anchor } : null;
+  return { path: parts.join("/"), anchor };
+}
+
+export function resolveDocLink(docs: Docs, fromPath: string, href: string) {
+  const target = resolveRepoPath(fromPath, href);
+  if (!target) return null;
+  const known = [...docs.guides, ...docs.skills].some(
+    (d) => d.path === target.path,
+  );
+  return known ? target : null;
 }
 
 const plain = (heading: string) =>

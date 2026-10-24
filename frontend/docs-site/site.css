@@ -561,6 +561,10 @@
     padding: 0.75rem 1.25rem;
   }
   .docs-site-reference .docs-layout {
+    display: block;
+    overflow-y: auto;
+  }
+  .docs-site-reference .docs-pane .catalog-filters {
     grid-template-columns: 1fr;
   }
   .docs-site-reference .docs-pane {

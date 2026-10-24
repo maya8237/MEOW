@@ -13,6 +13,7 @@ import {
   hitGroups,
   loadDocs,
   resolveDocLink,
+  resolveRepoPath,
   searchDocs,
 } from "@/lib/docs";
 import type { DocLocation } from "@/lib/docs-hash";
@@ -22,6 +23,8 @@ type Props = {
   load?: (signal: AbortSignal) => Promise<Docs>;
   location?: DocLocation;
   onNavigate?: (loc: DocLocation) => void;
+  // Where to send links to repo files that are not served as docs.
+  sourceUrl?: (path: string) => string;
 };
 type Open = DocLocation & { nonce: number };
 
@@ -30,6 +33,7 @@ export default function DocsView({
   load = loadDocs,
   location,
   onNavigate,
+  sourceUrl,
 }: Props) {
   const [docs, setDocs] = useState<Docs | null>(null);
   const [error, setError] = useState("");
@@ -228,6 +232,18 @@ export default function DocsView({
                 if (/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(href))
                   return (
                     <a href={href} target="_blank" rel="noreferrer">
+                      {children}
+                    </a>
+                  );
+                const repoFile =
+                  sourceUrl && resolveRepoPath(current.path, href);
+                if (repoFile)
+                  return (
+                    <a
+                      href={sourceUrl(repoFile.path)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       {children}
                     </a>
                   );
