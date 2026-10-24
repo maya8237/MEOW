@@ -5,6 +5,8 @@ import hashlib
 import http.server
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -14,6 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROBE_EXIT_CODE = 7
+SMOKE_PATCH_OFFSET = 100_000  # keeps the smoke version clear of anything published
 sys.path.insert(0, str(ROOT / "src"))
 
 from meow.installer.releases import release_python  # ruff: ignore[module-import-not-at-top-of-file]
@@ -34,19 +37,39 @@ class ReleaseServer(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
 
 
-def build_wheel(destination: Path) -> str:
-    """Build this checkout's wheel into DESTINATION; return its SHA-256."""
+def snapshot(destination: Path, version: str) -> None:
+    """Copy the tracked checkout to DESTINATION, stamped with an unpublished VERSION.
+
+    Once a release is on PyPI, pip prefers its same-numbered wheel over the
+    freshly built one and fails the hash check, so the smoke wheel needs its own.
+    """
+    names = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.split("\0")
+    for name in filter(None, names):
+        if (ROOT / name).is_file():
+            (destination / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / name, destination / name)
+    project = destination / "pyproject.toml"
+    project.write_text(
+        re.sub(
+            r"(?m)^version = .*$",
+            f'version = "{version}"',
+            project.read_text(),
+            count=1,
+        )
+    )
+    for manifest in (destination / ".claude-plugin").glob("*.json"):
+        data = json.loads(manifest.read_text())
+        target = data if "version" in data else data["plugins"][0]
+        target["version"] = version
+        manifest.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def build_wheel(source: Path, destination: Path) -> str:
+    """Build SOURCE's wheel into DESTINATION; return its SHA-256."""
     run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "wheel",
-            "--no-deps",
-            "-w",
-            str(destination),
-            str(ROOT),
-        ],
+        ["uv", "build", "--wheel", "--out-dir", str(destination), str(source)],
         os.environ,
     )
     (wheel,) = destination.glob("meow_harness-*.whl")
@@ -100,7 +123,11 @@ def check_install(home: Path, env: dict, version: str) -> None:
 
 
 def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
-    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    released = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"][
+        "version"
+    ]
+    major, minor, patch = released.split(".")
+    version = f"{major}.{minor}.{int(patch) + SMOKE_PATCH_OFFSET}"
     # pip splits PIP_FIND_LINKS on whitespace, so wheels live in a plain path.
     with (
         tempfile.TemporaryDirectory(prefix="meow-wheels-") as wheel_directory,
@@ -111,7 +138,10 @@ def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
         home.mkdir()
         # pip finds the unpublished wheel here, standing in for the index.
         wheels = Path(wheel_directory)
-        digest = build_wheel(wheels)
+        source = temporary / "source"
+        source.mkdir()
+        snapshot(source, version)
+        digest = build_wheel(source, wheels)
         server = http.server.ThreadingHTTPServer(
             ("127.0.0.1", 0),
             functools.partial(ReleaseServer, directory=str(temporary / "server")),
