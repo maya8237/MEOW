@@ -8,21 +8,17 @@ Build a feature, resolve Jira issues, or coordinate an objective into one review
 Example: `/meow:run Add retry with backoff to the HTTP client`. [Reference](../skills/run/SKILL.md)
 
 A worktree run opens a PR (GitHub) or MR (GitLab) after pushing, then verifies its CI
-pipeline and fixes failing MEOW review jobs within the configured round limit.
-`--target BRANCH` overrides `[delivery].target_branch`; auto-onboarding sets it
-to existing `dev`, otherwise `master`. `--from` only chooses where work starts.
-The selected target survives resume. Explicit in-place runs keep their delivery
-choices; `--no-pr` disables MR creation. Failed creation reports a manual link.
-Only `Verified by pipeline` confirms CI verification. See
-[MR and pipeline verification](PIPELINE.md) for provider setup and outcomes.
+pipeline. `--target BRANCH` picks the target (default `[delivery].target_branch`);
+`--from` only chooses where work starts. Only `Verified by pipeline` confirms CI
+verification. Targets, `--no-pr`, and provider setup: [PIPELINE.md](PIPELINE.md).
 
-Give MEOW the change, expected behavior, and checks. Examples:
+Give MEOW the change, expected behavior, and checks. A short request works:
 
 ```text
 /meow:run Add a dark mode toggle to the settings page
 ```
 
-A detailed prompt gives the change, expected behavior, and checks:
+A detailed prompt works better:
 
 ```text
 /meow:run Add a password reset flow. Users request a reset link by email, the

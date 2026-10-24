@@ -73,6 +73,8 @@ or a workflow with your own steps. [Customization guide](skills/customize/SKILL.
 - [Configuration and integrations](docs/INTEGRATIONS.md)
 - [Agents and workflows](docs/WORKFLOWS.md)
 - [Multi-task orchestration](docs/ORCHESTRATION.md)
+- [MR/PR and pipeline verification](docs/PIPELINE.md)
+- [Worktree setup](docs/WORKTREE_SETUP.md) · [Cleanup](docs/CLEANUP.md) · [Local UI](docs/UI.md)
 - [Update and uninstall](docs/INSTALL.md#update)
 
 ## Contribute
@@ -80,5 +82,6 @@ or a workflow with your own steps. [Customization guide](skills/customize/SKILL.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Project instructions](AGENTS.md)
 - [Contributing](CONTRIBUTING.md)
+- [Releasing](docs/RELEASING.md)
 - [Roadmap](docs/ROADMAP.md)
 - [License](LICENSE)
