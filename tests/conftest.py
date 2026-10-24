@@ -39,16 +39,46 @@ def _isolated_home(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(repos, "registry_path", lambda: home / "repos.toml")
 
 
-def pytest_collection_modifyitems(config, items):
-    """Run one slice of the suite when `MEOW_TEST_SHARD` is `N/TOTAL`.
+def parse_shard(spec):
+    """Return (shard, total) from an `N/TOTAL` spec, or raise `pytest.UsageError`."""
+    try:
+        shard, total = (int(part) for part in spec.split("/"))
+    except ValueError:
+        shard = total = 0
+    if not 1 <= shard <= total:
+        raise pytest.UsageError(f"MEOW_TEST_SHARD must look like N/TOTAL, got {spec!r}")
+    return shard, total
 
-    Tests are dealt round-robin in node-id order, so each CI shard gets a
-    similar mix of heavy and light modules."""
+
+def select_shard(items, shard, total):
+    """Split `items` into (selected, deselected) for 1-based `shard` of `total`.
+
+    Whole modules stay together so module-scoped fixtures run once and test
+    order is kept. Modules go largest-first onto the lightest shard, which
+    balances by test count and is deterministic for every xdist worker."""
+    modules = {}
+    for item in items:
+        modules.setdefault(item.nodeid.split("::")[0], []).append(item)
+    loads = [0] * total
+    owner = {}
+    for path, group in sorted(modules.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        index = loads.index(min(loads))
+        owner[path] = index
+        loads[index] += len(group)
+    selected, deselected = [], []
+    for item in items:
+        target = (
+            selected if owner[item.nodeid.split("::")[0]] == shard - 1 else deselected
+        )
+        target.append(item)
+    return selected, deselected
+
+
+def pytest_collection_modifyitems(config, items):
+    """Run one slice of the suite when `MEOW_TEST_SHARD` is `N/TOTAL`."""
     spec = os.environ.get("MEOW_TEST_SHARD")
     if not spec:
         return
-    shard, total = (int(part) for part in spec.split("/"))
-    ordered = sorted(items, key=lambda item: item.nodeid)
-    items[:] = [
-        item for index, item in enumerate(ordered) if index % total == shard - 1
-    ]
+    selected, deselected = select_shard(items, *parse_shard(spec))
+    config.hook.pytest_deselected(items=deselected)
+    items[:] = selected
