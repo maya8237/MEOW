@@ -561,17 +561,21 @@
     padding: 0.75rem 1.25rem;
   }
   .docs-site-reference .docs-layout {
-    display: block;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
   .docs-site-reference .docs-pane .catalog-filters {
     grid-template-columns: 1fr;
   }
   .docs-site-reference .docs-pane {
-    max-height: 35dvh;
+    flex: none;
+    max-height: 30dvh;
     border-bottom: 1px solid var(--border);
   }
   .docs-site-reference .docs-content {
-    overflow-y: visible;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 }

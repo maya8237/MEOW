@@ -68,13 +68,6 @@ export const skillGroups = [
   },
 ];
 
-export const customizeExamples = [
-  "/meow:customize Create a workflow that reviews database migrations before delivery",
-  "/meow:customize Add a workflow that runs our security checklist, then fixes what it finds",
-  "/meow:customize Make the quick workflow also run our end-to-end tests",
-  "/meow:customize Create a skill for our team’s coding conventions",
-];
-
 export const reviewExamples = [
   "/meow:review MR 42",
   "/meow:review https://gitlab.com/your-group/your-repo/-/merge_requests/42",
@@ -103,6 +96,16 @@ export const runExamples = [
     title: "A quick, small change",
     prompt:
       "/meow:run Rename the Save button to Apply on the profile form. Use the quick workflow.",
+  },
+  {
+    title: "Use a custom workflow",
+    prompt:
+      "/meow:run Add a shipped_at column to orders and backfill existing rows. Use our migration-review workflow.",
+  },
+  {
+    title: "Review and fix existing code",
+    prompt:
+      "/meow:run Audit the checkout API for security problems and fix what you find. Use the review-and-fix workflow.",
   },
   {
     title: "Fix a bug",

@@ -3,7 +3,6 @@ import { BookOpen, Shapes, SlidersHorizontal } from "lucide-react";
 import CopyButton from "@/components/CopyButton";
 import logo from "../../src/meow/ui/logo.png";
 import {
-  customizeExamples,
   reviewExamples,
   runExamples,
   runSkill,
@@ -183,9 +182,8 @@ function Skills() {
         </p>
         <p className="guide-note">
           Optional: to change where work starts or where the PR/MR goes, name
-          the branches in your prompt. Add <code>--test</code> to run the tester
-          after review, or ask for the <code>quick</code> workflow on small
-          changes.
+          the branches in your prompt. To use a workflow, name it in your
+          prompt. Ask MEOW to test the change if you want the tester to run.
         </p>
         <a className="guide-detail" href={sourceUrl("skills/run/SKILL.md")}>
           Full skill instructions on GitHub
@@ -203,10 +201,6 @@ function Skills() {
                 <Command
                   text={`/meow:${name}${example ? ` ${example}` : ""}`}
                 />
-                {name === "customize" &&
-                  customizeExamples.map((text) => (
-                    <Command key={text} text={text} />
-                  ))}
                 {name === "review" &&
                   reviewExamples.map((text) => (
                     <Command key={text} text={text} />
@@ -386,6 +380,9 @@ function Customize() {
         <section>
           <h2>An agent</h2>
           <p>A role with its own instructions and tools.</p>
+          <blockquote>
+            “Create a new agent that audits our API for security problems.”
+          </blockquote>
           <blockquote>“Make the reviewer check accessibility.”</blockquote>
         </section>
         <section>
@@ -393,6 +390,9 @@ function Customize() {
           <p>The steps MEOW follows to finish work.</p>
           <blockquote>
             “Create a workflow that reviews database migrations.”
+          </blockquote>
+          <blockquote>
+            “Change the quick workflow to also run our end-to-end tests.”
           </blockquote>
         </section>
       </div>
