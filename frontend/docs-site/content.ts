@@ -4,7 +4,7 @@ export const sourceUrl = (path: string) => `${REPO_URL}/blob/main/${path}`;
 export const runSkill = [
   "run",
   "Build something",
-  "Plan, build, review, and deliver a change. A worktree run pushes, opens a PR (GitHub) or MR (GitLab), then verifies its CI pipeline.",
+  "Plan, build, review, and deliver a change. A worktree run pushes, opens an MR, then verifies its CI pipeline.",
   "Add retry with backoff to the HTTP client",
 ] as const;
 
@@ -55,7 +55,7 @@ export const skillGroups = [
       [
         "integrate-ci-review",
         "Review pull requests in CI",
-        "Add a code review job to GitHub Actions or GitLab CI. It reviews proposed changes against the branch you’re merging into and saves a PASS/FAIL report as a downloadable CI artifact. You can also enable inline PR/MR comments. The job reports findings without applying code fixes.",
+        "Add a code review job to GitHub Actions or GitLab CI. It reviews proposed changes against the branch you’re merging into and saves a PASS/FAIL report as a downloadable CI artifact. You can also enable inline MR comments. The job reports findings without applying code fixes.",
         "",
       ],
       [
@@ -81,7 +81,7 @@ export const runExamples = [
   {
     title: "A detailed request with branches",
     prompt:
-      "/meow:run Add a password reset flow. Users request a reset link by email, the link expires after 30 minutes and works once, and the new password must meet the existing password rules. Show the same confirmation message whether or not the email exists. Add tests for expired, reused, and invalid links. Start from the release branch and open the PR into dev.",
+      "/meow:run Add a password reset flow. Users request a reset link by email, the link expires after 30 minutes and works once, and the new password must meet the existing password rules. Show the same confirmation message whether or not the email exists. Add tests for expired, reused, and invalid links. Start from the release branch and open the MR into dev.",
   },
   {
     title: "Approve the plan first",
@@ -115,6 +115,6 @@ export const runExamples = [
   {
     title: "Coordinate multiple features",
     prompt:
-      "/meow:run Add two independently scoped features: email/password sign-in with sign-out and protected pages, and an audit log for account changes. Keep secrets out of logs and test access permissions. Use full sprint orchestration and deliver one reviewed branch and PR.",
+      "/meow:run Add two independently scoped features: email/password sign-in with sign-out and protected pages, and an audit log for account changes. Keep secrets out of logs and test access permissions. Use full sprint orchestration and deliver one reviewed branch and MR.",
   },
 ];

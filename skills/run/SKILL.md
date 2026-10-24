@@ -33,7 +33,7 @@ engine names. Briefly state the choice before launching:
 - Add `--orchestrate` (`-o`) for an objective containing independently scoped
   deliverables that need their own plans, reviews, and recovery, or when the
   user explicitly requests full sprint orchestration. It combines the sprints
-  into one reviewed branch and PR. Multiple files or a long request alone do
+  into one reviewed branch and MR. Multiple files or a long request alone do
   not justify separate sprints.
 - `--tasks FILE`, `--jql QUERY`, and multiple `--jira KEY...` select full
   orchestration automatically; no additional flag is needed. A single Jira
@@ -51,7 +51,7 @@ meow run --jira PROJ-1 PROJ-2
 meow run --tasks tasks.toml
 ```
 
-`--from BRANCH` selects the starting branch; `--target BRANCH` selects the MR/PR
+`--from BRANCH` selects the starting branch; `--target BRANCH` selects the MR
 target. Recognize "start from release, merge into dev" as
 `--from release --target dev`. Without `--target`, use `[delivery].target_branch`,
 auto-onboarded to existing `dev`, otherwise `master`; never infer the target from
@@ -60,7 +60,7 @@ The target is printed and saved in the journal; resume the saved run without
 choosing a new target. In-place flags do not open an MR. `--no-pr` disables
 MR creation and pipeline verification.
 
-Final delivery opens the MR/PR into the saved target and fixes
+Final delivery opens the MR into the saved target and fixes
 code until the pipeline's `meow-review` job passes. Tell the user the MEOW loop
 (generate, review, checks) has finished and the feature is done, and that the
 work is now in final delivery, being verified through the MR pipeline. Relay
@@ -72,15 +72,15 @@ the MR/pipeline URLs. Pass `--no-pr` only if the user does not want an MR, and
 jobs; deploy jobs are never fixed. Details: [pipeline](../../docs/PIPELINE.md).
 
 Full orchestration uses isolated detached CLI sprints, pushes only after the
-combined objective passes review, and opens one PR unless `--no-pr` is given.
+combined objective passes review, and opens one MR unless `--no-pr` is given.
 It accepts `--from`, `--max-parallel`, `--dry-run`, and `--test`; `--dry-run`
 saves the decomposition for later continuation. Do not pass `--name`,
 `--background`, or sprint-only workflow/plan flags to this mode. Inspect with
 `meow status ID`, continue with `meow resume ID --continue`, and stop with
 `meow cancel ID`. To reset a blocked task, resume with `--task TASK` and, only
 when the user supplied it, `--request "Complete replacement task request"`.
-For multi-sprint delivery, report the printed orchestrator/branch/PR/task-count
-JSON and report path. Exit 3 means the branch was pushed but PR creation failed;
+For multi-sprint delivery, report the printed orchestrator/branch/MR/task-count
+JSON and report path. Exit 3 means the branch was pushed but MR creation failed;
 include `PR not opened` and its manual link. For blocked/failed runs, report the
 blocker, evidence, and continuation command; do not claim delivery.
 

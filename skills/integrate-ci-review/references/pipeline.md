@@ -59,11 +59,11 @@ See [GitLab's manual job reference](https://docs.gitlab.com/ci/jobs/job_control/
 
 GitHub has no job-level `when: manual`. If manual execution is selected, explain
 that it needs a manually dispatched workflow and confirm its workflow and PR/ref
-inputs before editing; preserve the checkout/CI context and MR/PR-only posting
+inputs before editing; preserve the checkout/CI context and MR-only posting
 contract. Keep automatic execution unless the user chooses this alternative.
 
 The same review job posts inline comments when enabled, by adding
-`--post-comments gitlab` or `--post-comments github` for MR/PR events. Manual
+`--post-comments gitlab` or `--post-comments github` for MR events. Manual
 execution also postpones comment posting until someone starts the review job.
 Do not create a separate posting job.
 
@@ -72,7 +72,7 @@ Do not create a separate posting job.
 Ask both questions, recommending **Yes** for each:
 
 - **"Should MEOW be interruptible and stop its older review when a new commit
-  starts a pipeline for the same MR/PR? (Default: yes)"**
+  starts a pipeline for the same MR? (Default: yes)"**
 - **"Should MEOW be allowed to fail without failing the pipeline?
   (Default: yes)"**
 
@@ -124,6 +124,6 @@ See [GitHub's concurrency reference](https://docs.github.com/en/actions/how-tos/
 
 Check job naming, stage/order, `needs`, automatic/manual mode, and job policies,
 including inherited or rule-level overrides. Validate YAML and confirm that a
-new commit would match the same MR/PR/ref cancellation scope. Report configuration
+new commit would match the same MR/ref cancellation scope. Report configuration
 validation separately from a live superseding-commit test; do not claim a remote
 job was canceled without observing it.

@@ -99,7 +99,7 @@ artifacts under `.meow/` so checks do not alter the reviewed revision.
 `[agent_skills].default` and role lists append across config layers to resolved
 definition/custom skills. Agent overrides may replace built-in skill lists.
 Explicit `[models].role` wins over agent models.
-`[delivery].target_branch` selects the default PR/MR target; `meow run --target`
+`[delivery].target_branch` selects the default MR target; `meow run --target`
 overrides it per run. Auto-onboarding saves existing `dev` (local or origin),
 otherwise `master`. It also supplies the CI target unless `--target-ref` overrides it.
 
@@ -160,10 +160,10 @@ Wrong types/unknown keys fail config validation. CLI `--max-parallel` and
 `integrator`, and `pull_request`. Jira inputs require project/server config
 and never comment on or transition issues.
 
-PR provider comes from origin: hosts containing `github` select GitHub;
+MR provider comes from origin: hosts containing `github` select GitHub;
 `gitlab` or the host in `[gitlab.mcp].env.GITLAB_URL` selects GitLab.
 Other hosts have no provider. Missing provider MCP config reports
-`provider not configured`. PR tools are restricted to names containing
+`provider not configured`. MR tools are restricted to names containing
 `create_pull_request`, `create_merge_request`, `list_pull_requests`,
 `list_merge_requests`, or `search_pull_requests`; existing open requests
 can be reused. The agent writes only its result file.
@@ -196,4 +196,4 @@ For recurrence, external Task Scheduler/cron/systemd/CI can invoke
 | Jira delivery without origin | RuntimeError after PASS; evidence/worktree retained |
 | Orchestrator dirty start or missing Jira config | Exit 1 before work starts |
 | Orchestrator push failure | Failed state; repair origin and resume delivery |
-| Missing PR provider/creation failure | Delivered, exit 3, manual PR link |
+| Missing MR provider/creation failure | Delivered, exit 3, manual MR link |

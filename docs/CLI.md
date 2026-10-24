@@ -82,7 +82,7 @@ meow resume ID --continue [--task T --request "Updated request"]
 
 Task files, JQL, and multiple Jira keys select orchestration automatically.
 `--orchestrate` (`-o`) selects it explicitly; `--max-parallel N` limits concurrent
-sprints, `--dry-run` saves the decomposition, and `--no-pr` skips opening a PR.
+sprints, `--dry-run` saves the decomposition, and `--no-pr` skips opening an MR.
 Local edits require explicit `--from BRANCH`; execution uses an isolated worktree.
 Exit code 3 means the branch was delivered but `PR not opened`; output includes a manual link.
 See [ORCHESTRATION.md](ORCHESTRATION.md) for sources, flags, delivery gates, and recovery.
@@ -94,7 +94,7 @@ Select one source: prompt, `--jira [KEY]`, `--gitlab URL`, `--github URL`,
 `--branch BRANCH --target TARGET`, `--plan PATH`, `--review-file PATH`, or `--ci`.
 No source selects the latest plan, then the diff/whole project if none exists.
 
-Reviews are report-only unless `--fix` is given; remote PR/MR and CI sources
+Reviews are report-only unless `--fix` is given; remote MR and CI sources
 reject fixes. Fix loops stop at `max_rounds`. Branch reviews use a worktree;
 `--no-worktree` requires the branch already checked out. Other sources review
 the selected checkout and permit pending changes.
@@ -182,7 +182,7 @@ Exit: 0 PASS, 1 FAIL, 2 infrastructure/unverified.
 Add `--post-comments gitlab` with masked `MEOW_GITLAB_TOKEN` (`api` scope and comment
 access), or `--post-comments github` with `MEOW_GITHUB_TOKEN` (Pull requests write). See
 [the integration skill](../skills/integrate-ci-review/SKILL.md) for CI variables.
-Posting mode requires a PR/MR event and validates added/deleted-line locations
+Posting mode requires an MR event and validates added/deleted-line locations
 and remote revisions. Existing comments inform the review; matching inline notes
 are skipped on reruns. Unreadable history or publishing failures exit 2 with
 artifacts. Notes use the token's identity; partial publishes can leave notes posted.

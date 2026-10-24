@@ -104,7 +104,7 @@ unrelated values and comments. Reuse existing tables and entries; do not append
 duplicates. Already accepted changes do not need another confirmation.
 
 Show the effective `[delivery].target_branch` and ask in interactive mode:
-"Keep this default PR/MR target, or change it?" Auto-onboarding saves `dev` if
+"Keep this default MR target, or change it?" Auto-onboarding saves `dev` if
 it exists locally or on origin, otherwise `master`. Keep an existing choice
 unless the user requests a change; update only that setting after approval.
 Explain that `--target BRANCH` overrides it for one run; `--from` only selects

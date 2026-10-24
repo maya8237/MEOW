@@ -155,7 +155,7 @@ For worktree delivery, the first checkpoint saves `--target` or
 `[delivery].target_branch`, never `--from` (which only chooses the start).
 State the saved MR target from `meow status RUN_ID`, also on resume.
 The loop is finished and final delivery is being verified through
-the MR pipeline: open the MR/PR with connected tools and report the pipeline
+the MR pipeline: open the MR with connected tools and report the pipeline
 status. The pipeline-fix loop is CLI-only ([pipeline](../../docs/PIPELINE.md));
 claim "Verified by pipeline" only when it actually passed.
 
@@ -189,6 +189,6 @@ heartbeat older than 10 minutes is reclaimable. IDs are 12 characters.
 | `merge-done` / `merge-abort` | Validate conflict resolution / roll back and triage |
 | `triage` | Validate/apply decision file |
 | `review` / `review-result` | Run checks and prepare independent review / record verdict |
-| `deliver` / `pr` | Push and return PR metadata / record creation outcome |
+| `deliver` / `pr` | Push and return MR metadata / record creation outcome |
 | `status` / `cancel` / `release` | Inspect / cancel children / release native lock |
 | `resume` | Recover without driving; return phase and any decomposer prompt |

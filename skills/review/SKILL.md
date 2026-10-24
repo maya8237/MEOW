@@ -1,6 +1,6 @@
 ---
 name: review
-description: Use when reviewing existing code or fixing review findings against a prompt, Jira issue, PR/MR, branch, plan, saved review, or CI checkout. Defaults to native, except CI and tester flows.
+description: Use when reviewing existing code or fixing review findings against a prompt, Jira issue, MR, branch, plan, saved review, or CI checkout. Defaults to native, except CI and tester flows.
 ---
 
 # review
@@ -20,7 +20,7 @@ disables the tester/test/browser gates, and retains lint/build checks.
 | A Jira issue key (or "the latest issue") | jira | current checkout, as-is -- the issue's text becomes the review basis, nothing gets built |
 | A GitLab merge request URL | gitlab | **none** -- read-only, diff fetched via MCP |
 | A GitHub pull request URL | github | **none** -- read-only, diff fetched via MCP |
-| A bare MR/PR number ("MR 42", "PR #42") | gitlab or github | as above; take the provider and project from the `origin` remote, and ask if it is neither |
+| A bare MR number ("MR 42") | gitlab or github | as above; take the provider and project from the `origin` remote, and ask if it is neither |
 | A GitLab pipeline checkout, or an explicit `--ci` request | ci | **none** -- detached, report-only CLI review |
 | A branch name + a target branch | branch | isolated worktree (default) or in place |
 | A plan file path, or nothing at all and a plan exists in `docs_dir` | plan | current checkout, as-is |

@@ -174,16 +174,16 @@ function Skills() {
         ))}
         <p className="guide-note">
           Every request, simple or detailed, runs in its own worktree and, once
-          checks pass, opens a PR/MR into your configured target (set during
-          onboarding) and verifies its pipeline. PR/MR creation and pipeline
-          checks require your provider connection; if they fail, MEOW reports
-          the reason and available links.{" "}
-          <a href={sourceUrl("docs/PIPELINE.md")}>PR/MR & pipeline guide</a>
+          checks pass, opens an MR into your configured target (set during
+          onboarding) and verifies its pipeline. MR creation and pipeline checks
+          require your provider connection; if they fail, MEOW reports the
+          reason and available links.{" "}
+          <a href={sourceUrl("docs/PIPELINE.md")}>MR & pipeline guide</a>
         </p>
         <p className="guide-note">
-          Optional: to change where work starts or where the PR/MR goes, name
-          the branches in your prompt. To use a workflow, name it in your
-          prompt. Ask MEOW to test the change if you want the tester to run.
+          Optional: to change where work starts or where the MR goes, name the
+          branches in your prompt. To use a workflow, name it in your prompt.
+          Ask MEOW to test the change if you want the tester to run.
         </p>
         <a className="guide-detail" href={sourceUrl("skills/run/SKILL.md")}>
           Full skill instructions on GitHub

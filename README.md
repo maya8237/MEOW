@@ -6,7 +6,7 @@
 
 > Describe a feature. Get a finished MR.
 
-MEOW plans, builds, tests, and reviews complete features, then opens a PR.
+MEOW plans, builds, tests, and reviews complete features, then opens an MR.
 Use it from Claude Code with a few simple skills.
 
 [Start here](https://maya8237.github.io/MEOW/) · [Skills](docs/SKILLS.md) · [Customize](skills/customize/SKILL.md)
@@ -48,7 +48,7 @@ Tell MEOW what you want:
 ```
 
 Feature runs use a separate worktree. After checks pass, MEOW pushes the branch,
-opens a PR/MR into your configured target, and verifies its CI pipeline.
+opens an MR into your configured target, and verifies its CI pipeline.
 
 - `/meow:plan` — think through a change before building.
 - `/meow:review` — review existing code and fix findings.
@@ -73,7 +73,7 @@ or a workflow with your own steps. [Customization guide](skills/customize/SKILL.
 - [Configuration and integrations](docs/INTEGRATIONS.md)
 - [Agents and workflows](docs/WORKFLOWS.md)
 - [Multi-task orchestration](docs/ORCHESTRATION.md)
-- [MR/PR and pipeline verification](docs/PIPELINE.md)
+- [MR and pipeline verification](docs/PIPELINE.md)
 - [Worktree setup](docs/WORKTREE_SETUP.md) · [Cleanup](docs/CLEANUP.md) · [Local UI](docs/UI.md)
 - [Update and uninstall](docs/INSTALL.md#update)
 

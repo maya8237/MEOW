@@ -1,7 +1,7 @@
 # MR and pipeline verification
 
 After `builtin.deliver` pushes a worktree run, MEOW opens an
-MR/PR into its saved target, validates the pipeline file, waits for the pipeline, and
+MR into its saved target, validates the pipeline file, waits for the pipeline, and
 fixes code until the `meow-review` job passes. Any workflow containing
 `builtin.deliver` gets this. Explicit in-place runs retain their delivery choices
 without opening an MR. GitLab (`.gitlab-ci.yml`) and GitHub
@@ -10,7 +10,7 @@ without opening an MR. GitLab (`.gitlab-ci.yml`) and GitHub
 ## Flow
 
 1. Push the verified branch (never undone by later steps).
-2. Open the MR/PR; failure records `pr_error` and a manual link, printed as
+2. Open the MR; failure records `pr_error` and a manual link, printed as
    `Open it manually: LINK` on the final line.
 3. Validate the pipeline file; invalid files are fixed (`lint_fixer`).
 4. Wait for the pipeline of the pushed commit.

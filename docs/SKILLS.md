@@ -7,7 +7,7 @@ Claude Code skills from the MEOW plugin. Each has a CLI equivalent; flags are in
 Build a feature, resolve Jira issues, or coordinate an objective into one reviewed delivery.
 Example: `/meow:run Add retry with backoff to the HTTP client`. [Reference](../skills/run/SKILL.md)
 
-A worktree run opens a PR (GitHub) or MR (GitLab) after pushing, then verifies its CI
+A worktree run opens an MR after pushing, then verifies its CI
 pipeline. `--target BRANCH` picks the target (default `[delivery].target_branch`);
 `--from` only chooses where work starts. Only `Verified by pipeline` confirms CI
 verification. Targets, `--no-pr`, and provider setup: [PIPELINE.md](PIPELINE.md).
@@ -25,10 +25,10 @@ A detailed prompt works better:
 link expires after 30 minutes and works once, and the new password must meet the
 existing password rules. Show the same confirmation message whether or not the
 email exists. Add tests for expired, reused, and invalid links.
-Start from the release branch and open the PR into dev.
+Start from the release branch and open the MR into dev.
 ```
 
-Here the work starts from `release` and the PR/MR targets `dev`.
+Here the work starts from `release` and the MR targets `dev`.
 
 ```text
 /meow:run Add rate limiting to the public API: 100 requests per minute per API
@@ -48,7 +48,7 @@ retry after a failure. Add regression tests for double-clicks and failed request
 /meow:run Add two independently scoped features: email/password sign-in with
 sign-out and protected pages, and an audit log for account changes. Keep secrets
 out of logs and test access permissions. Use full sprint orchestration and
-deliver one reviewed branch and PR.
+deliver one reviewed branch and MR.
 ```
 
 ## /meow:plan
@@ -58,7 +58,7 @@ Example: `/meow:plan Add rate limiting to the public API`. [Reference](../skills
 
 ## /meow:review
 
-Review existing code or fix review findings for a prompt, issue, PR/MR, branch, or plan.
+Review existing code or fix review findings for a prompt, issue, MR, branch, or plan.
 Example: `/meow:review`. [Reference](../skills/review/SKILL.md)
 
 ## /meow:lint

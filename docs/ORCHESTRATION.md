@@ -2,7 +2,7 @@
 
 `meow run --orchestrate` decomposes one objective or Jira set into tasks, runs each
 as an automatic detached sprint in its own worktree, merges passing tasks,
-reviews the combined objective, then pushes one branch and opens one PR/MR.
+reviews the combined objective, then pushes one branch and opens one MR.
 Unrecoverable tasks or exhausted review rounds stop with nothing pushed.
 
 Use [CLI.md](CLI.md#multi-sprint-runs) for commands; `/meow:run` selects this mode for independent deliverables.
@@ -23,7 +23,7 @@ With `--from`, select the main checkout rather than an existing linked worktree.
 | `--max-parallel N` | Concurrency, default 3 from config |
 | `--dry-run` | Save decomposition and stop; resume continues it |
 | `--test` | Configured/exploratory testing in each task |
-| `--no-pr` | Push without opening a PR |
+| `--no-pr` | Push without opening an MR |
 | `meow resume ID --continue --task T --request TEXT` | Reset a blocked task (default blocker task), optionally replace request |
 
 The starting base and MR target are independent. Auto-onboarding sets the target
@@ -69,13 +69,13 @@ reintegrate, or blocked. A task and any split lineage share at most
 
 Once all tasks merge, objective review checks `base...orchestrator/ID`,
 with fix rounds up to `review_rounds` (default 3). Only then is it pushed.
-PR/MR title is `Orchestrator: FIRST OBJECTIVE LINE` (Jira sources list keys);
+MR title is `Orchestrator: FIRST OBJECTIVE LINE` (Jira sources list keys);
 the report supplies the body. Provider/creation failure leaves the branch
 delivered, emits `PR not opened: REASON` with a manual link, and exits 3.
 
 Delivery prints
 `{"orchestrator":"ID","branch":"orchestrator/ID","pr":"URL or null","tasks":N}`.
-Other exit codes: 0 delivered with PR or PR disabled, 1 failed,
+Other exit codes: 0 delivered with MR or MR disabled, 1 failed,
 2 blocked without push, 130 cancelled. Usage is recorded per child and
 summarized; no dollar budget is enforced.
 
@@ -83,12 +83,12 @@ summarized; no dollar budget is enforced.
 
 Atomic state, tasks, report, cancel marker, and driver lock live under
 `.meow/orchestrators/ID/`. Status shows phase, task states/cycles/branches/runs,
-blocker, and PR. `meow status` adds an active-orchestrator roll-up and child
+blocker, and MR. `meow status` adds an active-orchestrator roll-up and child
 runs with source `orchestrator`; individual runs can use `meow resume`.
 
 `meow resume ID` inspects; add `--continue` to execute. Resume preserves merged tasks, reattaches live children, rolls back an
 interrupted merge, and retries failed delivery. A delivered run with a failed
-PR retries only PR creation. Resolve blockers or reset the blocked request
+MR retries only MR creation. Resolve blockers or reset the blocked request
 with `--task`/`--request`. Cancel stops live children and records cancelled
 without pushing.
 
