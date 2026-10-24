@@ -8,7 +8,8 @@ MEOW is built around the Claude Agent SDK and Claude Code skills. Read
 [AGENTS.md](AGENTS.md), then install the development dependencies:
 
 ```bash
-python -m pip install -e ".[dev]"
+uv pip install -e ".[dev]"          # if uv is installed
+python -m pip install -e ".[dev]"   # otherwise
 ```
 
 ## Make a change

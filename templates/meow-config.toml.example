@@ -91,7 +91,7 @@ default = []
 # non-secret-like relative files; commands are literal argument arrays.
 # [worktree_setup]
 # copy = [".env.example"]
-# commands = [["python", "-m", "pip", "install", "-e", "."]]
+# commands = [["make", "setup"]]
 
 # Optional role/tool policy. Path-scoped rules are only valid for Read, Write,
 # Edit, or NotebookEdit and require Bash and Agent to be denied for that role.

@@ -73,6 +73,11 @@ jobs:
         env:
           PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
           PIP_NO_COMPILE: '1'
+      - name: Install again with uv hidden, so the pip path stays covered
+        run: python scripts/smoke_release.py --pip-only
+        env:
+          PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+          PIP_NO_COMPILE: '1'
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')

@@ -43,7 +43,9 @@ under `meow/_release/`, so installs need nothing but the wheel.
 1. Pick the newest Python 3.12+: `where python` and `py -0p` on Windows, `PATH`
    elsewhere, or `MEOW_PYTHON`. Virtual environments resolve to their base.
 2. Create a staging venv and run `pip install --no-deps --require-hashes
-   --only-binary :all:` for exactly the manifest's version and wheel hash.
+   --only-binary :all:` for exactly the manifest's version and wheel hash. When
+   `uv` is installed the venv and install use `uv venv --seed` and `uv pip
+   install`; any `uv` failure falls back to `venv` and pip.
 3. Run the new release's `python -m meow.installer.releases --finish`: install
    `requirements-release.txt` with `--require-hashes`, build the launcher
    (Windows uses the .NET Framework compiler included with Windows), copy the
@@ -52,9 +54,10 @@ under `meow/_release/`, so installs need nothing but the wheel.
    built by another or removed Python.
 4. Register the plugin and switch the launchers and `current-version`.
 
-`meow -u` runs the same steps with the newest Python it finds. Pip settings such
-as `PIP_INDEX_URL` apply, so mirrors work. Run `python scripts/smoke_release.py`
-to exercise the installer against a locally built wheel.
+`meow -u` runs the same steps with the newest Python it finds. Index settings
+follow the tool that runs: `UV_INDEX_URL` for uv, `PIP_INDEX_URL` for pip, so
+mirrors work either way. Run `python scripts/smoke_release.py` to exercise the
+installer against a locally built wheel; `--pip-only` hides `uv` to test pip.
 
 The versioned runtimes intentionally remain after updates so active workers
 and OS schedules can still launch their original interpreter. Keep those

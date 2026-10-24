@@ -18,7 +18,9 @@ curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.
 
 The installer uses the newest Python 3.12+ it finds; set `MEOW_PYTHON` to
 choose one. It puts MEOW in `~/.meow`, adds `meow` to your PATH, and sets up
-its skills in Claude Code. Open a new terminal or restart Claude Code.
+its skills in Claude Code. It uses `uv` for the virtual environment and package
+installs when `uv` is already installed, and pip otherwise or if `uv` fails.
+Open a new terminal or restart Claude Code.
 
 Open your project in Claude Code and run `/meow:onboard` to configure
 integrations and optional features. Basic setup also happens on first use.

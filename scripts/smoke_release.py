@@ -85,6 +85,12 @@ def run(argv: list[str], env: dict, **kwargs) -> str:
     return result.stdout
 
 
+def without_uv(path: str) -> str:
+    """PATH minus every directory that provides uv, to exercise the pip fallback."""
+    kept = [d for d in path.split(os.pathsep) if d and not shutil.which("uv", path=d)]
+    return os.pathsep.join(kept)
+
+
 def bootstrap(env: dict) -> None:
     if os.name == "nt":
         script = str(ROOT / "scripts/install.ps1").replace("'", "''")
@@ -122,7 +128,7 @@ def check_install(home: Path, env: dict, version: str) -> None:
     assert (release / "plugin/skills/run/SKILL.md").is_file()
 
 
-def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
+def smoke(pip_only: bool = False) -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
     released = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"][
         "version"
     ]
@@ -180,11 +186,16 @@ def smoke() -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
             "PYTHONPATH": str(startup),
             "MEOW_PYTHON": sys.executable,
             "PIP_FIND_LINKS": str(wheels),
+            "UV_FIND_LINKS": str(wheels),
             "MEOW_RELEASE_MANIFEST_URL": base + "/latest.json",
         }
+        if pip_only:
+            env["PATH"] = without_uv(env["PATH"])
         try:
             bootstrap(env)
             check_install(home, env, version)
+            config = home / ".meow/versions" / version / "runtime/pyvenv.cfg"
+            assert ("\nuv = " in config.read_text()) == (not pip_only)
             check_launcher_arguments(home, env, temporary)
             config = home / ".meow/config.toml"
             config.write_text("# preserved user configuration\n")
@@ -244,9 +255,11 @@ def check_update(home: Path, env: dict, version: str) -> None:
     previous = versions / "0.0.0"
     (versions / version).rename(previous)
     metadata = next((previous / "runtime").rglob("meow_harness-*.dist-info/METADATA"))
-    metadata.write_text(
-        metadata.read_text().replace(f"Version: {version}", "Version: 0.0.0")
-    )
+    # uv hardlinks installed files from its shared cache: replace the file, never
+    # edit it in place, or every later install of this wheel reads the edit.
+    text = metadata.read_text()
+    metadata.unlink()
+    metadata.write_text(text.replace(f"Version: {version}", "Version: 0.0.0"))
     (home / ".meow/current-version").write_text("0.0.0\n")
     executable = home / ".meow/bin" / ("meow.exe" if os.name == "nt" else "meow")
     assert run([str(executable), "--version"], env).strip() == "meow 0.0.0"
@@ -266,7 +279,7 @@ def annotate_failure(error: BaseException) -> None:
 
 if __name__ == "__main__":
     try:
-        smoke()
+        smoke(pip_only="--pip-only" in sys.argv[1:])
     except Exception as error:
         annotate_failure(error)
         raise

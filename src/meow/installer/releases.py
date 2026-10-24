@@ -221,10 +221,22 @@ def _pip(python: Path, *args: str) -> None:
     _run(*command, "--no-input", *args)
 
 
+def _venv(python: Path, runtime: Path) -> None:
+    """Create RUNTIME with uv when it is installed, otherwise with venv."""
+    if shutil.which("uv"):
+        try:
+            args = ("venv", "--quiet", "--seed", "--python", str(python), str(runtime))
+            _run("uv", *args)
+            return
+        except (OSError, RuntimeError):
+            shutil.rmtree(runtime, ignore_errors=True)  # uv is optional
+    _run(str(python), "-m", "venv", str(runtime))
+
+
 def stage_bundle(python: Path, bundle: Path, tag: str, digest: str) -> None:
     """Create BUNDLE/runtime and install exactly the published wheel into it."""
     try:
-        _run(str(python), "-m", "venv", str(bundle / "runtime"))
+        _venv(python, bundle / "runtime")
     except RuntimeError as exc:
         raise RuntimeError(
             f"{exc}\nThis Python could not create a virtual environment. "
