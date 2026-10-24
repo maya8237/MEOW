@@ -216,7 +216,7 @@ def _pip(python: Path, *args: str) -> None:
             _run("uv", "pip", "install", "--quiet", "--python", str(python), *args)
             return
         except (OSError, RuntimeError):
-            print("uv failed; retrying with pip...", flush=True)
+            pass  # uv is optional; pip below does the work
     command = (str(python), "-m", "pip", "install", "--disable-pip-version-check")
     _run(*command, "--no-input", *args)
 

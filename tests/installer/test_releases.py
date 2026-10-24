@@ -279,6 +279,7 @@ def test_pip_uses_uv_only_when_installed(monkeypatch):
 
 
 def test_pip_retries_with_pip_when_uv_fails(monkeypatch, capsys):
+    # The fallback is silent: pip is the baseline, uv only an optimisation.
     from meow.installer import releases
 
     calls = []
@@ -293,7 +294,7 @@ def test_pip_retries_with_pip_when_uv_fails(monkeypatch, capsys):
     monkeypatch.setattr(releases.shutil, "which", lambda name: "/bin/uv")
     releases._pip(Path("python"), "-r", "lock")
     assert [call[0] for call in calls] == ["uv", "python"]
-    assert "uv failed; retrying with pip" in capsys.readouterr().out
+    assert capsys.readouterr().out == ""
 
 
 def test_activation_switches_launcher_after_plugin_registration(tmp_path, monkeypatch):

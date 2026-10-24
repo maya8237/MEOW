@@ -67,6 +67,16 @@ The same review job posts inline comments when enabled, by adding
 execution also postpones comment posting until someone starts the review job.
 Do not create a separate posting job.
 
+## Install tool
+
+Ask: **"Install MEOW with uv instead of pip? (Default: no)"** Offer **"No, use pip
+(default)"** and **"Yes, use uv when it is available"**. The package stays
+`meow-harness`. For uv, replace the install line with this guarded command so a
+runner without uv still installs with pip:
+`if command -v uv >/dev/null 2>&1; then uv pip install --system meow-harness; else python -m pip install meow-harness; fi`
+On GitHub add `astral-sh/setup-uv@v5` after `setup-python` and run it with
+`shell: bash`; on GitLab rely on the image's own uv, if it has one.
+
 ## Cancellation and failure
 
 Ask both questions, recommending **Yes** for each:

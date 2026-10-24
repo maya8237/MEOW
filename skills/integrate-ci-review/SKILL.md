@@ -43,8 +43,8 @@ test/lint pipeline. Ask only if there is no clear owner.
 ## Fit the existing pipeline
 
 Before editing, use [the pipeline guide](references/pipeline.md) to match job naming
-and ask about placement, dependencies, manual execution, cancellation, and failure.
-Honor prior answers; otherwise wait. Defaults: automatic, `needs: []`, cancellation
+and ask about placement, dependencies, manual execution, install tool, cancellation, and failure.
+Honor prior answers; otherwise wait. Defaults: automatic, `needs: []`, pip, cancellation
 enabled, failure allowed. Include the last stage as a placement option.
 
 The target branch is the branch being reviewed against: GitHub's `github.base_ref`
@@ -155,8 +155,8 @@ broader runtime change.
 ### Optional inline review notes
 
 If enabled, add `--post-comments github` or `--post-comments gitlab` to
-`meow review --ci`. Keep the fixed install command `python -m pip install meow-harness`;
-do not add an install-spec variable or ask the user to choose the package.
+`meow review --ci`. Install `meow-harness` with `python -m pip install meow-harness` unless
+the user opts into uv; do not add an install-spec variable or ask the user to choose the package.
 
 - GitHub: reuse a suitable existing token through a job-local `MEOW_GITHUB_TOKEN`
   alias, or use `${{ secrets.GITHUB_TOKEN }}`. Grant the job `pull-requests: write`
