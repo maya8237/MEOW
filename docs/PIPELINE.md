@@ -25,7 +25,7 @@ only, inside the deliver step.
 
 | Flag | Effect |
 |---|---|
-| `--no-mr` | Skip the MR and pipeline verification (also applies to orchestration) |
+| `--no-mr` (alias `--no-pr`) | Skip the MR and pipeline verification (also applies to orchestration) |
 | `--target BRANCH` | Override the configured MR target for this run |
 | `--from BRANCH` | Start work from this branch; does not set the MR target |
 | `--fix-non-meow-jobs` | Also fix other failing jobs in a worktree run |

@@ -46,6 +46,11 @@ def test_no_pr_allowed_on_plain_run():
     validation._validate_run_flags(_build_arg_parser(), args)
 
 
+@pytest.mark.parametrize("flag", ["--no-mr", "--no-pr"])
+def test_no_mr_and_no_pr_are_the_same_flag(flag):
+    assert parse("x", "--from", "main", flag).no_pr is True
+
+
 @pytest.mark.parametrize("flag", ["--dry-run", "--max-parallel=2"])
 def test_orchestration_only_flags_still_need_orchestrate(flag, capsys):
     args = parse("x", flag)

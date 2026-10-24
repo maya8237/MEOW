@@ -681,6 +681,7 @@ def _add_orchestration_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--no-mr",
+        "--no-pr",
         dest="no_pr",
         action="store_true",
         help="Push without opening a PR/MR or verifying its pipeline.",
