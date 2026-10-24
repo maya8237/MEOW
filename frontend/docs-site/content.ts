@@ -15,7 +15,7 @@ export const skillGroups = [
       [
         "onboard",
         "Set up your project",
-        "Checks your project, writes the MEOW config, and offers optional add-ons such as Jira, GitHub or GitLab, scheduling, and the lint hook. Run once per project; rerun to add or change something.",
+        "Checks your project, writes the MEOW config, and offers optional add-ons: test commands (suggested from what it finds, and only added if you approve), a test-writing tester, Jira, GitHub or GitLab, scheduling, and the lint hook. Run once per project; rerun to add or change something.",
         "",
       ],
       [
@@ -68,6 +68,13 @@ export const skillGroups = [
   },
 ];
 
+export const customizeExamples = [
+  "/meow:customize Create a workflow that reviews database migrations before delivery",
+  "/meow:customize Add a workflow that runs our security checklist, then fixes what it finds",
+  "/meow:customize Make the quick workflow also run our end-to-end tests",
+  "/meow:customize Create a skill for our team’s coding conventions",
+];
+
 export const reviewExamples = [
   "/meow:review MR 42",
   "/meow:review https://gitlab.com/your-group/your-repo/-/merge_requests/42",
@@ -91,6 +98,11 @@ export const runExamples = [
   {
     title: "From a Jira issue",
     prompt: "/meow:run PROJ-123",
+  },
+  {
+    title: "A quick, small change",
+    prompt:
+      "/meow:run Rename the Save button to Apply on the profile form. Use the quick workflow.",
   },
   {
     title: "Fix a bug",

@@ -3,6 +3,7 @@ import { BookOpen, Shapes, SlidersHorizontal } from "lucide-react";
 import CopyButton from "@/components/CopyButton";
 import logo from "../../src/meow/ui/logo.png";
 import {
+  customizeExamples,
   reviewExamples,
   runExamples,
   runSkill,
@@ -73,7 +74,7 @@ function Start() {
           </h1>
           <p>
             MEOW plans, builds, tests, and reviews complete features, then opens
-            a PR for you. Start with one request.
+            an MR for you. One request is enough.
           </p>
           <div className="guide-actions">
             <a className="guide-primary" href="#setup">
@@ -96,31 +97,38 @@ function Start() {
             <h3>Let MEOW get to know your project</h3>
             <p>Open your project in Claude Code and run:</p>
             <Command text="/meow:onboard" />
-            <p>MEOW checks your project and sets up:</p>
+            <p>MEOW checks your project, then sets up:</p>
             <ul>
               <li>Your lint command, so findings get fixed automatically.</li>
-              <li>Your test commands, if you want MEOW to run tests.</li>
-              <li>The branch your PRs/MRs target.</li>
+              <li>The branch your MRs target.</li>
+            </ul>
+            <p>And offers, if you want them:</p>
+            <ul>
               <li>
-                Jira, GitHub, or GitLab, so MEOW can read issues and open
-                PRs/MRs.
+                Your test commands. MEOW suggests the ones it finds, checks they
+                run, and adds them only if you approve.
               </li>
+              <li>A tester that can write new tests (off by default).</li>
+              <li>Jira, GitHub, or GitLab, to read issues and open MRs.</li>
+              <li>Scheduled runs.</li>
               <li>
-                Scheduled runs and a lint hook for Claude Code, if you want
-                them.
+                A lint hook for Claude Code, so lint that already passed isn’t
+                rerun.
               </li>
             </ul>
             <p className="guide-note">
-              Run once per project. Every add-on is optional and asks first; run
-              onboarding again to add or change something.
+              Run once per project. Every add-on asks first; run onboarding
+              again to add or change something.
             </p>
           </li>
           <li>
             <h3>Give MEOW a feature or task</h3>
-            <p>Tell MEOW what you want to build.</p>
             <Command text="/meow:run Add pagination to the users API endpoint" />
-            <p>Or give more detail about what you need and how to check it:</p>
+            <p>Or add detail, such as behavior and checks:</p>
             <Command text="/meow:run Add cursor-based pagination to GET /users. Accept limit (default 20, max 100) and cursor query parameters, return next_cursor in the response, and reject invalid cursors with a 400. Update the OpenAPI spec and add tests for the first page, last page, and invalid cursors." />
+            <p className="guide-note">
+              MEOW works in its own worktree and opens an MR when checks pass.
+            </p>
           </li>
         </ol>
       </section>
@@ -175,7 +183,9 @@ function Skills() {
         </p>
         <p className="guide-note">
           Optional: to change where work starts or where the PR/MR goes, name
-          the branches in your prompt.
+          the branches in your prompt. Add <code>--test</code> to run the tester
+          after review, or ask for the <code>quick</code> workflow on small
+          changes.
         </p>
         <a className="guide-detail" href={sourceUrl("skills/run/SKILL.md")}>
           Full skill instructions on GitHub
@@ -193,6 +203,10 @@ function Skills() {
                 <Command
                   text={`/meow:${name}${example ? ` ${example}` : ""}`}
                 />
+                {name === "customize" &&
+                  customizeExamples.map((text) => (
+                    <Command key={text} text={text} />
+                  ))}
                 {name === "review" &&
                   reviewExamples.map((text) => (
                     <Command key={text} text={text} />
