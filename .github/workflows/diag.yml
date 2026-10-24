@@ -1,0 +1,26 @@
+name: Diag
+on:
+  pull_request:
+    paths: ['.github/workflows/diag.yml']
+jobs:
+  stages:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v5
+      - name: Time the installer stages
+        shell: pwsh
+        run: |
+          $t = Join-Path $env:RUNNER_TEMP 'diag'; New-Item -ItemType Directory $t | Out-Null
+          function T($n, [scriptblock]$b) { $s = Get-Date; & $b *> $null; '{0,6:N1}s  {1}' -f ((Get-Date) - $s).TotalSeconds, $n }
+          T 'python -m venv (ensurepip)' { python -m venv "$t\v1" }
+          T 'pip install wheel into venv1' { & "$t\v1\Scripts\python.exe" -m pip install --disable-pip-version-check --no-input --no-deps --only-binary :all: pytest-xdist==3.6.1 }
+          T 'uv venv --seed' { uv venv --seed --python python "$t\v2" }
+          T 'uv venv (no seed)' { uv venv --python python "$t\v3" }
+          T 'uv pip install same wheel' { uv pip install --quiet --python "$t\v3\Scripts\python.exe" --no-deps pytest-xdist==3.6.1 }
+          T 'uv pip install requirements-release.txt (cold cache)' { uv pip install --quiet --python "$t\v3\Scripts\python.exe" -r requirements-release.txt }
+          T 'pip install requirements-release.txt (venv1)' { & "$t\v1\Scripts\python.exe" -m pip install --disable-pip-version-check --no-input -r requirements-release.txt }
+          T 'csc launcher compile' { & "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe "/out:$t\meow.exe" scripts\release\Launcher.cs }
