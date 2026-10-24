@@ -78,14 +78,11 @@ printf 'Installing MEOW %s with %s...\n' "$tag" "$python"
 printf 'meow-harness==%s --hash=sha256:%s\n' "$tag" "$digest" >"$temporary/wheel.txt"
 # Use uv only if it is already installed; any uv failure falls back to pip.
 if command -v uv >/dev/null 2>&1 \
-    && uv venv --quiet --seed --python "$python" "$bundle/runtime" \
+    && uv venv --quiet --seed --python "$python" "$bundle/runtime" 2>/dev/null \
     && uv pip install --quiet --python "$bundle/runtime/bin/python3" \
-        --no-deps --require-hashes --only-binary :all: -r "$temporary/wheel.txt"; then
+        --no-deps --require-hashes --only-binary :all: -r "$temporary/wheel.txt" 2>/dev/null; then
     :
 else
-    if command -v uv >/dev/null 2>&1; then
-        printf '%s\n' 'uv failed; retrying with pip...' >&2
-    fi
     rm -rf "$bundle/runtime"
     "$python" -m venv "$bundle/runtime" || {
         printf '%s\n' 'Python could not create a virtual environment (Debian/Ubuntu: install python3-venv).' >&2

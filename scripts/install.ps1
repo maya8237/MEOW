@@ -76,11 +76,14 @@
         $installed = $false
         $uv = Get-Command uv -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($uv) {
-            & $uv.Source venv --quiet --seed --python $python $runtime
+            $previousPreference = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            & $uv.Source venv --quiet --seed --python $python $runtime 2>$null
             if ($LASTEXITCODE -eq 0) {
-                & $uv.Source pip install --quiet --python $staged --no-deps --require-hashes --only-binary :all: -r $requirement
+                & $uv.Source pip install --quiet --python $staged --no-deps --require-hashes --only-binary :all: -r $requirement 2>$null
                 $installed = ($LASTEXITCODE -eq 0)
             }
+            $ErrorActionPreference = $previousPreference
             if (-not $installed) {
                 Remove-Item -LiteralPath $runtime -Recurse -Force -ErrorAction SilentlyContinue
             }
