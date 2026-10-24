@@ -53,24 +53,12 @@ def parse_shard(spec):
 def select_shard(items, shard, total):
     """Split `items` into (selected, deselected) for 1-based `shard` of `total`.
 
-    Whole modules stay together so module-scoped fixtures run once and test
-    order is kept. Modules go largest-first onto the lightest shard, which
-    balances by test count and is deterministic for every xdist worker."""
-    modules = {}
-    for item in items:
-        modules.setdefault(item.nodeid.split("::")[0], []).append(item)
-    loads = [0] * total
-    owner = {}
-    for path, group in sorted(modules.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        index = loads.index(min(loads))
-        owner[path] = index
-        loads[index] += len(group)
+    Tests are dealt round-robin in collection order, so slow modules spread
+    across shards and each keeps definition order. Every xdist worker collects
+    the same list, so they all compute the same split."""
     selected, deselected = [], []
-    for item in items:
-        target = (
-            selected if owner[item.nodeid.split("::")[0]] == shard - 1 else deselected
-        )
-        target.append(item)
+    for index, item in enumerate(items):
+        (selected if index % total == shard - 1 else deselected).append(item)
     return selected, deselected
 
 

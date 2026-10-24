@@ -15,7 +15,7 @@ def _items(**counts):
     ]
 
 
-def test_shards_partition_the_suite_without_splitting_modules():
+def test_shards_partition_the_suite_and_keep_order():
     items = _items(a=5, b=3, c=3, d=1)
     seen = []
     for shard in (1, 2, 3):
@@ -24,15 +24,16 @@ def test_shards_partition_the_suite_without_splitting_modules():
         assert [i for i in items if i in selected] == selected
         seen += selected
     assert sorted(i.nodeid for i in seen) == sorted(i.nodeid for i in items)
+
+
+def test_slow_modules_spread_across_shards():
+    items = _items(slow=6, fast=6)
     for shard in (1, 2, 3):
         selected, _ = select_shard(items, shard, 3)
-        modules = {i.nodeid.split("::")[0] for i in selected}
-        for other in (1, 2, 3):
-            if other != shard:
-                theirs = {
-                    i.nodeid.split("::")[0] for i in select_shard(items, other, 3)[0]
-                }
-                assert not modules & theirs
+        assert {i.nodeid.split("::")[0] for i in selected} == {
+            "tests/slow.py",
+            "tests/fast.py",
+        }
 
 
 def test_single_shard_selects_everything():

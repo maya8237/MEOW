@@ -42,14 +42,16 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.12", "3.13", "3.14"]
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
         exclude:
           # Only Windows is slow enough to be worth sharding.
           - os: ubuntu-latest
             shard: 2
           - os: ubuntu-latest
             shard: 3
-    name: test (${{ matrix.os }}, ${{ matrix.python-version }}${{ matrix.os == 'windows-latest' && format(', shard {0}/3', matrix.shard) || '' }})
+          - os: ubuntu-latest
+            shard: 4
+    name: test (${{ matrix.os }}, ${{ matrix.python-version }}${{ matrix.os == 'windows-latest' && format(', shard {0}/4', matrix.shard) || '' }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +70,7 @@ jobs:
         id: test-suite
         shell: bash
         env:
-          MEOW_TEST_SHARD: ${{ matrix.os == 'windows-latest' && format('{0}/3', matrix.shard) || '1/1' }}
+          MEOW_TEST_SHARD: ${{ matrix.os == 'windows-latest' && format('{0}/4', matrix.shard) || '1/1' }}
         run: python -m pytest -q -n 4 --dist worksteal -p no:cacheprovider --durations=30 --durations-min=0.1 2>&1 | tee test-output.log
       # Job logs need sign-in; annotations are public, so surface the tail
       # of the captured output there on failure.
