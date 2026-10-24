@@ -24,3 +24,12 @@ jobs:
           T 'uv pip install requirements-release.txt (cold cache)' { uv pip install --quiet --python "$t\v3\Scripts\python.exe" -r requirements-release.txt }
           T 'pip install requirements-release.txt (venv1)' { & "$t\v1\Scripts\python.exe" -m pip install --disable-pip-version-check --no-input -r requirements-release.txt }
           T 'csc launcher compile' { & "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe "/out:$t\meow.exe" scripts\release\Launcher.cs }
+      - name: Time the real install.ps1, line by line
+        shell: pwsh
+        run: |
+          $h = Join-Path $env:RUNNER_TEMP 'diag-home'; New-Item -ItemType Directory $h | Out-Null
+          $env:USERPROFILE = $h; $env:HOME = $h
+          $script = [IO.File]::ReadAllText("$PWD\scripts\install.ps1")
+          $start = Get-Date
+          "n`nn`n" | & { Invoke-Expression $script; exit $LASTEXITCODE } *>&1 | ForEach-Object { '{0,6:N1}s  {1}' -f ((Get-Date) - $start).TotalSeconds, $_ }
+          '{0,6:N1}s  total' -f ((Get-Date) - $start).TotalSeconds
