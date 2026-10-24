@@ -45,8 +45,13 @@ jobs:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@v5
         with:
-          enable-cache: true
-          cache-dependency-glob: pyproject.toml
+          enable-cache: false
+      # --system installs into the hosted toolcache on C:, but uv's default
+      # cache is on D:, so uv would copy every package instead of hardlinking.
+      - name: Keep uv's cache on the same drive as the interpreter
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_ENV -Value 'UV_CACHE_DIR=C:\uv-cache'
       - run: uv pip install --system -e ".[dev]"
       - run: python -m pytest -q -n 4 --dist worksteal --durations=30
         shell: bash
@@ -64,7 +69,7 @@ jobs:
         os: [ubuntu-22.04, ubuntu-22.04-arm, windows-latest]
         # Each scenario repeats the first install, but they run in parallel
         # instead of one after another (every install is a full dependency install).
-        scenario: [install, reinstall, other-python, update]
+        scenario: [install, reinstall, other-python, update, pip-only]
     name: smoke (${{ matrix.os }}, ${{ matrix.scenario }})
     runs-on: ${{ matrix.os }}
     steps:
@@ -85,18 +90,17 @@ jobs:
       # Only the pip-only pass uses pip's download cache, and it runs under a
       # temporary HOME, so point the cache at a path that survives between runs.
       - uses: actions/cache@v4
-        if: matrix.scenario == 'install'
+        if: matrix.scenario == 'pip-only'
         with:
           path: ${{ runner.temp }}/pip-cache
           key: smoke-pip-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('requirements-release.txt') }}
       - name: Install from this checkout's source through the streamed installer
+        if: matrix.scenario != 'pip-only'
         run: python scripts/smoke_release.py
         env:
           SMOKE_SCENARIO: ${{ matrix.scenario }}
-          PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
-          PIP_NO_COMPILE: '1'
-      - name: Install again with uv hidden, so the pip path stays covered
-        if: matrix.scenario == 'install'
+      - name: Install with uv hidden, so the pip path stays covered
+        if: matrix.scenario == 'pip-only'
         run: python scripts/smoke_release.py --pip-only
         env:
           SMOKE_SCENARIO: install
