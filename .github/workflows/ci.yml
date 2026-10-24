@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+# Keep each workflow within 20 parallel jobs (the hosted-runner limit) so none
+# of its jobs queue: 15 Windows shards + 3 Ubuntu + frontend = 19, leaving
+# one slot for the Pages workflow that also starts on pushes to main.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   # A newer push to a PR makes the older run's results moot; never cancel main or tags.
@@ -47,7 +50,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.12", "3.13", "3.14"]
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5]
         exclude:
           # Only Windows is slow enough to be worth sharding.
           - os: ubuntu-latest
@@ -58,9 +61,7 @@ jobs:
             shard: 4
           - os: ubuntu-latest
             shard: 5
-          - os: ubuntu-latest
-            shard: 6
-    name: test (${{ matrix.os }}, ${{ matrix.python-version }}${{ matrix.os == 'windows-latest' && format(', shard {0}/6', matrix.shard) || '' }})
+    name: test (${{ matrix.os }}, ${{ matrix.python-version }}${{ matrix.os == 'windows-latest' && format(', shard {0}/5', matrix.shard) || '' }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -88,8 +89,14 @@ jobs:
         id: test-suite
         shell: bash
         env:
-          MEOW_TEST_SHARD: ${{ matrix.os == 'windows-latest' && format('{0}/6', matrix.shard) || '1/1' }}
+          MEOW_TEST_SHARD: ${{ matrix.os == 'windows-latest' && format('{0}/5', matrix.shard) || '1/1' }}
         run: python -m pytest -q -n 4 --dist worksteal -p no:cacheprovider --durations=30 --durations-min=0.1 2>&1 | tee test-output.log
+      # Linting runs once, here, to stay within the runner limit of parallel jobs.
+      - name: Run ruff
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: |
+          ruff check .
+          ruff format --check .
       # Job logs need sign-in; annotations are public, so surface the tail
       # of the captured output there on failure.
       - name: Surface test-suite failures as an annotation
@@ -97,21 +104,3 @@ jobs:
         shell: bash
         run: |
           tail -n 60 test-output.log | sed 's/%/%25/g; s/\r/%0D/g' | awk '{printf "%s%%0A", $0}' | { printf '::error::'; cat; printf '\n'; }
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: pyproject.toml
-      - name: Install meow (editable, with dev extras)
-        run: uv pip install --system -e ".[dev]"
-      - name: Run ruff
-        run: |
-          ruff check .
-          ruff format --check .
