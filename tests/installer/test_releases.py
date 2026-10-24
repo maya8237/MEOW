@@ -250,6 +250,7 @@ def test_stage_bundle_installs_only_the_hashed_wheel(tmp_path, monkeypatch):
     from meow.installer import releases
 
     calls = []
+    monkeypatch.setattr(releases.shutil, "which", lambda name: None)
     monkeypatch.setattr(releases, "_run", lambda *argv, **kw: calls.append(argv) or "")
     bundle = tmp_path / "work" / "bundle"
     bundle.mkdir(parents=True)
@@ -259,6 +260,40 @@ def test_stage_bundle_installs_only_the_hashed_wheel(tmp_path, monkeypatch):
     assert requirement == "meow-harness==0.2.0 --hash=sha256:" + "a" * 64 + "\n"
     pip = calls[1]
     assert {"--no-deps", "--require-hashes", "--only-binary"} <= set(pip)
+
+
+def test_pip_uses_uv_only_when_installed(monkeypatch):
+    from meow.installer import releases
+
+    calls = []
+    monkeypatch.setattr(releases, "_run", lambda *argv, **kw: calls.append(argv) or "")
+    monkeypatch.setattr(releases.shutil, "which", lambda name: "/bin/uv")
+    releases._pip(Path("python"), "-r", "lock")
+    assert calls == [
+        ("uv", "pip", "install", "--quiet", "--python", "python", "-r", "lock")
+    ]
+    calls.clear()
+    monkeypatch.setattr(releases.shutil, "which", lambda name: None)
+    releases._pip(Path("python"), "-r", "lock")
+    assert calls[0][1:4] == ("-m", "pip", "install")
+
+
+def test_pip_retries_with_pip_when_uv_fails(monkeypatch, capsys):
+    from meow.installer import releases
+
+    calls = []
+
+    def run(*argv, **kwargs):
+        calls.append(argv)
+        if argv[0] == "uv":
+            raise RuntimeError("no matching index")
+        return ""
+
+    monkeypatch.setattr(releases, "_run", run)
+    monkeypatch.setattr(releases.shutil, "which", lambda name: "/bin/uv")
+    releases._pip(Path("python"), "-r", "lock")
+    assert [call[0] for call in calls] == ["uv", "python"]
+    assert "uv failed; retrying with pip" in capsys.readouterr().out
 
 
 def test_activation_switches_launcher_after_plugin_registration(tmp_path, monkeypatch):
