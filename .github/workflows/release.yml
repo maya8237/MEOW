@@ -63,7 +63,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, ubuntu-22.04-arm, windows-latest]
         # Each scenario repeats the first install, but they run in parallel
-        # instead of one after another (every install is a full pip run).
+        # instead of one after another (every install is a full dependency install).
         scenario: [install, reinstall, other-python, update]
     name: smoke (${{ matrix.os }}, ${{ matrix.scenario }})
     runs-on: ${{ matrix.os }}
@@ -73,18 +73,19 @@ jobs:
         with:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@v5
-      # The installer's own pip runs under a temporary HOME, so point its
-      # download cache at a path that survives between runs.
-      - uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/pip-cache
-          key: smoke-pip-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('requirements-release.txt') }}
+          enable-cache: false
+      # The installer puts its runtime under the user profile on C:, but uv's
+      # default cache is on D:. uv copies every file across drives instead of
+      # hardlinking, which costs ~20s per install on Windows.
+      - name: Keep uv's cache on the same drive as the installed runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_ENV -Value 'UV_CACHE_DIR=C:\uv-cache'
       - name: Install from this checkout's source through the streamed installer
         run: python scripts/smoke_release.py
         env:
           SMOKE_SCENARIO: ${{ matrix.scenario }}
-          PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
-          PIP_NO_COMPILE: '1'
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
