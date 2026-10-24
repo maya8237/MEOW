@@ -289,8 +289,8 @@ def finish_bundle(bundle: Path, destination: Path) -> None:
     _swap(bundle, destination)
 
 
-def install_release(tag: str, digest: str) -> None:
-    """Install TAG's wheel with the newest Python, then activate it."""
+def install_release(tag: str, digest: str) -> Path:
+    """Install TAG's wheel with the newest Python, activate it, return its path."""
     maintenance._version_parts(tag)
     python = find_python()
     versions = Path.home() / ".meow" / "versions"
@@ -325,6 +325,7 @@ def install_release(tag: str, digest: str) -> None:
         "--activate",
         str(destination),
     )
+    return destination
 
 
 def _validate_release(release: Path, tag: str) -> None:

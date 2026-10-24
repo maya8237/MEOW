@@ -43,6 +43,10 @@ Python 3.12+ found. The installer registers the plugin before switching
 launchers in `~/.meow/bin`; config, caches, and earlier runtimes are retained.
 Failures return nonzero. Keep runtimes used by workers/schedules. Rerun the installer
 for setup prompts or editable-install migration; remove obsolete launchers shadowing PATH.
+After installing, it lists the onboarding options added since the previous
+version, read from the new release, and suggests `/meow:onboard` in each project.
+It checks no project, so options already configured are still listed. Listing is
+best-effort and skipped for checkout installs.
 
 Public commands warn on stderr about newer versions, silently ignoring network
 failures; `--check-update` checks only. Internal workers skip this check.

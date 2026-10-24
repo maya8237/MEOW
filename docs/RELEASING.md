@@ -12,6 +12,12 @@ and both plugin manifests, runs tests and lint, installs the checkout through th
 real installers on each platform, then publishes. No prefix, alias tag, or manual
 version edits are needed. Commits to `main` alone do not update users.
 
+The tag also replaces `"unreleased"` in `src/meow/project/announcements.py`, the
+onboarding options `meow --update` lists; an entry tagged after the release
+fails it. After publishing the newest release, the workflow commits the new
+versions and only the announcements that tag shipped to `main`. If `main` is
+protected, let GitHub Actions bypass that rule.
+
 MEOW is published to PyPI as `meow-harness` (the import package and `meow`
 command are unchanged). The Release workflow's publish job builds the sdist and
 wheel, uploads them with PyPI trusted publishing (no stored token), reads the
