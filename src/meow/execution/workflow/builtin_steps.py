@@ -24,8 +24,10 @@ from meow.execution.orchestrator import (
 from meow.infrastructure.cancellation import RunCancelled
 from meow.infrastructure.checks import (
     adopt_stage_artifacts,
+    checks_current,
     completion_ready,
     configured_checks,
+    reusable_results,
     run_final_checks,
     stage_baseline,
 )
@@ -204,6 +206,20 @@ async def generate(state):
 
 
 async def review(state, step):
+    from meow.infrastructure.verification_policy import behavior_changed
+
+    if state.flags.get("auto_test") and not state.flags.get("test_requested"):
+        state.test = await asyncio.to_thread(
+            behavior_changed, state.sprint.active_working_dir()
+        )
+        reason = (
+            "behavior changed or unknown"
+            if state.test
+            else "documentation-only changes"
+        )
+        state.store.update_results(
+            state.run_id, test=state.test, tester_selection=reason
+        )
     if state.plan_file:
         status, verdict = await _review_round(
             state.sprint, state.plan_file, state.round or 1, test=state.test
@@ -253,6 +269,58 @@ def evidence_ready(state):
     )
 
 
+def _verify_verdict(results) -> tuple[str, str]:
+    failed = [item for item in results if item.required and not item.passed]
+    if not failed:
+        return "PASS", "SUMMARY: Automated checks passed.\nSTATUS: PASS"
+    details = "\n\n".join(
+        f"{item.kind} `{item.command}` "
+        + ("timed out" if item.timed_out else f"exited {item.exit_code}")
+        + f":\n{item.output[-2000:]}"
+        for item in failed
+    )
+    return "FAIL", f"SUMMARY: Automated checks failed.\nSTATUS: FAIL\n{details}"
+
+
+async def verify(state, step):
+    """Run the configured gates before the AI review so a failure costs no agent."""
+    active = state.sprint.active_working_dir()
+    state.journal("checking")
+    state.sprint.config.pop("_workflow_checks", None)
+    state.checks_results = await run_final_checks(
+        active, state.sprint.config, hook_lint=True
+    )
+    lint = [item for item in state.checks_results if item.kind == "lint"]
+    mode = (
+        "hook-verified"
+        if lint and all("hook ledger" in item.output for item in lint)
+        else "run"
+    )
+    logger.info("lint_verification", mode=mode)
+    state.store.update_results(state.run_id, lint_verification=mode)
+    state.checks_baseline = await asyncio.to_thread(stage_baseline, active)
+    state.sprint.config["_workflow_checks"] = (
+        state.checks_results,
+        state.checks_baseline,
+    )
+    status, verdict = _verify_verdict(state.checks_results)
+    if status == "PASS" and not checks_current(
+        state.checks_results,
+        configured_checks(state.sprint.config),
+        active,
+        state.checks_baseline.revision,
+    ):
+        status, verdict = (
+            "FAIL",
+            (
+                "SUMMARY: Checks changed source or configuration; evidence is stale.\n"
+                "STATUS: FAIL\nFix checks that keep modifying source, then reverify."
+            ),
+        )
+    state.gate_result(replace(step, blocks="loop"), status, verdict)
+    return status
+
+
 async def checks(state):
     state.block_delivery()
     if not config_paths(state.checks_dir):
@@ -260,7 +328,17 @@ async def checks(state):
     state.journal("checking")
     active = state.sprint.active_working_dir()
     baseline = await asyncio.to_thread(stage_baseline, active)
-    state.checks_results = await run_final_checks(active, state.sprint.config)
+    reused = await reusable_results(
+        active,
+        state.sprint.config,
+        state.checks_results or [],
+        state.checks_baseline,
+    )
+    state.checks_results = (
+        reused
+        if reused is not None
+        else await run_final_checks(active, state.sprint.config)
+    )
     await asyncio.to_thread(
         adopt_stage_artifacts, state.store, state.run_id, active, baseline
     )
@@ -301,6 +379,8 @@ async def deliver(state):
 async def run_builtin(state, step):
     if step.target == "builtin.review":
         return await review(state, step)
+    if step.target == "builtin.verify":
+        return await verify(state, step)
     functions = {
         "knowledge": knowledge,
         "shape": shape,

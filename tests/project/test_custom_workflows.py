@@ -151,3 +151,38 @@ def test_fingerprint_includes_configured_compatibility_delegates(tmp_path):
     )
     catalog = load_config(tmp_path)["customizations"]
     assert fingerprint(catalog.workflow("default"), catalog) != before
+
+
+def test_quick_checks_before_review_and_keeps_plan_approval():
+    definitions = discover(builtin_sources())
+    quick = definitions.workflow("quick")
+    targets = [step.target for step in expand(quick, definitions)]
+    loop = next(step for step in expand(quick, definitions) if step.kind == "loop")
+    assert [s.target for s in loop.body] == [
+        "builtin.generate",
+        "builtin.verify",
+        "builtin.review",
+    ]
+    assert "builtin.approve_plan" in targets  # -m / --manually-approve-plan
+    assert "builtin.tasks" not in targets
+    assert quick.auto_test is False and quick.short_plan is True
+
+
+def test_workflow_flags_default_and_parse(tmp_path):
+    plain = catalog(tmp_path, '[[steps]]\nid = "a"\nuses = "builtin.generate"')
+    workflow = plain.workflow("custom")
+    assert workflow.auto_test is True and workflow.short_plan is False
+    custom = catalog(
+        tmp_path,
+        'auto_test = false\nshort_plan = true\n[[steps]]\nid = "a"\n'
+        'uses = "builtin.generate"',
+    )
+    workflow = custom.workflow("custom")
+    assert workflow.auto_test is False and workflow.short_plan is True
+
+
+def test_workflow_flags_must_be_booleans(tmp_path):
+    with pytest.raises(ValueError, match="auto_test must be true or false"):
+        catalog(
+            tmp_path, 'auto_test = "no"\n[[steps]]\nid = "a"\nuses = "builtin.generate"'
+        )

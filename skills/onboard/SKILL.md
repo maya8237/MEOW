@@ -126,6 +126,11 @@ Windows, or systemd user timers on Linux, through `/meow:schedule` and
 runs. Tester mode is optional and should only be
 enabled after its commands are verified. Warn that configured
 `[[tester.tests]]` commands enable the tester on every run, without `--test`.
+If step 1 found a test command (`pytest`, `npm test`, `make test`), propose it as a
+`[[tester.tests]]` entry, run it once to confirm it works, and add it only on
+approval.
+Offer `[tester] write_tests` (default false) only if the user wants the tester
+to add new tests to the repository.
 
 For every accepted feature that needs an MCP (Jira, GitLab, GitHub, Tester
 mode), check first whether the session has its tools and whether the CLI
@@ -174,11 +179,11 @@ When an optional feature is accepted, use the matching documented path:
   install it with `meow hooks install claude --only lint` after approval.
   Show its event, command, and effects; verify its status and keep failures
   advisory unless made a gate explicitly. CLI runs already use SDK lint hooks.
+  Both hooks record `.meow/lint-ledger.jsonl`; verify reuses lint only with an
+  active installation and matching successful content/config evidence.
 
-If architecture or other project knowledge is requested, inspect the existing
-source and docs first, create only the accepted document, mark uncertainty, and
-review the result. Do not modify application code as part of documentation-only
-onboarding.
+For requested knowledge docs, inspect source/docs first, mark uncertainty, and review.
+Keep documentation-only onboarding free of application code changes.
 
 ## 4. Verify
 
@@ -188,9 +193,7 @@ confirm accepted settings appear. Report each failed or unchecked component and
 continue independent work. A configured MCP is not proof of connectivity until
 a real tool call succeeds.
 
-If verification reports a failure, capture the exact component and leave
-independent setup intact. In interactive mode ask whether to fix the failure
-component by component; in automatic mode leave unsafe or dependent settings
-disabled. Summarize changed files, configured features, command results,
-skipped choices, and the next command for each declined option. Never print
-secret values.
+Report failed/unchecked components and preserve independent setup. Ask about fixes
+in interactive mode; automatically leave unsafe/dependent settings disabled.
+Summarize files, features, command results, skipped choices, and next commands
+for declined options. Never print secret values.

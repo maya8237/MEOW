@@ -36,6 +36,7 @@ def _dispatch_jira_build(args, working_dir: Path) -> None:
                 args.jira or None,
                 approve_plan=approve_plan,
                 **({"test": True} if args.test else {}),
+                **({"force_disable_tests": True} if args.force_disable_tests else {}),
                 **({"workflow": args.workflow} if args.workflow else {}),
                 **({"inputs": parse_inputs(args.input)} if args.input else {}),
             )
@@ -69,6 +70,7 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
                 **({"workflow": args.workflow} if args.workflow else {}),
                 **({"inputs": parse_inputs(args.input)} if args.input else {}),
                 **({"test": True} if args.test else {}),
+                **({"force_disable_tests": True} if args.force_disable_tests else {}),
                 **(
                     {"pipeline_options": opts}
                     if (opts := pipeline_overrides(args))
@@ -106,6 +108,8 @@ def _dispatch_review(args, working_dir: Path) -> None:
         }
         if args.github is not None:
             review_kwargs["github_link"] = args.github
+        if args.force_disable_tests:
+            review_kwargs["force_disable_tests"] = True
         if args.test:
             review_kwargs["test"] = True
         if args.scope != "auto":

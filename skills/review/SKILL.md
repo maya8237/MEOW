@@ -7,6 +7,8 @@ description: Use when reviewing existing code or fixing review findings against 
 
 Runs **natively** by default. Read [the shared protocol](../_shared/native-mode.md)
 first. Use **CLI mode** when requested, or for CI and tester flows. Dependency or install problems: [dependencies](../_shared/dependencies.md).
+Test suppression uses CLI with `--force-disable-tests`; it overrides `--test`,
+disables the tester/test/browser gates, and retains lint/build checks.
 
 ## Pick the source (exactly one) and the mode
 

@@ -190,7 +190,7 @@ def _validate_semantics(command: str, repo: Path, parser, parsed) -> None:
                     Path(parsed.plan) if parsed.plan else None,
                     Path(parsed.review_file) if parsed.review_file else None,
                     github_link=parsed.github,
-                    test=parsed.test,
+                    test=parsed.test and not parsed.force_disable_tests,
                 )
             if command in {"run", "plan"}:
                 _validate_feature_name_requirement(parser, parsed, repo)

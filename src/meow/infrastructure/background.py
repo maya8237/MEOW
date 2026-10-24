@@ -339,6 +339,11 @@ def worker_main(  # ruff: ignore[too-many-statements]
                     repo,
                     args.jira or None,
                     test=args.test,
+                    **(
+                        {"force_disable_tests": True}
+                        if args.force_disable_tests
+                        else {}
+                    ),
                     run_id=run_id,
                     **({"workflow": args.workflow} if args.workflow else {}),
                     **({"inputs": parse_inputs(args.input)} if args.input else {}),
@@ -355,6 +360,11 @@ def worker_main(  # ruff: ignore[too-many-statements]
                     source_branch=args.source_branch,
                     resume_at=args.resume_at,
                     test=args.test,
+                    **(
+                        {"force_disable_tests": True}
+                        if args.force_disable_tests
+                        else {}
+                    ),
                     run_id=run_id,
                     record_root=repo,
                     **(

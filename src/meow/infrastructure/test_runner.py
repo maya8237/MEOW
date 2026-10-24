@@ -659,9 +659,13 @@ async def prepared_test_stage(active_dir: Path, config: dict):
             owned, url = await _start_server_with_fallback(active_dir, server)
             servers.append(owned)
             urls.append(url)
-        commands = []
-        for command in tester.get("tests", []):
-            commands.append(await _run_test_tolerating_advisory(active_dir, command))
+        commands = await _cached_commands(active_dir, config)
+        if commands is None:
+            commands = []
+            for command in tester.get("tests", []):
+                commands.append(
+                    await _run_test_tolerating_advisory(active_dir, command)
+                )
         browser = await _run_browser(active_dir, tester, tuple(urls))
         yield VerificationStageEvidence(
             tuple(commands), tuple(urls), (browser,) if browser else ()
@@ -669,3 +673,25 @@ async def prepared_test_stage(active_dir: Path, config: dict):
     finally:
         for process in reversed(servers):
             await _terminate(process)
+
+
+async def _cached_commands(active_dir: Path, config: dict):
+    from meow.infrastructure.checks import cached_workflow_results
+
+    cached = await cached_workflow_results(active_dir, config)
+    if cached is None:
+        return None
+    results = [item for item in cached if item.kind == "test"]
+    return [
+        VerificationCommandEvidence(
+            resolve_command_cwd(active_dir, command.cwd),
+            command.command,
+            result.exit_code,
+            result.output,
+            result.timed_out,
+            command.gate,
+        )
+        for command, result in zip(
+            config.get("tester", {}).get("tests", []), results, strict=True
+        )
+    ]

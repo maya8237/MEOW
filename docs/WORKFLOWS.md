@@ -8,9 +8,11 @@ meow run "Add a dark mode toggle" --name dark-mode --workflow quick
 meow run "Audit the API" --workflow review-and-fix --no-worktree --input topic=API
 ```
 
-- `default`: knowledge → shaping → plan/approval → task graph → generation/review → checks → delivery.
-- `quick`: omits knowledge/shaping.
-- `review-and-fix`: reviews existing code first, fixes later failures, checks, no automatic delivery.
+- `default`: knowledge → shaping → plan/approval → tasks → loop{generate, verify, review} → checks → delivery.
+- `quick`: short plan (`-m` pauses to approve), then ≤3 rounds of generate → checks → review
+  (review waits for passing checks), final checks, delivery. No knowledge/shaping/task
+  graph; configured tests don't enable the AI tester.
+- `review-and-fix`: verifies/reviews existing code first, fixes failures, final checks; no delivery.
   `--test` works without a plan, using the request as its basis.
 
 Plan-based reviewers/testers also receive the original request, including on
@@ -18,15 +20,14 @@ resume. They must verify every criterion from observed behavior; passing tests
 alone cannot excuse requirements lost/weakened in a plan. Ejected definitions
 replace this prose and need equivalent instructions.
 
-Planner task graphs are validated for dependencies/file ownership. Invalid
-graphs get one planner repair using `task_graph_repair` (custom fragment or
-shipped default), preserving plan/contract. Failed repair falls back to
-sequential generation and journals the reason; absent graphs need no repair.
+Invalid task dependencies/ownership get one `task_graph_repair` attempt, preserving
+the plan/contract. Failed repair journals the reason and uses sequential generation.
 
 `--workflow NAME` overrides `[workflow].default` (otherwise `"default"`).
 Repeated `--input name=value` supplies identifier-keyed strings; values may
 contain `=` or be empty, and last wins. Inputs persist with journal redaction.
 Workflow flags support Jira/background runs but reject lint-fix.
+See [verification](VERIFICATION.md) for `auto_test`, `short_plan`, test selection, and hook reuse.
 
 ## Resolution and editing
 
@@ -77,8 +78,7 @@ Write findings to {{output_file}}.
 '''
 ```
 
-Hyphens map to underscores for config/permission/session roles.
-Model order: explicit `[models].role`, agent model, role/reviewer fallback.
+Hyphens map to underscores for roles. Model order: `[models].role`, agent, role/reviewer fallback.
 `inherit` supplies no explicit model; built-in explorer uses haiku.
 Installed default/role skill lists combine with definition and discovered skills.
 
@@ -109,7 +109,7 @@ Conditions allow dotted identifiers, quoted strings, integers, booleans,
 |---|---|
 | `plan_given`, `resume_review`, `review_first`, `parallel`, `test`, `bug_mode`, `checks_configured` | Run flags; review_first includes resume-review/parallel tasks |
 | `round`, `feedback`, `steps.<id>.status`, `inputs.<name>` | Loop state, failed-gate feedback, PASS/FAIL/done/skipped results, input strings |
-| `active_dir`, `docs_dir`, `request`, `feature_name`, `check_worktree_hygiene` | Run context |
+| `active_dir`, `docs_dir`, `request`, `feature_name`, `check_worktree_hygiene`, `write_tests` | Run context |
 | `plan_file`, `review_file`, `report_file`, `output_file` | Invocation artifact paths |
 | `shape`, `preplan`, `lint_instructions`, `focus` | Computed shaping/lint/review context |
 | `review_basis`, `has_diff`, `request_label`, `target`, `branch`, `source_sha`, `target_sha`, `merge_base` | Review scope |
@@ -174,9 +174,10 @@ policy; discovered agent names are valid roles, unknown names fail config.
 `builtin.knowledge` gathers evidence; `shape` resolves requirements/breadboards;
 `plan` writes/claims the plan; `approve_plan` invokes manual approval;
 `tasks` integrates task worktrees; `generate` implements/fixes;
-`review` reviews/optionally tests; `checks` records current lint/test/build/browser
-evidence; `deliver` performs verified delivery. Include checks when completion
-needs deterministic verification. Reviewer PASS is required by checks only if
+`review` reviews/optionally tests; `verify` runs the checks inside a loop and
+fails the round with their output; `checks` records current lint/test/build/browser
+evidence, reusing `verify` results only when source/config are unchanged (resume reruns).
+`deliver` performs verified delivery. Reviewer PASS is required by checks only if
 builtin.review exists. Delivery gates must pass before checks/delivery.
 
 Builtins retain phase names. Custom stages journal stage_started/stage_finished
@@ -186,9 +187,8 @@ latest-plan lookup excludes them. All steps honor cancellation, accounting,
 and timeout. Only SDK crash recovery and explicit loops retry. Custom workflow
 steps run once per run, not once per task.
 
-Status shows workflow scope/name and stages. Journals retain the resolved
-fingerprint (including called workflows/roles/delegates), completed top-level
-IDs, and active loop/step. Resume reloads that workflow, rejects changed
+Status shows workflow and stages. Journals retain resolved fingerprints,
+completed top-level IDs, and active loop/step. Resume rejects changed
 definitions, skips completed top-level steps, and enters interrupted loops
 review-first. Evidence freshness/delivery guards still apply.
 Legacy journals select default regardless of current config; role session IDs

@@ -87,7 +87,8 @@ blocker, evidence, and continuation command; do not claim delivery.
 Choose a workflow when the user names one: pass `--workflow <name>` to
 `meow run`. Inspect available choices with `meow workflows list` and
 `meow workflows show <name>`. Shipped choices are `default` (the full run),
-`quick` (omits knowledge and shaping), and `review-and-fix` (reviews and fixes
+`quick` (short auto-approved plan, checks before review; `-m` still pauses for approval),
+and `review-and-fix` (reviews and fixes
 existing code, with checks and no automatic delivery). Without a flag, honor
 `[workflow] default` in config. Pass named inputs as repeated
 `--input name=value` flags. Custom workflows execute through CLI mode;
@@ -97,6 +98,8 @@ When the user requests `--test`, or asks to run tests, test it, or validate
 behavior, pass `--test` to
 `meow run` (including Jira and `--resume-at review` flows); configured servers
 stay alive throughout tester validation.
+If the user asks to disable tests, pass `--force-disable-tests`: it overrides
+`--test`, skips the AI tester and configured test/browser gates, and keeps lint/build.
 
 For ordinary sprints, run from the project root (separate SDK sessions, headless):
 

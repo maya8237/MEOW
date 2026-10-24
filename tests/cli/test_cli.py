@@ -1203,6 +1203,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @patch("meow.execution.run_policy._ensure_clean_tree")
     @patch("meow.cli.cli._boot_repo")
     @patch("meow.cli.dispatch.run_sprint", new_callable=AsyncMock)
+    @patch("meow.infrastructure.worktree._is_linked_worktree", new=lambda _: False)
     def test_source_branch_is_passed_through_and_skips_the_clean_tree_check(
         mock_sprint, mock_boot, mock_clean_tree, _mock_linked
     ):
@@ -1239,6 +1240,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     @patch("meow.execution.run_policy._ensure_clean_tree")
     @patch("meow.cli.cli._boot_repo")
     @patch("meow.cli.dispatch.run_sprint", new_callable=AsyncMock)
+    @patch("meow.infrastructure.worktree._is_linked_worktree", new=lambda _: False)
     def test_source_branch_accepts_the_from_alias(
         mock_sprint, mock_boot, mock_clean_tree, _mock_linked
     ):

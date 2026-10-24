@@ -153,6 +153,22 @@ def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-bra
         lines.append(f"Worker log: {worker.log or 'unavailable'}")
         if worker.pid is not None:
             lines.append(f"Worker PID: {worker.pid}")
+    if record.results.get("force_disable_tests"):
+        lines.append(
+            "Tests: SKIPPED (--force-disable-tests): "
+            + ", ".join(record.results.get("skipped_checks", []))
+        )
+    elif record.results.get("tester_selection") == "documentation-only changes":
+        lines.append("Tester: SKIPPED (documentation-only changes)")
+    if record.results.get("lint_verification"):
+        lines.append(f"Lint verification: {record.results['lint_verification']}")
+    if "tester_commands" in record.results and record.results.get("test", True):
+        note = (
+            ""
+            if record.results["tester_commands"]
+            else " (no configured test commands)"
+        )
+        lines.append(f"Tester: {record.results.get('tester', 'unavailable')}{note}")
     lines.extend(_gate_lines(record.results))
     lines.extend(_pipeline_lines(record.delivery))
     lines.extend(f"Quality concern: {item.path} — {item.impact}" for item in concerns)

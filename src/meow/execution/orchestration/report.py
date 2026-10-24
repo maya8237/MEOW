@@ -221,6 +221,8 @@ def render_status(record: OrchestratorRecord) -> str:
             f"  {task.id}: {task.status}, cycles {task.cycles}, "
             f"branch {task.branch or '-'}, run {run}"
         )
+    if record.options.get("force_disable_tests"):
+        lines.append("Tests: SKIPPED (--force-disable-tests); lint/build retained")
     lines.extend(blocker_lines(record))
     if record.error:
         lines.append(f"Error in {record.error['phase']}: {record.error['message']}")

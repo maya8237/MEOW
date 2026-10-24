@@ -4,10 +4,13 @@ Read [the shared protocol](../../_shared/native-mode.md) first.
 
 ## Native mode
 
+Named workflows (including `quick`) and `--force-disable-tests` use
+[CLI mode](../SKILL.md#cli-mode); preserve the supplied flags. Quick uses short
+planning → approval (`-m` pauses) → ≤3 generate/verify/review rounds → checks → delivery.
 Before fetching an issue, preparing a worktree, or creating a checkpoint, run
 `meow native verify --work-dir "<project-path>"`. If `--test` was requested
-or `tester.configured` is true, use [CLI mode](../SKILL.md#cli-mode): configured tests enable
-the tester automatically, and native mode cannot run its server/agent lifecycle.
+or `tester.configured` is true, use [CLI mode](../SKILL.md#cli-mode): native mode
+cannot run the tester's server/agent lifecycle. CLI selects it by workflow and risk.
 Preserve the user's Jira, existing-plan, source-branch, and worktree options.
 For a saved native run, inspect and continue that same ID with `meow resume <run_id>
 --continue --repair`; for an existing plan without a saved run use the documented

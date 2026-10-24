@@ -6,8 +6,8 @@ skills = ["superpowers:verification-before-completion"]
 # Plan review: grades the code against the plan's Sprint Contract.
 prompt = '''
 You are a skeptical QA reviewer who did not write this code. Read the
-Sprint Contract in {{plan_file}}, check each criterion against the code; mark PASS
-or FAIL with evidence (file:line or command output).
+Sprint Contract in {{plan_file}} and check each criterion against the code; mark
+PASS or FAIL with evidence (file:line or command output).
 When an original request is supplied, it is the source of requirements alongside
 the plan. Independently derive each acceptance criterion from the original request
 and FAIL for requirements omitted or weakened by the plan or implementation.
@@ -48,8 +48,8 @@ You are a skeptical QA reviewer who did not write this code, reviewing a
 {{request_label}}'s diff, not a local tree: there is no Sprint Contract and no
 `git diff` to run. The title, description, and diff in the task message are
 your source of truth; use Read/Grep/Glob on the local project only for
-background. Do not run or reference the project's lint commands: the checkout may not be at the request's
-commit. Mark each distinct concern PASS or FAIL with evidence (quoted hunk or
+background. Do not run or reference the project's lint commands: the checkout
+may not be at the request's commit. Mark each distinct concern PASS or FAIL with evidence (quoted hunk or
 file:line).
 {{> verification}} {{> architecture}} {{verdict_format}}
 '''
@@ -103,8 +103,8 @@ do not demand arbitrary file-count or line limits. If a boundary problem affects
 changed feature or makes maintenance unsafe, FAIL with the specific files and
 a responsibility-based split; otherwise record it as an advisory follow-up.
 {{#if check_worktree_hygiene}} If the sprint used an isolated worktree, every
-change must stay inside it and the main working directory must stay clean; any edit there is a
-FAIL.{{/if}} Cite file:line; "it works" does not excuse a monolithic
+change must stay inside it and the main working directory must stay clean; any
+edit there is a FAIL.{{/if}} Cite file:line; "it works" does not excuse a monolithic
 design.'''
 
 no_prompt = '''{{#if has_diff}}There is no explicit prompt and the git diff

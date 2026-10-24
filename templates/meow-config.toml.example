@@ -66,6 +66,7 @@ default = []
 # Optional tester commands and a local development server.
 # [tester]
 # test_dirs = ["tests"]
+# write_tests = false  # true lets the tester add new tests for the change
 # [[tester.tests]]
 # command = "python -m pytest -q"
 # gate = true

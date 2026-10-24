@@ -40,6 +40,11 @@ Pre-plan repository evidence: {{preplan}}
 Identify the public seam being changed, the module boundary that owns it, and
 why the placement keeps a deep, cohesive interface, citing observations. Do
 not suggest doc edits.
+{{#if short_plan}}
+Keep this plan short: at most five tasks, no task graph, and a Sprint Contract
+of a few testable criteria. Use the explorer subagent only when the
+request names no files or modules; otherwise read those files directly.
+{{/if}}
 {{#if bug_mode}}
 This is a bug fix. The plan must first reproduce the failure with a tight,
 red-capable test at the real public seam, minimise it, rank falsifiable

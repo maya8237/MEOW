@@ -274,7 +274,12 @@ def push_integration(repo: Path, store: OrchestratorStore, orch_id: str) -> str:
 
     if store.cancel_marker(orch_id).exists():
         raise RuntimeError("Orchestrator cancelled before delivery")
-    require_delivery_review(repo, record, load_config(repo))
+    config = load_config(repo)
+    if record.options.get("force_disable_tests"):
+        from meow.infrastructure.verification_policy import disable_tests
+
+        disable_tests(config)
+    require_delivery_review(repo, record, config)
     worktree = _worktree(record)
     branch = record.integration["branch"]
     if "origin" not in _git(worktree, "remote").stdout.splitlines():

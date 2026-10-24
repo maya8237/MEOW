@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meow.infrastructure.checks import run_captured_async
+from meow.infrastructure.lint_ledger import content_hash, record_lint
 from meow.infrastructure.logging import get_logger
 from meow.project.config_models import LintCommand, resolve_command_cwd
 
@@ -183,7 +184,7 @@ async def check_lint_evidence(
     return LintGateEvidence(tuple(blocking), tuple(informational))
 
 
-async def run_lint_on_file(  # ruff: ignore[complex-structure]
+async def run_lint_on_file(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements] -- scoped execution and content proof belong to the same edit
     working_dir: Path,
     commands: list[LintCommand],
     file_path: str,
@@ -191,7 +192,12 @@ async def run_lint_on_file(  # ruff: ignore[complex-structure]
 ) -> list[str]:
     """Run every per-file command, returning one report per failure."""
     problems = []
+    hashes = []
+    edited = Path(file_path.replace("\\", "/"))
+    edited = edited if edited.is_absolute() else working_dir / edited
     for entry in commands:
+        if not entry.per_file:
+            continue
         normalized_file = file_path
         raw_path = Path(file_path.replace("\\", "/"))
         if raw_path.is_absolute():
@@ -213,6 +219,16 @@ async def run_lint_on_file(  # ruff: ignore[complex-structure]
         )
         if report is not None:
             problems.append(report)
+        hashes.append(content_hash(edited))
+    if hashes:
+        record_lint(
+            working_dir,
+            commands,
+            timeout,
+            edited,
+            ok=not problems
+            and all(value and value == content_hash(edited) for value in hashes),
+        )
     return problems
 
 
@@ -250,7 +266,7 @@ def make_lint_hook(working_dir: Path, commands: list[LintCommand], timeout: floa
 
         logger.debug("lint_hook_running", file=file_path, commands=len(per_file))
         try:
-            problems = await run_lint_on_file(working_dir, per_file, file_path, timeout)
+            problems = await run_lint_on_file(working_dir, commands, file_path, timeout)
         except (
             OSError
         ) as exc:  # a file the OS won't let us inspect must not crash the turn
