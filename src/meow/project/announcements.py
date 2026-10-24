@@ -11,12 +11,12 @@ import json
 # `_GAPS` key -> (release that added the onboarding step, one-line summary).
 ANNOUNCED: dict[str, tuple[str, str]] = {
     "delivery": (
-        "unreleased",
+        "0.1.19",
         "Default PR/MR target branch ([delivery].target_branch); "
         "--target still overrides it per run.",
     ),
     "tester_write_tests": (
-        "unreleased",
+        "0.1.19",
         "Let the tester add new tests for the change ([tester] write_tests).",
     ),
 }
