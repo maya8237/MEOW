@@ -23,7 +23,7 @@ accessible organization/environment variables and secret names. Include existing
 job/workflow definitions in the inventory. Do not create/update remote variables.
 
 Check whether each candidate is available to this job's environment, branch,
-MR event, and repository. Respect protected variables, selected-repository
+MR/PR event, and repository. Respect protected variables, selected-repository
 access, fork restrictions, and environment requirements. Do not add privileged
 environments or broaden secret access merely to make a candidate available.
 GitLab File variables contain file paths, not scalar tokens: do not blindly map

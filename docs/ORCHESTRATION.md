@@ -23,7 +23,7 @@ With `--from`, select the main checkout rather than an existing linked worktree.
 | `--max-parallel N` | Concurrency, default 3 from config |
 | `--dry-run` | Save decomposition and stop; resume continues it |
 | `--test` | Configured/exploratory testing in each task |
-| `--no-pr` | Push without opening an MR |
+| `--no-mr` | Push without opening an MR |
 | `meow resume ID --continue --task T --request TEXT` | Reset a blocked task (default blocker task), optionally replace request |
 
 The starting base and MR target are independent. Auto-onboarding sets the target
@@ -71,7 +71,7 @@ Once all tasks merge, objective review checks `base...orchestrator/ID`,
 with fix rounds up to `review_rounds` (default 3). Only then is it pushed.
 MR title is `Orchestrator: FIRST OBJECTIVE LINE` (Jira sources list keys);
 the report supplies the body. Provider/creation failure leaves the branch
-delivered, emits `PR not opened: REASON` with a manual link, and exits 3.
+delivered, emits `MR not opened: REASON` with a manual link, and exits 3.
 
 Delivery prints
 `{"orchestrator":"ID","branch":"orchestrator/ID","pr":"URL or null","tasks":N}`.

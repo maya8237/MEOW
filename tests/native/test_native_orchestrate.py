@@ -912,7 +912,7 @@ def test_deliver_skips_the_pull_request_when_disabled(git_repo, monkeypatch):
     payload = orch.deliver(repo, orch_id)
 
     assert payload["open_pr"] is False
-    assert "--no-pr" in payload["skip_reason"]
+    assert "--no-mr" in payload["skip_reason"]
 
 
 def test_deliver_push_failure_fails_the_orchestrator(git_repo, monkeypatch):

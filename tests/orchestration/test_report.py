@@ -151,7 +151,7 @@ def test_report_shows_review_pr_and_error_lines(tmp_path):
     text = render_report(tmp_path, record)
 
     assert "- Pushed commit: abc123" in text
-    assert "- PR not opened: rate limited" in text
+    assert "- MR not opened: rate limited" in text
     assert (
         "- Open it manually: https://github.com/o/r/compare/main...b?expand=1" in text
     )

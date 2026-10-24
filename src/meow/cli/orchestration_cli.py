@@ -146,7 +146,7 @@ def _print_delivery(working_dir: Path, record: OrchestratorRecord) -> None:
     pr = record.delivery.get("pr")
     if pr is None and record.options.get("pr", True):
         reason = record.delivery.get("pr_error") or "unknown reason"
-        print(f"PR not opened: {reason}", file=sys.stderr)
+        print(f"MR not opened: {reason}", file=sys.stderr)
         link = _manual_link(working_dir, record)
         if link:
             print(f"Open it manually: {link}", file=sys.stderr)

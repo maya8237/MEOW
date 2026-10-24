@@ -25,7 +25,7 @@ of fighting for it.
    `--tasks <file>`), adding `--from <branch>` (base branch, default the current
    one), `--target BRANCH` (MR target, otherwise `[delivery].target_branch`),
    `--max-parallel N`, `--test` (each task also runs the configured
-   tests), or `--no-pr` when the user asked for them. Without `--from`, the
+   tests), or `--no-mr` when the user asked for them. Without `--from`, the
    checkout must be clean. Keep `id` and `integration_worktree` from the JSON.
 3. **Decompose** (you are the decomposer). If `decomposer` is `null` the tasks
    are saved: go to step 4. Otherwise follow its `system_prompt` and `query`
@@ -103,7 +103,7 @@ of fighting for it.
    `meow native run pr <id> --error "<reason or skip_reason>"`. The
    orchestrator is now `delivered`. Report one line,
    `{"orchestrator": "<id>", "branch": "<branch>", "pr": <url or null>, "tasks": <N>}`;
-   when no PR was opened and it was not disabled, add `PR not opened: <reason>`
+   when no PR was opened and it was not disabled, add `MR not opened: <reason>`
    and the `manual_link`. Point at the report path from the `pr` result.
 
 ### When it blocks

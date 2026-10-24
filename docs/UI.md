@@ -34,9 +34,9 @@ Managed/incompatible flags remain visible with an explanation.
 Review/run requests can be empty when source flags supply the work.
 
 For orchestration, enter the objective in Request and options such as `--from`,
-`--max-parallel`, `--dry-run`, `--test`, `--no-pr` as argument tokens.
+`--max-parallel`, `--dry-run`, `--test`, `--no-mr` as argument tokens.
 These recipes start new orchestrators; use terminal status/resume/cancel for
-lifecycle controls. Orchestration may push after review even with `--no-pr`.
+lifecycle controls. Orchestration may push after review even with `--no-mr`.
 
 ## Claude permissions
 

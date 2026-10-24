@@ -25,7 +25,7 @@ only, inside the deliver step.
 
 | Flag | Effect |
 |---|---|
-| `--no-pr` | Skip the MR and pipeline verification (also applies to orchestration) |
+| `--no-mr` | Skip the MR and pipeline verification (also applies to orchestration) |
 | `--target BRANCH` | Override the configured MR target for this run |
 | `--from BRANCH` | Start work from this branch; does not set the MR target |
 | `--fix-non-meow-jobs` | Also fix other failing jobs in a worktree run |
@@ -45,7 +45,7 @@ meow run "Add a dark mode toggle" --from release --target dev
 
 | Key | Default | Meaning |
 |---|---|---|
-| `open_mr` | `true` | `false` equals `--no-pr` |
+| `open_mr` | `true` | `false` equals `--no-mr` |
 | `fix_non_meow_jobs` | `false` | Equals `--fix-non-meow-jobs` |
 | `max_fix_rounds` | `3` | Fix rounds before giving up |
 | `start_timeout` | `300` | Seconds to wait for a pipeline to appear |
@@ -82,7 +82,7 @@ Printed as `[delivery] ...` and mirrored to `delivery.stage` (`meow status`):
 - `Pipeline running on SHA7 (fix round N of M).`
 - `meow review job failed; fixing (round N of M).`
 - `Pipeline file invalid; fixing (round N of M).`
-- `Merge request and pipeline verification skipped (--no-pr / open_mr=false).`
+- `Merge request and pipeline verification skipped (--no-mr / open_mr=false).`
 
 ## Outcomes
 

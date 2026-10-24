@@ -229,7 +229,7 @@ def test_start_passes_the_options_through(repo, monkeypatch):
             "--max-parallel",
             "2",
             "--test",
-            "--no-pr",
+            "--no-mr",
             "--dry-run",
         ),
         repo,
@@ -288,7 +288,7 @@ def test_delivered_prints_one_json_line(repo, capsys, monkeypatch):
         "pr": "https://x/1",
         "tasks": 2,
     }
-    assert "PR not opened" not in output.err
+    assert "MR not opened" not in output.err
 
 
 def test_delivered_without_pr_reports_reason_and_link(repo, capsys, monkeypatch):
@@ -310,7 +310,7 @@ def test_delivered_without_pr_reports_reason_and_link(repo, capsys, monkeypatch)
     assert run_orchestration(parse("Add login"), repo) == EXIT_NO_PR
 
     output = capsys.readouterr()
-    assert "PR not opened: provider not configured" in output.err
+    assert "MR not opened: provider not configured" in output.err
     assert (
         f"https://github.com/o/r/compare/main...orchestrator/{record.id}" in output.err
     )
@@ -329,9 +329,9 @@ def test_no_pr_run_prints_no_pr_warning(repo, capsys, monkeypatch):
         orchestration_cli, "start_orchestrator", fake_start(record.id, 0, [])
     )
 
-    assert run_orchestration(parse("Add login", "--no-pr"), repo) == 0
+    assert run_orchestration(parse("Add login", "--no-mr"), repo) == 0
 
-    assert "PR not opened" not in capsys.readouterr().err
+    assert "MR not opened" not in capsys.readouterr().err
 
 
 def test_blocked_prints_the_report(repo, capsys, monkeypatch):

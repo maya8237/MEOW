@@ -82,9 +82,9 @@ meow resume ID --continue [--task T --request "Updated request"]
 
 Task files, JQL, and multiple Jira keys select orchestration automatically.
 `--orchestrate` (`-o`) selects it explicitly; `--max-parallel N` limits concurrent
-sprints, `--dry-run` saves the decomposition, and `--no-pr` skips opening an MR.
+sprints, `--dry-run` saves the decomposition, and `--no-mr` skips opening an MR.
 Local edits require explicit `--from BRANCH`; execution uses an isolated worktree.
-Exit code 3 means the branch was delivered but `PR not opened`; output includes a manual link.
+Exit code 3 means the branch was delivered but `MR not opened`; output includes a manual link.
 See [ORCHESTRATION.md](ORCHESTRATION.md) for sources, flags, delivery gates, and recovery.
 `/meow:run` chooses the engine; native supervision requires explicit opt-in.
 

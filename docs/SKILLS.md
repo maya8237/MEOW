@@ -10,7 +10,7 @@ Example: `/meow:run Add retry with backoff to the HTTP client`. [Reference](../s
 A worktree run opens an MR after pushing, then verifies its CI
 pipeline. `--target BRANCH` picks the target (default `[delivery].target_branch`);
 `--from` only chooses where work starts. Only `Verified by pipeline` confirms CI
-verification. Targets, `--no-pr`, and provider setup: [PIPELINE.md](PIPELINE.md).
+verification. Targets, `--no-mr`, and provider setup: [PIPELINE.md](PIPELINE.md).
 
 Give MEOW the change, expected behavior, and checks. A short request works:
 

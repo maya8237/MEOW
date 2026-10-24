@@ -43,7 +43,7 @@ def has_pull_request(record: OrchestratorRecord) -> bool:
 
 
 def exit_code(record: OrchestratorRecord) -> int:
-    """0 delivered with a PR (or `--no-pr`), 3 delivered without one, 2 blocked,
+    """0 delivered with a PR (or `--no-mr`), 3 delivered without one, 2 blocked,
     130 cancelled, 1 anything else."""
     if record.phase == "delivered":
         if has_pull_request(record) or not record.options.get("pr", True):
@@ -60,12 +60,12 @@ def pull_request_lines(record: OrchestratorRecord) -> list[str]:
         pr = delivery["pr"]
         return [f"Pull request: {pr['url']} ({pr.get('provider', 'unknown')})"]
     if delivery.get("pr_error"):
-        lines = [f"PR not opened: {delivery['pr_error']}"]
+        lines = [f"MR not opened: {delivery['pr_error']}"]
         if delivery.get("pr_manual_link"):
             lines.append(f"Open it manually: {delivery['pr_manual_link']}")
         return lines
     if not record.options.get("pr", True):
-        return ["Pull request: not requested (--no-pr)"]
+        return ["Pull request: not requested (--no-mr)"]
     return ["Pull request: not opened yet"]
 
 

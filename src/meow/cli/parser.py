@@ -680,7 +680,7 @@ def _add_orchestration_args(parser: argparse.ArgumentParser) -> None:
         help="Orchestration only: save decomposition without executing sprints.",
     )
     parser.add_argument(
-        "--no-pr",
+        "--no-mr",
         dest="no_pr",
         action="store_true",
         help="Push without opening a PR/MR or verifying its pipeline.",

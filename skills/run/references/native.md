@@ -101,7 +101,7 @@ For a saved native run, inspect and continue that same ID with `meow resume <run
    separate worktree commits and pushes its branch.
    State the saved MR target; `--from` only chooses the starting branch.
    For worktree delivery, say the loop finished and final delivery is being
-   verified, then open the MR into that target and report the
+   verified, then open the MR/PR into that target and report the
    pipeline status. MEOW's pipeline-fix loop is CLI-only; never claim
    "Verified by pipeline" unless the pipeline actually passed.
 

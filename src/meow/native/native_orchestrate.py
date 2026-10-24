@@ -702,7 +702,7 @@ def review_result(  # ruff: ignore[too-many-statements] -- validate then persist
 
 def _skip_reason(record: OrchestratorRecord, provider: str | None) -> str | None:
     if not record.options.get("pr", True):
-        return "pull request disabled (--no-pr or [orchestrator].open_pr = false)"
+        return "pull request disabled (--no-mr or [orchestrator].open_pr = false)"
     if provider is None:
         return "no GitHub or GitLab remote detected for origin"
     return None

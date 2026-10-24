@@ -309,7 +309,7 @@ def _add_orchestrate_init(commands) -> None:
     parser.add_argument("--target", default=None, help="PR/MR target branch.")
     parser.add_argument("--max-parallel", dest="max_parallel", type=int, default=None)
     parser.add_argument("--test", action="store_true", help="Run tests in each task.")
-    parser.add_argument("--no-pr", dest="no_pr", action="store_true")
+    parser.add_argument("--no-mr", dest="no_pr", action="store_true")
 
 
 def _add_orchestrate_simple(commands) -> None:

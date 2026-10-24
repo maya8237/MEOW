@@ -353,7 +353,7 @@ def test_open_mr_false_skips_everything(stage, capsys):
     assert not stage.connect and not stage.agent.calls
     out = capsys.readouterr().out
     assert out.count("\n") == 1 and out.startswith("[delivery] ")
-    assert "skipped" in out and "--no-pr" in out
+    assert "skipped" in out and "--no-mr" in out
     assert "Verified by pipeline" not in out
 
 

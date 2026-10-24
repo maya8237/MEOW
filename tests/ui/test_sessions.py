@@ -77,7 +77,7 @@ def test_feature_recipe_builds_cli_argv(tmp_path):
 
 def test_orchestrate_recipe_preserves_objective_and_options(tmp_path):
     objective = "Build a ledger with CSV import and monthly budgets"
-    arguments = ["-o", "--from", "main", "--max-parallel", "2", "--test", "--no-pr"]
+    arguments = ["-o", "--from", "main", "--max-parallel", "2", "--test", "--no-mr"]
     recipe = validate_recipe(
         tmp_path,
         valid_payload(command="run", request=objective, arguments=arguments),

@@ -42,7 +42,7 @@ def test_fix_non_meow_jobs_with_from_validates():
 
 
 def test_no_pr_allowed_on_plain_run():
-    args = parse("x", "--from", "main", "--no-pr")
+    args = parse("x", "--from", "main", "--no-mr")
     validation._validate_run_flags(_build_arg_parser(), args)
 
 
@@ -57,13 +57,13 @@ def test_orchestration_only_flags_still_need_orchestrate(flag, capsys):
 def test_dispatch_passes_only_user_set_overrides(tmp_path):
     cases = (
         (["x"], None),
-        (["x", "--from", "main", "--no-pr"], {"open_mr": False}),
+        (["x", "--from", "main", "--no-mr"], {"open_mr": False}),
         (
             ["x", "--from", "main", "--fix-non-meow-jobs"],
             {"fix_non_meow_jobs": True},
         ),
         (
-            ["x", "--from", "main", "--no-pr", "--fix-non-meow-jobs"],
+            ["x", "--from", "main", "--no-mr", "--fix-non-meow-jobs"],
             {"open_mr": False, "fix_non_meow_jobs": True},
         ),
     )
@@ -250,7 +250,7 @@ def test_background_target_saved_before_worker_starts(tmp_path, monkeypatch):
     monkeypatch.setattr(background, "_spawn_worker", lambda *_args: None)
     rid = background.launch_background(
         repo,
-        ["run", "x", "--background", "--from", "main", "--target", "dev", "--no-pr"],
+        ["run", "x", "--background", "--from", "main", "--target", "dev", "--no-mr"],
     )
     delivery = RunStore(repo).load(rid).delivery
     assert delivery["base"] == "dev"

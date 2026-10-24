@@ -156,7 +156,7 @@ Concurrency/review rounds are integers ≥1, recovery cycles ≥0 (shared by spl
 lineage), and polling seconds >0. Prefixes must be nonempty, without spaces,
 `..`, or leading `-`; integration uses `<prefix>ID`, tasks `<prefix>ID-TASK`.
 Wrong types/unknown keys fail config validation. CLI `--max-parallel` and
-`--no-pr` override defaults; models can set `decomposer`, `triage`,
+`--no-mr` override defaults; models can set `decomposer`, `triage`,
 `integrator`, and `pull_request`. Jira inputs require project/server config
 and never comment on or transition issues.
 
@@ -168,7 +168,7 @@ Other hosts have no provider. Missing provider MCP config reports
 `list_merge_requests`, or `search_pull_requests`; existing open requests
 can be reused. The agent writes only its result file.
 Creation failure never undoes a push: delivered state, exit 3,
-`PR not opened: REASON`, and a manual link. Native uses connected tools.
+`MR not opened: REASON`, and a manual link. Native uses connected tools.
 
 ## Scheduling automatic runs
 

@@ -1,6 +1,6 @@
 ---
 name: integrate-ci-review
-description: Use when adding or configuring MEOW's CI review job in GitHub Actions or GitLab CI, with optional inline MR comments.
+description: Use when adding or configuring MEOW's CI review job in GitHub Actions or GitLab CI, with optional inline PR/MR comments.
 ---
 
 # Integrate CI review
@@ -12,7 +12,7 @@ never application code, and do not use `--fix` or `meow run` in the job. Depende
 ## Configure credentials and model defaults
 
 Before editing CI, read [the environment guide](references/environment.md).
-Ask: **"Should MEOW post inline review comments on MRs?"** Reuse a prior answer or wait for the choice.
+Ask: **"Should MEOW post inline review comments on PRs/MRs?"** Reuse a prior answer or wait for the choice.
 When a matching GitHub/GitLab MCP is configured, inspect existing project CI
 variables/secrets first. Reuse clear matches under their existing names through
 job-local `MEOW_*` aliases. Request missing CI variables/secrets at the final
@@ -167,7 +167,7 @@ do not add an install-spec variable or ask the user to choose the package.
 - GitLab: reuse a suitable token through a job-local `MEOW_GITLAB_TOKEN` alias,
   or supply a masked new token with `api` scope and comment access. GitLab supplies the API URL,
   target project ID, and MR IID automatically.
-- Enable posting only for MR events; push jobs keep the report-only command.
+- Enable posting only for PR/MR events; push jobs keep the report-only command.
   Never expose secrets by switching to `pull_request_target`.
 
 Findings become inline discussions on added/deleted lines. Existing comments and
@@ -176,7 +176,7 @@ than becoming new notes. The CLI checks locations and remote revisions, then
 re-fetches comments to skip matching bodies at the same current diff location.
 Missing tokens, unreadable/oversized history, malformed findings, or publishing
 failures exit 2 and retain artifacts. Partial publishes may leave notes posted;
-concurrent jobs can still race, so serialize comment-posting jobs per MR.
+concurrent jobs can still race, so serialize comment-posting jobs per PR/MR.
 
 1. Make the smallest edit that fits the existing CI layout. Preserve comments,
    anchors, includes, matrices, and unrelated jobs.

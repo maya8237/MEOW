@@ -125,7 +125,7 @@ async def open_run_merge_request(
     return pr
 
 
-_SKIPPED = "Merge request and pipeline verification skipped (--no-pr / open_mr=false)."
+_SKIPPED = "Merge request and pipeline verification skipped (--no-mr / open_mr=false)."
 _ADVICE = "fix the failing jobs on the MR branch, or re-run the pipeline."
 
 

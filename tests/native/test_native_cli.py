@@ -400,7 +400,7 @@ class BranchReviewNativeCliTests(unittest.TestCase):
 ORCHESTRATOR_ID = "0123456789ab"
 ORCHESTRATE_FORMS = (
     ("init", "--objective", "Add login", "--from", "dev", "--max-parallel", "2"),
-    ("init", "--tasks", "tasks.toml", "--test", "--no-pr"),
+    ("init", "--tasks", "tasks.toml", "--test", "--no-mr"),
     ("tasks", ORCHESTRATOR_ID, "--file", "tasks.json"),
     ("tick", ORCHESTRATOR_ID),
     ("wait", ORCHESTRATOR_ID, "--timeout", "5"),

@@ -148,7 +148,7 @@ def test_orchestrate_preview_builds_cli_and_warns_about_delivery(running, projec
                     "--max-parallel",
                     "2",
                     "--dry-run",
-                    "--no-pr",
+                    "--no-mr",
                 ],
             ),
         },
@@ -160,7 +160,7 @@ def test_orchestrate_preview_builds_cli_and_warns_about_delivery(running, projec
         "--max-parallel",
         "2",
         "--dry-run",
-        "--no-pr",
+        "--no-mr",
         "--",
         "do the task",
     ]

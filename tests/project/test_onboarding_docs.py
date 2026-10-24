@@ -17,11 +17,11 @@ def test_cli_doc_covers_orchestrate():
         "--jira",
         "--tasks",
         "--max-parallel",
-        "--no-pr",
+        "--no-mr",
         "--dry-run",
         "meow resume ID --continue",
         "Exit code 3",
-        "PR not opened",
+        "MR not opened",
         "`-o`",
         "/meow:run",
     ):
@@ -57,7 +57,7 @@ def test_integrations_doc_explains_pull_request_creation():
         "create_pull_request",
         "create_merge_request",
         "provider not configured",
-        "PR not opened",
+        "MR not opened",
     ):
         assert needle in text, needle
 
