@@ -12,11 +12,6 @@ from meow.cli.validation import _resolve_input_path, parse_inputs, pipeline_over
 from meow.execution.orchestrator import PlanNotApprovedError
 from meow.execution.plan_approval import _prompt_plan_approval
 from meow.execution.sprint_runner import run_plan, run_sprint
-from meow.hooks.claude import (
-    inspect_claude_hooks,
-    install_claude_hooks,
-    uninstall_claude_hooks,
-)
 from meow.infrastructure.lint_fix import run_lint_fix
 from meow.integrations.issue_solver import IssueUnresolvedError, run_issue_solver
 
@@ -121,21 +116,6 @@ def _dispatch_review(args, working_dir: Path) -> None:
 
 
 def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
-    if args.command == "hooks":
-        if args.host != "claude":
-            raise ValueError("unsupported host")
-        if args.hooks_command == "install":
-            selected = args.only or ["lint"]
-            print(
-                json.dumps(
-                    install_claude_hooks(working_dir, selected, dry_run=args.dry_run)
-                )
-            )
-        elif args.hooks_command == "status":
-            print(json.dumps(inspect_claude_hooks(working_dir)))
-        else:
-            print(json.dumps(uninstall_claude_hooks(working_dir)))
-        return
     if args.command == "run":
         _dispatch_run(args, working_dir, use_worktree=use_worktree)
         return

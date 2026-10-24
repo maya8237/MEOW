@@ -10,7 +10,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from meow.hooks.claude import install_claude_hooks
 from meow.project.onboarding import BOUNDARY
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "uninstall.py"
@@ -78,12 +77,14 @@ def test_un_onboard_removes_project_setup_and_preserves_other_hooks(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
     (project / ".gitignore").write_text("dist/\n" + "\n".join(BOUNDARY) + "\n")
-    install_claude_hooks(project, ["lint"])
+    (project / ".meow").mkdir()
     settings = project / ".claude/settings.local.json"
-    data = json.loads(settings.read_text())
+    settings.parent.mkdir()
     other = {"hooks": [{"type": "command", "command": "echo keep"}]}
-    data["hooks"]["Stop"] = [other]
-    data["enabledPlugins"] = {"meow-local@meow-local": True, "other@other": True}
+    data = {
+        "hooks": {"Stop": [other]},
+        "enabledPlugins": {"meow-local@meow-local": True, "other@other": True},
+    }
     settings.write_text(json.dumps(data))
     (project / ".meow/config.toml").write_text("max_rounds = 8")
     module["un_onboard"](project)
@@ -95,31 +96,6 @@ def test_un_onboard_removes_project_setup_and_preserves_other_hooks(tmp_path):
     data = json.loads(settings.read_text())
     assert data["hooks"]["Stop"] == [other]
     assert data["enabledPlugins"] == {"other@other": True}
-
-
-def test_uninstall_preserves_sibling_commands_in_a_shared_hook_group():
-    module = runpy.run_path(str(SCRIPT))
-    user_hook = {"type": "command", "command": "echo keep user hook"}
-    group = {
-        "matcher": "Write|Edit",
-        "hooks": [
-            {"type": "command", "command": "meow native hook lint_after_edit"},
-            user_hook,
-        ],
-    }
-    data = {"hooks": {"PostToolUse": [group]}}
-    module["clean_hooks"](data, {})
-    assert data == {
-        "hooks": {"PostToolUse": [{"matcher": "Write|Edit", "hooks": [user_hook]}]}
-    }
-
-
-def test_uninstall_manifest_ownership_is_scoped_to_the_event():
-    module = runpy.run_path(str(SCRIPT))
-    group = {"hooks": [{"type": "command", "command": "echo custom hook"}]}
-    data = {"hooks": {"Stop": [group], "SessionEnd": [group]}}
-    module["clean_hooks"](data, {"entries": [{"event": "Stop", "entry": group}]})
-    assert data == {"hooks": {"SessionEnd": [group]}}
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows registry PATH")
@@ -251,20 +227,6 @@ def test_powershell_reports_errors_but_not_cancellation(tmp_path, helper_exit):
     assert ("MEOW uninstall failed" in result.stdout) is (helper_exit == 1)
 
 
-def test_hooks_edited_by_the_user_and_empty_files_are_cleaned(tmp_path):
-    module = runpy.run_path(str(SCRIPT))
-    project = tmp_path / "project"
-    project.mkdir()
-    install_claude_hooks(project, ["lint"])
-    settings = project / ".claude/settings.local.json"
-    data = json.loads(settings.read_text())
-    data["hooks"]["PostToolUse"][0]["matcher"] = "Edit"  # no longer in the manifest
-    settings.write_text(json.dumps(data))
-    module["un_onboard"](project)
-    assert not settings.exists()
-    assert not (project / ".claude").exists()
-
-
 def test_checkout_registration_outside_meow_is_kept(tmp_path):
     module = runpy.run_path(str(SCRIPT))
     checkout = tmp_path / "dev/plugin"
@@ -277,13 +239,11 @@ def test_checkout_registration_outside_meow_is_kept(tmp_path):
             "extraKnownMarketplaces": {
                 "meow": {"source": {"source": "directory", "path": str(checkout)}}
             },
-            "hooks": {"Stop": [{"hooks": [{"command": "meow native hook x"}]}]},
         })
     )
     module["uninstall"](tmp_path)
     data = json.loads(settings.read_text())
     assert data["enabledPlugins"] == {"meow@meow": True}
-    assert "hooks" not in data
 
 
 def test_scheduled_runs_are_found_and_cancelled_on_linux(tmp_path, monkeypatch):

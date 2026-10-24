@@ -54,4 +54,4 @@ curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstal
 It asks before changing anything. It removes the MEOW release, `meow`/`mw` on
 PATH, the Claude Code plugin and skill registrations, scheduled MEOW runs, and
 (optionally) `~/.meow` data, Bun shared-store settings, and each project's
-`.meow/`, hooks, and plugin entries.
+`.meow/`, and plugin entries.

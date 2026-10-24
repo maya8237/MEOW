@@ -119,7 +119,7 @@ portable environment references. Do not assume another user has a local skill.
 
 Offer optional features as concise yes/no choices. Applicable choices include
 Jira, GitLab, GitHub, Automatic scheduled Jira runs, worktree setup, additional design
-docs, testing infrastructure, Tester mode, the Claude lint hook, and another feature
+docs, testing infrastructure, Tester mode, and another feature
 the user explicitly named. Scheduled runs use Windows Task Scheduler on
 Windows, or systemd user timers on Linux, through `/meow:schedule` and
 `meow schedule add`. External cron/systemd jobs remain an option for recurring
@@ -175,12 +175,6 @@ When an optional feature is accepted, use the matching documented path:
   worktree before enabling it for runs.
 - Tester mode: inspect test/server/MCP readiness with `meow native verify`
   (it starts none of them), then verify accepted commands before enabling tests.
-- Lint hook: offer it for Claude Code editing when per-file lint is configured;
-  install it with `meow hooks install claude --only lint` after approval.
-  Show its event, command, and effects; verify its status and keep failures
-  advisory unless made a gate explicitly. CLI runs already use SDK lint hooks.
-  Both hooks record `.meow/lint-ledger.jsonl`; verify reuses lint only with an
-  active installation and matching successful content/config evidence.
 
 For requested knowledge docs, inspect source/docs first, mark uncertainty, and review.
 Keep documentation-only onboarding free of application code changes.

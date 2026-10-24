@@ -287,17 +287,7 @@ async def verify(state, step):
     active = state.sprint.active_working_dir()
     state.journal("checking")
     state.sprint.config.pop("_workflow_checks", None)
-    state.checks_results = await run_final_checks(
-        active, state.sprint.config, hook_lint=True
-    )
-    lint = [item for item in state.checks_results if item.kind == "lint"]
-    mode = (
-        "hook-verified"
-        if lint and all("hook ledger" in item.output for item in lint)
-        else "run"
-    )
-    logger.info("lint_verification", mode=mode)
-    state.store.update_results(state.run_id, lint_verification=mode)
+    state.checks_results = await run_final_checks(active, state.sprint.config)
     state.checks_baseline = await asyncio.to_thread(stage_baseline, active)
     state.sprint.config["_workflow_checks"] = (
         state.checks_results,

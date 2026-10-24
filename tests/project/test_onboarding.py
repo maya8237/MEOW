@@ -233,7 +233,6 @@ def test_report_lists_skipped_optional_features(repo):
         "GitLab",
         "GitHub",
         "Tester mode",
-        "Claude lint hook",
         "Worktree setup",
     } <= skipped
 
@@ -267,7 +266,6 @@ def test_feature_gaps_reports_configured_and_missing(repo):
         "permissions",
         "agent_skills",
         "custom",
-        "hooks",
         "architecture_doc",
     }
 

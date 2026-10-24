@@ -12,7 +12,6 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from meow.hooks.claude import inspect_claude_hooks
 from meow.infrastructure.worktree import default_target_branch
 from meow.project.config import _merge_config, config_paths
 from meow.project.migration import migrate_legacy_config
@@ -38,7 +37,6 @@ SKIPPED_FEATURES = (
     "GitLab",
     "GitHub",
     "Tester mode",
-    "Claude lint hook",
     "Worktree setup",
 )
 
@@ -449,11 +447,6 @@ def feature_gaps(root: Path) -> dict[str, dict]:
     }
     # Runtime accumulates custom sources from every layer before merging config.
     gaps["custom"]["configured"] = any(_present(table, ("custom",)) for table in tables)
-    hooks = inspect_claude_hooks(root)
-    gaps["hooks"] = {
-        "configured": any(v in {"active", "modified"} for v in hooks.values()),
-        "enable": "For Claude Code editing, install the lint hook (docs/CLI.md).",
-    }
     gaps["architecture_doc"] = {
         "configured": (root / "docs" / "ARCHITECTURE.md").is_file(),
         "enable": "Run `meow native knowledge-audit`, then create the accepted doc.",

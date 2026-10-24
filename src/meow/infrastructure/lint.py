@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meow.infrastructure.checks import run_captured_async
-from meow.infrastructure.lint_ledger import content_hash, record_lint
 from meow.infrastructure.logging import get_logger
 from meow.project.config_models import LintCommand, resolve_command_cwd
 
@@ -184,7 +183,7 @@ async def check_lint_evidence(
     return LintGateEvidence(tuple(blocking), tuple(informational))
 
 
-async def run_lint_on_file(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements] -- scoped execution and content proof belong to the same edit
+async def run_lint_on_file(  # ruff: ignore[complex-structure, too-many-statements]
     working_dir: Path,
     commands: list[LintCommand],
     file_path: str,
@@ -192,9 +191,6 @@ async def run_lint_on_file(  # ruff: ignore[complex-structure, too-many-branches
 ) -> list[str]:
     """Run every per-file command, returning one report per failure."""
     problems = []
-    hashes = []
-    edited = Path(file_path.replace("\\", "/"))
-    edited = edited if edited.is_absolute() else working_dir / edited
     for entry in commands:
         if not entry.per_file:
             continue
@@ -219,16 +215,6 @@ async def run_lint_on_file(  # ruff: ignore[complex-structure, too-many-branches
         )
         if report is not None:
             problems.append(report)
-        hashes.append(content_hash(edited))
-    if hashes:
-        record_lint(
-            working_dir,
-            commands,
-            timeout,
-            edited,
-            ok=not problems
-            and all(value and value == content_hash(edited) for value in hashes),
-        )
     return problems
 
 

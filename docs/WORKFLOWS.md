@@ -27,7 +27,7 @@ the plan/contract. Failed repair journals the reason and uses sequential generat
 Repeated `--input name=value` supplies identifier-keyed strings; values may
 contain `=` or be empty, and last wins. Inputs persist with journal redaction.
 Workflow flags support Jira/background runs but reject lint-fix.
-See [verification](VERIFICATION.md) for `auto_test`, `short_plan`, test selection, and hook reuse.
+See [verification](VERIFICATION.md) for `auto_test`, `short_plan`, and test selection.
 
 ## Resolution and editing
 

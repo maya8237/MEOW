@@ -14,7 +14,6 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-HOOK_PREFIX = "meow native hook "
 TASK = re.compile(r"meow-([0-9a-f]{32})", re.IGNORECASE)
 
 
@@ -98,57 +97,6 @@ def clean_legacy(data: dict, root: Path, base: Path) -> None:
             del data["env"]
 
 
-def without_meow_hooks(entry: object) -> object | None:
-    hooks = entry.get("hooks") if isinstance(entry, dict) else None
-    if not isinstance(hooks, list):
-        return entry
-    kept = [
-        hook
-        for hook in hooks
-        if not (
-            isinstance(hook, dict)
-            and str(hook.get("command", "")).startswith(HOOK_PREFIX)
-        )
-    ]
-    if len(kept) == len(hooks):
-        return entry
-    return {**entry, "hooks": kept} if kept else None
-
-
-def clean_hooks(data: dict, manifest: dict) -> None:  # ruff: ignore[complex-structure, too-many-branches]
-    """Remove manifest-owned hooks and any other `meow native hook` command.
-
-    A hook the user edited no longer matches the manifest, but it would still
-    fail on every tool call once the `meow` command is gone.
-    """
-    hooks = object_field(data, "hooks")
-    entries = manifest.get("entries", [])
-    if not isinstance(entries, list):
-        raise ValueError("hook manifest entries must be an array")
-    owned = []
-    for item in entries:
-        if not isinstance(item, dict) or "event" not in item or "entry" not in item:
-            raise ValueError("Invalid hook manifest entry")
-        owned.append((item["event"], item["entry"]))
-    for event, values in list(hooks.items()):
-        if not isinstance(values, list):
-            continue
-        kept = [
-            cleaned
-            for value in values
-            if (event, value) not in owned
-            and (cleaned := without_meow_hooks(value)) is not None
-        ]
-        if kept == values:
-            continue
-        if kept:
-            hooks[event] = kept
-        else:
-            del hooks[event]
-    if "hooks" in data and not hooks:
-        del data["hooks"]
-
-
 def write_settings(settings: Path, data: dict, *, delete_empty: bool = False) -> None:
     if load_settings(settings) == data:
         return
@@ -175,7 +123,6 @@ def remove_plugin(home: Path, root: Path) -> None:
     if settings.exists():
         data = load_settings(settings)
         kept = clean_plugins(data, root, home, ("meow", "meow-user"))
-        clean_hooks(data, {})
         write_settings(settings, data)
         for name in kept:
             print(f"Kept {name} in {settings}: it points outside {root}.")
@@ -188,15 +135,12 @@ def un_onboard(project: Path) -> None:
         raise ValueError(f"Expected a project directory, not {project}")
     if root.is_symlink() or root.is_junction():
         raise ValueError(f"Refusing linked project directory: {root}")
-    manifest = root / "claude-hooks.json"
-    owned = load_settings(manifest) if manifest.exists() else {}
     updates = []
     for name in ("settings.json", "settings.local.json"):
         settings = project / ".claude" / name
         if settings.exists():
             data = load_settings(settings)
             clean_plugins(data, root, project, ("meow-project", "meow-local"))
-            clean_hooks(data, owned)
             updates.append((settings, data))
     for settings, data in updates:
         write_settings(settings, data, delete_empty=True)
@@ -447,7 +391,7 @@ def ask_removal(home: Path) -> tuple[bool, list[Path], bool]:  # ruff: ignore[co
     purge = confirmed("Also delete ALL ~/.meow configuration and run data? [y/N]: ")
     print("Optional: un-onboard projects, deleting their entire .meow directories,")
     print("including configuration, custom definitions, plans, and run history.")
-    print("This also removes their MEOW hooks and skill/plugin registrations.")
+    print("This also removes their MEOW skill/plugin registrations.")
     projects: list[Path] = []
     for project in saved_projects(home):
         if confirmed(f"Un-onboard remembered project {project}? [y/N]: "):

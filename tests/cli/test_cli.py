@@ -40,7 +40,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
         help_text = output.getvalue()
         self.assertIn(
-            "{run,review,plan,status,cancel,worktree,cleanup,resume,hooks,ipython,workflows,agents,ui,schedule}",
+            "{run,review,plan,status,cancel,worktree,cleanup,resume,ipython,workflows,agents,ui,schedule}",
             help_text,
         )
         self.assertNotIn("_worker", help_text)
@@ -2314,7 +2314,6 @@ class CliShortcutTests(unittest.TestCase):
             ("c", "resume"),
             ("q", "queue"),
             ("w", "worktree"),
-            ("h", "hooks"),
             ("i", "ipython"),
             ("pounce", "run"),
             ("purr", "review"),
@@ -2327,8 +2326,6 @@ class CliShortcutTests(unittest.TestCase):
                     argv.append("run-1")
                 if command == "worktree":
                     argv.append("list")
-                if command == "hooks":
-                    argv += ["status", "claude"]
                 self.assertEqual(parser.parse_args(argv).command, command)
 
     def test_l_means_run_lint_fix(self):

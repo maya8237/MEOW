@@ -12,7 +12,7 @@ top-level alias or compatibility modules.
   `SessionAgent` retains one client for generator/fixer rounds;
   `McpFetcherAgent` in `mcp_fetcher.py` shares fetching behavior across providers.
 - `cli/`: the public command surface and dispatch for `run`, `plan`, `review`
-  (`review_cli.py`), status/recovery, queues, hooks, IPython, and hidden
+  (`review_cli.py`), status/recovery, queues, IPython, and hidden
   maintenance commands. `catalog_cli.py` owns workflow/agent inspection and ejection;
   `orchestration_cli.py` owns multi-sprint execution behind `meow run`.
 - `execution/`: sprint orchestration, delivery, plan approval, queue/run
@@ -43,7 +43,6 @@ top-level alias or compatibility modules.
   and workflow loading, expression/template validation, and shipped TOML
   definitions under `builtin/`. `project/prompts.py` supplies computed context
   and verdict contracts; editable role prose belongs in the agent definitions.
-- `hooks/`: optional Claude Code hook handlers and installation.
 - `installer/`: shared checkout updates and editable installation in the
   stdlib-only `maintenance.py`, plus post-install plugin registration and
   project onboarding. Both streamed scripts and `meow --update` use it.

@@ -21,12 +21,11 @@ Use `meow COMMAND --help` for flag syntax. Read the relevant reference only:
 | `meow workflows` / `meow agents` | Inspect, eject, validate, or diff definitions |
 | `meow ui` | Local catalog and session launcher |
 | `meow schedule` | Add, list, edit, or cancel a one-shot trigger |
-| `meow hooks` | Inspect/install/remove optional editor hooks |
 | `meow ipython` | Interactive command session |
 
 `mw` aliases `meow`. Shortcuts: `r` run, `p` plan,
 `rv` review, `l` lint (`run --lint-fix`), `s` status, `x` cancel,
-`c` resume, `q` queue, `w` worktree, `h` hooks, `i` ipython.
+`c` resume, `q` queue, `w` worktree, `i` ipython.
 
 Bare `meow` opens IPython. Commands such as `status` work directly there;
 use `meow run` to preserve IPython's `%run`. `%meow` and `!meow` also work.
@@ -135,18 +134,11 @@ and ID; only pending schedules are editable, with rollback on OS-update failure.
 Cancellation removes the trigger; stop an already-started run via run/session controls.
 `/meow:schedule` and UI scheduling use the same helper; see [UI.md](UI.md#scheduling).
 
-## Definitions, hooks, and checks
+## Definitions and checks
 
 Select workflows with `--workflow NAME`; repeated `--input name=value` supplies
 strings (last value wins). Default selection, scopes, schemas, catalog commands,
 and resume rules are in [WORKFLOWS.md](WORKFLOWS.md).
-
-`meow hooks status claude` reads `active`/`missing`/`modified` state.
-`meow hooks install claude` installs the optional lint hook (`--only lint` also
-works). It runs configured per-file lint after `Write|Edit` and returns unfixed
-issues through `additionalContext`. MEOW SDK sessions have their own lint hook.
-Reinstall removes obsolete manifest-owned hooks; `uninstall claude` removes
-all owned entries, including hooks installed by older versions.
 
 Quality concerns cite paths, evidence, impact, and follow-up; they are advisory,
 deduplicated per run, and visible in verbose status. There is no numerical score.

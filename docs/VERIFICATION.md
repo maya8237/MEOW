@@ -41,24 +41,7 @@ The policy persists on resume and propagates through Jira/background runs and
 orchestrator children and final verification. Native requests using this flag
 route to CLI. Independently configured remote pipeline jobs retain their policy.
 
-## Lint hooks
+## Lint
 
-The optional Claude Code lint hook and SDK edit hooks record content/config
-hashes, timestamps, and success/failure in `.meow/lint-ledger.jsonl`.
-The `verify` step can use that ledger instead of duplicate lint only when:
-
-- The Claude lint installation is active and its manifest is valid.
-- Every lint entry is per-file.
-- Every changed file matches lint and has successful evidence for its current
-  content and the same lint configuration, including timeout.
-
-Missing/malformed evidence, unmatched edits (including linter rules), commits,
-deletions, read errors, or project-wide lint
-commands fall back to full lint. Installing a hook alone proves nothing.
-The ledger is compacted past 256 KB, keeping the newest entry per existing file.
-SDK hooks write the same evidence, allowing CLI runs to benefit when the
-installation is active. Status reports `hook-verified` or `run`.
-Final checks reuse current verify results; otherwise they run full lint.
-Shaping and plan reminder/capture hooks were removed. Reinstalling cleans old
-manifest-owned entries, while uninstall still removes owned entries from older
-versions. Core plan lifecycle and run ownership remain independent of hooks.
+Verify runs every configured lint command in full. Per-file lint runs in the
+generator's SDK edit hook; verify does not reuse its results.

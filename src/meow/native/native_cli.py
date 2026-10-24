@@ -10,7 +10,6 @@ import json
 import sys
 from pathlib import Path
 
-from meow.hooks.handlers import HANDLERS
 from meow.native import native
 from meow.project.config import config_root, load_config
 from meow.project.custom import SKILL_ROLES
@@ -266,12 +265,6 @@ def _add_custom(sub) -> None:
     )
 
 
-def _add_hook(sub) -> None:
-    parser = sub.add_parser("hook", help="Run a Claude Code JSON hook handler.")
-    _add_dirs(parser)
-    parser.add_argument("name", choices=tuple(HANDLERS))
-
-
 def _add_shape(sub) -> None:
     parser = sub.add_parser(
         "shape-assess", help="Assess whether optional shaping is useful."
@@ -403,7 +396,6 @@ def add_native_parser(  # ruff: ignore[too-many-statements] -- register independ
     workflow = sub.add_parser("workflow", help="Print the resolved workflow as JSON.")
     workflow.add_argument("name")
     _add_dirs(workflow)
-    _add_hook(sub)
     _add_shape(sub)
     _add_orchestrate(sub)
 
@@ -584,7 +576,6 @@ _HANDLERS = {
     "shape-reflect": lambda args, wd, active: native.shape_reflect(
         _resolve(args.path, active)
     ),
-    "hook": lambda args, wd, active: HANDLERS[args.name](json.load(sys.stdin)),
     "run": _orchestrate,
 }
 

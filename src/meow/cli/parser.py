@@ -18,7 +18,6 @@ _VISIBLE_COMMANDS = (
     "worktree",
     "cleanup",
     "resume",
-    "hooks",
     "ipython",
     "workflows",
     "agents",
@@ -39,7 +38,6 @@ _SHORTCUTS = {
     "c": ("resume",),
     "q": ("queue",),
     "w": ("worktree",),
-    "h": ("hooks",),
     "i": ("ipython",),
 }
 
@@ -58,7 +56,6 @@ _FUN_SHORTCUTS = {
     "wake": ("resume",),
     "herd": ("queue",),
     "nest": ("worktree",),
-    "claws": ("hooks",),
     "lab": ("ipython",),
 }
 
@@ -353,26 +350,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     subparsers._choices_actions = [
         action for action in subparsers._choices_actions if action.dest != "native"
     ]
-    hooks = subparsers.add_parser("hooks", help="Manage optional host hooks.")
-    hooks_sub = hooks.add_subparsers(dest="hooks_command", required=True)
-    install = hooks_sub.add_parser("install", help="Install selected Claude hooks.")
-    install.add_argument("host", choices=("claude",))
-    install.add_argument(
-        "--only",
-        action="append",
-        choices=("lint",),
-    )
-    install.add_argument("--dry-run", action="store_true")
-    _add_common_args(install)
-    uninstall = hooks_sub.add_parser(
-        "uninstall", help="Remove MEOW-owned Claude hooks."
-    )
-    uninstall.add_argument("host", choices=("claude",))
-    _add_common_args(uninstall)
-    hook_status = hooks_sub.add_parser("status", help="Inspect installed Claude hooks.")
-    hook_status.add_argument("host", choices=("claude",))
-    _add_common_args(hook_status)
-
     subparsers.add_parser("ipython", help="Open the interactive MEOW IPython session.")
 
     return parser
