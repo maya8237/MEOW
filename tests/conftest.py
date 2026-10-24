@@ -1,6 +1,7 @@
 """Shared pytest fixtures."""
 
 import logging
+import os
 
 import pytest
 import structlog
@@ -36,3 +37,18 @@ def _isolated_home(tmp_path_factory, monkeypatch):
     for name in ("HOME", "USERPROFILE"):
         monkeypatch.setenv(name, str(home))
     monkeypatch.setattr(repos, "registry_path", lambda: home / "repos.toml")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Run one slice of the suite when `MEOW_TEST_SHARD` is `N/TOTAL`.
+
+    Tests are dealt round-robin in node-id order, so each CI shard gets a
+    similar mix of heavy and light modules."""
+    spec = os.environ.get("MEOW_TEST_SHARD")
+    if not spec:
+        return
+    shard, total = (int(part) for part in spec.split("/"))
+    ordered = sorted(items, key=lambda item: item.nodeid)
+    items[:] = [
+        item for index, item in enumerate(ordered) if index % total == shard - 1
+    ]
