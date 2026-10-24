@@ -76,6 +76,13 @@ bundle="$temporary/bundle"
 mkdir "$bundle"
 printf 'Installing MEOW %s with %s...\n' "$tag" "$python"
 printf 'meow-harness==%s --hash=sha256:%s\n' "$tag" "$digest" >"$temporary/wheel.txt"
+# Without uv on PATH, try to install it with pip; if that fails, plain pip does the work.
+if ! command -v uv >/dev/null 2>&1; then
+    printf '%s\n' 'uv not found; installing it with pip...'
+    if "$python" -m pip install --disable-pip-version-check --quiet --user uv; then
+        PATH="$("$python" -m site --user-base)/bin:$PATH"
+    fi
+fi
 if command -v uv >/dev/null 2>&1; then
     uv venv --quiet --seed --python "$python" "$bundle/runtime"
     uv pip install --quiet --python "$bundle/runtime/bin/python3" \
