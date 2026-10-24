@@ -27,10 +27,11 @@ def git(cwd, *args):
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch) -> Path:
-    trace = tmp_path.parent / f"{tmp_path.name}-git.trace"
-    monkeypatch.setenv("GIT_TRACE", str(trace))
+def repo(tmp_path) -> Path:
     git(tmp_path, "init", "-q")
+    # The initial commit's detached maintenance can prune the deliberately
+    # incomplete registration before MEOW inspects it.
+    git(tmp_path, "config", "maintenance.auto", "false")
     git(tmp_path, "config", "user.email", "t@example.com")
     git(tmp_path, "config", "user.name", "t")
     (tmp_path / "README.md").write_text("x\n", encoding="utf-8")
@@ -76,9 +77,6 @@ def test_creation_preserves_another_worktrees_incomplete_registration(repo, kind
         git(repo, "branch", "feature/existing")
         created = _ensure_existing_branch_worktree(repo, "feat", "feature/existing")
     assert (created / "README.md").read_text(encoding="utf-8") == "x\n"
-    assert (pending / "commondir").exists(), (
-        repo.parent / f"{repo.name}-git.trace"
-    ).read_text(encoding="utf-8")
     assert (pending / "commondir").read_text(encoding="utf-8") == "../..\n"
 
 
