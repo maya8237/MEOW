@@ -37,17 +37,7 @@ class ReleaseServer(http.server.SimpleHTTPRequestHandler):
 def build_wheel(destination: Path) -> str:
     """Build this checkout's wheel into DESTINATION; return its SHA-256."""
     run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "wheel",
-            "--no-deps",
-            "-w",
-            str(destination),
-            str(ROOT),
-        ],
-        os.environ,
+        ["uv", "build", "--wheel", "--out-dir", str(destination), str(ROOT)], os.environ
     )
     (wheel,) = destination.glob("meow_harness-*.whl")
     return hashlib.sha256(wheel.read_bytes()).hexdigest()

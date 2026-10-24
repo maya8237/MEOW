@@ -61,8 +61,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: astral-sh/setup-uv@v5
+      # The installer's own pip runs under a temporary HOME, so point its
+      # download cache at a path that survives between runs.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pip-cache
+          key: smoke-pip-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('requirements-release.txt') }}
       - name: Install from this checkout's source through the streamed installer
         run: python scripts/smoke_release.py
+        env:
+          PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+          PIP_NO_COMPILE: '1'
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
@@ -83,12 +93,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: astral-sh/setup-uv@v5
       - name: Stamp the tag into the package and plugin, then build
         run: |
           echo "UNRELEASED=$(python scripts/stamp_release.py --unreleased)" >> "$GITHUB_ENV"
           python scripts/stamp_release.py "$TAG"
-          python -m pip install build
-          python -m build --sdist --wheel
+          uv build --sdist --wheel
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
