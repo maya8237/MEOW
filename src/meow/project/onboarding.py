@@ -406,6 +406,10 @@ _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
     ),
 }
 
+# Release that introduced a _GAPS feature; `meow --update` lists those crossed.
+# Tag only new features (key from _GAPS, value X.Y.Z); untagged ones stay quiet.
+_SINCE: dict[str, str] = {}
+
 
 def _nonempty(value: object) -> bool:
     if isinstance(value, dict):

@@ -23,6 +23,37 @@ def test_update_selects_newer_published_release(monkeypatch, current, latest, in
     assert installed == installs
 
 
+def test_update_lists_features_added_since_old_version(monkeypatch, capsys):
+    from meow.project import onboarding
+
+    monkeypatch.setattr(onboarding, "_SINCE", {"lint": "0.1.4", "build": "0.2.0"})
+    monkeypatch.setattr(maintenance, "version", lambda name: "0.1.2")
+    monkeypatch.setattr(maintenance, "latest_release", lambda: ("0.2.0", "0" * 64))
+    monkeypatch.setattr(releases, "install_release", lambda tag, digest: None)
+    assert maintenance.update() == 0
+    out = capsys.readouterr().out
+    assert "build, lint" in out and "/meow:onboard" in out
+
+
+def test_update_without_new_features_stays_quiet(monkeypatch, capsys):
+    from meow.project import onboarding
+
+    monkeypatch.setattr(onboarding, "_SINCE", {"lint": "0.1.2"})
+    monkeypatch.setattr(maintenance, "version", lambda name: "0.1.2")
+    monkeypatch.setattr(maintenance, "latest_release", lambda: ("0.2.0", "0" * 64))
+    monkeypatch.setattr(releases, "install_release", lambda tag, digest: None)
+    maintenance.update()
+    assert "onboarding" not in capsys.readouterr().out
+
+
+def test_since_tags_name_real_features():
+    from meow.project import onboarding
+
+    assert set(onboarding._SINCE) <= set(onboarding._GAPS) | {"architecture_doc"}
+    for tag in onboarding._SINCE.values():
+        maintenance._version_parts(tag)
+
+
 def test_failed_download_does_not_report_success(monkeypatch, capsys):
     monkeypatch.setattr(maintenance, "version", lambda name: "0.1.2")
     monkeypatch.setattr(maintenance, "latest_release", lambda: ("0.2.0", "0" * 64))
