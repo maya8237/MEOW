@@ -14,12 +14,9 @@ version edits are needed. Commits to `main` alone do not update users.
 
 The tag also replaces `"unreleased"` in `src/meow/project/announcements.py`, the
 onboarding options `meow --update` lists; an entry tagged after the release
-fails it. After publishing the newest release, the workflow opens a
-`release/record-TAG` pull request on `main` with the new versions and only the
-announcements that tag shipped. Merge it before the next release. Repository
-setting: allow GitHub Actions to create pull requests. CI does not run on
-pull requests opened with the workflow token; push to the branch or close and
-reopen the PR if required checks must run.
+fails it. After publishing the newest release, the workflow commits the new
+versions and only the announcements that tag shipped to `main`. If `main` is
+protected, let GitHub Actions bypass that rule.
 
 MEOW is published to PyPI as `meow-harness` (the import package and `meow`
 command are unchanged). The Release workflow's publish job builds the sdist and
