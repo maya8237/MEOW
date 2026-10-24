@@ -94,6 +94,12 @@ def run(argv: list[str], env: dict, **kwargs) -> str:
     return result.stdout
 
 
+def without_uv(path: str) -> str:
+    """PATH minus every directory that provides uv, to exercise the pip fallback."""
+    kept = [d for d in path.split(os.pathsep) if d and not shutil.which("uv", path=d)]
+    return os.pathsep.join(kept)
+
+
 def bootstrap(env: dict) -> None:
     if os.name == "nt":
         script = str(ROOT / "scripts/install.ps1").replace("'", "''")
@@ -131,7 +137,7 @@ def check_install(home: Path, env: dict, version: str) -> None:
     assert (release / "plugin/skills/run/SKILL.md").is_file()
 
 
-def smoke(scenario: str = "all") -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
+def smoke(scenario: str = "all", pip_only: bool = False) -> None:  # ruff: ignore[too-many-statements] -- end-to-end scenario
     assert scenario in SCENARIOS, f"unknown SMOKE_SCENARIO {scenario!r}"
     released = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"][
         "version"
@@ -194,9 +200,13 @@ def smoke(scenario: str = "all") -> None:  # ruff: ignore[too-many-statements] -
             "UV_FIND_LINKS": str(wheels),
             "MEOW_RELEASE_MANIFEST_URL": base + "/latest.json",
         }
+        if pip_only:
+            env["PATH"] = without_uv(env["PATH"])
         try:
             bootstrap(env)
             check_install(home, env, version)
+            config = home / ".meow/versions" / version / "runtime/pyvenv.cfg"
+            assert ("\nuv = " in config.read_text()) == (not pip_only)
             check_launcher_arguments(home, env, temporary)
             config = home / ".meow/config.toml"
             config.write_text("# preserved user configuration\n")
@@ -280,7 +290,10 @@ def annotate_failure(error: BaseException) -> None:
 
 if __name__ == "__main__":
     try:
-        smoke(os.environ.get("SMOKE_SCENARIO", "all"))
+        smoke(
+            os.environ.get("SMOKE_SCENARIO", "all"),
+            pip_only="--pip-only" in sys.argv[1:],
+        )
     except Exception as error:
         annotate_failure(error)
         raise

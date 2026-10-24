@@ -4,7 +4,8 @@ Claude Agent SDK harness (`meow`) and Claude Code plugin (`skills/`).
 
 ## Development
 
-From the repo root with `.venv` active (`python -m pip install -e ".[dev]"`):
+From the repo root with `.venv` active (`uv pip install -e ".[dev]"`, or
+`python -m pip install -e ".[dev]"` without uv):
 
 ```bash
 python -m pytest -q

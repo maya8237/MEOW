@@ -69,8 +69,8 @@ def start_ipython() -> None:
         from IPython.terminal.interactiveshell import TerminalInteractiveShell
     except ImportError as exc:
         raise SystemExit(
-            "IPython is required for interactive mode. "
-            "Install it with `pip install meow[ipython]`."
+            "IPython is required for interactive mode but could not be imported. "
+            "Run `meow -u` or rerun the installer to repair this install."
         ) from exc
 
     from meow.cli.ipython_completion import register_completers

@@ -68,12 +68,32 @@
         $bundle = Join-Path $temporary 'bundle'
         New-Item -ItemType Directory -Path $bundle | Out-Null
         Write-Host "Installing MEOW $tag with $python..."
-        & $python -m venv (Join-Path $bundle 'runtime')
-        Invoke-Checked 'Python could not create a virtual environment.'
-        $staged = Join-Path $bundle 'runtime\Scripts\python.exe'
-        Set-Content -LiteralPath (Join-Path $temporary 'wheel.txt') -Value "meow-harness==$tag --hash=sha256:$digest" -Encoding ASCII
-        & $staged -m pip install --disable-pip-version-check --no-input --no-deps --require-hashes --only-binary :all: -r (Join-Path $temporary 'wheel.txt')
-        Invoke-Checked "Could not install MEOW $tag from the package index (pip failed)."
+        $runtime = Join-Path $bundle 'runtime'
+        $staged = Join-Path $runtime 'Scripts\python.exe'
+        $requirement = Join-Path $temporary 'wheel.txt'
+        Set-Content -LiteralPath $requirement -Value "meow-harness==$tag --hash=sha256:$digest" -Encoding ASCII
+        # Use uv only if it is already installed; any uv failure falls back to pip.
+        $installed = $false
+        $uv = Get-Command uv -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($uv) {
+            $previousPreference = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            & $uv.Source venv --quiet --seed --python $python $runtime 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                & $uv.Source pip install --quiet --python $staged --no-deps --require-hashes --only-binary :all: -r $requirement 2>$null
+                $installed = ($LASTEXITCODE -eq 0)
+            }
+            $ErrorActionPreference = $previousPreference
+            if (-not $installed) {
+                Remove-Item -LiteralPath $runtime -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+        if (-not $installed) {
+            & $python -m venv $runtime
+            Invoke-Checked 'Python could not create a virtual environment.'
+            & $staged -m pip install --disable-pip-version-check --no-input --no-deps --require-hashes --only-binary :all: -r $requirement
+            Invoke-Checked "Could not install MEOW $tag from the package index (pip failed)."
+        }
         $purelib = "$(& $staged -c 'import sysconfig;print(sysconfig.get_path(''purelib''))')".Trim()
         Invoke-Checked 'Could not inspect the staged MEOW install.'
         $previousPath = $env:PYTHONPATH

@@ -54,17 +54,17 @@ test unless the user explicitly requests one.
 
 Identify the project root, language, package manager, existing lint/test
 commands, docs, and relevant `AGENTS.md` files. Verify Python 3.12+ with
-`python --version`, `python3 --version`, or `py -3.12 --version` on Windows;
-use that interpreter for MEOW. Run `meow --help` before changing files. If it is
-missing, ask before installing and offer both of these choices:
+`python --version`, `python3 --version`, or `py -3.12 --version` on Windows.
+Run `meow --help` before changing files. If it is missing, ask before installing,
+then run the README installer: `curl -fsSL
+https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh` on
+Linux, or `irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex`
+in PowerShell. It finds Python and adds `meow` to PATH; do not `pip install` MEOW
+or guess a venv path.
 
-- Install from the MEOW checkout with `<python-3.12+> -m pip install -e <path>`
-  using the system interpreter.
-- Create or reuse a `.venv`, install with that environment's Python, and use
-  its `meow` executable explicitly.
-
-After an approved install, rerun `meow --help`; stop and report the prerequisite
-if no suitable interpreter is available. Run the read-only project checks
+After an approved install, rerun `meow --help` (use `~/.meow/bin/meow` until PATH
+refreshes); stop and report the prerequisite if no suitable interpreter is
+available. Run the read-only project checks
 `meow native knowledge-audit --work-dir <project-root>` and
 `meow native knowledge-check --work-dir <project-root>` when the command is
 available. Show their evidence, but do not let an audit finding block unrelated

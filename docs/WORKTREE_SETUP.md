@@ -8,7 +8,7 @@ branch-review, plan-only, and task worktrees.
 ```toml
 [worktree_setup]
 copy = [".env.example"]
-commands = [["python", "-m", "pip", "install", "-e", "."]]
+commands = [["make", "setup"]]
 install_timeout = 1800  # optional: seconds per dependency install (default 900)
 ```
 
