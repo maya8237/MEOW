@@ -62,11 +62,24 @@ def select_shard(items, shard, total):
     return selected, deselected
 
 
+# PowerShell start-up makes each test in these modules take 5-16s against 1-3s for
+# the rest. Running them first keeps one from becoming the tail of a shard.
+SLOW_FIRST = (
+    "tests/installer/test_windows_script.py",
+    "tests/installer/test_uninstall.py",
+)
+
+
+def slow_first(items):
+    """`items` with the slow modules moved to the front, order otherwise kept."""
+    return sorted(items, key=lambda item: not item.nodeid.startswith(SLOW_FIRST))
+
+
 def pytest_collection_modifyitems(config, items):
-    """Run one slice of the suite when `MEOW_TEST_SHARD` is `N/TOTAL`."""
+    """Run one slice when `MEOW_TEST_SHARD` is `N/TOTAL`, slow tests first."""
     spec = os.environ.get("MEOW_TEST_SHARD")
-    if not spec:
-        return
-    selected, deselected = select_shard(items, *parse_shard(spec))
-    config.hook.pytest_deselected(items=deselected)
-    items[:] = selected
+    if spec:
+        selected, deselected = select_shard(items, *parse_shard(spec))
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = selected
+    items[:] = slow_first(items)

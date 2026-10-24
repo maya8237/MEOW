@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.conftest import parse_shard, select_shard
+from tests.conftest import parse_shard, select_shard, slow_first
 
 
 def _items(**counts):
@@ -45,3 +45,23 @@ def test_single_shard_selects_everything():
 def test_bad_spec_is_a_usage_error(spec):
     with pytest.raises(pytest.UsageError):
         parse_shard(spec)
+
+
+def test_slow_modules_run_first_without_reordering_the_rest():
+    items = [
+        SimpleNamespace(nodeid=f"tests/{mod}::t{n}")
+        for mod, n in [
+            ("a.py", 0),
+            ("installer/test_windows_script.py", 0),
+            ("b.py", 0),
+            ("installer/test_uninstall.py", 0),
+            ("installer/test_windows_script.py", 1),
+        ]
+    ]
+    assert [i.nodeid for i in slow_first(items)] == [
+        "tests/installer/test_windows_script.py::t0",
+        "tests/installer/test_uninstall.py::t0",
+        "tests/installer/test_windows_script.py::t1",
+        "tests/a.py::t0",
+        "tests/b.py::t0",
+    ]
