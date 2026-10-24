@@ -2,14 +2,17 @@
 
 import json
 import re
+import subprocess
 import sys
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, distribution, version
+from pathlib import Path
 from urllib.request import urlopen
 
 RELEASE_URL = (
     "https://raw.githubusercontent.com/maya8237/MEOW/release-channel/latest.json"
 )
 VERSION_COMPONENTS = 3
+ANNOUNCE_LIMIT = 5
 
 
 def _version_parts(value: str) -> tuple[int, ...]:
@@ -68,6 +71,57 @@ def update() -> int:
         print(f"MEOW {current} is up to date (latest release: {latest}).")
         return 0
     print(f"Upgrading MEOW {current} to release {latest}...")
-    install_release(latest, digest)
+    release = install_release(latest, digest)
     print(f"MEOW updated successfully to {latest}.")
+    announce_onboarding(current, latest, release)
     return 0
+
+
+def _local_install() -> bool:
+    """Editable or checkout installs may report a stale package version."""
+    try:
+        text = distribution("meow-harness").read_text("direct_url.json")
+    except PackageNotFoundError:
+        return True
+    return bool(text) and "dir_info" in json.loads(text)
+
+
+def _new_options(old: str, new: str, release: Path) -> list[str]:
+    from meow.installer.releases import release_python
+
+    # This process still runs the old release; only the new one knows its table.
+    result = subprocess.run(
+        [str(release_python(release)), "-m", "meow.project.announcements"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    low, high = _version_parts(old), _version_parts(new)
+    summaries = []
+    for entry in json.loads(result.stdout).values():
+        try:
+            added = _version_parts(entry["since"])
+        except ValueError:
+            continue
+        if low < added <= high:
+            summaries.append((added, entry["summary"]))
+    return [summary for _, summary in sorted(summaries, key=lambda item: item[0])]
+
+
+def announce_onboarding(old: str, new: str, release: Path) -> None:
+    """Best-effort: list onboarding options added after OLD up to NEW."""
+    try:
+        if _local_install():
+            return
+        options = _new_options(old, new, release)
+    except Exception:  # never fail an update that already installed
+        return
+    if not options:
+        return
+    lines = [f"New onboarding options since MEOW {old}:"]
+    lines += [f"  - {option}" for option in options[:ANNOUNCE_LIMIT]]
+    if len(options) > ANNOUNCE_LIMIT:
+        lines.append(f"  ... and {len(options) - ANNOUNCE_LIMIT} more")
+    lines.append("Run /meow:onboard in each project to review them.")
+    print("\n".join(lines))

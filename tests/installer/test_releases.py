@@ -37,6 +37,54 @@ def test_release_tag_sets_package_and_plugin_versions(tmp_path, monkeypatch, tag
     )
 
 
+def _stamp_script(tmp_path, monkeypatch, table):
+    root = Path(__file__).resolve().parents[2]
+    script = runpy.run_path(str(root / "scripts/stamp_release.py"))
+    monkeypatch.setitem(script["stamp_announcements"].__globals__, "ROOT", tmp_path)
+    path = tmp_path / script["ANNOUNCEMENTS"]
+    path.parent.mkdir(parents=True)
+    path.write_text(f"ANNOUNCED: dict[str, tuple[str, str]] = {table}\n")
+    return script, path
+
+
+def _table(path):
+    namespace = {}
+    exec(path.read_text(), namespace)
+    return {key: since for key, (since, _) in namespace["ANNOUNCED"].items()}
+
+
+def test_release_stamps_unreleased_announcements(tmp_path, monkeypatch):
+    script, path = _stamp_script(
+        tmp_path,
+        monkeypatch,
+        '{\n    "old": ("0.1.18", "Old"),\n    "new": (\n        "unreleased",\n'
+        '        "New",\n    ),\n    "next": ("unreleased", "Next"),\n}',
+    )
+    assert script["unreleased"]() == ["new", "next"]
+    assert script["stamp_announcements"]("0.1.19", {"new"}) == ["new"]
+    assert _table(path) == {"old": "0.1.18", "new": "0.1.19", "next": "unreleased"}
+    assert script["stamp_announcements"]("0.2.0") == ["next"]
+    assert _table(path)["next"] == "0.2.0"
+
+
+def test_release_rejects_announcements_after_its_version(tmp_path, monkeypatch):
+    script, path = _stamp_script(
+        tmp_path, monkeypatch, '{"early": ("unreleased", "E"), "x": ("0.2.0", "X")}'
+    )
+    with pytest.raises(ValueError, match=r"x is announced for 0\.2\.0"):
+        script["stamp_announcements"]("0.1.19")
+    assert _table(path)["early"] == "unreleased"
+
+
+def test_shipped_announcements_parse_for_stamping(monkeypatch):
+    root = Path(__file__).resolve().parents[2]
+    script = runpy.run_path(str(root / "scripts/stamp_release.py"))
+    from meow.project.announcements import ANNOUNCED
+
+    unreleased = [key for key, (since, _) in ANNOUNCED.items() if since == "unreleased"]
+    assert script["unreleased"]() == unreleased
+
+
 @pytest.mark.parametrize("script", ["stamp_release.py", "smoke_release.py"])
 def test_release_tools_import_without_installed_dependencies(script):
     root = Path(__file__).resolve().parents[2]

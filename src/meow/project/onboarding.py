@@ -333,6 +333,8 @@ def onboard_if_needed(active_dir: Path, config_dir: Path) -> dict | None:
 _GUIDE = "docs/INTEGRATIONS.md"
 # Add optional capabilities here when introducing them, so installer and skill
 # reruns discover the same current options without storing an onboarding version.
+# Then decide in `announcements.py` whether `meow --update` announces each one;
+# announce only steps `/meow:onboard` walks through, updating the skill with it.
 _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
     "jira": (
         ("jira",),

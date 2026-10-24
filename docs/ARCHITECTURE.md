@@ -38,8 +38,8 @@ top-level alias or compatibility modules.
 - `native/`: deterministic helpers behind `meow native ...` for in-session
   skills, including `native_orchestrate.py` for `/meow:run --orchestrate`.
 - `project/`: config models/schema, custom skill and agent discovery
-  (`project/custom/`), onboarding, permissions, plan files/state, pre-plan
-  shaping, prompts, and command policy. `project/custom/` owns scoped agent
+  (`project/custom/`), onboarding and its update announcements, permissions,
+  plan files/state, pre-plan shaping, prompts, and command policy. `project/custom/` owns scoped agent
   and workflow loading, expression/template validation, and shipped TOML
   definitions under `builtin/`. `project/prompts.py` supplies computed context
   and verdict contracts; editable role prose belongs in the agent definitions.
