@@ -19,7 +19,7 @@ Use `meow COMMAND --help` for flag syntax. Read the relevant reference only:
 | `meow detach [--log FILE] -- CMD...` | Detach a command; returns PID and log JSON |
 | `meow queue ["request"]` | Add a request, or process pending requests serially |
 | `meow workflows` / `meow agents` | Inspect, eject, validate, or diff definitions |
-| `meow ui` | Local catalog and session launcher |
+| `meow ui` | Read-only catalog, session history, and docs |
 | `meow schedule` | Add, list, edit, or cancel a one-shot trigger |
 | `meow ipython` | Interactive command session |
 
@@ -136,7 +136,7 @@ commit/push behavior.
 State and logs live in `.meow/schedules/`. Editing preserves the frozen recipe
 and ID; only pending schedules are editable, with rollback on OS-update failure.
 Cancellation removes the trigger; stop an already-started run via run/session controls.
-`/meow:schedule` and UI scheduling use the same helper; see [UI.md](UI.md#scheduling).
+`/meow:schedule` uses this helper.
 
 ## Definitions and checks
 

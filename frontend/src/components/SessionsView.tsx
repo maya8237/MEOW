@@ -1,37 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, Plus, Search } from "lucide-react";
+import { Archive, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Catalog, repoName } from "@/lib/catalog";
 import {
   ImportedRun,
-  Recipe,
   SessionDetail as SessionRecord,
   SessionSummary,
-  importedRunAction,
   listRuns,
   listSessions,
   loadSession,
-  sessionAction,
 } from "@/lib/sessions";
 import SessionDetail from "@/components/SessionDetail";
 
-type CatalogRunItem = {
-  kind: "workflow" | "skill" | "agent";
-  item: Catalog["workflows"][number] & { claude_resolvable?: boolean };
-};
 type Props = {
   repo: string;
   catalog: Catalog;
-  focusSessionId?: string;
-  onSessionFocused?: () => void;
-  onRunRecipe: (
-    recipe?: Partial<Recipe>,
-    item?: CatalogRunItem,
-    sessionId?: string,
-    unknownFlags?: boolean,
-    editOnly?: boolean,
-  ) => void;
 };
 type Selection = {
   key: string;
@@ -54,13 +38,7 @@ const stateText = (state: string) =>
     scheduled: "Scheduled",
   })[state] || state.replaceAll("_", " ");
 
-export default function SessionsView({
-  repo,
-  catalog,
-  focusSessionId,
-  onSessionFocused,
-  onRunRecipe,
-}: Props) {
+export default function SessionsView({ repo, catalog }: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [runs, setRuns] = useState<ImportedRun[]>([]);
   const [selection, setSelection] = useState<Selection>(null);
@@ -70,33 +48,30 @@ export default function SessionsView({
   const [showArchived, setShowArchived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const selectedSessionId = selection?.session?.id || "";
   const selectedSessionRepo = selection?.session?.repo || "";
 
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
-      try {
-        const [sessionResult, runResult] = await Promise.all([
-          listSessions(repo, signal),
-          listRuns(repo, signal),
-        ]);
-        if (signal?.aborted) return;
-        setSessions(sessionResult.sessions);
-        setRuns(runResult.runs);
-        setError("");
-        setLoading(false);
-      } catch (reason) {
-        if (!signal?.aborted) {
+      const failure = (reason: unknown) =>
+        reason instanceof Error ? reason.message : "Could not load sessions.";
+      const [sessionResult, runResult] = await Promise.allSettled([
+        listSessions(repo, signal).then((result) => {
+          if (signal?.aborted) return;
+          setSessions(result.sessions);
           setLoading(false);
-          setError(
-            reason instanceof Error
-              ? reason.message
-              : "Could not load sessions.",
-          );
-        }
-      }
+        }),
+        listRuns(repo, signal).then((result) => {
+          if (!signal?.aborted) setRuns(result.runs);
+        }),
+      ]);
+      if (signal?.aborted) return;
+      const failed = [sessionResult, runResult].find(
+        (result) => result.status === "rejected",
+      );
+      setError(failed ? failure(failed.reason) : "");
+      setLoading(false);
     },
     [repo],
   );
@@ -191,136 +166,12 @@ export default function SessionsView({
   }, [sessions, runs, query, showArchived]);
   const activeSelection =
     entries.find((entry) => entry.key === selection?.key) || null;
-  useEffect(() => {
-    const entry = entries.find(
-      (candidate) => candidate.session?.id === focusSessionId,
-    );
-    if (focusSessionId && entry) {
-      setSelection(entry);
-      onSessionFocused?.();
-    }
-  }, [entries, focusSessionId, onSessionFocused]);
   const selectedSession = activeSelection?.session || null;
   const selectedRun = activeSelection?.run || null;
   const visibleDetail = detail?.id === selectedSession?.id ? detail : null;
   const linkedRuns = runs.filter((run) =>
     visibleDetail?.attempts.some((attempt) => attempt.run_ids.includes(run.id)),
   );
-
-  async function action(
-    actionName:
-      | "stop"
-      | "archive"
-      | "unarchive"
-      | "duplicate"
-      | "cancel-schedule"
-      | "edit-schedule",
-    values: object = {},
-  ) {
-    if (!selectedSession) return false;
-    setBusy(true);
-    setError("");
-    try {
-      const result = await sessionAction(
-        selectedSession.repo,
-        selectedSession.id,
-        actionName,
-        values,
-      );
-      if (actionName === "duplicate")
-        setSelection({
-          key: `session:${result.session.repo}:${result.session.id}`,
-          session: result.session,
-        });
-      setRevision((value) => value + 1);
-      return true;
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : `Could not ${actionName} this session.`,
-      );
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function resume(
-    attemptId?: string,
-    requestText?: string,
-    repair?: boolean,
-  ) {
-    if (!selectedSession || !attemptId) return;
-    setBusy(true);
-    setError("");
-    try {
-      await sessionAction(selectedSession.repo, selectedSession.id, "resume", {
-        attempt_id: attemptId,
-        ...(requestText ? { request: requestText } : {}),
-        ...(repair ? { repair: true } : {}),
-      });
-      setRevision((value) => value + 1);
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "Could not resume this attempt.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function resumeRun(requestText: string, repair: boolean) {
-    if (!selectedRun) return;
-    setBusy(true);
-    setError("");
-    try {
-      const result = await importedRunAction(
-        selectedRun.repo,
-        selectedRun.id,
-        "resume",
-        {
-          ...(requestText ? { request: requestText } : {}),
-          ...(repair ? { repair: true } : {}),
-        },
-      );
-      setRevision((value) => value + 1);
-      if (result.session)
-        setSelection({
-          key: `session:${result.session.repo}:${result.session.id}`,
-          session: result.session,
-        });
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Could not resume this run.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function cancelRun() {
-    if (!selectedRun) return;
-    setBusy(true);
-    setError("");
-    try {
-      await importedRunAction(selectedRun.repo, selectedRun.id, "cancel");
-      setRevision((value) => value + 1);
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Could not cancel this run.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  function duplicateRun() {
-    if (!selectedRun) return;
-    onRunRecipe(recipeFromRun(selectedRun), undefined, undefined, true);
-  }
-  function rerunImported() {
-    if (!selectedRun) return;
-    onRunRecipe(recipeFromRun(selectedRun), undefined, undefined, true);
-  }
 
   return (
     <div className="sessions-view">
@@ -335,13 +186,6 @@ export default function SessionsView({
               placeholder="Search sessions and runs"
             />
           </label>
-          <Button
-            size="icon"
-            aria-label="New session"
-            onClick={() => onRunRecipe()}
-          >
-            <Plus />
-          </Button>
         </div>
         <label className="archived-toggle">
           <input
@@ -376,12 +220,8 @@ export default function SessionsView({
               <p>
                 {query
                   ? "Try another name, command, or request."
-                  : "Launch a MEOW command to keep its recipe, attempts, and output together."}
+                  : "Completed and active MEOW sessions and runs appear here."}
               </p>
-              <Button variant="outline" onClick={() => onRunRecipe()}>
-                <Plus />
-                New session
-              </Button>
             </div>
           )
         ) : (
@@ -439,16 +279,6 @@ export default function SessionsView({
         className="sessions-inspector"
         aria-label="Selected session details"
       >
-        {busy && (
-          <span className="sr-only" role="status">
-            Updating session…
-          </span>
-        )}
-        {error && activeSelection && (
-          <div className="session-error session-action-error" role="alert">
-            {error}
-          </div>
-        )}
         <SessionDetail
           repo={selectedSession?.repo || selectedRun?.repo || repo}
           session={visibleDetail}
@@ -461,64 +291,8 @@ export default function SessionsView({
           }}
           linkedRuns={linkedRuns}
           repos={catalog.repos}
-          onEdit={() =>
-            visibleDetail &&
-            onRunRecipe(
-              visibleDetail.recipe,
-              undefined,
-              visibleDetail.id,
-              false,
-              true,
-            )
-          }
-          onRerun={() =>
-            visibleDetail &&
-            onRunRecipe(visibleDetail.recipe, undefined, visibleDetail.id)
-          }
-          onDuplicate={() => void action("duplicate")}
-          onResume={(attemptId, requestText, repair) =>
-            void resume(attemptId, requestText, repair)
-          }
-          onStop={() => void action("stop")}
-          onCancelSchedule={(scheduleId) =>
-            void action("cancel-schedule", { schedule_id: scheduleId })
-          }
-          onEditSchedule={(scheduleId, at) =>
-            action("edit-schedule", { schedule_id: scheduleId, at })
-          }
-          onArchive={() => void action("archive")}
-          onUnarchive={() => void action("unarchive")}
-          onImportedResume={(requestText, repair) =>
-            void resumeRun(requestText, repair)
-          }
-          onImportedCancel={() => void cancelRun()}
         />
-        {selectedRun && (
-          <div className="imported-actions">
-            <Button variant="outline" onClick={duplicateRun}>
-              <Plus />
-              Duplicate as draft
-            </Button>
-            <Button variant="outline" onClick={rerunImported}>
-              Prepare rerun
-            </Button>
-          </div>
-        )}
       </section>
     </div>
   );
-}
-
-function recipeFromRun(run: ImportedRun): Recipe {
-  return {
-    name: run.feature_name || `run-${run.id.slice(0, 8)}`,
-    repo: run.repo,
-    mode: "cli",
-    command: "run",
-    request: run.request || `Continue work from MEOW run ${run.id}`,
-    workflow: run.workflow?.name || null,
-    inputs: run.workflow?.inputs || {},
-    arguments: [],
-    options: { no_worktree: false },
-  };
 }

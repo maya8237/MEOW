@@ -69,100 +69,12 @@ test("scope and text filters narrow the catalog and can be cleared", async () =>
   expect(screen.getByRole("heading", { name: "quick" })).toBeInTheDocument();
 });
 
-test("creating a different kind selects the saved item and clears restrictive filters", async () => {
-  const user = userEvent.setup();
-  const created = {
-    ...catalog.agents[0],
-    name: "helper",
-    file: "/repo/.meow/agents/helper.toml",
-    repo: "/repo",
-    scope: "project",
-  };
-  let saved = false;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (url: string, options?: RequestInit) => {
-      if (options?.method === "POST") {
-        expect(url).toBe("/api/agents");
-        expect(JSON.parse(options.body as string)).toEqual({
-          name: "helper",
-          description: "Helps out",
-          source: "explorer",
-          scope: "project",
-          repo: "/repo",
-        });
-        saved = true;
-        return new Response(
-          JSON.stringify({ name: "helper", file: created.file }),
-          { status: 201 },
-        );
-      }
-      return new Response(
-        JSON.stringify(
-          saved
-            ? { ...catalog, agents: [...catalog.agents, created] }
-            : catalog,
-        ),
-      );
-    }),
-  );
+test("the catalog is read-only and points customization to Claude Code", async () => {
   render(<App />);
   await screen.findByRole("heading", { name: "quick" });
-  await user.selectOptions(screen.getByLabelText("Scope"), "builtin");
-  await user.type(screen.getByRole("searchbox"), "quick");
-  await user.click(screen.getByRole("button", { name: "New item" }));
-  const dialog = screen.getByRole("dialog");
-  await user.selectOptions(within(dialog).getByLabelText("Kind"), "agents");
-  await user.type(within(dialog).getByLabelText("Name"), "helper");
-  await user.type(within(dialog).getByLabelText("Description"), "Helps out");
-  await user.click(
-    within(dialog).getByRole("button", { name: "Create agent" }),
-  );
-  await screen.findByRole("heading", { name: "helper" });
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Agents/ })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await user.click(
-    screen.getByRole("button", { name: "Copy customize command" }),
-  );
-  const command = await navigator.clipboard.readText();
-  expect(command).toContain("/meow:customize");
-  expect(command).toContain(created.file);
-  expect(command).toContain('agent "helper"');
-  expect(command).toContain('repository "/repo"');
-  expect(command).toContain("project scope");
-  expect(command).toContain("Helps out");
-});
-
-test("failed saves keep the entered fields and allow retry", async () => {
-  const user = userEvent.setup();
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (_url, options) => {
-      if (options?.method === "POST") throw new Error("Connection lost");
-      return new Response(JSON.stringify(catalog));
-    }),
-  );
-  render(<App />);
-  await screen.findByRole("heading", { name: "quick" });
-  await user.click(screen.getByRole("button", { name: "New item" }));
-  const dialog = screen.getByRole("dialog");
-  await user.type(within(dialog).getByLabelText("Name"), "nightly-copy");
-  await user.type(within(dialog).getByLabelText("Description"), "Helps out");
-  await user.click(
-    within(dialog).getByRole("button", { name: "Create workflow" }),
-  );
-  await waitFor(() =>
-    expect(within(dialog).getByRole("alert")).toHaveTextContent(
-      "Connection lost",
-    ),
-  );
-  expect(within(dialog).getByLabelText("Name")).toHaveValue("nightly-copy");
-  expect(
-    within(dialog).getByRole("button", { name: "Create workflow" }),
-  ).toBeEnabled();
+  expect(screen.getByText("/meow:customize")).toBeInTheDocument();
+  for (const name of [/^New/, /^Run /, /^Edit/, /^Make a copy/])
+    expect(screen.queryByRole("button", { name })).toBeNull();
 });
 
 test("a catalog connection failure offers a working retry", async () => {
@@ -178,22 +90,6 @@ test("a catalog connection failure offers a working retry", async () => {
   await screen.findByText(/Offline/);
   await user.click(screen.getByRole("button", { name: "Retry" }));
   await screen.findByRole("heading", { name: "quick" });
-});
-
-test("canceling creation restores focus without saving", async () => {
-  const user = userEvent.setup();
-  render(<App />);
-  await screen.findByRole("heading", { name: "quick" });
-  await user.click(screen.getByRole("button", { name: "New item" }));
-  await user.click(screen.getByRole("button", { name: "Cancel" }));
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "New item" })).toHaveFocus(),
-  );
-  expect(
-    vi
-      .mocked(fetch)
-      .mock.calls.some(([, options]) => options?.method === "POST"),
-  ).toBe(false);
 });
 
 test("a stale refresh cannot replace the newly selected repository", async () => {
@@ -231,51 +127,17 @@ test("a stale refresh cannot replace the newly selected repository", async () =>
   ).toBeInTheDocument();
 });
 
-test("clipboard errors give a recovery message and leave the command available", async () => {
+test("clipboard errors give a recovery message", async () => {
   const user = userEvent.setup();
   vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(
     new Error("Denied"),
   );
   render(<App />);
   await screen.findByRole("heading", { name: "quick" });
-  await user.click(screen.getAllByRole("button", { name: /^Copy$/ })[0]);
+  await user.click(screen.getByRole("button", { name: "Copy source" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Select the text and copy it manually",
   );
-  expect(
-    screen.getByText(
-      'meow run "<request>" --workflow quick --name "<feature-name>"',
-    ),
-  ).toBeInTheDocument();
-});
-
-test("making a copy of a skill keeps its selected source after loading", async () => {
-  const skill = {
-    name: "notes",
-    qualified_name: "meow-custom:notes",
-    description: "Take notes",
-    scope: "project",
-    repo: "/repo",
-    directory: "/repo/skills/notes",
-    text: "Instructions with supporting files",
-  };
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () => new Response(JSON.stringify({ ...catalog, skills: [skill] })),
-    ),
-  );
-  const user = userEvent.setup();
-  render(<App />);
-  await screen.findByRole("heading", { name: "quick" });
-  await user.click(screen.getByRole("button", { name: /Skills/ }));
-  await user.click(screen.getByRole("button", { name: "Make a copy" }));
-  await waitFor(() =>
-    expect(screen.getByLabelText("Start from")).toBeEnabled(),
-  );
-  expect(screen.getByLabelText("Start from")).toHaveValue("notes");
-  await user.selectOptions(screen.getByLabelText("Start from"), "");
-  expect(screen.getByLabelText("Start from")).toHaveValue("");
 });
 
 test("Sessions aggregates repositories and disambiguates duplicate basenames", async () => {
@@ -357,17 +219,6 @@ test("Sessions aggregates repositories and disambiguates duplicate basenames", a
   );
 });
 
-test("workflow Run opens the CLI launcher with its workflow selected", async () => {
-  const user = userEvent.setup();
-  render(<App />);
-  await screen.findByRole("heading", { name: "quick" });
-  await user.click(screen.getByRole("button", { name: "Run workflow quick" }));
-  expect(screen.getByRole("dialog")).toBeInTheDocument();
-  expect(screen.getByLabelText("Execution mode")).toHaveValue("cli");
-  expect(screen.getByLabelText("Command")).toHaveValue("run");
-  expect(screen.getByLabelText("Workflow")).toHaveValue("quick");
-});
-
 test.each(["Workflows", "Agents", "Skills"])(
   "returns from Sessions to the %s catalog",
   async (kind) => {
@@ -407,55 +258,7 @@ test.each(["Workflows", "Agents", "Skills"])(
   },
 );
 
-test("skill Run uses its qualified Claude command and unverified agents have no Run action", async () => {
-  const skill = {
-    name: "notes",
-    qualified_name: "meow-custom:notes",
-    description: "Take notes",
-    scope: "project",
-    repo: "/repo",
-    directory: "/repo/skills/notes",
-    text: "Skill source",
-  };
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () => new Response(JSON.stringify({ ...catalog, skills: [skill] })),
-    ),
-  );
-  const user = userEvent.setup();
-  render(<App />);
-  await screen.findByRole("heading", { name: "quick" });
-  await user.click(screen.getByRole("button", { name: /Agents/ }));
-  expect(
-    screen.queryByRole("button", { name: "Run agent explorer" }),
-  ).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: /Skills/ }));
-  await user.click(
-    screen.getByRole("button", { name: "Run skill meow-custom:notes" }),
-  );
-  expect(screen.getByLabelText("Execution mode")).toHaveValue("claude");
-  expect(screen.getByLabelText("Command")).toHaveValue("/meow-custom:notes");
-});
-
-test("a verified Claude agent Run preselects the agent option", async () => {
-  const agent = { ...catalog.agents[0], claude_resolvable: true };
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () => new Response(JSON.stringify({ ...catalog, agents: [agent] })),
-    ),
-  );
-  const user = userEvent.setup();
-  render(<App />);
-  await screen.findByRole("heading", { name: "quick" });
-  await user.click(screen.getByRole("button", { name: /Agents/ }));
-  await user.click(screen.getByRole("button", { name: "Run agent explorer" }));
-  expect(screen.getByLabelText("Execution mode")).toHaveValue("claude");
-  expect(screen.getByText("Agent: explorer")).toBeInTheDocument();
-});
-
-test("Docs navigation shows documentation, hides New item, and Ctrl+K focuses its search", async () => {
+test("Docs navigation shows documentation and Ctrl+K focuses its search", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) =>
@@ -476,7 +279,6 @@ test("Docs navigation shows documentation, hides New item, and Ctrl+K focuses it
   expect(
     await screen.findByRole("heading", { name: "Documentation" }),
   ).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "New item" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Refresh catalog" })).toBeNull();
   expect(screen.getByRole("button", { name: "Docs" })).toHaveAttribute(
     "aria-pressed",

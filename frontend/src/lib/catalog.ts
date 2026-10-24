@@ -26,18 +26,6 @@ export interface Catalog {
   notes: string[];
   error: string | null;
 }
-export interface CreatePayload {
-  name: string;
-  description: string;
-  source: string;
-  scope: Exclude<Scope, "builtin">;
-  repo: string;
-}
-export interface CreatedItem {
-  name: string;
-  file: string;
-}
-
 export const kinds: {
   key: Kind;
   label: string;

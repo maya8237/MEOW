@@ -1,17 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Archive,
-  Check,
-  Copy,
-  Download,
-  Pencil,
-  Play,
-  RotateCcw,
-  Square,
-  Undo2,
-} from "lucide-react";
+import { Check, Copy, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { repoName } from "@/lib/catalog";
 import {
   ImportedRun,
@@ -36,6 +25,7 @@ const stateLabel: Record<string, string> = {
   running: "Running",
   stopping: "Stopping",
 };
+
 type Props = {
   repo: string;
   session: SessionRecord | null;
@@ -45,17 +35,6 @@ type Props = {
   onRetryDetails?: () => void;
   linkedRuns?: ImportedRun[];
   repos: string[];
-  onEdit: () => void;
-  onRerun: () => void;
-  onDuplicate: () => void;
-  onResume: (attemptId?: string, request?: string, repair?: boolean) => void;
-  onStop: () => void;
-  onArchive: () => void;
-  onUnarchive: () => void;
-  onImportedResume: (request: string, repair: boolean) => void;
-  onImportedCancel: () => void;
-  onCancelSchedule?: (scheduleId: string) => void;
-  onEditSchedule?: (scheduleId: string, at: string) => Promise<boolean>;
 };
 
 export default function SessionDetail({
@@ -67,32 +46,14 @@ export default function SessionDetail({
   onRetryDetails,
   linkedRuns = [],
   repos,
-  onEdit,
-  onRerun,
-  onDuplicate,
-  onResume,
-  onStop,
-  onArchive,
-  onUnarchive,
-  onImportedResume,
-  onImportedCancel,
-  onCancelSchedule,
-  onEditSchedule,
 }: Props) {
   const [attemptId, setAttemptId] = useState("");
   const [output, setOutput] = useState("");
   const [outputError, setOutputError] = useState("");
   const [loading, setLoading] = useState(false);
   const [wrap, setWrap] = useState(true);
-  const [resumeRequest, setResumeRequest] = useState("");
-  const [repair, setRepair] = useState(false);
   const [copied, setCopied] = useState(false);
   const [retryOutput, setRetryOutput] = useState(0);
-  const [editingSchedule, setEditingSchedule] = useState("");
-  const [scheduleAt, setScheduleAt] = useState("");
-  const [savingSchedule, setSavingSchedule] = useState(false);
-  const validScheduleTime =
-    !!scheduleAt && new Date(scheduleAt).getTime() > Date.now();
   const pane = useRef<HTMLPreElement>(null);
   const attempts = session?.attempts || [];
   const picked =
@@ -104,26 +65,20 @@ export default function SessionDetail({
   const importedRepo = importedRun?.repo || "";
   const importedId = importedRun?.id || "";
   const importedOutputAvailable = !!importedRun?.background_output_available;
-  const importedActive = !!importedRun?.cancel_supported;
+  const importedActive =
+    !!importedRun && ["running", "starting"].includes(importedRun.phase);
   const selectedState = session?.state || importedRun?.phase || "draft";
-  const outputAvailable =
-    !!picked || !!importedRun?.background_output_available;
+  const outputAvailable = !!picked || importedOutputAvailable;
   const outputDownload = picked
     ? outputUrl(picked.effective_recipe.repo, session!.id, picked.id)
     : importedRun
       ? importedOutputUrl(importedRun.repo, importedRun.id)
       : "";
-  const isActive = picked
-    ? active.has(picked.state)
-    : !!importedRun && importedRun.cancel_supported;
 
   useEffect(() => {
     setAttemptId("");
     setOutput("");
     setOutputError("");
-    setResumeRequest("");
-    setRepair(false);
-    setEditingSchedule("");
   }, [session?.id, importedRun?.id]);
 
   useEffect(() => {
@@ -140,12 +95,14 @@ export default function SessionDetail({
       setLoading(false);
       return;
     }
+
     const controller = new AbortController();
     let cancelled = false;
     let cursor = 0;
     setOutput("");
     setOutputError("");
     setLoading(true);
+
     async function poll() {
       while (!cancelled) {
         try {
@@ -193,6 +150,7 @@ export default function SessionDetail({
         }
       }
     }
+
     void poll();
     return () => {
       cancelled = true;
@@ -222,6 +180,7 @@ export default function SessionDetail({
       );
     }
   }
+
   const labels = useMemo(
     () => ({
       repo: repoName(session?.repo || importedRun?.repo || repo, repos),
@@ -250,13 +209,11 @@ export default function SessionDetail({
         )}
       </div>
     );
+
   const title =
     session?.name ||
     importedRun?.feature_name ||
     `Run ${importedRun?.id.slice(0, 8)}`;
-  const canResume = picked
-    ? picked.resume_supported
-    : !!importedRun?.resume_supported;
 
   return (
     <article className="session-detail">
@@ -269,64 +226,6 @@ export default function SessionDetail({
               {labels.state}
             </span>
           </p>
-        </div>
-        <div className="session-actions">
-          {session && (
-            <>
-              <Button variant="outline" onClick={onEdit}>
-                <Pencil />
-                Edit
-              </Button>
-              {!session.archived && (
-                <Button variant="outline" onClick={onRerun}>
-                  <RotateCcw />
-                  Rerun
-                </Button>
-              )}
-              <Button variant="outline" onClick={onDuplicate}>
-                <Copy />
-                Duplicate
-              </Button>
-            </>
-          )}
-          {session?.archived ? (
-            <Button variant="outline" onClick={onUnarchive}>
-              <Undo2 />
-              Unarchive
-            </Button>
-          ) : session && !isActive ? (
-            <Button variant="outline" onClick={onArchive}>
-              <Archive />
-              Archive
-            </Button>
-          ) : null}
-          {isActive &&
-            (session ? (
-              <Button variant="outline" onClick={onStop}>
-                <Square />
-                Stop
-              </Button>
-            ) : (
-              <Button variant="outline" onClick={onImportedCancel}>
-                <Square />
-                Cancel run
-              </Button>
-            ))}
-          {canResume &&
-            !session?.archived &&
-            (session ? (
-              <Button
-                onClick={() => onResume(picked?.id, resumeRequest, repair)}
-              >
-                <Play />
-                Resume
-              </Button>
-            ) : (
-              <Button onClick={() => onImportedResume(resumeRequest, repair)}>
-                <Play />
-                Resume run
-              </Button>
-            ))}
         </div>
       </header>
       {session && (
@@ -365,89 +264,13 @@ export default function SessionDetail({
         <div className="session-schedules">
           {session.schedules.map((job) => (
             <div className="session-schedule" key={job.id}>
-              {(editingSchedule !== job.id || job.state !== "scheduled") && (
-                <span>
-                  {job.state === "scheduled"
-                    ? "Scheduled for"
-                    : `Schedule ${job.state}:`}{" "}
-                  {new Date(job.at).toLocaleString()}
-                </span>
-              )}
+              <span>
+                {job.state === "scheduled"
+                  ? "Scheduled for"
+                  : `Schedule ${job.state}:`}{" "}
+                {new Date(job.at).toLocaleString()}
+              </span>
               {job.error && <span role="status">{job.error}</span>}
-              {job.state === "scheduled" && (
-                <>
-                  {editingSchedule === job.id ? (
-                    <>
-                      <label className="session-field">
-                        Scheduled for
-                        <Input
-                          type="datetime-local"
-                          aria-label="Schedule run at"
-                          value={scheduleAt}
-                          disabled={savingSchedule}
-                          onChange={(event) =>
-                            setScheduleAt(event.target.value)
-                          }
-                        />
-                        <small>
-                          Your local time (
-                          {Intl.DateTimeFormat().resolvedOptions().timeZone}).
-                        </small>
-                      </label>
-                      <Button
-                        disabled={savingSchedule || !validScheduleTime}
-                        onClick={async () => {
-                          setSavingSchedule(true);
-                          try {
-                            if (
-                              await onEditSchedule?.(
-                                job.id,
-                                new Date(scheduleAt).toISOString(),
-                              )
-                            )
-                              setEditingSchedule("");
-                          } finally {
-                            setSavingSchedule(false);
-                          }
-                        }}
-                      >
-                        Save time
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={savingSchedule}
-                        onClick={() => setEditingSchedule("")}
-                      >
-                        Cancel edit
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const time = new Date(job.at);
-                        setScheduleAt(
-                          new Date(
-                            time.getTime() - time.getTimezoneOffset() * 60000,
-                          )
-                            .toISOString()
-                            .slice(0, 16),
-                        );
-                        setEditingSchedule(job.id);
-                      }}
-                    >
-                      Edit time
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    disabled={savingSchedule}
-                    onClick={() => onCancelSchedule?.(job.id)}
-                  >
-                    Cancel schedule
-                  </Button>
-                </>
-              )}
             </div>
           ))}
         </div>
@@ -494,36 +317,12 @@ export default function SessionDetail({
                   </a>
                 </p>
               )}
-              {importedRun && run.resume_needs_request && (
-                <label className="session-field">
-                  Clarified request for resume
-                  <textarea
-                    rows={3}
-                    value={resumeRequest}
-                    onChange={(event) => setResumeRequest(event.target.value)}
-                    placeholder="Clarify the decision for the next attempt."
-                  />
-                </label>
-              )}
-              {importedRun && run.resume_supported && (
-                <label className="inline-check">
-                  <input
-                    type="checkbox"
-                    checked={repair}
-                    onChange={(event) => setRepair(event.target.checked)}
-                  />{" "}
-                  Resume in repair mode
-                </label>
-              )}
             </section>
           ))}
           {session && (
             <section className="session-recipe">
               <h3>Saved run settings</h3>
-              <p>
-                Used when you rerun this session. Edit settings to change the
-                next run.
-              </p>
+              <p>Recipe details recorded for this session.</p>
               <p>
                 {session.recipe.mode === "cli" ? "MEOW CLI" : "Claude Code"} ·{" "}
                 {session.recipe.command}
@@ -541,27 +340,6 @@ export default function SessionDetail({
             </section>
           )}
         </aside>
-      )}
-      {picked && canResume && picked.resume_needs_request && (
-        <label className="session-field resume-field">
-          Clarified request for resume
-          <textarea
-            rows={3}
-            value={resumeRequest}
-            onChange={(event) => setResumeRequest(event.target.value)}
-            placeholder="Clarify the decision for the next attempt."
-          />
-        </label>
-      )}
-      {picked && canResume && picked.run_ids.length > 0 && (
-        <label className="inline-check">
-          <input
-            type="checkbox"
-            checked={repair}
-            onChange={(event) => setRepair(event.target.checked)}
-          />{" "}
-          Resume in repair mode
-        </label>
       )}
       <section className="output-section" aria-label="Session output">
         <div className="output-heading">
@@ -602,7 +380,7 @@ export default function SessionDetail({
           </div>
         </div>
         {loading && !output && (
-          <p className="output-message">Connecting to output…</p>
+          <p className="output-message">Loading recorded output…</p>
         )}
         {outputError && (
           <div className="output-message output-error" role="alert">
@@ -620,7 +398,7 @@ export default function SessionDetail({
           <div className="output-message">
             {importedRun
               ? "This MEOW run predates UI output capture."
-              : "Launch an attempt to see its output here."}
+              : "No output is available for this attempt."}
           </div>
         ) : (
           <pre

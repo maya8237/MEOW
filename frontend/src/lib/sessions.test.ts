@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { loadOutput, listSessions, previewRecipe } from "./sessions";
+import { loadOutput, listSessions } from "./sessions";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -30,21 +30,9 @@ test("output fetch carries repository, attempt, cursor, and abort signal", async
   );
 });
 
-test("aggregate session listing omits the repo filter while preview sends the recipe", async () => {
-  const fetchMock = vi.fn(
-    async (url: RequestInfo | URL, options?: RequestInit) => {
-      void url;
-      void options;
-      return response({ sessions: [] });
-    },
-  );
+test("aggregate session listing omits the repo filter", async () => {
+  const fetchMock = vi.fn(async () => response({ sessions: [] }));
   vi.stubGlobal("fetch", fetchMock);
   await listSessions("");
-  expect(fetchMock.mock.calls[0][0]).toBe("/api/sessions");
-  await previewRecipe("/repo", { name: "Draft" });
-  expect(fetchMock.mock.calls[1][0]).toBe("/api/sessions/preview");
-  expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
-    repo: "/repo",
-    recipe: { name: "Draft" },
-  });
+  expect(fetchMock.mock.calls[0]).toContain("/api/sessions");
 });

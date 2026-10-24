@@ -1,4 +1,4 @@
-"""Describe the real CLI options for the session launcher's structured controls."""
+"""Describe the real CLI options for structured controls."""
 
 import argparse
 

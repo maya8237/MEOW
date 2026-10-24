@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Code2, GitBranch, Terminal, Workflow } from "lucide-react";
+import { ArrowRight, Code2, Workflow } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,25 +25,13 @@ export default function ItemDetail({
   repos,
   kind,
   onCopyError,
-  onDuplicate,
-  onRun,
 }: {
   item: CatalogItem;
   repos: string[];
   kind: Kind;
   onCopyError: (message: string) => void;
-  onDuplicate: () => void;
-  onRun: () => void;
 }) {
   const [sourceOpen, setSourceOpen] = useState(false);
-  const workDir = item.repo ? ` --work-dir "${item.repo}"` : "";
-  const commands = [
-    [
-      "Terminal",
-      `meow run "<request>" --workflow ${item.name}${workDir} --name "<feature-name>"`,
-    ],
-    ["Claude Code", `/meow:run --workflow ${item.name} "<request>"`],
-  ];
   const facts: [string, string][] = [
     ["Repository", item.repo || "All repositories"],
     [kind === "skills" ? "Directory" : "File", itemKey(item)],
@@ -76,52 +64,10 @@ export default function ItemDetail({
           </div>
           <h2>{item.name}</h2>
         </div>
-        <Button variant="outline" onClick={onDuplicate}>
-          <GitBranch />
-          Make a copy
-        </Button>
       </div>
       <p className="item-description">
         {item.description || "No description provided."}
       </p>
-      {(kind === "workflows" ||
-        kind === "skills" ||
-        (kind === "agents" && item.claude_resolvable)) && (
-        <section className="catalog-run-action" aria-label="Run definition">
-          <div>
-            <h3>
-              {kind === "workflows"
-                ? "Run this workflow"
-                : kind === "skills"
-                  ? "Run this skill"
-                  : "Use this agent"}
-            </h3>
-            <p>
-              {kind === "workflows"
-                ? "Start a CLI session with this workflow selected."
-                : kind === "skills"
-                  ? "Start a Claude session with this qualified skill command."
-                  : "Start a Claude session with this verified Claude agent."}
-            </p>
-          </div>
-          <Button
-            onClick={onRun}
-            aria-label={
-              kind === "workflows"
-                ? `Run workflow ${item.name}`
-                : kind === "skills"
-                  ? `Run skill ${item.qualified_name || item.name}`
-                  : `Run agent ${item.name}`
-            }
-          >
-            {kind === "workflows"
-              ? "Run CLI"
-              : kind === "skills"
-                ? "Run in Claude"
-                : "Run with Claude"}
-          </Button>
-        </section>
-      )}
       {kind === "workflows" && (
         <section className="workflow-section" aria-labelledby="steps-title">
           <div className="section-heading">
@@ -167,27 +113,6 @@ export default function ItemDetail({
           ))}
         </dl>
       </section>
-      {kind === "workflows" && (
-        <section className="run-section" aria-labelledby="run-title">
-          <h3 id="run-title">
-            <Terminal />
-            Run this workflow
-          </h3>
-          <p className="hint">
-            Replace the request and feature name, then run in your terminal or
-            Claude Code.
-          </p>
-          {commands.map(([label, text]) => (
-            <div className="command" key={label}>
-              <div className="command-heading">
-                <span>{label}</span>
-                <CopyButton text={text} onError={onCopyError} />
-              </div>
-              <pre>{text}</pre>
-            </div>
-          ))}
-        </section>
-      )}
       <section className="source-section">
         <div className="section-heading">
           <Button

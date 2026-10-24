@@ -625,12 +625,10 @@ def test_mutations_enforce_origin_body_and_repo_allowlist(running, project, tmp_
     connection.close()
 
     connection = http.client.HTTPConnection("127.0.0.1", running.server_port)
-    connection.request(
-        "POST",
-        "/api/sessions",
-        body=" " * (64 * 1024 + 1),
-        headers={"Content-Type": "application/json"},
-    )
+    connection.putrequest("POST", "/api/sessions")
+    connection.putheader("Content-Type", "application/json")
+    connection.putheader("Content-Length", str(64 * 1024 + 1))
+    connection.endheaders()
     assert connection.getresponse().status == HTTPStatus.REQUEST_ENTITY_TOO_LARGE
     connection.close()
     assert SessionStore(project).list() == []

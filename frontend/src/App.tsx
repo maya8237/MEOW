@@ -6,7 +6,6 @@ import {
   Bot,
   FolderGit2,
   LoaderCircle,
-  Plus,
   RefreshCw,
   Search,
   Workflow,
@@ -26,27 +25,12 @@ import {
   scopeLabel,
   scopes,
 } from "@/lib/catalog";
-import CreateDialog from "@/components/CreateDialog";
 import ItemDetail from "@/components/ItemDetail";
-import CopyButton from "@/components/CopyButton";
 import OnlineDocsLink from "@/components/OnlineDocsLink";
 import SessionsView from "@/components/SessionsView";
-import SessionLauncher from "@/components/SessionLauncher";
-import { Recipe } from "@/lib/sessions";
 
 const DocsView = lazy(() => import("@/components/DocsView"));
 const icons = { workflows: Workflow, agents: Bot, skills: BookOpen };
-type RunItem = {
-  kind: "workflow" | "skill" | "agent";
-  item: Catalog["workflows"][number];
-};
-type LauncherState = {
-  recipe?: Partial<Recipe>;
-  item?: RunItem;
-  sessionId?: string;
-  editOnly?: boolean;
-  unknownFlags?: boolean;
-} | null;
 
 export default function App() {
   const [data, setData] = useState<Catalog | null>(null);
@@ -57,16 +41,10 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope | "">("");
   const [selected, setSelected] = useState("");
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [saved, setSaved] = useState<{ path: string; command: string } | null>(
-    null,
-  );
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [launcher, setLauncher] = useState<LauncherState>(null);
-  const [focusSessionId, setFocusSessionId] = useState("");
   const search = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -99,28 +77,24 @@ export default function App() {
     }
     refresh(true);
     const interval = setInterval(() => {
-      if (!creating && document.visibilityState !== "hidden") refresh();
+      if (document.visibilityState !== "hidden") refresh();
     }, 2000);
     return () => {
       controller.abort();
       clearInterval(interval);
     };
-  }, [repo, revision, creating]);
+  }, [repo, revision]);
 
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
-      if (
-        !creating &&
-        (event.metaKey || event.ctrlKey) &&
-        event.key.toLowerCase() === "k"
-      ) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         search.current?.focus();
       }
     }
     document.addEventListener("keydown", shortcut);
     return () => document.removeEventListener("keydown", shortcut);
-  }, [creating]);
+  }, []);
 
   const tab = kinds.find((entry) => entry.key === kind)!;
   const all = data?.[kind] || [];
@@ -160,7 +134,6 @@ export default function App() {
             onChange={(event) => {
               setRepo(event.target.value);
               setSelected("");
-              setSaved(null);
             }}
           >
             <option value="">All repositories</option>
@@ -186,7 +159,6 @@ export default function App() {
                   setShowDocs(false);
                   setKind(entry.key);
                   setSelected("");
-                  setSaved(null);
                 }}
               >
                 <NavIcon />
@@ -204,7 +176,6 @@ export default function App() {
             onClick={() => {
               setShowSessions(true);
               setShowDocs(false);
-              setSaved(null);
             }}
           >
             <Workflow />
@@ -217,7 +188,6 @@ export default function App() {
             onClick={() => {
               setShowDocs(true);
               setShowSessions(false);
-              setSaved(null);
             }}
           >
             <BookText />
@@ -233,11 +203,7 @@ export default function App() {
                 ? "Catalog syncs automatically"
                 : "Connecting…"}
           </div>
-          <p>
-            Management, Execution &amp;
-            <br />
-            Optimization of Workflows
-          </p>
+          <p>Definitions for the way you work.</p>
         </div>
       </aside>
       <main className="workspace">
@@ -254,13 +220,13 @@ export default function App() {
               {showDocs
                 ? "Guides, commands, flags, and skills."
                 : showSessions
-                  ? "Launch commands, follow output, and manage attempts."
+                  ? "Review past sessions, runs, and their recorded output."
                   : tab.description}
             </p>
           </div>
           <div className="header-actions">
             {showDocs && <OnlineDocsLink />}
-            {!showDocs && (
+            {!showDocs && !showSessions && (
               <Button
                 variant="outline"
                 size="icon"
@@ -269,18 +235,6 @@ export default function App() {
                 onClick={() => setRevision((value) => value + 1)}
               >
                 <RefreshCw className={busy ? "animate-spin" : ""} />
-              </Button>
-            )}
-            {!showDocs && (
-              <Button
-                id="new-item"
-                onClick={() =>
-                  showSessions ? setLauncher({}) : setCreating(true)
-                }
-                disabled={!data || !!data.error}
-              >
-                <Plus />
-                {showSessions ? "New session" : "New item"}
               </Button>
             )}
           </div>
@@ -319,37 +273,6 @@ export default function App() {
             </Button>
           </div>
         )}
-        {saved && (
-          <div className="banner saved-banner" role="status">
-            <div>
-              <strong>Created successfully</strong>
-              <span>{saved.path}</span>
-              <p>
-                Paste this command into Claude Code to write the contents of
-                your new definition:
-              </p>
-              <pre>{saved.command}</pre>
-              <CopyButton
-                text={saved.command}
-                label="Copy customize command"
-                onError={setNotice}
-              />
-            </div>
-            <CopyButton
-              text={saved.path}
-              label="Copy path"
-              onError={setNotice}
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Dismiss saved notice"
-              onClick={() => setSaved(null)}
-            >
-              <X />
-            </Button>
-          </div>
-        )}
         {showDocs ? (
           <Suspense
             fallback={
@@ -362,15 +285,7 @@ export default function App() {
           </Suspense>
         ) : showSessions ? (
           data ? (
-            <SessionsView
-              repo={repo}
-              catalog={data}
-              focusSessionId={focusSessionId}
-              onSessionFocused={() => setFocusSessionId("")}
-              onRunRecipe={(recipe, item, sessionId, unknownFlags, editOnly) =>
-                setLauncher({ recipe, item, sessionId, unknownFlags, editOnly })
-              }
-            />
+            <SessionsView repo={repo} catalog={data} />
           ) : (
             <div className="empty-state">
               <LoaderCircle className="animate-spin" />
@@ -378,219 +293,162 @@ export default function App() {
             </div>
           )
         ) : (
-          <div className="catalog-layout">
-            <section
-              className="catalog-pane"
-              aria-label={`${tab.label} catalog`}
-            >
-              <div className="catalog-filters">
-                <div className="search-field">
-                  <Search aria-hidden="true" />
-                  <Input
-                    ref={search}
-                    type="search"
-                    aria-label="Search catalog"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder={`Search ${tab.label.toLowerCase()}`}
-                  />
-                  <kbd>Ctrl K</kbd>
-                </div>
-                <div className="scope-row">
-                  <select
-                    aria-label="Scope"
-                    value={scope}
-                    onChange={(event) =>
-                      setScope(event.target.value as Scope | "")
-                    }
-                  >
-                    <option value="">All scopes</option>
-                    {scopes.map((entry) => (
-                      <option key={entry.value} value={entry.value}>
-                        {entry.label}
-                      </option>
-                    ))}
-                  </select>
-                  <span>
-                    {items.length} {items.length === 1 ? "item" : "items"}
-                  </span>
-                </div>
+          <>
+            <aside className="customize-callout" aria-label="Customize MEOW">
+              <div className="customize-callout-icon">
+                <Workflow aria-hidden="true" />
               </div>
-              {!data ? (
-                <div className="empty-state">
-                  <LoaderCircle className="animate-spin" />
-                  <h2>{error ? "Catalog unavailable" : "Loading catalog…"}</h2>
-                  <p>
-                    {error
-                      ? "Check the server connection and retry."
-                      : "Reading workflows, agents, and skills."}
-                  </p>
-                </div>
-              ) : items.length ? (
-                <ul className="catalog-list">
-                  {items.map((item) => (
-                    <li key={itemKey(item)}>
-                      <button
-                        className="catalog-item"
-                        aria-current={
-                          itemKey(item) === (active && itemKey(active))
-                            ? "true"
-                            : undefined
-                        }
-                        onClick={() => setSelected(itemKey(item))}
-                      >
-                        <div className="catalog-item-heading">
-                          <span className="item-name">{item.name}</span>
-                          <ArrowUpRight aria-hidden="true" />
-                        </div>
-                        <p>{item.description || "No description provided."}</p>
-                        <div className="catalog-item-meta">
-                          <Badge variant="secondary">
-                            {scopeLabel(item.scope)}
-                          </Badge>
-                          <span>
-                            {item.repo
-                              ? repoName(item.repo, data.repos)
-                              : "All repositories"}
-                          </span>
-                          {kind === "workflows" && (
-                            <span>{item.steps?.length || 0} steps</span>
-                          )}
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="empty-state">
-                  <Search />
-                  <h2>
-                    {query || scope
-                      ? "No matches found"
-                      : `No ${tab.label.toLowerCase()} yet`}
-                  </h2>
-                  <p>
-                    {query || scope
-                      ? "Try another search or widen the scope."
-                      : "Create your first definition to get started."}
-                  </p>
-                  {query || scope ? (
-                    <Button variant="outline" onClick={clearFilters}>
-                      Clear filters
-                    </Button>
-                  ) : (
-                    <Button
-                      disabled={!!data.error}
-                      onClick={() => setCreating(true)}
+              <div className="customize-callout-copy">
+                <h2>Make MEOW fit this project</h2>
+                <p>
+                  Describe a change in Claude Code. MEOW helps shape the right
+                  workflow, agent, or skill.
+                </p>
+              </div>
+              <code>/meow:customize</code>
+            </aside>
+            <div className="catalog-layout">
+              <section
+                className="catalog-pane"
+                aria-label={`${tab.label} catalog`}
+              >
+                <div className="catalog-filters">
+                  <div className="search-field">
+                    <Search aria-hidden="true" />
+                    <Input
+                      ref={search}
+                      type="search"
+                      aria-label="Search catalog"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder={`Search ${tab.label.toLowerCase()}`}
+                    />
+                    <kbd>Ctrl K</kbd>
+                  </div>
+                  <div className="scope-row">
+                    <select
+                      aria-label="Scope"
+                      value={scope}
+                      onChange={(event) =>
+                        setScope(event.target.value as Scope | "")
+                      }
                     >
-                      <Plus />
-                      New item
-                    </Button>
-                  )}
+                      <option value="">All scopes</option>
+                      {scopes.map((entry) => (
+                        <option key={entry.value} value={entry.value}>
+                          {entry.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span>
+                      {items.length} {items.length === 1 ? "item" : "items"}
+                    </span>
+                  </div>
                 </div>
-              )}
-              {!!data?.notes.length && (
-                <details className="catalog-notes">
-                  <summary>
-                    {data.notes.length} catalog{" "}
-                    {data.notes.length === 1 ? "notice" : "notices"}
-                  </summary>
-                  {data.notes.map((note, index) => (
-                    <p key={index}>{note}</p>
-                  ))}
-                </details>
-              )}
-            </section>
-            <section className="detail-pane" aria-label="Selected definition">
-              {active ? (
-                <ItemDetail
-                  key={`${kind}:${itemKey(active)}`}
-                  item={active}
-                  repos={data?.repos || []}
-                  kind={kind}
-                  onCopyError={setNotice}
-                  onDuplicate={() => setCreating(true)}
-                  onRun={() =>
-                    setLauncher({
-                      item: {
-                        kind:
-                          kind === "workflows"
-                            ? "workflow"
-                            : kind === "skills"
-                              ? "skill"
-                              : "agent",
-                        item: active,
-                      },
-                    })
-                  }
-                />
-              ) : (
-                <div className="empty-state detail-empty">
-                  <Icon />
-                  <h2>Your workflow starts here</h2>
-                  <p>
-                    Choose a definition from the catalog to inspect its steps,
-                    source, and settings.
-                  </p>
-                </div>
-              )}
-            </section>
-          </div>
+                {!data ? (
+                  <div className="empty-state">
+                    <LoaderCircle className="animate-spin" />
+                    <h2>
+                      {error ? "Catalog unavailable" : "Loading catalog…"}
+                    </h2>
+                    <p>
+                      {error
+                        ? "Check the server connection and retry."
+                        : "Reading workflows, agents, and skills."}
+                    </p>
+                  </div>
+                ) : items.length ? (
+                  <ul className="catalog-list">
+                    {items.map((item) => (
+                      <li key={itemKey(item)}>
+                        <button
+                          className="catalog-item"
+                          aria-current={
+                            itemKey(item) === (active && itemKey(active))
+                              ? "true"
+                              : undefined
+                          }
+                          onClick={() => setSelected(itemKey(item))}
+                        >
+                          <div className="catalog-item-heading">
+                            <span className="item-name">{item.name}</span>
+                            <ArrowUpRight aria-hidden="true" />
+                          </div>
+                          <p>
+                            {item.description || "No description provided."}
+                          </p>
+                          <div className="catalog-item-meta">
+                            <Badge variant="secondary">
+                              {scopeLabel(item.scope)}
+                            </Badge>
+                            <span>
+                              {item.repo
+                                ? repoName(item.repo, data.repos)
+                                : "All repositories"}
+                            </span>
+                            {kind === "workflows" && (
+                              <span>{item.steps?.length || 0} steps</span>
+                            )}
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="empty-state">
+                    <Search />
+                    <h2>
+                      {query || scope
+                        ? "No matches found"
+                        : `No ${tab.label.toLowerCase()} yet`}
+                    </h2>
+                    <p>
+                      {query || scope
+                        ? "Try another search or widen the scope."
+                        : "Use /meow:customize in Claude Code to create a definition for this project."}
+                    </p>
+                    {query || scope ? (
+                      <Button variant="outline" onClick={clearFilters}>
+                        Clear filters
+                      </Button>
+                    ) : null}
+                  </div>
+                )}
+                {!!data?.notes.length && (
+                  <details className="catalog-notes">
+                    <summary>
+                      {data.notes.length} catalog{" "}
+                      {data.notes.length === 1 ? "notice" : "notices"}
+                    </summary>
+                    {data.notes.map((note, index) => (
+                      <p key={index}>{note}</p>
+                    ))}
+                  </details>
+                )}
+              </section>
+              <section className="detail-pane" aria-label="Selected definition">
+                {active ? (
+                  <ItemDetail
+                    key={`${kind}:${itemKey(active)}`}
+                    item={active}
+                    repos={data?.repos || []}
+                    kind={kind}
+                    onCopyError={setNotice}
+                  />
+                ) : (
+                  <div className="empty-state detail-empty">
+                    <Icon />
+                    <h2>Choose a definition to inspect</h2>
+                    <p>
+                      Review its scope, workflow steps, settings, and source.
+                    </p>
+                  </div>
+                )}
+              </section>
+            </div>
+          </>
         )}
       </main>
-      {creating && data && (
-        <CreateDialog
-          catalog={data}
-          initialKind={kind}
-          selected={active}
-          initialRepo={repo || active?.repo || ""}
-          onClose={() => setCreating(false)}
-          onCreated={(newKind, item, payload) => {
-            setKind(newKind);
-            clearFilters();
-            setRepo(payload.scope === "user" ? "" : payload.repo);
-            setSelected(
-              newKind === "skills"
-                ? item.file.replace(/[\\/]SKILL\.md$/, "")
-                : item.file,
-            );
-            const singular = kinds.find(
-              (entry) => entry.key === newKind,
-            )!.singular;
-            setSaved({
-              path: item.file,
-              command: `/meow:customize Write the contents of the ${singular} ${JSON.stringify(item.name)} at ${JSON.stringify(item.file.replace(/\\/g, "/"))} in repository ${JSON.stringify(payload.repo.replace(/\\/g, "/"))} (${payload.scope} scope). Intended behavior: ${JSON.stringify(payload.description)}. Use the starter file as a starting point and customize it to match this intent.`,
-            });
-            setCreating(false);
-            setRevision((value) => value + 1);
-          }}
-        />
-      )}
-      {launcher && data && (
-        <SessionLauncher
-          repo={
-            launcher.recipe?.repo ||
-            launcher.item?.item.repo ||
-            repo ||
-            data.repos[0] ||
-            ""
-          }
-          initialRecipe={launcher.recipe}
-          catalogItem={launcher.item}
-          catalog={data}
-          sessionId={launcher.sessionId}
-          editOnly={launcher.editOnly}
-          unknownFlags={launcher.unknownFlags}
-          onClose={() => setLauncher(null)}
-          onSaved={(id) => {
-            setFocusSessionId(id);
-            setLauncher(null);
-            setShowSessions(true);
-            setShowDocs(false);
-            setRevision((value) => value + 1);
-          }}
-        />
-      )}
     </div>
   );
 }
