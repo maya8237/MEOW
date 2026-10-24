@@ -36,7 +36,6 @@ jobs:
             shard: 3
           - os: ubuntu-latest
             shard: 4
-    name: validate (${{ matrix.os }}${{ matrix.os == 'windows-latest' && format(', shard {0}/4', matrix.shard) || '' }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
