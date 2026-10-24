@@ -211,6 +211,9 @@ def _run(*argv: str, **kwargs) -> str:
 
 
 def _pip(python: Path, *args: str) -> None:
+    if shutil.which("uv"):
+        _run("uv", "pip", "install", "--quiet", "--python", str(python), *args)
+        return
     command = (str(python), "-m", "pip", "install", "--disable-pip-version-check")
     _run(*command, "--no-input", *args)
 

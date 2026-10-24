@@ -75,13 +75,19 @@ destination="$root/versions/$tag"
 bundle="$temporary/bundle"
 mkdir "$bundle"
 printf 'Installing MEOW %s with %s...\n' "$tag" "$python"
-"$python" -m venv "$bundle/runtime" || {
-    printf '%s\n' 'Python could not create a virtual environment (Debian/Ubuntu: install python3-venv).' >&2
-    exit 1
-}
 printf 'meow-harness==%s --hash=sha256:%s\n' "$tag" "$digest" >"$temporary/wheel.txt"
-"$bundle/runtime/bin/python3" -m pip install --disable-pip-version-check --no-input \
-    --no-deps --require-hashes --only-binary :all: -r "$temporary/wheel.txt"
+if command -v uv >/dev/null 2>&1; then
+    uv venv --quiet --seed --python "$python" "$bundle/runtime"
+    uv pip install --quiet --python "$bundle/runtime/bin/python3" \
+        --no-deps --require-hashes --only-binary :all: -r "$temporary/wheel.txt"
+else
+    "$python" -m venv "$bundle/runtime" || {
+        printf '%s\n' 'Python could not create a virtual environment (Debian/Ubuntu: install python3-venv).' >&2
+        exit 1
+    }
+    "$bundle/runtime/bin/python3" -m pip install --disable-pip-version-check --no-input \
+        --no-deps --require-hashes --only-binary :all: -r "$temporary/wheel.txt"
+fi
 purelib=$("$bundle/runtime/bin/python3" -c "import sysconfig;print(sysconfig.get_path('purelib'))")
 PYTHONPATH=$purelib "$python" -m meow.installer.releases --finish "$destination" --bundle "$bundle"
 
