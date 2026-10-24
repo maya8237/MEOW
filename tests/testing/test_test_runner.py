@@ -1,4 +1,5 @@
 import asyncio
+import ctypes
 import os
 import socket
 import sys
@@ -12,6 +13,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from meow.infrastructure import test_runner
 from meow.infrastructure.test_runner import (
     VerificationSetupError,
     _argv,
@@ -29,6 +31,33 @@ def _port() -> int:
         return sock.getsockname()[1]
 
 
+@pytest.mark.parametrize(
+    "assigned, returned, capacities", [(2, 1, [50]), (2, 0, [50]), (65, 65, [50, 100])]
+)
+def test_job_pid_query_uses_only_returned_entries(
+    monkeypatch, assigned, returned, capacities
+):
+    calls = []
+
+    def query(job, kind, buffer, size, length):  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- native Windows ABI
+        counts = (ctypes.c_uint32 * 2).from_buffer(buffer)
+        counts[0] = assigned
+        capacity = (size - 8) // ctypes.sizeof(ctypes.c_size_t)
+        calls.append(capacity)
+        if assigned > capacity:
+            return 0
+        counts[1] = returned
+        pids = (ctypes.c_size_t * capacity).from_buffer(buffer, 8)
+        pids[:returned] = list(range(100, 100 + returned))
+        return 1
+
+    kernel = SimpleNamespace(QueryInformationJobObject=Mock(side_effect=query))
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **kw: kernel, raising=False)
+    monkeypatch.setattr(ctypes, "get_last_error", lambda: 234, raising=False)
+    assert test_runner._windows_job_pids(123) == list(range(100, 100 + returned))
+    assert calls == capacities
+
+
 def test_job_cleanup_waits_for_child_exit_after_wrapper_exit(monkeypatch):
     active = [True]
 
@@ -44,11 +73,9 @@ def test_job_cleanup_waits_for_child_exit_after_wrapper_exit(monkeypatch):
     child_handle = SimpleNamespace(Close=Mock())
     windows = SimpleNamespace(
         TerminateJobObject=Mock(),
-        # A terminating child can disappear from the job's PID list before
-        # its process handle signals that it released its working directory.
-        QueryInformationJobObject=Mock(side_effect=[[123], []]),
-        JobObjectBasicProcessIdList=object(),
     )
+    # A child can disappear from the job's PID list before its handle signals.
+    monkeypatch.setattr(test_runner, "_windows_job_pids", lambda job: [123])
     monkeypatch.setitem(sys.modules, "win32job", windows)
     monkeypatch.setitem(
         sys.modules,
@@ -84,6 +111,7 @@ def test_cancelling_job_cleanup_does_not_close_a_pending_native_wait(  # ruff: i
 
     handle = SimpleNamespace(Close=Mock(side_effect=close))
     job = SimpleNamespace(Close=Mock())
+    monkeypatch.setattr(test_runner, "_windows_job_pids", lambda job: [123])
     monkeypatch.setitem(
         sys.modules, "win32api", SimpleNamespace(OpenProcess=lambda *args: handle)
     )
@@ -92,8 +120,6 @@ def test_cancelling_job_cleanup_does_not_close_a_pending_native_wait(  # ruff: i
         "win32job",
         SimpleNamespace(
             TerminateJobObject=Mock(),
-            QueryInformationJobObject=lambda *args: [123],
-            JobObjectBasicProcessIdList=object(),
         ),
     )
     monkeypatch.setitem(

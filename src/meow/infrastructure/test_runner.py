@@ -24,6 +24,7 @@ from meow.project.config_models import (
 
 MAX_OUTPUT_CHARS = 8000
 _ERROR_INVALID_PARAMETER = 87
+_ERROR_MORE_DATA = 234
 
 
 @dataclass(frozen=True)
@@ -251,6 +252,37 @@ def _decode(data: bytes) -> str:
     return output
 
 
+def _windows_job_pids(job) -> list[int]:
+    """Avoid pywin32's tuple sized by assigned rather than returned PID count."""
+    import ctypes
+    from ctypes import wintypes
+
+    query = ctypes.WinDLL("kernel32", use_last_error=True).QueryInformationJobObject
+    query.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    query.restype = wintypes.BOOL
+    capacity = 50
+    while True:
+        buffer = ctypes.create_string_buffer(
+            8 + ctypes.sizeof(ctypes.c_size_t) * capacity
+        )
+        if query(int(job), 3, buffer, len(buffer), None):  # JobObjectBasicProcessIdList
+            _, returned = (ctypes.c_uint32 * 2).from_buffer(buffer)
+            if returned > capacity:
+                raise OSError("Windows returned an invalid job PID count")
+            return list((ctypes.c_size_t * capacity).from_buffer(buffer, 8)[:returned])
+        error = ctypes.get_last_error()
+        if error != _ERROR_MORE_DATA:
+            raise ctypes.WinError(error)
+        assigned, _ = (ctypes.c_uint32 * 2).from_buffer(buffer)
+        capacity = max(capacity * 2, assigned)
+
+
 async def _terminate_windows_job(job) -> None:  # ruff: ignore[too-many-statements, complex-structure]
     import win32api
     import win32event
@@ -261,9 +293,7 @@ async def _terminate_windows_job(job) -> None:  # ruff: ignore[too-many-statemen
             handles = []
             # Retain handles before termination can remove children from the
             # job's PID list. Only a signalled handle proves the child exited.
-            for pid in win32job.QueryInformationJobObject(
-                job, win32job.JobObjectBasicProcessIdList
-            ):
+            for pid in _windows_job_pids(job):
                 try:
                     handle = win32api.OpenProcess(0x100000, False, pid)  # SYNCHRONIZE
                 except win32api.error as exc:
