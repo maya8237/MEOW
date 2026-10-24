@@ -190,6 +190,8 @@ def smoke(scenario: str = "all") -> None:  # ruff: ignore[too-many-statements] -
             "PYTHONPATH": str(startup),
             "MEOW_PYTHON": sys.executable,
             "PIP_FIND_LINKS": str(wheels),
+            # The installer uses uv when it is on PATH, and uv ignores pip's variable.
+            "UV_FIND_LINKS": str(wheels),
             "MEOW_RELEASE_MANIFEST_URL": base + "/latest.json",
         }
         try:
@@ -254,9 +256,11 @@ def check_update(home: Path, env: dict, version: str) -> None:
     previous = versions / "0.0.0"
     (versions / version).rename(previous)
     metadata = next((previous / "runtime").rglob("meow_harness-*.dist-info/METADATA"))
-    metadata.write_text(
-        metadata.read_text().replace(f"Version: {version}", "Version: 0.0.0")
-    )
+    text = metadata.read_text().replace(f"Version: {version}", "Version: 0.0.0")
+    # uv hardlinks installed files from its cache; replace the file so the
+    # cached copy keeps its real version.
+    metadata.unlink()
+    metadata.write_text(text)
     (home / ".meow/current-version").write_text("0.0.0\n")
     executable = home / ".meow/bin" / ("meow.exe" if os.name == "nt" else "meow")
     assert run([str(executable), "--version"], env).strip() == "meow 0.0.0"
