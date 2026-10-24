@@ -25,8 +25,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
       - name: Install MEOW
-        run: pip install -e .
+        run: uv pip install --system -e .
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
