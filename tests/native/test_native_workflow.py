@@ -11,7 +11,7 @@ def test_native_workflow_prints_resolved_json(tmp_path, capsys):
     data = json.loads(capsys.readouterr().out)
     assert data["name"] == "default"
     assert data["scope"] == "builtin"
-    assert data["steps"][0]["uses"] == "builtin.knowledge"
+    assert data["steps"][0]["uses"] == "builtin.plan"
     assert data["fingerprint"]
 
 

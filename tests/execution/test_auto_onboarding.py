@@ -176,13 +176,8 @@ def test_plan_onboards_the_active_directory(tmp_path):
             "meow.execution.sprint_runner._prepare_sprint",
             return_value=(sprint, "feature", repo),
         ),
-        patch("meow.execution.sprint_runner.gather_context"),
-        patch("meow.execution.sprint_runner.prepare_preplan") as preplan,
         patch("meow.execution.sprint_runner.PlannerAgent") as planner,
     ):
-        preplan.return_value.decision.mode = "plan"
-        preplan.return_value.to_dict.return_value = {}
-        preplan.return_value.shape = None
         planner.return_value.run = AsyncMock(return_value=plan_file)
         asyncio.run(run_plan(repo, "feature", "do it"))
 

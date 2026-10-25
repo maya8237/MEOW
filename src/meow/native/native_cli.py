@@ -218,7 +218,6 @@ def _add_prompt(sub) -> None:
         default="gitlab",
         help="Remote provider for reviewer-mr (default: gitlab).",
     )
-    parser.add_argument("--shape", default=None, help="Accepted shape artifact path.")
 
 
 def _add_push(sub) -> None:
@@ -263,21 +262,6 @@ def _add_custom(sub) -> None:
         choices=sorted(SKILL_ROLES),
         help="Only what this role receives.",
     )
-
-
-def _add_shape(sub) -> None:
-    parser = sub.add_parser(
-        "shape-assess", help="Assess whether optional shaping is useful."
-    )
-    _add_dirs(parser)
-    parser.add_argument("request")
-    parser = sub.add_parser("shape-create", help="Persist a shape artifact from JSON.")
-    _add_dirs(parser)
-    parser.add_argument("path")
-    parser.add_argument("--json", required=True)
-    parser = sub.add_parser("shape-reflect", help="Reflect on a breadboard artifact.")
-    _add_dirs(parser)
-    parser.add_argument("path")
 
 
 def _orchestrate_leaf(
@@ -396,7 +380,6 @@ def add_native_parser(  # ruff: ignore[too-many-statements] -- register independ
     workflow = sub.add_parser("workflow", help="Print the resolved workflow as JSON.")
     workflow.add_argument("name")
     _add_dirs(workflow)
-    _add_shape(sub)
     _add_orchestrate(sub)
 
 
@@ -476,7 +459,6 @@ def _prompt(args, working_dir: Path, active: Path) -> dict:
         target=args.target,
         branch=args.branch,
         remote_provider=args.remote_provider,
-        shape_path=_resolve(args.shape, active),
         **options,
     )
 
@@ -569,13 +551,6 @@ _HANDLERS = {
         wd, active, args.role, **_model_host_options(args)
     ),
     "onboard-status": lambda args, wd, active: native.onboard_status(active),
-    "shape-assess": lambda args, wd, active: native.shape_assess(args.request),
-    "shape-create": lambda args, wd, active: native.shape_create(
-        _resolve(args.path, active), json.loads(args.json)
-    ),
-    "shape-reflect": lambda args, wd, active: native.shape_reflect(
-        _resolve(args.path, active)
-    ),
     "run": _orchestrate,
 }
 

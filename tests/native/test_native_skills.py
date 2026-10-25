@@ -210,7 +210,7 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
         self.assertIn("Without `--test`, keep the native flow", review)
         self.assertIn("configured servers stay alive", shared)
 
-    def test_run_skill_defaults_to_cli_for_automatic_preplan(self):
+    def test_run_skill_defaults_to_cli(self):
         run = (
             Path(__file__).resolve().parents[2] / "skills" / "run" / "SKILL.md"
         ).read_text(encoding="utf-8")

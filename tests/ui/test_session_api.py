@@ -532,7 +532,6 @@ def test_session_serializers_use_exact_public_fields(running, project):
         "error",
         "worker_alive",
         "resume_supported",
-        "resume_needs_request",
     }
     assert detail["attempts"][0]["error"] == "failed at [path] and [path]"
     assert "private-token" not in json.dumps(detail)

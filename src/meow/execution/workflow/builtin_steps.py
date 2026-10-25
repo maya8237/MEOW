@@ -1,7 +1,6 @@
 """Existing MEOW operations exposed as composable workflow steps."""
 
 import asyncio
-import json
 from dataclasses import asdict, replace
 
 from meow.agents.fixers import ReviewFixAgent
@@ -36,51 +35,11 @@ from meow.infrastructure.test_runner import prepared_test_stage
 from meow.project.config import config_paths
 from meow.project.plan_files import planned_plan_file
 from meow.project.plan_state import PlanStore
-from meow.project.preplan import gather_context, prepare_preplan
-from meow.project.shaping import ShapeContext
 from meow.tasks.executor import preflight
 from meow.tasks.model import load_task_graph
 from meow.tasks.runner import run_parallel_plan
 
 logger = get_logger(__name__)
-
-
-async def knowledge(state):  # ruff: ignore[unused-async] -- common async step interface
-    state.journal("knowledge")
-    state.evidence = gather_context(state.sprint.active_working_dir(), state.request)
-
-
-async def shape(state):  # ruff: ignore[unused-async] -- mirrors existing shaping phase sequence
-    state.journal("shaping")
-    preplan = prepare_preplan(
-        state.sprint.active_working_dir(),
-        state.request,
-        evidence=state.evidence,
-    )
-    state.journal("shaping_finished", results={"preplan": preplan.to_dict()})
-    if preplan.decision.mode == "needs_user_decision":
-        state.journal(
-            "needs_user_decision",
-            last_failure="Unresolved product decision before planning",
-        )
-        raise RuntimeError(
-            "Unresolved product decision before planning: "
-            f"{'; '.join(preplan.decision.reasons)}. "
-            f'meow resume {state.run_id} --continue --request "<intended outcome>" '
-            f'--work-dir "{state.store.load(state.run_id).repo}"'
-        )
-    if preplan.breadboard is not None:
-        state.journal("breadboarding")
-        state.journal("breadboard_finished")
-    artifact = state.store.directory / f"{state.run_id}.preplan.json"
-    artifact.write_text(
-        json.dumps(preplan.to_dict(), indent=2) + "\n", encoding="utf-8"
-    )
-    state.sprint.config["_preplan_context"] = preplan.to_dict()
-    if preplan.shape is not None:
-        state.sprint.config["_shape_context"] = ShapeContext(
-            str(artifact), preplan.shape.chosen_approach, preplan.shape.assumptions
-        )
 
 
 async def plan(state):
@@ -97,9 +56,7 @@ async def plan(state):
         "planner_started", feature_name=state.feature_name, working_dir=str(active)
     )
     state.plan_file = require_plan_file(
-        await PlannerAgent(state.sprint).run(
-            state.feature_name, state.request, state.sprint.config.get("_shape_context")
-        )
+        await PlannerAgent(state.sprint).run(state.feature_name, state.request)
     )
     logger.info("planner_finished", plan_file=str(state.plan_file))
     if state.plan_ready:
@@ -372,8 +329,6 @@ async def run_builtin(state, step):
     if step.target == "builtin.verify":
         return await verify(state, step)
     functions = {
-        "knowledge": knowledge,
-        "shape": shape,
         "plan": plan,
         "approve_plan": approve_plan,
         "tasks": tasks,

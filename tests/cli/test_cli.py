@@ -121,15 +121,6 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         self.assertNotIn("`meow evaluate`", user_and_common)
         self.assertNotIn("`meow _worker`", user_and_common)
 
-    def test_project_understanding_runs_behind_the_scenes(self):
-        parser = cli._build_arg_parser()
-        for command in (("knowledge", "audit"), ("shape", "assess", "request")):
-            with self.assertRaises(SystemExit):
-                parser.parse_args(list(command))
-        for command in ("run", "plan"):
-            with self.assertRaises(SystemExit):
-                parser.parse_args([command, "a request", "--shape", "shape.json"])
-
     def test_ci_flag_rejects_incompatible_options(self):
         parser = cli._build_arg_parser()
         for flags in (

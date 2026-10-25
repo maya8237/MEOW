@@ -115,7 +115,6 @@ class RunState:
             "request": self.request,
             "feature_name": self.feature_name,
             "check_worktree_hygiene": self.sprint.use_worktree,
-            "preplan": self.sprint.config.get("_preplan_context"),
         }
 
     def block_delivery(self):

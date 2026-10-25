@@ -33,8 +33,6 @@ def recovery_command(record: RunRecord) -> str:
     if record.source not in RESUMABLE_SOURCES:
         return f"Rerun the original meow {record.source} command"
     command = f"meow resume {record.id}"
-    if record.phase == "needs_user_decision":
-        command += ' --continue --request "<intended outcome>"'
     return f'{command} --work-dir "{record.repo}"'
 
 
@@ -69,16 +67,6 @@ def _gate_lines(  # ruff: ignore[complex-structure, too-many-branches]
         )
         lines.append(f"{kind.title()}: {outcome}{advisory}")
     return lines
-
-
-def _decision_lines(record: RunRecord) -> list[str]:
-    if record.phase != "needs_user_decision":
-        return []
-    decision = record.results.get("preplan", {}).get("decision", {})
-    return [
-        f"Request: {record.request}",
-        *(f"Decision needed: {reason}" for reason in decision.get("reasons", [])),
-    ]
 
 
 def _pipeline_lines(delivery: dict) -> list[str]:
@@ -137,7 +125,6 @@ def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-bra
         f"Branch: {record.branch}",
         f"Recovery: {recovery_command(record)}",
     ]
-    lines.extend(_decision_lines(record))
     if record.delivery.get("base"):
         lines.append(f"MR target: {record.delivery['base']}")
     worker = inspect_worker(record)

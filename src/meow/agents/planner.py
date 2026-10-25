@@ -5,7 +5,6 @@ from pathlib import Path
 from meow.agents.base import Agent
 from meow.project.plan_files import planned_plan_file
 from meow.project.prompts import planner_prompt, task_graph_repair_prompt
-from meow.project.shaping import ShapeContext
 
 
 def require_plan_file(plan_file: Path) -> Path:
@@ -32,12 +31,7 @@ class PlannerAgent(Agent):
         )
         await self.run_definition_query(agent, reason, options, "Planner")
 
-    async def run(
-        self,
-        feature_name: str | None,
-        request: str,
-        shape_context: ShapeContext | None = None,
-    ) -> Path:
+    async def run(self, feature_name: str | None, request: str) -> Path:
         docs_dir = self.context.active_working_dir() / self.context.config["docs_dir"]
         docs_dir.mkdir(parents=True, exist_ok=True)
         plan_file = planned_plan_file(docs_dir, feature_name)
@@ -47,8 +41,6 @@ class PlannerAgent(Agent):
             agent,
             system_prompt=planner_prompt(
                 plan_file,
-                shape_context,
-                self.context.config.get("_preplan_context"),
                 bug_mode=bool(self.context.config.get("_bug_mode", False)),
                 agent=agent,
             ),

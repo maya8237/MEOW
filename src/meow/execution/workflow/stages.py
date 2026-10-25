@@ -4,7 +4,7 @@ from meow.agents.reviewer import _verdict_status
 from meow.agents.stage import StageAgent
 from meow.project.custom.templates import render
 from meow.project.plan_files import plan_stage_file, stage_file
-from meow.project.prompts import lint_instructions, shape_values, verdict_format
+from meow.project.prompts import lint_instructions, verdict_format
 
 
 def record_stage(state, step, status, summary, output):  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
@@ -38,8 +38,6 @@ def stage_values(state, step):
         "review_file": output,
         "report_file": output,
         "output_file": output,
-        "shape": shape_values(state.sprint.config.get("_shape_context")),
-        "preplan": state.sprint.config.get("_preplan_context"),
         "lint_instructions": lint_instructions(state.sprint.config["lint"]),
         "verdict_format": verdict_format(output, "finding")
         if step.kind == "gate"

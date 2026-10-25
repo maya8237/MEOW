@@ -34,12 +34,6 @@ from meow.project.config_env import unresolved_environment_references
 from meow.project.config_models import resolve_command_cwd
 from meow.project.custom.rendering import effective_models
 from meow.project.onboarding import boundary_ok, feature_gaps, is_onboarded
-from meow.project.shaping import (
-    assess_request,
-    load_shape_artifact,
-    reflect_breadboard,
-    save_shape_artifact,
-)
 
 __all__ = [
     "PROMPT_ROLES",
@@ -59,9 +53,6 @@ __all__ = [
     "push",
     "role_prompt",
     "round_state",
-    "shape_assess",
-    "shape_create",
-    "shape_reflect",
     "verdict",
     "verify",
     "workflow",
@@ -96,38 +87,6 @@ def onboard_status(root: Path) -> dict:
         "config_exists": (root / ".meow" / "config.toml").is_file(),
         "boundary_ok": boundary_ok(root),
         "gaps": feature_gaps(root),
-    }
-
-
-def shape_assess(request: str) -> dict:
-    return assess_request(request).__dict__
-
-
-def shape_create(path: Path, artifact: dict) -> dict:
-    from meow.project.shaping import BreadboardArtifact, ShapeArtifact, ShapeOption
-
-    value = (
-        BreadboardArtifact(**artifact)
-        if "places" in artifact
-        else ShapeArtifact(
-            artifact["problem"],
-            tuple(artifact.get("constraints", ())),
-            tuple(ShapeOption(**o) for o in artifact.get("options", ())),
-            tuple(artifact.get("fit_checks", ())),
-            artifact["chosen_approach"],
-            tuple(artifact.get("assumptions", ())),
-        )
-    )
-    save_shape_artifact(path, value)
-    return {"path": str(path), "kind": type(value).__name__}
-
-
-def shape_reflect(path: Path) -> dict:
-    artifact = load_shape_artifact(path)
-    return {
-        "findings": list(reflect_breadboard(artifact))
-        if hasattr(artifact, "places")
-        else []
     }
 
 

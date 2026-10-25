@@ -139,7 +139,6 @@ def _attempt_detail(attempt, repo: Path) -> dict:
         "error": _public_error(attempt.error),
         "worker_alive": alive,
         "resume_supported": resume["resume_supported"],
-        "resume_needs_request": resume["resume_needs_request"],
     }
 
 

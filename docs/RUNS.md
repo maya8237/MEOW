@@ -22,11 +22,9 @@ original checkout, outside feature/task branches; editable-install
 `*.egg-info/` is locally ignored via Git's `info/exclude`.
 Use `/meow:onboard` for add-ons.
 
-Before planning, project guidance/code are inspected; requests may be shaped
-and complex UI/component work breadboarded. Clear requests proceed directly.
-Unresolved product decisions checkpoint and stop; runs never wait for answers
-except at explicit `-m` plan approval. Feature flows do not propose/edit prose docs; onboarding
-can create selected project knowledge.
+Runs never wait for answers except at explicit `-m` plan approval. Feature
+flows do not propose/edit prose docs; onboarding can create selected project
+knowledge.
 
 With no saved run, `--resume-at review --plan PATH` skips planning and reviews
 existing code first, generating only after FAIL. Omit the path to discover the
@@ -67,16 +65,6 @@ sessions. Task graphs rerun only unfinished tasks. Interrupted mutations review
 the saved worktree against its plan before any generator retry; mismatches stop
 with a diagnostic. Preserve failed/interrupted worktrees and evidence.
 
-For a pre-planning `needs_user_decision` pause:
-
-```bash
-meow resume RUN_ID --continue --request "Complete clarified request"
-```
-
-This replaces the entire request, so include every surviving requirement.
-The original request and worktree are preserved. Empty/unresolved text is
-rejected without altering the journal. Other phases and inspection-only mode
-cannot replace the request.
 
 Status shows received SDK turns, tokens, and USD cost; verbose lists results
 by role, with missing metrics marked `unavailable`. Claude owns transcripts;

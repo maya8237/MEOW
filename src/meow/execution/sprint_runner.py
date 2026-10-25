@@ -48,8 +48,7 @@ from meow.project.plan_files import (
     planned_plan_file,
 )
 from meow.project.plan_state import PlanStore
-from meow.project.preplan import gather_context, prepare_preplan
-from meow.project.shaping import ShapeContext, is_bug_request
+from meow.project.prompts import is_bug_request
 
 logger = get_logger(__name__)
 
@@ -507,25 +506,8 @@ async def run_plan(  # ruff: ignore[too-many-arguments] -- reducing args would c
     logger.info(
         "planner_started", feature_name=effective_name, working_dir=str(active_dir)
     )
-    evidence = gather_context(active_dir, request)
-    preplan = prepare_preplan(active_dir, request, evidence=evidence)
-    if preplan.decision.mode == "needs_user_decision":
-        raise RuntimeError(
-            "Unresolved product decision before planning: "
-            f"{'; '.join(preplan.decision.reasons)}. "
-            "Rerun meow plan with the intended outcome specified."
-        )
-    sprint.config["_preplan_context"] = preplan.to_dict()
     sprint.config["_bug_mode"] = is_bug_request(request)
-    if preplan.shape is not None:
-        sprint.config["_shape_context"] = ShapeContext(
-            "automatic preplan",
-            preplan.shape.chosen_approach,
-            preplan.shape.assumptions,
-        )
-    plan_file = await PlannerAgent(sprint).run(
-        effective_name, request, sprint.config.get("_shape_context")
-    )
+    plan_file = await PlannerAgent(sprint).run(effective_name, request)
     plan_file = require_plan_file(plan_file)
     logger.info("planner_finished", plan_file=str(plan_file))
     return plan_file

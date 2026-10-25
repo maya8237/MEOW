@@ -1,16 +1,6 @@
 description = "Plan, implement, review, check, and deliver."
 
 [[steps]]
-id = "knowledge"
-uses = "builtin.knowledge"
-when = "not plan_given and not resume_review"
-
-[[steps]]
-id = "shape"
-uses = "builtin.shape"
-when = "not plan_given and not resume_review"
-
-[[steps]]
 id = "plan"
 uses = "builtin.plan"
 when = "not plan_given and not resume_review"

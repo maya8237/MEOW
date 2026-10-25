@@ -31,8 +31,6 @@ PROMPT_VARIABLES = frozenset({
     "report_file",
     "output_file",
     # Context computed by MEOW
-    "shape",
-    "preplan",
     "lint_instructions",
     "focus",
     # Review flows

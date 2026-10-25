@@ -211,7 +211,7 @@ def test_worker_runs_saved_sprint_and_completes(tmp_path, monkeypatch, flag, del
     assert store.load(record.id).background["start_identity"] == identity
 
 
-@pytest.mark.parametrize("terminal_phase", ["complete", "needs_user_decision"])
+@pytest.mark.parametrize("terminal_phase", ["complete", "cancelled"])
 def test_notification_is_opt_in_and_sent_once_with_summary_only(
     tmp_path, monkeypatch, terminal_phase
 ):

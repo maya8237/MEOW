@@ -12,14 +12,13 @@ instructions, shaping context) and the formats code parses (the verdict
 contract, the MCP fetch contract).
 """
 
-import json
+import re
 from pathlib import Path
 
 from meow.project.config_models import LintCommand
 from meow.project.custom import CustomAgent
 from meow.project.custom.rendering import builtin_agent, render_agent
 from meow.project.custom.templates import render
-from meow.project.shaping import ShapeContext
 
 DEPENDENCY_GUIDANCE = (
     "Dependencies: MEOW installs Node dependencies when it creates a worktree. "
@@ -41,15 +40,17 @@ def _agent(agent: CustomAgent | None, name: str) -> CustomAgent:
     return agent if agent is not None else builtin_agent(name)
 
 
-def shape_values(context: ShapeContext | None) -> dict | None:
-    """The `shape` template variable for an accepted shaping context."""
-    if context is None:
-        return None
-    return {
-        "artifact_path": context.artifact_path,
-        "chosen_approach": context.chosen_approach,
-        "assumptions": ", ".join(context.assumptions) or "(none recorded)",
-    }
+_BUG_REQUEST = re.compile(
+    r"\b(?:bug|bugfix|debug|debugging|regression|regressed|broken|crash|crashes|"
+    r"exception|traceback|stack trace|failing test|intermittent|flaky|timeout|"
+    r"slow|incorrect|wrong output)\b",
+    re.I,
+)
+
+
+def is_bug_request(request: str) -> bool:
+    """Return whether a request calls for diagnosis rather than feature work."""
+    return bool(_BUG_REQUEST.search(request))
 
 
 def docs_update_prompt(
@@ -103,18 +104,6 @@ def pull_request_prompt(  # ruff: ignore[too-many-arguments, too-many-positional
         f"{output_file}. Do not write any other file. Never merge, close, "
         f"approve, comment on, or edit a {request}, and never push or modify "
         "branches."
-    )
-
-
-def shape_context_instructions(context: ShapeContext | None) -> str:
-    values = shape_values(context)
-    if values is None:
-        return ""
-    return (
-        f" Accepted shaping context: artifact path {values['artifact_path']}; "
-        f"chosen approach {values['chosen_approach']}; assumptions: "
-        f"{values['assumptions']}. Treat assumptions as Sprint Contract inputs "
-        "and surface contradictions as findings."
     )
 
 
@@ -198,10 +187,8 @@ def explorer_prompt(active_dir: Path, *, agent: CustomAgent | None = None) -> st
     return render_agent(_agent(agent, "explorer"), {"active_dir": active_dir})
 
 
-def planner_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mirroring the planner's inputs
+def planner_prompt(
     plan_file: Path,
-    shape_context: ShapeContext | None = None,
-    project_context: dict | None = None,
     *,
     bug_mode: bool = False,
     agent: CustomAgent | None = None,
@@ -210,10 +197,6 @@ def planner_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mirrorin
         _agent(agent, "planner"),
         {
             "plan_file": plan_file,
-            "shape": shape_values(shape_context),
-            "preplan": (
-                json.dumps(project_context, sort_keys=True) if project_context else None
-            ),
             "bug_mode": bug_mode,
         },
     )
@@ -372,7 +355,6 @@ def plan_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mirr
     *,
     focus: str | None,
     check_worktree_hygiene: bool,
-    shape_context: ShapeContext | None = None,
     agent: CustomAgent | None = None,
 ) -> str:
     return render_agent(
@@ -384,7 +366,6 @@ def plan_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mirr
             "lint_instructions": lint_instructions(lint_commands),
             "check_worktree_hygiene": check_worktree_hygiene,
             "verdict_format": verdict_format(review_file, "criterion"),
-            "shape": shape_values(shape_context),
         },
     )
 
@@ -397,7 +378,6 @@ def prompt_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
     has_diff: bool,
     docs_dir: str,
     check_worktree_hygiene: bool,
-    shape_context: ShapeContext | None = None,
     agent: CustomAgent | None = None,
 ) -> str:
     return render_agent(
@@ -410,7 +390,6 @@ def prompt_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
             "lint_instructions": lint_instructions(lint_commands),
             "check_worktree_hygiene": check_worktree_hygiene,
             "verdict_format": verdict_format(review_file, "requirement"),
-            "shape": shape_values(shape_context),
         },
         variant="prompt",
     )
@@ -442,7 +421,6 @@ def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
     lint_commands: list[LintCommand],
     *,
     check_worktree_hygiene: bool,
-    shape_context: ShapeContext | None = None,
     objective: str | None = None,
     agent: CustomAgent | None = None,
 ) -> str:
@@ -455,7 +433,6 @@ def branch_review_prompt(  # ruff: ignore[too-many-arguments] -- pure builder mi
             "lint_instructions": lint_instructions(lint_commands),
             "check_worktree_hygiene": check_worktree_hygiene,
             "verdict_format": verdict_format(review_file, "concern"),
-            "shape": shape_values(shape_context),
             "objective": objective,
         },
         variant="branch",

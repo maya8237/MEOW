@@ -36,7 +36,6 @@ these directories consistent across calls.
 | `push BRANCH` | Push a named branch to origin |
 | `onboard-status` | Base setup state and optional add-on gaps |
 | `knowledge-audit` / `knowledge-check` / `knowledge-create` | Audit, validate, or create selected project knowledge |
-| `shape-assess` / `shape-create` / `shape-reflect` | Requirements shaping artifacts |
 | `run COMMAND` | Supervisor helpers; see below |
 
 `prepare` applies setup before returning. Failed setup retains the worktree for

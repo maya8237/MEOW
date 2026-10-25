@@ -33,16 +33,6 @@ from meow.project.prompts import (
     review_fixer_prompt,
 )
 from meow.project.review_scope import prepare_scope, scope_instructions
-from meow.project.shaping import ShapeContext, load_shape_artifact
-
-
-def _load_shape_context(path: Path | None) -> ShapeContext | None:
-    if path is None or not path.is_file():
-        return None
-    artifact = load_shape_artifact(path)
-    if not hasattr(artifact, "chosen_approach"):
-        return None
-    return ShapeContext(str(path), artifact.chosen_approach, artifact.assumptions)
 
 
 def _lint_report(context: ProjectContext) -> str:
@@ -74,7 +64,6 @@ def _plan_review(
     context: ProjectContext,
     plan_file: Path,
     focus: str | None,
-    shape_context: ShapeContext | None = None,
 ) -> dict:
     review_file = plan_review_file(plan_file)
     text = plan_review_prompt(
@@ -83,7 +72,6 @@ def _plan_review(
         context.lint_commands(),
         focus=focus,
         check_worktree_hygiene=context.use_worktree,
-        shape_context=shape_context,
         agent=Agent(context).definition("reviewer"),
     )
     return {
@@ -179,14 +167,13 @@ def _simple_prompt(
     role: str,
     context: ProjectContext,
     plan_file: Path | None,
-    shape_context: ShapeContext | None = None,
 ) -> dict:
     active_dir = context.active_working_dir()
     agent = Agent(context).definition(role)
     if role in {"planner", "generator"} and plan_file is None:
         raise ValueError(f"the {role} prompt needs --plan")
     builders = {
-        "planner": lambda: planner_prompt(plan_file, shape_context, agent=agent),
+        "planner": lambda: planner_prompt(plan_file, agent=agent),
         "generator": lambda: generator_prompt(plan_file, agent=agent),
         "explorer": lambda: explorer_prompt(active_dir, agent=agent),
         "review-fixer": lambda: review_fixer_prompt(agent=agent),
@@ -203,12 +190,11 @@ def _reviewer_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-ar
     target: str | None,
     branch: str | None,
     remote_provider: str,
-    shape_context: ShapeContext | None = None,
 ) -> dict:
     if role == "reviewer-plan":
         if plan_file is None:
             raise ValueError("the reviewer-plan prompt needs --plan")
-        return _plan_review(context, plan_file, focus, shape_context)
+        return _plan_review(context, plan_file, focus)
     if role == "reviewer-prompt":
         return _prompt_review(context, focus)
     if role == "reviewer-mr":
@@ -229,7 +215,6 @@ def role_prompt(  # ruff: ignore[too-many-arguments, too-many-statements] -- mir
     target: str | None = None,
     branch: str | None = None,
     remote_provider: str = "gitlab",
-    shape_path: Path | None = None,
     host: str | None = None,
     available_models: Sequence[str] | None = None,
     scope: str = "auto",
@@ -248,7 +233,6 @@ def role_prompt(  # ruff: ignore[too-many-arguments, too-many-statements] -- mir
     config = load_config(config_root(working_dir, active_dir))
     config["_review_scope"] = scope
     context = ProjectContext(active_dir, config, use_worktree=use_worktree)
-    shape_context = _load_shape_context(shape_path)
     if role.startswith("reviewer-"):
         result = _reviewer_prompt(
             role,
@@ -258,10 +242,9 @@ def role_prompt(  # ruff: ignore[too-many-arguments, too-many-statements] -- mir
             target,
             branch,
             remote_provider,
-            shape_context,
         )
     else:
-        result = _simple_prompt(role, context, plan_file, shape_context)
+        result = _simple_prompt(role, context, plan_file)
     if role.startswith("reviewer-") and role != "reviewer-mr":
         _prepare_review_file(Path(result["review_file"]))
         result["verification"] = bind_review_checks(

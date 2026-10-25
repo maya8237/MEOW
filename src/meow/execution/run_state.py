@@ -20,7 +20,6 @@ TERMINAL_PHASES = frozenset({
     "exhausted",
     "failed",
     "cancelled",
-    "needs_user_decision",
     "review_finished",
 })
 # Phases that mean work is under way again: any earlier failure is stale.

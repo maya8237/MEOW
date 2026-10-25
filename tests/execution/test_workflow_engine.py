@@ -451,7 +451,7 @@ def test_default_workflow_full_phase_order(tmp_path, mode):  # ruff: ignore[too-
     phases = [entry["phase"] for entry in RunStore(tmp_path).latest().transitions]
     expected = ["created", "preparing", "prepared", "onboarded"]
     if mode in {"fresh", "test"}:
-        expected += ["knowledge", "shaping", "shaping_finished", "planning"]
+        expected += ["planning"]
     expected += ["planned"]
     if mode not in {"resume", "parallel"}:
         expected += ["generator_started", "generator_finished"]

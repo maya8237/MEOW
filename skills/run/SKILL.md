@@ -122,12 +122,8 @@ sleep or poll in the session.
 build on existing code, a worktree, or an earlier plan (any wording), do not
 start a fresh run -- a plain `meow run --name X` plans from scratch in its own
 new worktree. When a saved run ID is available, inspect it with
-`meow status <run_id> --work-dir "<project-path>"`. For a
-`needs_user_decision` pause before planning, obtain the intended outcome and
-continue the same run with `meow resume <run_id> --continue --request
-"<complete clarified request>" --work-dir "<project-path>"`; include all
-remaining requirements because this replaces the whole request. Other saved
-runs continue with `meow resume <run_id> --continue --work-dir
+`meow status <run_id> --work-dir "<project-path>"`. Continue saved
+runs with `meow resume <run_id> --continue --work-dir
 "<project-path>"`. If there is no saved run, look in
 `<project-path>/.worktrees/<name>/<docs_dir>` for a plan
 (`meow native latest-plan --work-dir "<project-path>" --active-dir

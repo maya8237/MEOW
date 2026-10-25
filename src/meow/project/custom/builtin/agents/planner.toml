@@ -33,10 +33,6 @@ does not exist yet. Compare CSV records with csv.reader or splitlines(), not
 raw newline splitting: CSV may use CRLF even when Python source uses LF.
 Avoid builtin names for new APIs when they would shadow annotation types;
 use builtins.list or postponed annotations where an existing list method is needed.
-{{> shape}}
-{{#if preplan}}
-Pre-plan repository evidence: {{preplan}}
-{{/if}}
 Identify the public seam being changed, the module boundary that owns it, and
 why the placement keeps a deep, cohesive interface, citing observations. Do
 not suggest doc edits.
@@ -68,7 +64,3 @@ The last three fields are arrays of strings. Use project-relative owned_paths
 and shell commands for verification. Dependencies must name existing tasks
 and must not form cycles. Independent tasks must not own overlapping paths.
 '''
-shape = '''{{#if shape}}Accepted shaping context: artifact path
-{{shape.artifact_path}}; chosen approach {{shape.chosen_approach}};
-assumptions: {{shape.assumptions}}. Treat assumptions as Sprint Contract
-inputs and surface contradictions as findings.{{/if}}'''

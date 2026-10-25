@@ -209,7 +209,6 @@ def _decode_output_page(data: bytes) -> tuple[str, bytes]:
 def _resume_supported(repo: Path, record) -> bool:
     from meow.cli.resume_cli import _request_problem, _validate
     from meow.cli.status_cli import RESUMABLE_SOURCES
-    from meow.execution.run_state import TERMINAL_PHASES
     from meow.infrastructure.background import inspect_worker
 
     if record.source not in RESUMABLE_SOURCES or record.phase == "complete":
@@ -218,11 +217,7 @@ def _resume_supported(repo: Path, record) -> bool:
         return False
     if _validate(record, repo):
         return False
-    problem = _request_problem(record, None, True)
-    return problem is None or (
-        record.phase in TERMINAL_PHASES
-        and problem.startswith("Supply the intended outcome with --request:")
-    )
+    return _request_problem(record, None, True) is None
 
 
 def attempt_resume_status(repo: Path, attempt: Attempt) -> dict[str, bool | str]:
@@ -230,18 +225,15 @@ def attempt_resume_status(repo: Path, attempt: Attempt) -> dict[str, bool | str]
     if attempt.state in {"starting", "running", "stopping"}:
         return {
             "resume_supported": False,
-            "resume_needs_request": False,
             "state": attempt.state,
         }
     if attempt.run_ids:
         from meow.execution.run_state import RunStore
 
         record = RunStore(repo).load(attempt.run_ids[-1])
-        needs_request = record.phase == "needs_user_decision"
         return {
             "resume_supported": _resume_supported(repo, record),
-            "resume_needs_request": needs_request,
-            "state": "needs_decision" if needs_request else attempt.state,
+            "state": attempt.state,
         }
     supported = False
     if attempt.claude_session_id and attempt.state in {
@@ -257,7 +249,6 @@ def attempt_resume_status(repo: Path, attempt: Attempt) -> dict[str, bool | str]
             supported = False
     return {
         "resume_supported": supported,
-        "resume_needs_request": False,
         "state": attempt.state,
     }
 
@@ -315,7 +306,6 @@ def serialize_imported_run(repo: Path, run_id: str) -> dict:
         "ui_session_id": record.ui_session_id,
         "ui_attempt_id": record.ui_attempt_id,
         "resume_supported": _resume_supported(repo, record),
-        "resume_needs_request": record.phase == "needs_user_decision",
         "cancel_supported": record.phase not in TERMINAL_PHASES
         and worker.state in {"running", "starting"},
     }

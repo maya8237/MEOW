@@ -42,14 +42,8 @@ from meow.project.plan_files import (
     plan_test_file,
     reject_report_name,
 )
-from meow.project.shaping import ShapeContext
 
 logger = get_logger(__name__)
-
-
-def _shape_context(sprint: Sprint) -> ShapeContext | None:
-    value = sprint.config.get("_shape_context")
-    return value if isinstance(value, ShapeContext) else None
 
 
 def _journal(sprint: Sprint, phase: str, **patch: object) -> None:
@@ -125,9 +119,6 @@ async def _review_plan(
     sprint: Sprint, plan_file: Path, focus: str | None = None
 ) -> tuple[str, str]:
     kwargs: dict = {"focus": focus} if focus else {}
-    shape_context = _shape_context(sprint)
-    if shape_context:
-        kwargs["shape_context"] = shape_context
     return await ReviewerAgent(sprint).review_plan(plan_file, **kwargs)
 
 

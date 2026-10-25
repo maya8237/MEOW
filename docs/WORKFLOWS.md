@@ -8,9 +8,9 @@ meow run "Add a dark mode toggle" --name dark-mode --workflow quick
 meow run "Audit the API" --workflow review-and-fix --no-worktree --input topic=API
 ```
 
-- `default`: knowledge → shaping → plan/approval → tasks → loop{generate, verify, review} → checks → delivery.
+- `default`: plan/approval → tasks → loop{generate, verify, review} → checks → delivery.
 - `quick`: short plan (`-m` pauses to approve), then ≤3 rounds of generate → checks → review
-  (review waits for passing checks), final checks, delivery. No knowledge/shaping/task
+  (review waits for passing checks), final checks, delivery. No task
   graph; configured tests don't enable the AI tester.
 - `review-and-fix`: verifies/reviews existing code first, fixes failures, final checks; no delivery.
   `--test` works without a plan, using the request as its basis.
@@ -111,7 +111,7 @@ Conditions allow dotted identifiers, quoted strings, integers, booleans,
 | `round`, `feedback`, `steps.<id>.status`, `inputs.<name>` | Loop state, failed-gate feedback, PASS/FAIL/done/skipped results, input strings |
 | `active_dir`, `docs_dir`, `request`, `feature_name`, `check_worktree_hygiene`, `write_tests` | Run context |
 | `plan_file`, `review_file`, `report_file`, `output_file` | Invocation artifact paths |
-| `shape`, `preplan`, `lint_instructions`, `focus` | Computed shaping/lint/review context |
+| `lint_instructions`, `focus` | Computed lint/review context |
 | `review_basis`, `has_diff`, `request_label`, `target`, `branch`, `source_sha`, `target_sha`, `merge_base` | Review scope |
 | `baseline`, `head` | Docs-update revisions |
 | `objective`, `task_drafts`, `max_tasks`, `conflicted_paths` | Orchestrator objective, fixed Jira drafts, task cap, conflict paths |
@@ -171,7 +171,6 @@ policy; discovered agent names are valid roles, unknown names fail config.
 
 ## Built-in operations and recovery
 
-`builtin.knowledge` gathers evidence; `shape` resolves requirements/breadboards;
 `plan` writes/claims the plan; `approve_plan` invokes manual approval;
 `tasks` integrates task worktrees; `generate` implements/fixes;
 `review` reviews/optionally tests; `verify` runs the checks inside a loop and

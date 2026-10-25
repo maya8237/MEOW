@@ -158,7 +158,6 @@ def test_imported_runs_include_phase_output_availability_and_session_link(tmp_pa
         "ui_session_id": SESSION_ID,
         "ui_attempt_id": ATTEMPT_ID,
         "resume_supported": True,
-        "resume_needs_request": False,
         "cancel_supported": False,
     }
 
@@ -172,7 +171,6 @@ def test_imported_run_without_history_reports_no_output_and_no_cancel(tmp_path):
     assert imported["ui_session_id"] is None
     assert imported["ui_attempt_id"] is None
     assert imported["resume_supported"] is False
-    assert imported["resume_needs_request"] is False
     assert imported["cancel_supported"] is False
 
 
@@ -303,65 +301,6 @@ def test_owned_resume_validates_linked_run_before_creating_attempt(tmp_path):
     with pytest.raises(ui_sessions.SessionError, match="cannot be resumed"):
         ui_sessions.resume_attempt(tmp_path, session.id, attempt.id)
     assert len(sessions.load(session.id).attempts) == 1
-
-
-def test_owned_needs_decision_resume_requires_and_passes_clarified_request(
-    tmp_path, monkeypatch
-):
-    from meow.cli import resume_cli
-
-    run_store = RunStore(tmp_path)
-    record = make_run(run_store, phase="needs_user_decision")
-    monkeypatch.setattr(resume_cli, "_validate", lambda _record, _repo: None)
-    monkeypatch.setattr(
-        resume_cli,
-        "_request_problem",
-        lambda _record, request, _continue: (
-            None
-            if request == "clarified outcome"
-            else "Supply the intended outcome with --request:"
-        ),
-    )
-    monkeypatch.setattr(resume_cli, "_resume_at", lambda _record: "generate")
-    monkeypatch.setattr(resume_cli, "_required_session_roles", lambda *_args: set())
-
-    sessions = SessionStore(tmp_path)
-    recipe = ui_sessions.Recipe(
-        id=SESSION_ID,
-        name="Resume",
-        repo=str(tmp_path.resolve()),
-        mode="cli",
-        command="run",
-        request="task",
-        workflow=None,
-        inputs={},
-        arguments=[],
-        options={},
-    )
-    session = sessions.save_recipe(recipe)
-    old = sessions.create_attempt(session.id, recipe, "token")
-    old = sessions.update_attempt(
-        session.id, old.id, state="succeeded", run_ids=[record.id]
-    )
-    assert ui_sessions.attempt_resume_status(tmp_path, old) == {
-        "resume_supported": True,
-        "resume_needs_request": True,
-        "state": "needs_decision",
-    }
-    launched = []
-    monkeypatch.setattr(
-        ui_sessions,
-        "_launch_owned_attempt",
-        lambda _store, item: launched.append(item) or item,
-    )
-
-    resumed = ui_sessions.resume_attempt(
-        tmp_path, session.id, old.id, request="clarified outcome"
-    )
-
-    assert "--request" in resumed.argv
-    assert resumed.argv[resumed.argv.index("--request") + 1] == "clarified outcome"
-    assert len(launched) == 1
 
 
 def test_reconcile_attempt_marks_dead_worker_interrupted_and_keeps_startup_grace(

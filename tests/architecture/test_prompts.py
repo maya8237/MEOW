@@ -3,28 +3,9 @@ from pathlib import Path
 
 from meow.project import prompts
 from meow.project.config_models import LintCommand
-from meow.project.shaping import ShapeContext
 
 
 class PromptTests(unittest.TestCase):
-    def test_shape_context_is_shared_by_planner_and_review(self):
-        context = ShapeContext(
-            "docs/shape.json", "bounded adapter", ("legacy API remains",)
-        )
-        planner = prompts.planner_prompt(Path("plan.md"), context)
-        review = prompts.plan_review_prompt(
-            Path("plan.md"),
-            Path("review.md"),
-            [],
-            focus=None,
-            check_worktree_hygiene=False,
-            shape_context=context,
-        )
-        for text in (planner, review):
-            self.assertIn("docs/shape.json", text)
-            self.assertIn("legacy API remains", text)
-            self.assertIn("Sprint Contract", text)
-
     def test_bug_planner_prompt_requires_reproduction_and_regression_evidence(self):
         text = prompts.planner_prompt(Path("plan.md"), bug_mode=True)
 

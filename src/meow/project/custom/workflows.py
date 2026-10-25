@@ -19,8 +19,6 @@ if TYPE_CHECKING:
 BUILTIN_STEPS = frozenset(
     f"builtin.{name}"
     for name in (
-        "knowledge",
-        "shape",
         "plan",
         "approve_plan",
         "tasks",

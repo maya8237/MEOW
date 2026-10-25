@@ -319,8 +319,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
         "--request",
         metavar="TEXT",
         help=(
-            "Clarified request for a run paused for a product decision "
-            "before planning, or a blocked orchestration task; requires --continue."
+            "Clarified request for a blocked orchestration task; requires --continue."
         ),
     )
     resume_parser.add_argument(

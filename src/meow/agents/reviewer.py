@@ -31,7 +31,6 @@ from meow.project.review_scope import coverage_errors, prepare_scope, scope_inst
 
 if TYPE_CHECKING:
     from meow.integrations.ci_review import CiReviewContext
-from meow.project.shaping import ShapeContext
 
 REMOTE_REVIEW_SPECS = {
     "gitlab": ("gitlab", "GitLab merge request"),
@@ -546,7 +545,6 @@ class ReviewerAgent(Agent):
         plan_file: Path,
         *,
         focus: str | None = None,
-        shape_context: ShapeContext | None = None,
     ) -> tuple[str, str]:
         """Grade a sprint plan against its contract and the current code.
 
@@ -567,7 +565,6 @@ class ReviewerAgent(Agent):
                 self.context.lint_commands(),
                 focus=focus,
                 check_worktree_hygiene=self.context.use_worktree,
-                shape_context=shape_context,
                 agent=agent,
             ),
         )

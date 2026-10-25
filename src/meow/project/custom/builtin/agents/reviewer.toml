@@ -21,7 +21,6 @@ unverified behavior as FAIL with the specific criterion and reproduction steps.
 Pay particular attention to: {{focus}}.
 {{/if}}
 {{lint_instructions}} {{> verification}} {{> architecture}} {{verdict_format}}
-{{> shape}}
 '''
 
 [variants]
@@ -39,7 +38,6 @@ confirm the review scope.
 The git status and diff in the task message are the source of truth. Mark
 each requirement PASS or FAIL with evidence (file:line or command output).
 {{lint_instructions}} {{> verification}} {{> architecture}} {{verdict_format}}
-{{> shape}}
 '''
 
 # Remote review: a GitLab merge request or GitHub pull request diff.
@@ -69,7 +67,6 @@ inconsistent between tasks. The objective and its task list:
 {{objective}}
 {{/if}}
 {{lint_instructions}} {{> verification}} {{> architecture}} {{verdict_format}}
-{{> shape}}
 '''
 
 # CI review: read-only, answers in the response instead of a verdict file.
@@ -115,7 +112,3 @@ looking for correctness issues and incomplete or broken behavior.{{/if}} Do
 not review anything under '{{docs_dir}}': it holds meow's own plans and verdicts, not project
 code.'''
 
-shape = '''{{#if shape}}Accepted shaping context: artifact path
-{{shape.artifact_path}}; chosen approach {{shape.chosen_approach}};
-assumptions: {{shape.assumptions}}. Treat assumptions as Sprint Contract
-inputs and surface contradictions as findings.{{/if}}'''

@@ -8,7 +8,6 @@ from pathlib import Path
 from meow.cli.orchestration_cli import resume_orchestration
 from meow.cli.status_cli import (
     RESUMABLE_SOURCES,
-    recovery_command,
     render,
     saved_run_id,
 )
@@ -23,7 +22,6 @@ from meow.infrastructure.checks import config_fingerprint
 from meow.infrastructure.worktree import current_branch
 from meow.project.config import config_root, load_config
 from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
-from meow.project.preplan import assess_preplan, gather_context
 
 
 def _config_dir(record: RunRecord) -> Path:
@@ -205,39 +203,14 @@ def _resume_at(record: RunRecord) -> str:
     return "review" if review_first else "generate"
 
 
-def _request_problem(  # ruff: ignore[complex-structure, too-many-return-statements] -- explicit validation diagnostics
+def _request_problem(
     record: RunRecord, request: str | None, continue_run: bool
 ) -> str | None:
     if request is None:
-        if continue_run and record.phase == "needs_user_decision":
-            return (
-                "Supply the intended outcome with --request: "
-                f"{recovery_command(record)}"
-            )
         return None
     if not continue_run:
         return "--request requires --continue; inspection does not change the request."
-    if (
-        record.phase != "needs_user_decision"
-        or record.plan_file
-        or any(
-            step["phase"] in {"planning", "generator_started", "reviewer_started"}
-            for step in record.transitions
-        )
-    ):
-        return (
-            "--request is only supported for a run paused "
-            "for a product decision before planning."
-        )
-    if not request.strip():
-        return "--request must contain the intended product outcome."
-    worktree = Path(record.worktree)
-    decision = assess_preplan(request, gather_context(worktree, request))
-    if decision.mode == "needs_user_decision":
-        return (
-            f"--request still needs a product decision: {'; '.join(decision.reasons)}."
-        )
-    return None
+    return "--request applies only to a blocked orchestration task."
 
 
 async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-many-return-statements, too-many-statements, too-many-branches] -- inspect-first recovery with validation
@@ -329,16 +302,7 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
         )
         return 1
     clear_cancel(store, record.id)
-    patch = {}
-    if request is not None:
-        patch = {
-            "request": request.strip(),
-            "last_failure": None,
-            "results": {"original_request": record.request},
-        }
-    record = store.transition(
-        record.id, "resuming", attempt=record.attempt + 1, **patch
-    )
+    record = store.transition(record.id, "resuming", attempt=record.attempt + 1)
     await run_sprint(
         Path(record.worktree),
         record.results.get("feature_name"),

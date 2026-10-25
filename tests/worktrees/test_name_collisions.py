@@ -2,7 +2,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from meow.execution.run_state import RunStore
 from meow.infrastructure.worktree import (
     _ensure_branch_worktree,
     _ensure_existing_branch_worktree,
@@ -84,22 +83,6 @@ class PlanClaimTests(unittest.TestCase):
             store.claim(plan, "run-a", owner_finished=lambda owner: False)
             again = store.claim(plan, "run-a", owner_finished=lambda owner: False)
             self.assertEqual(again.run_id, "run-a")
-
-
-class RunRecordSidecarTests(unittest.TestCase):
-    def test_preplan_artifact_is_not_a_run_record(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            store = RunStore(Path(tmp))
-            record = store.create(
-                source="prompt",
-                request="x",
-                repo=Path(tmp),
-                worktree=Path(tmp),
-                branch="main",
-            )
-            (store.directory / f"{record.id}.preplan.json").write_text("{}")
-            self.assertEqual([path.stem for path in store.record_paths()], [record.id])
-            self.assertEqual(store.latest().id, record.id)
 
 
 class TaskIdTests(unittest.TestCase):
