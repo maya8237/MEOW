@@ -25,8 +25,6 @@ def test_native_local_verdict_rejects_deleted_check_binding(tmp_path, scope):
 @pytest.mark.parametrize(
     "name",
     [
-        "gitlab-review.md",
-        "github-review.md",
         "gitlab.1234abcd.review.md",
         "github.1234abcd.review.md",
     ],

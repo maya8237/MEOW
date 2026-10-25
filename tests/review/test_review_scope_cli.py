@@ -59,7 +59,7 @@ def test_resumed_pass_is_gated_by_current_required_checks(tmp_path):
     from meow.infrastructure.lint import LintGateEvidence
     from meow.project.review_scope import prepare_scope
 
-    report = tmp_path / ".meow/review.md"
+    report = tmp_path / ".meow/prompt.1a2b3c4d.review.md"
     prepare_scope(report, tmp_path, ".meow/plans", "changes", True, "diff")
     report.write_text("SUMMARY: old success\nSTATUS: PASS\n")
     with (
@@ -84,7 +84,7 @@ def test_resume_preserves_project_scope_for_further_rounds(tmp_path):
     from meow.infrastructure.lint import LintGateEvidence
     from meow.project.review_scope import prepare_scope
 
-    report = tmp_path / ".meow/review.md"
+    report = tmp_path / ".meow/prompt.1a2b3c4d.review.md"
     prepare_scope(report, tmp_path, ".meow/plans", "whole project", True)
     report.write_text("SUMMARY: coverage missing\nSTATUS: FAIL\n")
     config = {"max_rounds": 2}
@@ -104,10 +104,10 @@ def test_resume_preserves_project_scope_for_further_rounds(tmp_path):
     assert config["_review_scope"] == "project"
 
 
-def test_legacy_saved_pass_gets_fresh_review_before_any_fixer(tmp_path):
+def test_saved_pass_gets_fresh_review_before_any_fixer(tmp_path):
     from meow.cli.review_cli import _resume_review_file
 
-    report = tmp_path / "review.md"
+    report = tmp_path / "prompt.1a2b3c4d.review.md"
     report.write_text("SUMMARY: old\nSTATUS: PASS\n")
     with (
         patch(
@@ -140,7 +140,7 @@ def test_saved_report_does_not_skip_new_review_focus(
     from meow.cli.review_cli import _resume_review_file
     from meow.project.review_scope import prepare_scope
 
-    report = tmp_path / ".meow/review.md"
+    report = tmp_path / ".meow/prompt.1a2b3c4d.review.md"
     prepare_scope(report, tmp_path, ".meow/plans", "changes", True, "diff")
     report.write_text(f"SUMMARY: previous diff report\nSTATUS: {previous_status}\n")
     config = {"max_rounds": 1}

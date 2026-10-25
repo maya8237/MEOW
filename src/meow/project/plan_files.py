@@ -8,12 +8,6 @@ import re
 import secrets
 from pathlib import Path
 
-# Legacy fixed review names; still recognised so older review files resume.
-PROMPT_REVIEW_FILENAME = "review.md"
-GITLAB_REVIEW_FILENAME = "gitlab-review.md"
-GITHUB_REVIEW_FILENAME = "github-review.md"
-BRANCH_REVIEW_FILENAME = "branch-review.md"
-
 REVIEW_FLAVORS = ("prompt", "gitlab", "github", "branch")
 # `<flavor>.<token>.review.md`: ends in "review.md" so plan lookups skip it, and
 # the flavor prefix keeps it identifiable.
@@ -95,7 +89,7 @@ def is_plan_file_name(name: str) -> bool:
 
 
 def is_review_report(path: Path, docs_dir: Path) -> bool:
-    """Runtime verdicts and their bindings, including legacy report directories."""
+    """Runtime verdicts and their bindings under docs_dir."""
     name = path.name.removesuffix(".scope.json").removesuffix(".checks.json")
     return path.is_relative_to(docs_dir) and not is_plan_file_name(name)
 
@@ -126,14 +120,6 @@ def _detect_review_flavor(review_file: Path) -> str:
     match = REVIEW_FILE_PATTERN.fullmatch(name)
     if match:
         return match.group(1)
-    flavor = {
-        GITLAB_REVIEW_FILENAME: "gitlab",
-        GITHUB_REVIEW_FILENAME: "github",
-        PROMPT_REVIEW_FILENAME: "prompt",
-        BRANCH_REVIEW_FILENAME: "branch",
-    }.get(name)
-    if flavor:
-        return flavor
     if name.endswith("-review.md"):
         return "plan"
     raise ValueError(

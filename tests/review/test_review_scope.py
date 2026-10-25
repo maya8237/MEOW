@@ -140,7 +140,7 @@ def test_scope_resolution(mixed_repo, basis, has_diff, explicit, expected):  # r
 def test_grounded_complete_coverage_passes_and_fabricated_excerpt_fails(mixed_repo):
     from meow.project.review_scope import coverage_errors, prepare_scope
 
-    report = mixed_repo / ".meow/review.md"
+    report = mixed_repo / ".meow/prompt.1a2b3c4d.review.md"
     prepare_scope(report, mixed_repo, ".meow", "whole project", True)
     text = coverage(mixed_repo)
     assert coverage_errors(report, text) == []
@@ -157,7 +157,7 @@ def test_grounded_complete_coverage_passes_and_fabricated_excerpt_fails(mixed_re
 def test_stale_inventory_cannot_pass(mixed_repo, change):
     from meow.project.review_scope import coverage_errors, prepare_scope
 
-    report = mixed_repo / ".meow/review.md"
+    report = mixed_repo / ".meow/prompt.1a2b3c4d.review.md"
     prepare_scope(report, mixed_repo, ".meow", "whole project", True)
     text = coverage(mixed_repo)
     if change == "modify":
@@ -201,7 +201,7 @@ def test_project_scope_includes_shared_meow_definitions(mixed_repo):
 def test_diff_snapshot_rejects_changed_source(mixed_repo):
     from meow.project.review_scope import coverage_errors, prepare_scope
 
-    report = mixed_repo / ".meow/review.md"
+    report = mixed_repo / ".meow/prompt.1a2b3c4d.review.md"
     prepare_scope(report, mixed_repo, ".meow/plans", "login diff", True, "diff")
     (mixed_repo / "frontend/app.tsx").write_text("changed")
     assert coverage_errors(report, "SUMMARY: old\nSTATUS: PASS\n")

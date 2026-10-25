@@ -119,7 +119,9 @@ class ReviewFileNameTests(unittest.TestCase):
         for flavor in ("prompt", "gitlab", "github", "branch"):
             name = new_review_filename(flavor)
             self.assertEqual(_detect_review_flavor(Path(name)), flavor)
-        self.assertEqual(_detect_review_flavor(Path("review.md")), "prompt")
+        self.assertEqual(
+            _detect_review_flavor(Path("prompt.1a2b3c4d.review.md")), "prompt"
+        )
         self.assertEqual(_detect_review_flavor(Path("foo-review.md")), "plan")
         with tempfile.TemporaryDirectory() as tmp:
             docs = Path(tmp)

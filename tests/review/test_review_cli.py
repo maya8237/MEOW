@@ -428,7 +428,7 @@ class ResumeReviewFileTests(unittest.IsolatedAsyncioTestCase):
             working_dir = Path(tmp)
             docs_dir = working_dir / "docs"
             docs_dir.mkdir()
-            review_file = docs_dir / "gitlab-review.md"
+            review_file = docs_dir / "gitlab.1a2b3c4d.review.md"
             review_file.write_text("STATUS: FAIL", encoding="utf-8")
             with (
                 patch("meow.cli.review_cli.load_config", return_value=_config()),
@@ -443,7 +443,7 @@ class ResumeReviewFileTests(unittest.IsolatedAsyncioTestCase):
             working_dir = Path(tmp)
             docs_dir = working_dir / "docs"
             docs_dir.mkdir()
-            review_file = docs_dir / "github-review.md"
+            review_file = docs_dir / "github.1a2b3c4d.review.md"
             review_file.write_text("STATUS: FAIL", encoding="utf-8")
             with (
                 patch("meow.cli.review_cli.load_config", return_value=_config()),
@@ -458,7 +458,7 @@ class ResumeReviewFileTests(unittest.IsolatedAsyncioTestCase):
             working_dir = Path(tmp)
             docs_dir = working_dir / "docs"
             docs_dir.mkdir()
-            review_file = docs_dir / "branch-review.md"
+            review_file = docs_dir / "branch.1a2b3c4d.review.md"
             review_file.write_text("STATUS: FAIL", encoding="utf-8")
             with (
                 patch("meow.cli.review_cli.load_config", return_value=_config()),
@@ -508,7 +508,7 @@ class ResumeReviewFileTests(unittest.IsolatedAsyncioTestCase):
             working_dir = Path(tmp)
             docs_dir = working_dir / "docs"
             docs_dir.mkdir()
-            review_file = docs_dir / "review.md"
+            review_file = docs_dir / "prompt.1a2b3c4d.review.md"
             review_file.write_text(
                 "SUMMARY: needs work\nSTATUS: FAIL\nrequirement: FAIL",
                 encoding="utf-8",

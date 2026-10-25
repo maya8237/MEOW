@@ -13,28 +13,19 @@ class DetectReviewFlavorTests(unittest.TestCase):
             "plan",
         )
 
-    def test_prompt_based_review_file(self):
+    def test_flavor_review_files_use_their_flavor(self):
         self.assertEqual(
-            plan_files._detect_review_flavor(Path("docs/review.md")), "prompt"
+            plan_files._detect_review_flavor(Path("docs/prompt.1a2b3c4d.review.md")),
+            "prompt",
         )
-
-    def test_gitlab_based_review_file(self):
         self.assertEqual(
-            plan_files._detect_review_flavor(Path("docs/gitlab-review.md")),
-            "gitlab",
-        )
-
-    def test_github_based_review_file(self):
-        self.assertEqual(
-            plan_files._detect_review_flavor(Path("docs/github-review.md")),
-            "github",
-        )
-
-    def test_branch_based_review_file(self):
-        self.assertEqual(
-            plan_files._detect_review_flavor(Path("docs/branch-review.md")),
+            plan_files._detect_review_flavor(Path("docs/branch.1a2b3c4d.review.md")),
             "branch",
         )
+
+    def test_fixed_legacy_review_names_are_not_recognized(self):
+        with self.assertRaisesRegex(ValueError, "doesn't look like a review file"):
+            plan_files._detect_review_flavor(Path("docs/review.md"))
 
     def test_unrecognized_file_raises_a_clear_error(self):
         with self.assertRaisesRegex(ValueError, "doesn't look like a review file"):
@@ -52,7 +43,7 @@ class LatestReviewFileTests(unittest.TestCase):
     def test_picks_the_most_recently_modified_review_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             docs_dir = Path(tmpdir)
-            older = docs_dir / "review.md"
+            older = docs_dir / "prompt.00000000.review.md"
             older.write_text("STATUS: FAIL", encoding="utf-8")
             newer = docs_dir / "feature-review.md"
             newer.write_text("STATUS: FAIL", encoding="utf-8")

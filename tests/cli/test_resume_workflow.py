@@ -69,7 +69,7 @@ def test_changed_workflow_refuses_resume_before_agent(tmp_path, capsys):
     assert "workflow changed" in capsys.readouterr().err.lower()
 
 
-def test_legacy_record_uses_default_despite_new_config_default(tmp_path):
+def test_record_without_saved_workflow_resumes_default_despite_config_default(tmp_path):
     store, record, _, _ = setup_workflow(tmp_path)
     plan = tmp_path / "plan.md"
     plan.write_text("Plan", encoding="utf-8")

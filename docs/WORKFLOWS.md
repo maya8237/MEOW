@@ -190,8 +190,7 @@ Status shows workflow and stages. Journals retain resolved fingerprints,
 completed top-level IDs, and active loop/step. Resume rejects changed
 definitions, skips completed top-level steps, and enters interrupted loops
 review-first. Evidence freshness/delivery guards still apply.
-Legacy journals select default regardless of current config; role session IDs
-remain transcript references owned by Claude.
+Role session IDs remain transcript references owned by Claude.
 
 `meow native workflow NAME` inspects resolved JSON; `native prompt ROLE`
 renders resolved instructions/models. Native helpers do not drive custom

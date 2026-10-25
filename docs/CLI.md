@@ -115,7 +115,7 @@ Pass the original prompt for prompt reviews; rerun remote/branch sources instead
 A new focus requires fresh review; project wording widens an earlier diff scope.
 Explicit `--plan PATH --test` enables tester mode; other review sources reject it.
 Reports use helper-generated paths: plan reviews are `<plan>-review.md`;
-others are `<flavor>.<8-hex-id>.review.md`. Legacy fixed names still resume.
+others are `<flavor>.<8-hex-id>.review.md`.
 
 ### Scheduling a run
 
