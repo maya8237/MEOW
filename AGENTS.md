@@ -41,7 +41,7 @@ Role prose belongs in `src/meow/project/custom/builtin/agents/*.toml`;
 `skills/*/SKILL.md` owns plugin flows. Run defaults to CLI;
 plan/review/lint default to native. Orchestrator tasks
 remain detached CLI sprints. Schedule uses OS/CLI; onboard adds optional setup,
-migration converts legacy layouts, and customize edits definitions.
+and customize edits definitions.
 Keep native/CLI guidance aligned.
 
 ## Invariants

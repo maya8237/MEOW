@@ -78,11 +78,6 @@ Example: `/meow:onboard`. [Reference](../skills/onboard/SKILL.md)
 Create, override, attach, or remove skills, agents, and workflows in any scope.
 Example: `/meow:customize`. [Reference](../skills/customize/SKILL.md)
 
-## /meow:migration
-
-Convert a legacy MEOW project layout to the current layout.
-Example: `/meow:migration`. [Reference](../skills/migration/SKILL.md)
-
 ## /meow:integrate-ci-review
 
 Add a code review job to GitHub Actions or GitLab CI. It reviews proposed changes

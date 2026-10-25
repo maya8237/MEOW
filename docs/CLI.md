@@ -154,7 +154,7 @@ Browser checks and server lifecycle are [configured separately](INTEGRATIONS.md#
 `/meow:run` defaults to CLI; plan/review/lint default to native.
 Orchestrator task sprints remain detached CLI workers. Native integrations use
 session-connected MCP tools; CLI uses configured launchers.
-Named workflow trees execute through CLI. Onboard/migration/customize configure
+Named workflow trees execute through CLI. Onboard/customize configure
 the project rather than provide execution engines.
 
 Native `review-checks --background` starts durable verification; `--status`

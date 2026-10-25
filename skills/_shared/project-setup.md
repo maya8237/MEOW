@@ -1,6 +1,6 @@
 # Project ignore boundary
 
-Apply this before onboarding or migration writes MEOW state. Each caller owns
+Apply this before onboarding writes MEOW state. Each caller owns
 repair and verification; do not assume another flow already applied it.
 Preserve unrelated rules and remove obsolete broad MEOW rules when safe.
 

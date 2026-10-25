@@ -21,7 +21,6 @@ def test_marketplace_catalog_exposes_every_meow_skill():
         "customize",
         "integrate-ci-review",
         "lint",
-        "migration",
         "onboard",
         "plan",
         "review",

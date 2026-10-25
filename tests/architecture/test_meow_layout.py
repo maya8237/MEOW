@@ -45,7 +45,7 @@ def test_repository_does_not_reintroduce_removed_backend_references():
     assert offending == []
 
 
-def test_legacy_config_references_are_confined_to_migration():
+def test_legacy_config_name_is_not_referenced():
     tracked = subprocess.run(
         ["git", "ls-files"],
         cwd=ROOT,
@@ -56,7 +56,7 @@ def test_legacy_config_references_are_confined_to_migration():
     offending = []
     for name in tracked:
         path = ROOT / name
-        if not path.is_file() or "migration" in path.parts:
+        if not path.is_file():
             continue
         try:
             if LEGACY_CONFIG_NAME in path.read_text(encoding="utf-8"):

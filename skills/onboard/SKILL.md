@@ -5,8 +5,7 @@ description: Use when setting up MEOW in a repository, refreshing an already onb
 
 # Onboard a repository
 
-Use for new projects or the current `.meow/` layout; legacy files require
-`migration`. Work in the target repository and follow its agent instructions.
+Use for new projects or the current `.meow/` layout. Work in the target repository and follow its agent instructions.
 Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## 0. Check the onboarding state first

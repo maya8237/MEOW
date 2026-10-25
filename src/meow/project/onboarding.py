@@ -14,7 +14,6 @@ from pathlib import Path
 
 from meow.infrastructure.worktree import default_target_branch
 from meow.project.config import _merge_config, config_paths
-from meow.project.migration import migrate_legacy_config
 from meow.project.repos import remember
 
 BOUNDARY = (
@@ -268,8 +267,6 @@ def _apply(
         files.append(".gitignore")
     error = _verify(root)
     config = root / CONFIG_RELPATH
-    if error is None and write_config and migrate_legacy_config(root):
-        files.append(CONFIG_RELPATH)
     if error is None and write_config and not config.is_file():
         tables = _config_tables(root)
         existing = {key for table in tables for key in table}
