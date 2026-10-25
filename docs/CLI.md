@@ -80,7 +80,8 @@ meow run --orchestrate "Add SSO and audit logs" --max-parallel 3
 meow run --jira PROJ-1 PROJ-2
 meow run --jql "project = PROJ"
 meow run --tasks tasks.toml --dry-run
-meow resume ID --continue [--task T --request "Updated request"]
+meow resume ID --continue
+meow resume ORCH_ID --continue --task T --request "Updated request"
 ```
 
 Task files, JQL, and multiple Jira keys select orchestration automatically.

@@ -458,15 +458,10 @@ def post(server, url: str, payload: dict):  # ruff: ignore[complex-structure, to
         run_id = _id(parts[3])
         action = parts[4]
         if action == "resume":
-            request = payload.get("request")
             repair = payload.get("repair", False)
-            if request is not None and not isinstance(request, str):
-                raise ApiError(HTTPStatus.BAD_REQUEST, "request must be a string.")
             if not isinstance(repair, bool):
                 raise ApiError(HTTPStatus.BAD_REQUEST, "repair must be a boolean.")
-            session, attempt = ui_sessions.resume_imported_run(
-                repo, run_id, request, repair
-            )
+            session, attempt = ui_sessions.resume_imported_run(repo, run_id, repair)
             store = SessionStore(repo)
             session = store.load(session.id)
             return HTTPStatus.ACCEPTED, {

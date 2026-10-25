@@ -207,7 +207,7 @@ def _decode_output_page(data: bytes) -> tuple[str, bytes]:
 
 
 def _resume_supported(repo: Path, record) -> bool:
-    from meow.cli.resume_cli import _request_problem, _validate
+    from meow.cli.resume_cli import _validate
     from meow.cli.status_cli import RESUMABLE_SOURCES
     from meow.infrastructure.background import inspect_worker
 
@@ -215,9 +215,7 @@ def _resume_supported(repo: Path, record) -> bool:
         return False
     if inspect_worker(record, include_terminal=True).state in {"running", "starting"}:
         return False
-    if _validate(record, repo):
-        return False
-    return _request_problem(record, None, True) is None
+    return not _validate(record, repo)
 
 
 def attempt_resume_status(repo: Path, attempt: Attempt) -> dict[str, bool | str]:
@@ -325,30 +323,19 @@ def list_imported_runs(repo: Path) -> list[dict]:
     ]
 
 
-def _validate_imported_resume(  # ruff: ignore[complex-structure] -- keep API launch guards aligned with CLI resume
-    repo: Path, run_id: str, request: str | None, repair: bool
-):
-    from meow.cli.resume_cli import (
-        _request_problem,
-        _required_session_roles,
-        _resume_at,
-        _validate,
-    )
+def _validate_imported_resume(repo: Path, run_id: str, repair: bool):
+    from meow.cli.resume_cli import _required_session_roles, _resume_at, _validate
     from meow.cli.status_cli import RESUMABLE_SOURCES
     from meow.execution.run_state import RunStore
     from meow.infrastructure.background import inspect_worker
 
     record = RunStore(repo).load(run_id)
-    if request is not None and (not isinstance(request, str) or "\x00" in request):
-        raise SessionError("Resume request must be a string without NUL characters")
     if record.source not in RESUMABLE_SOURCES or record.phase == "complete":
         raise SessionError(f"Run {run_id} cannot be resumed")
     if inspect_worker(record, include_terminal=True).state in {"running", "starting"}:
         raise SessionError("Run worker is already active")
     if problem := _validate(record, repo):
         raise SessionError(f"Cannot resume: {problem}")
-    if problem := _request_problem(record, request, True):
-        raise SessionError(problem)
     resume_at = _resume_at(record)
     missing = _required_session_roles(record, resume_at) - set(record.sessions)
     if missing and not repair:
@@ -356,9 +343,7 @@ def _validate_imported_resume(  # ruff: ignore[complex-structure] -- keep API la
     return record
 
 
-def _imported_resume_recipe(
-    repo: Path, record, session_id: str, request: str | None
-) -> Recipe:
+def _imported_resume_recipe(repo: Path, record, session_id: str) -> Recipe:
     saved_workflow = record.results.get("workflow")
     inputs = (
         saved_workflow.get("inputs", {}) if isinstance(saved_workflow, dict) else {}
@@ -369,7 +354,7 @@ def _imported_resume_recipe(
         repo=str(repo),
         mode="cli",
         command="run",
-        request=request or record.request,
+        request=record.request,
         workflow=saved_workflow.get("name")
         if isinstance(saved_workflow, dict)
         else None,
@@ -379,9 +364,7 @@ def _imported_resume_recipe(
     )
 
 
-def _imported_resume_argv(
-    record, repo: Path, request: str | None, repair: bool
-) -> list[str]:
+def _imported_resume_argv(record, repo: Path, repair: bool) -> list[str]:
     argv = [
         sys.executable,
         "-m",
@@ -392,15 +375,13 @@ def _imported_resume_argv(
         "--work-dir",
         str(repo),
     ]
-    if request:
-        argv.extend(["--request", request])
     if repair:
         argv.append("--repair")
     return argv
 
 
 def resume_imported_run(
-    repo: Path, run_id: str, request: str | None = None, repair: bool = False
+    repo: Path, run_id: str, repair: bool = False
 ) -> tuple[Session, Attempt]:
     from meow.ui.sessions import new_id
 
@@ -410,17 +391,17 @@ def resume_imported_run(
             from meow.ui.sessions import SessionBusy
 
             raise SessionBusy("This MEOW run already has an active UI resume")
-        record = _validate_imported_resume(repo, run_id, request, repair)
+        record = _validate_imported_resume(repo, run_id, repair)
         session_id = new_id()
         sessions = SessionStore(repo)
-        recipe = _imported_resume_recipe(repo, record, session_id, request)
+        recipe = _imported_resume_recipe(repo, record, session_id)
         session = sessions.save_recipe(recipe)
         with sessions.claim(session.id, "resume"):
             attempt = sessions.create_attempt(session.id, recipe, secrets.token_hex(16))
             attempt = sessions.update_attempt(
                 session.id,
                 attempt.id,
-                argv=_imported_resume_argv(record, repo, request, repair),
+                argv=_imported_resume_argv(record, repo, repair),
                 run_ids=[record.id],
             )
             attempt = _launch_owned_attempt(sessions, attempt)
@@ -504,8 +485,6 @@ def resume_argv(
     run_ids = attempt.run_ids
     if run_ids:
         argv = [sys.executable, "-m", "meow", "resume", run_ids[-1], "--continue"]
-        if request:
-            argv.extend(["--request", request])
         if repair:
             argv.append("--repair")
         return argv
@@ -537,7 +516,7 @@ def resume_argv(
     raise SessionError("Attempt has no resumable MEOW run or Claude session")
 
 
-def resume_attempt(  # ruff: ignore[complex-structure, too-many-arguments, too-many-positional-arguments, too-many-statements]
+def resume_attempt(  # ruff: ignore[complex-structure, too-many-arguments, too-many-positional-arguments, too-many-statements, too-many-branches]
     repo: Path,
     session_id: str,
     attempt_id: str,
@@ -561,7 +540,11 @@ def resume_attempt(  # ruff: ignore[complex-structure, too-many-arguments, too-m
             if session.archived:
                 raise SessionError("Unarchive this session before resuming it")
             if run_id:
-                _validate_imported_resume(Path(repo).resolve(), run_id, request, repair)
+                if request is not None:
+                    raise SessionError(
+                        "A request applies only to Claude session attempts."
+                    )
+                _validate_imported_resume(Path(repo).resolve(), run_id, repair)
             else:
                 if not old.claude_session_id:
                     raise SessionError(

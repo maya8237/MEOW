@@ -348,3 +348,32 @@ def test_cancel_imported_run_requests_cooperative_cancel(tmp_path):
 
     assert result.id == record.id
     assert store._path(record.id).with_suffix(".cancel").is_file()
+
+
+def test_owned_resume_rejects_request_for_run_attempts(tmp_path):
+    store = RunStore(tmp_path)
+    record = make_run(store, phase="complete")
+    sessions = SessionStore(tmp_path)
+    recipe = ui_sessions.Recipe(
+        id=SESSION_ID,
+        name="Resume",
+        repo=str(tmp_path.resolve()),
+        mode="cli",
+        command="run",
+        request="task",
+        workflow=None,
+        inputs={},
+        arguments=[],
+        options={},
+    )
+    session = sessions.save_recipe(recipe)
+    attempt = sessions.create_attempt(session.id, recipe, "token")
+    sessions.update_attempt(
+        session.id, attempt.id, state="stopped", run_ids=[record.id]
+    )
+
+    with pytest.raises(ui_sessions.SessionError, match="applies only to Claude"):
+        ui_sessions.resume_attempt(
+            tmp_path, session.id, attempt.id, request="replacement"
+        )
+    assert len(sessions.load(session.id).attempts) == 1

@@ -610,18 +610,9 @@ def test_linked_cli_resume_uses_exact_run_id_and_requested_repair_flags(tmp_path
     attempt = store.create_attempt(recipe.id, recipe, worker_token="token")
     store.update_attempt(recipe.id, attempt.id, run_ids=["a" * 32])
 
-    argv = resume_argv(
-        store._read_attempt(recipe.id, attempt.id), "continue the work", repair=True
-    )
+    argv = resume_argv(store._read_attempt(recipe.id, attempt.id), repair=True)
 
-    assert argv[-6:] == [
-        "resume",
-        "a" * 32,
-        "--continue",
-        "--request",
-        "continue the work",
-        "--repair",
-    ]
+    assert argv[-4:] == ["resume", "a" * 32, "--continue", "--repair"]
 
 
 def test_claude_resume_keeps_server_owned_permission_flags(tmp_path, monkeypatch):

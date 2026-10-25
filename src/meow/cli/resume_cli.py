@@ -203,16 +203,6 @@ def _resume_at(record: RunRecord) -> str:
     return "review" if review_first else "generate"
 
 
-def _request_problem(
-    record: RunRecord, request: str | None, continue_run: bool
-) -> str | None:
-    if request is None:
-        return None
-    if not continue_run:
-        return "--request requires --continue; inspection does not change the request."
-    return "--request applies only to a blocked orchestration task."
-
-
 async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-many-return-statements, too-many-statements, too-many-branches] -- inspect-first recovery with validation
     working_dir: Path,
     run_id: str | None = None,
@@ -242,8 +232,10 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
         print(str(exc), file=sys.stderr)
         return 1
     print(render(record))
-    if problem := _request_problem(record, request, continue_run):
-        print(problem, file=sys.stderr)
+    if request is not None:
+        print(
+            "--request applies only to a blocked orchestration task.", file=sys.stderr
+        )
         return 1
     if (continue_run or repair) and inspect_worker(
         record, include_terminal=True
