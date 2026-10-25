@@ -23,8 +23,7 @@ original checkout, outside feature/task branches; editable-install
 Use `/meow:onboard` for add-ons.
 
 Runs never wait for answers except at explicit `-m` plan approval. Feature
-flows do not propose/edit prose docs; onboarding can create selected project
-knowledge.
+flows do not propose/edit prose docs.
 
 With no saved run, `--resume-at review --plan PATH` skips planning and reviews
 existing code first, generating only after FAIL. Omit the path to discover the

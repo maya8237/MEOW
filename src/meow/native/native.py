@@ -12,11 +12,6 @@ import shutil
 from pathlib import Path
 
 from meow.infrastructure.worktree import _push_branch
-from meow.integrations.knowledge import audit_project, select_findings, structural_check
-from meow.integrations.knowledge_documents import (
-    EvidenceDocumentWriter,
-    create_selected_documents,
-)
 from meow.native.native_custom import custom, workflow
 from meow.native.native_lint import LintOptions, lint
 from meow.native.native_prepare import (
@@ -42,9 +37,6 @@ __all__ = [
     "checkpoint",
     "custom",
     "finalize",
-    "knowledge_audit",
-    "knowledge_check",
-    "knowledge_create",
     "latest_plan",
     "latest_review",
     "lint",
@@ -57,27 +49,6 @@ __all__ = [
     "verify",
     "workflow",
 ]
-
-
-def knowledge_audit(root: Path) -> dict:
-    return audit_project(root).to_dict()
-
-
-def knowledge_check(root: Path) -> dict:
-    return structural_check(root)
-
-
-def knowledge_create(
-    root: Path, finding_ids: list[str], *, overwrite: bool = False
-) -> dict:
-    audit = audit_project(root)
-    findings = select_findings(audit, finding_ids)
-    return {
-        "audit": audit.to_dict(),
-        "result": create_selected_documents(
-            root, findings, writer=EvidenceDocumentWriter(), overwrite=overwrite
-        ).__dict__,
-    }
 
 
 def onboard_status(root: Path) -> dict:

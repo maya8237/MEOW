@@ -449,8 +449,4 @@ def feature_gaps(root: Path) -> dict[str, dict]:
     }
     # Runtime accumulates custom sources from every layer before merging config.
     gaps["custom"]["configured"] = any(_present(table, ("custom",)) for table in tables)
-    gaps["architecture_doc"] = {
-        "configured": (root / "docs" / "ARCHITECTURE.md").is_file(),
-        "enable": "Run `meow native knowledge-audit`, then create the accepted doc.",
-    }
     return gaps

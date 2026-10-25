@@ -35,7 +35,6 @@ these directories consistent across calls.
 | `finalize RUN_ID` | Revalidate evidence and required gates, then deliver when eligible |
 | `push BRANCH` | Push a named branch to origin |
 | `onboard-status` | Base setup state and optional add-on gaps |
-| `knowledge-audit` / `knowledge-check` / `knowledge-create` | Audit, validate, or create selected project knowledge |
 | `run COMMAND` | Supervisor helpers; see below |
 
 `prepare` applies setup before returning. Failed setup retains the worktree for

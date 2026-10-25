@@ -226,23 +226,6 @@ def _add_push(sub) -> None:
     parser.add_argument("branch", help="Branch to push.")
 
 
-def _add_knowledge(sub) -> None:
-    parser = sub.add_parser(
-        "knowledge-audit", help="Report-only project knowledge audit."
-    )
-    _add_dirs(parser)
-    parser = sub.add_parser(
-        "knowledge-check", help="Run deterministic structural knowledge checks."
-    )
-    _add_dirs(parser)
-    parser = sub.add_parser(
-        "knowledge-create", help="Create explicitly selected knowledge documents."
-    )
-    _add_dirs(parser)
-    parser.add_argument("--finding", action="append", required=True)
-    parser.add_argument("--overwrite", action="store_true")
-
-
 def _add_onboard(sub) -> None:
     parser = sub.add_parser(
         "onboard-status",
@@ -374,7 +357,6 @@ def add_native_parser(  # ruff: ignore[too-many-statements] -- register independ
     check_mode.add_argument("--background", action="store_true")
     check_mode.add_argument("--status", action="store_true")
     _add_push(sub)
-    _add_knowledge(sub)
     _add_onboard(sub)
     _add_custom(sub)
     workflow = sub.add_parser("workflow", help="Print the resolved workflow as JSON.")
@@ -542,11 +524,6 @@ _HANDLERS = {
     "prompt": _prompt,
     "review-checks": _review_checks,
     "push": lambda args, wd, active: native.push(active, args.branch),
-    "knowledge-audit": lambda args, wd, active: native.knowledge_audit(active),
-    "knowledge-check": lambda args, wd, active: native.knowledge_check(active),
-    "knowledge-create": lambda args, wd, active: native.knowledge_create(
-        active, args.finding, overwrite=args.overwrite
-    ),
     "custom": lambda args, wd, active: native.custom(
         wd, active, args.role, **_model_host_options(args)
     ),

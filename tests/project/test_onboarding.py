@@ -266,7 +266,6 @@ def test_feature_gaps_reports_configured_and_missing(repo):
         "permissions",
         "agent_skills",
         "custom",
-        "architecture_doc",
     }
 
 
@@ -338,13 +337,6 @@ def test_feature_gaps_keeps_custom_sources_from_lower_layers(repo):
     )
 
     assert feature_gaps(repo)["custom"]["configured"] is True
-
-
-def test_feature_gaps_architecture_doc(repo):
-    assert feature_gaps(repo)["architecture_doc"]["configured"] is False
-    (repo / "docs").mkdir()
-    (repo / "docs" / "ARCHITECTURE.md").write_text("# A\n", encoding="utf-8")
-    assert feature_gaps(repo)["architecture_doc"]["configured"] is True
 
 
 def test_feature_gaps_tolerates_malformed_config(repo):

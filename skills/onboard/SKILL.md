@@ -64,11 +64,7 @@ or guess a venv path.
 
 After an approved install, rerun `meow --help` (use `~/.meow/bin/meow` until PATH
 refreshes); stop and report the prerequisite if no suitable interpreter is
-available. Run the read-only project checks
-`meow native knowledge-audit --work-dir <project-root>` and
-`meow native knowledge-check --work-dir <project-root>` when the command is
-available. Show their evidence, but do not let an audit finding block unrelated
-configuration.
+available.
 
 Use Claude's existing authentication. MEOW does not initialize credentials.
 Do not ask users to move API keys into shared project files. A project-shared
@@ -176,7 +172,6 @@ When an optional feature is accepted, use the matching documented path:
 - Tester mode: inspect test/server/MCP readiness with `meow native verify`
   (it starts none of them), then verify accepted commands before enabling tests.
 
-For requested knowledge docs, inspect source/docs first, mark uncertainty, and review.
 Keep documentation-only onboarding free of application code changes.
 
 ## 4. Verify
