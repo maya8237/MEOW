@@ -13,7 +13,7 @@ from meow.project.config import load_config
 
 @pytest.mark.parametrize(
     ("host", "available", "expected"),
-    [(None, None, "haiku"), ("codex", None, None), ("codex", ["haiku"], "haiku")],
+    [("claude", None, "haiku"), ("codex", None, None), ("codex", ["haiku"], "haiku")],
 )
 def test_custom_delegate_routes_model_without_changing_config(
     tmp_path, host, available, expected
@@ -108,7 +108,7 @@ def test_unavailable_model_inherits_with_reason(tmp_path, host, available_models
     assert "unavailable" in result["model_fallback_reason"]
 
 
-@pytest.mark.parametrize("host", ["codex", "generic", "claude", None])
+@pytest.mark.parametrize("host", ["codex", "generic", "claude"])
 def test_unconfigured_model_inherits_without_fallback(tmp_path, host):
     result = role_prompt(tmp_path, tmp_path, "review-fixer", host=host)
 
@@ -118,14 +118,11 @@ def test_unconfigured_model_inherits_without_fallback(tmp_path, host):
     assert result["model_fallback_reason"] is None
 
 
-@pytest.mark.parametrize("host", ["claude", None])
-def test_legacy_claude_models_preserved_even_in_codex_environment(
-    tmp_path, monkeypatch, host
-):
+def test_claude_models_preserved_even_in_codex_environment(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_THREAD_ID", "inherited-test-session")
     _configure(tmp_path, "haiku")
 
-    result = role_prompt(tmp_path, tmp_path, "explorer", host=host)
+    result = role_prompt(tmp_path, tmp_path, "explorer", host="claude")
 
     assert result["model"] == "haiku"
     assert result["configured_model"] == "haiku"

@@ -85,8 +85,8 @@ def commit_worktree(active: Path, message: list[str]) -> str:
     ]
     if runtime:
         _git(active, "reset", "-q", "--", *runtime)
-    # Keep shared config even with a legacy ignore boundary; the update pass
-    # also handles its deletion without bringing runtime state into the commit.
+    # Shared config is staged even under an ignore rule; the update pass also
+    # handles its deletion without bringing runtime state into the commit.
     _git(active, "add", "-f", "--", ".meow/config.toml", check=False)
     _git(active, "add", "-u", "--", ".meow/config.toml", check=False)
     _unstage_secret_like(active)

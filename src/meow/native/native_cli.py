@@ -174,7 +174,7 @@ def _add_checkpoint(sub) -> None:
 
 def _add_model_host(parser) -> None:
     parser.add_argument(
-        "--host", default=None, help="Native host, e.g. claude or codex."
+        "--host", default="claude", help="Native host, e.g. claude or codex."
     )
     parser.add_argument(
         "--available-model",
@@ -419,9 +419,7 @@ def _checkpoint(args, working_dir: Path, active: Path) -> dict:
 
 
 def _model_host_options(args) -> dict:
-    options = {}
-    if args.host is not None:
-        options["host"] = args.host
+    options = {"host": args.host}
     if args.available_model is not None:
         options["available_models"] = args.available_model
     return options

@@ -39,8 +39,8 @@ def test_native_dispatch_preserves_host_capabilities(tmp_path, command, target):
         (["run", "review", "abc123"], "meow.native.native_orchestrate.review"),
     ],
 )
-def test_native_dispatch_keeps_legacy_defaults(tmp_path, command, target):
+def test_native_dispatch_defaults_to_claude_host(tmp_path, command, target):
     with patch(target, return_value={}) as operation:
         code, _, error = run_native(*command, "--work-dir", str(tmp_path))
     assert code == 0, error
-    assert operation.call_args.kwargs == {}
+    assert operation.call_args.kwargs == {"host": "claude"}

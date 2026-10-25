@@ -115,9 +115,7 @@ def cleanup_run(  # ruff: ignore[too-many-statements, too-many-branches, complex
         and active.parent == (repo / ".worktrees").resolve()
     ):
         branch = result_branch(
-            active,
-            record.results.get("feature_name") or active.name,
-            old=f"meow/{run_id}",
+            active, record.results.get("feature_name") or active.name
         )
         if record.branch != branch:
             store.transition(

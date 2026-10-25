@@ -215,7 +215,7 @@ def role_prompt(  # ruff: ignore[too-many-arguments, too-many-statements] -- mir
     target: str | None = None,
     branch: str | None = None,
     remote_provider: str = "gitlab",
-    host: str | None = None,
+    host: str = "claude",
     available_models: Sequence[str] | None = None,
     scope: str = "auto",
 ) -> dict:

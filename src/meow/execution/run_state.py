@@ -314,10 +314,8 @@ class RunStore:
         return record
 
     def record_paths(self) -> list[Path]:
-        """Run records only; sidecars such as `<id>.preplan.json` are skipped."""
-        return [
-            path for path in self.directory.glob("*.json") if _ID.fullmatch(path.stem)
-        ]
+        """Run records only."""
+        return list(self.directory.glob("*.json"))
 
     def latest(self) -> RunRecord:
         paths = sorted(self.record_paths(), key=_mtime)

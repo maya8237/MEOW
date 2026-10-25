@@ -21,17 +21,17 @@ def request_name(request: str) -> str:
 
 
 @_serialize_worktree_creation
-def result_branch(  # ruff: ignore[complex-structure, too-many-statements]
-    directory: Path, name: str, *, old: str | None = None
+def result_branch(  # ruff: ignore[complex-structure]
+    directory: Path, name: str
 ) -> str:
-    """Name a detached result, or rename an explicitly owned legacy branch."""
+    """Name a detached result branch; a checked-out branch is kept as is."""
     checked_out = _run_git(["git", "branch", "--show-current"], cwd=directory)
     if checked_out.returncode:
         raise RuntimeError(
             checked_out.stderr.strip() or "Cannot inspect current branch"
         )
     current = checked_out.stdout.strip()
-    if current and current != old:
+    if current:
         return current
     refs = _run_git(
         ["git", "for-each-ref", "--format=%(refname)", "refs/heads/"], cwd=directory
@@ -46,17 +46,7 @@ def result_branch(  # ruff: ignore[complex-structure, too-many-statements]
         ref = f"refs/heads/{branch}"
         if ref in branches or any(item.startswith(f"{ref}/") for item in branches):
             continue
-        argv = (
-            ["git", "branch", "-m", branch]
-            if current == old
-            else [
-                "git",
-                "switch",
-                "-c",
-                branch,
-            ]
-        )
-        result = _run_git(argv, cwd=directory)
+        result = _run_git(["git", "switch", "-c", branch], cwd=directory)
         if result.returncode:
             raise RuntimeError(result.stderr.strip() or "Cannot name result branch")
         return branch

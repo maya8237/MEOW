@@ -14,8 +14,7 @@ meow cleanup RUN_ID --work-dir /project
 ```
 
 With no ID, cleanup examines saved runs, including older runs. It retains each
-run's result; it does not combine unrelated runs. Legacy local `meow/<run-id>`
-result branches receive readable names. Remote branches remain unchanged.
+run's result; it does not combine unrelated runs. Remote branches remain unchanged.
 
 Cleanup keeps unfinished, changed, locked, or unintegrated workers and reports
 why. Worker commits must be present in the result by ancestry or equivalent

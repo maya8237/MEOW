@@ -580,7 +580,7 @@ def _start_round(
 
 
 def review(  # ruff: ignore[too-many-statements] -- one atomic review-round setup
-    repo: Path, orch_id: str, *, host=None, available_models=None
+    repo: Path, orch_id: str, *, host="claude", available_models=None
 ) -> dict:
     """Run the checks and build the objective-review prompt for the next round."""
     repo = repo.resolve()

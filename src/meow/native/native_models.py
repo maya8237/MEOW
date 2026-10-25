@@ -6,16 +6,16 @@ from collections.abc import Sequence
 def resolve_native_model(
     configured_model: str | None,
     *,
-    host: str | None = None,
+    host: str,
     available_models: Sequence[str] | None = None,
 ) -> dict:
     """Return a usable dispatch choice and the reason for inheriting a default.
 
-    An omitted host preserves legacy Claude dispatch. Other hosts must advertise
-    the exact configured ID; provider model names are never translated. An
-    explicit capability list is authoritative for every host, including Claude.
+    Other hosts must advertise the exact configured ID; provider model names are
+    never translated. An explicit capability list is authoritative for every
+    host, including Claude.
     """
-    resolved_host = host.strip().lower() if host is not None else "claude"
+    resolved_host = host.strip().lower()
     reason = None
     model = configured_model
     resolution = "inherit" if configured_model is None else "configured"

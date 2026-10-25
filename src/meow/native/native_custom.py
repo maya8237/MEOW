@@ -49,7 +49,7 @@ def custom(  # ruff: ignore[too-many-arguments] -- shared host capability dispat
     active_dir: Path,
     role: str | None = None,
     *,
-    host: str | None = None,
+    host: str = "claude",
     available_models: Sequence[str] | None = None,
 ) -> dict:
     """List custom skills and agents, optionally only those a role receives.

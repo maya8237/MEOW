@@ -224,8 +224,8 @@ async def _execute(root: Path, config: dict, job: dict) -> None:  # ruff: ignore
         # New untracked check output can be adopted by the existing runner, but
         # edits to input source/config still invalidate the completed evidence.
         signature = _signature(root, config)
-        # The runner validated the complete checkout. Review reports in legacy
-        # docs_dir locations are runtime output and must not invalidate themselves.
+        # The runner validated the complete checkout. Review reports under
+        # docs_dir are runtime output and must not invalidate themselves.
         complete_revision = code_revision(root)
         if all(result.revision == complete_revision for result in results):
             results = [

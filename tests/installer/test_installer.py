@@ -343,10 +343,10 @@ def test_cancelled_message_says_how_many_projects_were_set_up():
     assert "claude /meow:onboard" in two
 
 
-def test_register_checkout_plugin_enables_marketplace_and_drops_legacy_env(tmp_path):
+def test_register_checkout_plugin_enables_marketplace_and_keeps_env(tmp_path):
     import json
 
-    from meow.project.claude_settings import PLUGIN_DIRS_ENV, register_checkout_plugin
+    from meow.project.claude_settings import register_checkout_plugin
 
     repo = tmp_path / "meow"
     (repo / ".claude-plugin").mkdir(parents=True)
@@ -355,7 +355,7 @@ def test_register_checkout_plugin_enables_marketplace_and_drops_legacy_env(tmp_p
     )
     settings = tmp_path / "settings.json"
     settings.write_text(
-        json.dumps({"env": {PLUGIN_DIRS_ENV: str(repo), "KEEP": "1"}}),
+        json.dumps({"env": {"KEEP": "1"}}),
         encoding="utf-8",
     )
 
@@ -368,5 +368,4 @@ def test_register_checkout_plugin_enables_marketplace_and_drops_legacy_env(tmp_p
         "path": str(repo.resolve()),
     }
     assert data["enabledPlugins"]["meow@meow"] is True
-    assert PLUGIN_DIRS_ENV not in data["env"]
     assert data["env"]["KEEP"] == "1"

@@ -21,8 +21,6 @@ def completed_run(tmp_path):
         worktree=active,
         branch="detached",
     )
-    branch = f"meow/{record.id}"
-    git(active, "switch", "-c", branch)
     worker = repo / ".worktrees" / f"{record.id}-api"
     git(repo, "worktree", "add", "--detach", str(worker))
     (worker / "api.txt").write_text("API", encoding="utf-8")
@@ -33,7 +31,7 @@ def completed_run(tmp_path):
     store.transition(
         record.id,
         "complete",
-        branch=branch,
+        branch="detached",
         results={
             "feature_name": "csv-export",
             "tasks": {

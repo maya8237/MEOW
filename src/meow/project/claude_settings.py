@@ -166,35 +166,11 @@ def register_marketplace(
     _write_settings(settings_path, data)
 
 
-def remove_plugin_dir(settings_path: Path, plugin_dir: Path) -> bool:
-    """Drop `plugin_dir` from the plugin-dir environment setting; True if changed."""
-    settings_path = Path(settings_path)
-    if not settings_path.is_file():
-        return False
-    data = _load_settings(settings_path)
-    env = _settings_env(data, settings_path)
-    separator = os.pathsep
-    entries = _plugin_entries(env, settings_path, separator)
-    wanted = path_key(plugin_dir)
-    kept = [entry for entry in entries if _entry_path(entry, None) != wanted]
-    if len(kept) == len(entries):
-        return False
-    if kept:
-        env[PLUGIN_DIRS_ENV] = separator.join(kept)
-    else:
-        env.pop(PLUGIN_DIRS_ENV, None)
-    data["env"] = env
-    _write_settings(settings_path, data)
-    return True
-
-
 def register_checkout_plugin(settings_path: Path, checkout: Path) -> None:
     """Enable MEOW's own checkout as a user-wide plugin through its marketplace.
 
     The checkout root carries `.claude-plugin/marketplace.json`, so it is
-    declared as a directory marketplace and its plugin enabled. A legacy
-    plugin-dir entry for the same checkout is removed so the plugin is not
-    loaded twice.
+    declared as a directory marketplace and its plugin enabled.
     """
     checkout = Path(checkout).expanduser().resolve()
     manifest = checkout / ".claude-plugin" / "marketplace.json"
@@ -203,4 +179,3 @@ def register_checkout_plugin(settings_path: Path, checkout: Path) -> None:
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise ValueError(f"{manifest} is missing or has no marketplace name") from exc
     register_marketplace(settings_path, str(name), checkout)
-    remove_plugin_dir(settings_path, checkout)
