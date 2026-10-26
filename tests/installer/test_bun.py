@@ -263,3 +263,65 @@ def test_bun_migration_runs_in_background_and_logs_nested_app(tmp_path, monkeypa
     assert "Bun migration finished" in log.read_text(encoding="utf-8")
     assert "frontend" in log.read_text(encoding="utf-8")
     assert not (app / "bunfig.toml").exists()
+
+
+def test_update_offer_skips_when_store_is_already_configured(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".bunfig.toml").write_text(
+        '[install]\nlinker = "isolated"\nglobalStore = true\n'
+    )
+    monkeypatch.setattr(_runtime.Path, "home", lambda: home)
+
+    def unexpected(*_args):
+        raise AssertionError("must not prompt or migrate again")
+
+    monkeypatch.setattr("builtins.input", unexpected)
+    monkeypatch.setattr(_runtime, "start_bun_migration", unexpected)
+    assert _runtime.main(["--update-bun"]) == 0
+
+
+def test_update_offer_configures_and_migrates_registered_projects(
+    tmp_path, monkeypatch
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    project, nested = tmp_path / "app", tmp_path / "app" / "web"
+    monkeypatch.setattr(_runtime.Path, "home", lambda: home)
+    monkeypatch.setattr(_runtime, "_saved", lambda: [str(project), str(nested)])
+    monkeypatch.setattr("builtins.input", lambda _prompt: "")
+    calls = []
+    monkeypatch.setattr(
+        _runtime, "start_bun_migration", lambda projects, _out: calls.extend(projects)
+    )
+    assert _runtime.main(["--update-bun"]) == 0
+    assert calls == [project]  # nested repo rides with its parent
+    assert "globalStore = true" in (home / ".bunfig.toml").read_text()
+
+
+def test_update_offer_declined_changes_nothing(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(_runtime.Path, "home", lambda: home)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "n")
+    monkeypatch.setattr(
+        _runtime, "start_bun_migration", lambda *_args: pytest.fail("migrated")
+    )
+    assert _runtime.main(["--update-bun"]) == 0
+    assert not (home / ".bunfig.toml").exists()
+
+
+def test_meow_update_runs_the_bun_offer_only_interactively(monkeypatch):
+    from meow.installer import maintenance
+
+    calls = []
+    monkeypatch.setattr(maintenance, "_local_install", lambda: False)
+    monkeypatch.setattr(
+        maintenance.subprocess, "run", lambda argv, **_kw: calls.append(argv)
+    )
+    monkeypatch.setattr(maintenance.sys.stdin, "isatty", lambda: False)
+    maintenance.offer_bun_store(Path("/release"))
+    assert calls == []
+    monkeypatch.setattr(maintenance.sys.stdin, "isatty", lambda: True)
+    maintenance.offer_bun_store(Path("/release"))
+    assert calls[0][-3:] == ["-m", "meow.installer", "--update-bun"]

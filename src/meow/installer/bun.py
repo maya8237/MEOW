@@ -41,6 +41,19 @@ def configure_bunfig(path: Path) -> None:
         path.write_text(updated, encoding="utf-8")
 
 
+def shared_store_configured(path: Path) -> bool:
+    """True when the user bunfig already enables the isolated shared store."""
+    try:
+        install = tomllib.loads(path.read_text(encoding="utf-8")).get("install", {})
+    except (OSError, ValueError):
+        return False
+    return (
+        isinstance(install, dict)
+        and install.get("linker") == "isolated"
+        and install.get("globalStore") is True
+    )
+
+
 def _install_settings(text: str) -> str:
     header = re.search(
         r'^\s*\[\s*(?:install|"install"|\'install\')\s*\][^\n]*$', text, re.M
