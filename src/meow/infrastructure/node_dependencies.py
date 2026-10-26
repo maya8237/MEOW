@@ -1,9 +1,11 @@
 """Prepare project-local dependency links using the project's package manager."""
 
+import hashlib
 import json
 import os
 import re
 import shutil
+import sys
 import time
 import tomllib
 from collections.abc import Callable, Iterator
@@ -24,6 +26,10 @@ _LOCKS = {
 }
 _SKIP = {"node_modules", ".git", ".worktrees", ".meow", ".venv", "venv"}
 _ISOLATED = ["--linker", "isolated"]
+_STORE_ENV = "BUN_INSTALL_GLOBAL_STORE"
+_FINGERPRINT = Path(".meow/node-install.fingerprint")
+_DEPENDENCY_KEYS = ("dependencies", "devDependencies", "optionalDependencies")
+_NOTICED: set[tuple[str, Path]] = set()
 _DEFAULT_TIMEOUT = 900.0
 _BUN_HINT = (
     "Declare every imported package in that folder's package.json; do not switch "
@@ -162,16 +168,50 @@ def _install_timeout(configured: float | None = None) -> float:
         return _DEFAULT_TIMEOUT
 
 
+def _notice(event: str, directory: Path, message: str) -> None:
+    """Log the event and tell the person once per process, even without log output."""
+    _LOGGER.warning(event, cwd=str(directory))
+    if (event, directory) not in _NOTICED:
+        _NOTICED.add((event, directory))
+        print(f"MEOW: {directory}: {message}", file=sys.stderr)
+
+
 def _warn_bun_config(directory: Path) -> None:
     settings = bun_settings(directory)
     if settings.get("linker") == "hoisted":
-        _LOGGER.warning("bun_project_hoisted", cwd=str(directory))
+        _notice(
+            "bun_project_hoisted",
+            directory,
+            'bunfig.toml sets linker = "hoisted"; this project skips the shared store.',
+        )
     elif settings.get("globalStore") is False:
-        _LOGGER.warning("bun_global_store_disabled", cwd=str(directory))
+        _notice(
+            "bun_global_store_disabled",
+            directory,
+            "bunfig.toml sets globalStore = false; respecting it, so this project "
+            "skips the shared store. Remove the setting to share dependencies.",
+        )
     if settings.get("production") is True:
         # Bun cannot override this from the command line, so test tooling such as
         # Playwright in devDependencies stays uninstalled until the setting goes.
-        _LOGGER.warning("bun_production_skips_dev_dependencies", cwd=str(directory))
+        _notice(
+            "bun_production_skips_dev_dependencies",
+            directory,
+            "bunfig.toml sets production = true, so devDependencies "
+            "(such as Playwright) stay uninstalled; remove the setting to get them.",
+        )
+
+
+def _install_env(directory: Path, argv: list[str]) -> dict[str, str]:
+    """Turn the shared store on for Bun unless a bunfig or the caller opts out."""
+    env = dict(os.environ)
+    if argv[0] == "bun" and _STORE_ENV not in env:
+        settings = bun_settings(directory)
+        if settings.get("globalStore") is not False and (
+            settings.get("linker") != "hoisted"
+        ):
+            env[_STORE_ENV] = "1"
+    return env
 
 
 def run_node_install(  # ruff: ignore[complex-structure, too-many-statements, too-many-arguments]
@@ -202,7 +242,7 @@ def run_node_install(  # ruff: ignore[complex-structure, too-many-statements, to
         code, output, timed_out = run_captured(
             [executable, *argv[1:]],
             directory,
-            dict(os.environ),
+            _install_env(directory, argv),
             _install_timeout(timeout),
         )
         _LOGGER.info(
@@ -306,10 +346,70 @@ def ensure_node_dependencies(
         _install_project(directory, data, install)
 
 
+def _fingerprint(directory: Path, data: dict) -> str:
+    """What an install was built from: manager, lockfiles, declared packages."""
+    manager = package_manager(directory, data)[0]
+    digest = hashlib.sha256(manager.encode())
+    for name in _LOCKS[manager]:
+        path = directory / name
+        if path.is_file():
+            digest.update(name.encode() + path.read_bytes())
+    declared = {key: data.get(key) for key in _DEPENDENCY_KEYS}
+    digest.update(json.dumps(declared, sort_keys=True).encode())
+    return digest.hexdigest()
+
+
+def _stale(directory: Path, data: dict) -> bool:
+    """True when the lockfile or dependencies changed since the recorded install."""
+    try:
+        recorded = (directory / _FINGERPRINT).read_text(encoding="utf-8").strip()
+        return bool(recorded) and recorded != _fingerprint(directory, data)
+    except (OSError, ValueError, WorktreeSetupError):
+        return False
+
+
+def _record_fingerprint(directory: Path, data: dict) -> None:
+    try:
+        path = _no_symlinks(directory, _FINGERPRINT)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_fingerprint(directory, data), encoding="utf-8")
+    except (OSError, ValueError, WorktreeSetupError):
+        _LOGGER.warning("node_fingerprint_unwritable", cwd=str(directory))
+
+
+def _hint_unshared_layout(directory: Path, data: dict) -> None:
+    """Point at the one-line fix for a Bun project still on the hoisted layout."""
+    modules = directory / "node_modules"
+    try:
+        if package_manager(directory, data)[0] != "bun" or not modules.is_dir():
+            return
+    except (OSError, WorktreeSetupError):
+        return
+    settings = bun_settings(directory)
+    if (
+        not (modules / ".bun").is_dir()
+        and settings.get("linker") != "hoisted"
+        and settings.get("globalStore") is not False
+    ):
+        _notice(
+            "bun_hoisted_layout",
+            directory,
+            "node_modules uses Bun's hoisted layout, not the shared store; run "
+            "`bun install --force --linker isolated` here to convert it.",
+        )
+
+
 def _install_project(directory: Path, data: dict, install: Callable[..., None]) -> None:
     pending = directory / ".meow" / "node-install.pending"
     production = _production(directory)
-    if not pending.exists() and not _missing(directory, data, production):
+    if (
+        not pending.exists()
+        and not _missing(directory, data, production)
+        and not _stale(directory, data)
+    ):
+        if not (directory / _FINGERPRINT).is_file():
+            _record_fingerprint(directory, data)
+        _hint_unshared_layout(directory, data)
         return
     argv = install_command(directory, data)
     if argv[0] == "bun":
@@ -317,6 +417,7 @@ def _install_project(directory: Path, data: dict, install: Callable[..., None]) 
     install(directory, argv)
     missing = _missing(directory, data, production) if argv[0] == "bun" else []
     if not missing:
+        _record_fingerprint(directory, data)
         return
     _LOGGER.warning(
         "bun_incomplete_install_retry", cwd=str(directory), missing=missing[:20]
@@ -328,6 +429,7 @@ def _install_project(directory: Path, data: dict, install: Callable[..., None]) 
             f"Bun dependencies are still incomplete in {directory} after a forced "
             f"install (missing: {', '.join(missing[:10])}). {_BUN_HINT}"
         )
+    _record_fingerprint(directory, data)
 
 
 def _production(directory: Path) -> bool:

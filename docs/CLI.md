@@ -46,7 +46,8 @@ for setup prompts or editable-install migration; remove obsolete launchers shado
 After installing, it lists the onboarding options added since the previous
 version, read from the new release, and suggests `/meow:onboard` in each project.
 It checks no project, so options already configured are still listed. Listing is
-best-effort and skipped for checkout installs.
+best-effort and skipped for checkout installs. In a terminal it then offers Bun's
+shared dependency store once and migrates registered repos in the background.
 
 Public commands warn on stderr about newer versions, silently ignoring network
 failures; `--check-update` checks only. Internal workers skip this check.

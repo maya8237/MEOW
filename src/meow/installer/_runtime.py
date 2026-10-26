@@ -12,6 +12,7 @@ from meow.installer._prompt import path_prompt
 from meow.installer.bun import (
     configure_bunfig,
     migrate_bun_projects,
+    shared_store_configured,
     start_bun_migration,
 )
 from meow.project.claude_settings import path_key, register_checkout_plugin
@@ -153,6 +154,7 @@ def _parser() -> argparse.ArgumentParser:
         help="Only print the closing guidance (the scripts show it after Done!).",
     )
     parser.add_argument("--migrate-bun", nargs="+", help=argparse.SUPPRESS)
+    parser.add_argument("--update-bun", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 
@@ -313,6 +315,21 @@ def _setup_bun(ask: Callable[[str], str], output: Callable[[str], None]) -> bool
     return True
 
 
+def _migrate_registered(onboarded: Sequence[Path] = ()) -> None:
+    """Migrate onboarded and registered repos; nested paths ride with their parent."""
+    projects = list(dict.fromkeys([*onboarded, *(Path(repo) for repo in _saved())]))
+    start_bun_migration(
+        [
+            repo
+            for repo in projects
+            if not any(
+                repo != parent and repo.is_relative_to(parent) for parent in projects
+            )
+        ],
+        print,
+    )
+
+
 def _setup_projects() -> int:
     """Run the project prompts; Ctrl+C cancels the whole installer."""
     onboarded: list[Path] = []
@@ -320,23 +337,30 @@ def _setup_projects() -> int:
         shared_bun = _setup_bun(input, print)
         _onboard_projects(input, print, path_prompt(), onboarded)
         if shared_bun:
-            projects = list(
-                dict.fromkeys([*onboarded, *(Path(repo) for repo in _saved())])
-            )
-            start_bun_migration(
-                [
-                    repo
-                    for repo in projects
-                    if not any(
-                        repo != parent and repo.is_relative_to(parent)
-                        for parent in projects
-                    )
-                ],
-                print,
-            )
+            _migrate_registered(onboarded)
     except KeyboardInterrupt:
         print(NEWLINE + _cancelled_message(len(onboarded)))
         return EXIT_INTERRUPTED
+    return 0
+
+
+def _update_bun() -> int:
+    """After `meow --update`: offer the shared store once, then migrate repos."""
+    if shared_store_configured(Path.home() / ".bunfig.toml"):
+        return 0
+    try:
+        if _setup_bun(input, print):
+            _migrate_registered()
+    except KeyboardInterrupt:
+        print(NEWLINE + "Bun shared store setup skipped.")
+    return 0
+
+
+def _bun_command(args: argparse.Namespace) -> int:
+    if args.update_bun:
+        return _update_bun()
+    migrate_bun_projects([Path(repo) for repo in args.migrate_bun], print)
+    print("Bun migration finished. Check the messages above for any failures.")
     return 0
 
 
@@ -344,10 +368,8 @@ def main(argv: Sequence[str] | None = None) -> int:  # ruff: ignore[too-many-ret
     """Run the interactive portion shared by the PowerShell and POSIX scripts."""
     parser = _parser()
     args = parser.parse_args(argv)
-    if args.migrate_bun:
-        migrate_bun_projects([Path(repo) for repo in args.migrate_bun], print)
-        print("Bun migration finished. Check the messages above for any failures.")
-        return 0
+    if args.migrate_bun or args.update_bun:
+        return _bun_command(args)
     if args.next_steps:
         _print_next_steps(print)
         return 0

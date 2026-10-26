@@ -46,6 +46,13 @@ other `~/.bunfig.toml` settings while setting `linker = "isolated"` and
 `globalDir` is unrelated. Use a Bun version supporting `install.globalStore`.
 Project settings/environment may override these user settings.
 
+MEOW's own Bun installs also set `BUN_INSTALL_GLOBAL_STORE=1`, so the store works
+without the installer step. A project or user `globalStore = false` or
+`linker = "hoisted"` is respected: MEOW prints a notice (and logs it) instead of
+overriding it. A caller's own `BUN_INSTALL_GLOBAL_STORE` value is kept.
+`meow --update` offers the option once (interactive only, skipped when
+`~/.bunfig.toml` already enables it) and migrates registered repos.
+
 Registered and newly onboarded Bun repositories, nested apps, and explicit
 Bun projects inside workspaces are discovered/listed and migrated in a detached
 background process. The installer reports PID/log; migration may outlive Done.
@@ -76,6 +83,16 @@ with `--force` under setup policy and fail if still broken; healthy worktrees
 skip installation. Isolated linking can expose undeclared imports: declare the
 dependency in that folder's `package.json`.
 
+## Stale and unmigrated installs
+
+After each install MEOW records a fingerprint (manager, lockfiles, declared
+dependencies) in `.meow/node-install.fingerprint`. A changed fingerprint
+reinstalls; a healthy install with no record is kept and baselined. A new
+worktree still runs one quick install to create its links.
+A Bun project with a hoisted `node_modules` (no `node_modules/.bun`) gets a hint
+with the conversion command; MEOW never converts it outside the installer,
+`meow --update`, and `/meow:onboard`, which asks first.
+
 ## Bun install guarantees
 
 - Worktree installs pass `--linker isolated`, which outranks any user or
@@ -90,6 +107,6 @@ dependency in that folder's `package.json`.
   `[worktree_setup]`, or `MEOW_NODE_INSTALL_TIMEOUT` when unset; logs record each
   install's duration. A timed-out install is
   retried next time because `.meow/node-install.pending` remains.
-- Warnings are logged for a project `hoisted` linker, `globalStore = false`, or
+- Notices (printed and logged) cover a project `hoisted` linker, `globalStore = false`, or
   `production = true` (devDependencies such as Playwright stay uninstalled;
   Bun cannot override it from the command line, so remove the setting).

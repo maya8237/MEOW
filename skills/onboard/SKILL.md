@@ -105,6 +105,14 @@ unless the user requests a change; update only that setting after approval.
 Explain that `--target BRANCH` overrides it for one run; `--from` only selects
 the starting branch. Automatic mode keeps the detected or configured value.
 
+If step 1 found Bun packages, show the layout (`node_modules/.bun` means shared
+store) and any `linker`/`globalStore` in `bunfig.toml`, then ask in interactive
+mode: "Convert this project to Bun's shared dependency store?" On approval run
+`BUN_INSTALL_GLOBAL_STORE=1 bun install --force --linker isolated` in each Bun
+folder (add `--frozen-lockfile` with a Bun lockfile). Never edit the project's
+`bunfig.toml`: `globalStore = false` or `linker = "hoisted"` stays, so say it
+will not share. Automatic mode skips this and lists it as a declined choice.
+
 Use ignored local config for private MCP `env`, machine commands, API-key
 references, and personal installed skills. `agent_skills.default` and
 `agent_skills.<role>` append across layers; local entries do not remove

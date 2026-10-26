@@ -476,3 +476,110 @@ def test_install_timeout_config_is_parsed_without_changing_the_manifest():
     assert validate_setup(raw) == {"copy": [], "commands": []}
     assert install_timeout(raw) == pytest.approx(1800.0)
     assert install_timeout(None) is None
+
+
+EXPECTED_INSTALLS = 2
+
+
+def _bun_install_fake(monkeypatch, envs=None):
+    calls = []
+    monkeypatch.setattr(node.shutil, "which", lambda name: name)
+
+    def install(argv, cwd, env, _timeout):
+        calls.append(argv)
+        if envs is not None:
+            envs.append(env)
+        for name in ("a", "b"):
+            (cwd / "node_modules" / name).mkdir(parents=True, exist_ok=True)
+        (cwd / "node_modules" / ".bun").mkdir(exist_ok=True)
+        return 0, "", False
+
+    monkeypatch.setattr(node, "run_captured", install)
+    return calls
+
+
+def test_bun_install_enables_the_shared_store(tmp_path, monkeypatch):
+    _bun_project(tmp_path)
+    monkeypatch.delenv(node._STORE_ENV, raising=False)
+    envs = []
+    _bun_install_fake(monkeypatch, envs)
+    node.ensure_node_dependencies(tmp_path)
+    assert envs[0][node._STORE_ENV] == "1"
+
+
+@pytest.mark.parametrize(
+    "setting", ["globalStore = false", 'linker = "hoisted"'], ids=["store", "hoisted"]
+)
+def test_project_opt_out_keeps_shared_store_off_and_says_so(
+    tmp_path, monkeypatch, capsys, setting
+):
+    _bun_project(tmp_path)
+    monkeypatch.delenv(node._STORE_ENV, raising=False)
+    (tmp_path / "bunfig.toml").write_text(f"[install]\n{setting}\n")
+    envs = []
+    _bun_install_fake(monkeypatch, envs)
+    node.ensure_node_dependencies(tmp_path)
+    assert node._STORE_ENV not in envs[0]
+    assert "skips the shared store" in capsys.readouterr().err
+
+
+def test_caller_store_setting_is_not_overridden(tmp_path, monkeypatch):
+    _bun_project(tmp_path)
+    monkeypatch.setenv(node._STORE_ENV, "0")
+    envs = []
+    _bun_install_fake(monkeypatch, envs)
+    node.ensure_node_dependencies(tmp_path)
+    assert envs[0][node._STORE_ENV] == "0"
+
+
+def test_other_managers_do_not_get_the_bun_store_variable(tmp_path):
+    assert node._STORE_ENV not in node._install_env(tmp_path, ["pnpm", "install"])
+
+
+def test_changed_lockfile_triggers_reinstall_and_unchanged_does_not(
+    tmp_path, monkeypatch
+):
+    _bun_project(tmp_path)
+    (tmp_path / "bun.lock").write_text("v1")
+    calls = _bun_install_fake(monkeypatch)
+    node.ensure_node_dependencies(tmp_path)
+    node.ensure_node_dependencies(tmp_path)
+    assert len(calls) == 1
+    (tmp_path / "bun.lock").write_text("v2")
+    node.ensure_node_dependencies(tmp_path)
+    node.ensure_node_dependencies(tmp_path)
+    assert len(calls) == EXPECTED_INSTALLS
+
+
+def test_changed_declared_dependencies_trigger_reinstall(tmp_path, monkeypatch):
+    _bun_project(tmp_path)
+    calls = _bun_install_fake(monkeypatch)
+    node.ensure_node_dependencies(tmp_path)
+    _bun_project(tmp_path, dev=False)
+    node.ensure_node_dependencies(tmp_path)
+    assert len(calls) == EXPECTED_INSTALLS
+
+
+def test_healthy_install_without_a_record_is_kept_and_baselined(tmp_path, monkeypatch):
+    _bun_project(tmp_path)
+    (tmp_path / "bun.lock").write_text("v1")
+    for name in ("a", "b"):
+        (tmp_path / "node_modules" / name).mkdir(parents=True)
+    (tmp_path / "node_modules" / ".bun").mkdir()
+    calls = _bun_install_fake(monkeypatch)
+    node.ensure_node_dependencies(tmp_path)
+    assert calls == []
+    assert (tmp_path / node._FINGERPRINT).is_file()
+    (tmp_path / "bun.lock").write_text("v2")
+    node.ensure_node_dependencies(tmp_path)
+    assert len(calls) == 1
+
+
+def test_hoisted_bun_layout_gets_a_conversion_hint(tmp_path, monkeypatch, capsys):
+    _bun_project(tmp_path)
+    for name in ("a", "b"):
+        (tmp_path / "node_modules" / name).mkdir(parents=True)
+    calls = _bun_install_fake(monkeypatch)
+    node.ensure_node_dependencies(tmp_path)
+    assert calls == []  # hinted, never converted
+    assert "bun install --force --linker isolated" in capsys.readouterr().err

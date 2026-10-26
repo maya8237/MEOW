@@ -74,6 +74,7 @@ def update() -> int:
     release = install_release(latest, digest)
     print(f"MEOW updated successfully to {latest}.")
     announce_onboarding(current, latest, release)
+    offer_bun_store(release)
     return 0
 
 
@@ -125,3 +126,18 @@ def announce_onboarding(old: str, new: str, release: Path) -> None:
         lines.append(f"  ... and {len(options) - ANNOUNCE_LIMIT} more")
     lines.append("Run /meow:onboard in each project to review them.")
     print("\n".join(lines))
+
+
+def offer_bun_store(release: Path) -> None:
+    """Best-effort, interactive only: the new release offers Bun's shared store once."""
+    from meow.installer.releases import release_python
+
+    try:
+        if _local_install() or not sys.stdin.isatty():
+            return
+        subprocess.run(
+            [str(release_python(release)), "-m", "meow.installer", "--update-bun"],
+            check=False,
+        )
+    except Exception:  # never fail an update that already installed
+        return
