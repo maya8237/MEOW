@@ -3,8 +3,8 @@
 Read this for native execution. `plan`, `review`, and `lint`
 default to native; `run` defaults to CLI. You execute native roles in this
 session or fresh subagents. Orchestrator task sprints remain detached CLI
-workers. Named workflows, including `quick`, execute through CLI. Quick uses a
-short plan → approval (`-m` pauses) → ≤3 generate/verify/review rounds → checks → delivery.
+workers. Named workflows, including `quick`, execute through CLI
+([WORKFLOWS.md](../../docs/WORKFLOWS.md)).
 
 Future-time requests use [schedule](../schedule/SKILL.md) before starting work.
 Configuration and definition formats live in [INTEGRATIONS.md](../../docs/INTEGRATIONS.md)
