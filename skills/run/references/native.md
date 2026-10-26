@@ -5,8 +5,7 @@ Read [the shared protocol](../../_shared/native-mode.md) first.
 ## Native mode
 
 Named workflows (including `quick`) and `--force-disable-tests` use
-[CLI mode](../SKILL.md#cli-mode); preserve the supplied flags. Quick uses short
-planning → approval (`-m` pauses) → ≤3 generate/verify/review rounds → checks → delivery.
+[CLI mode](../SKILL.md#cli-mode); preserve the supplied flags.
 Before fetching an issue, preparing a worktree, or creating a checkpoint, run
 `meow native verify --work-dir "<project-path>"`. If `--test` was requested
 or `tester.configured` is true, use [CLI mode](../SKILL.md#cli-mode): native mode
