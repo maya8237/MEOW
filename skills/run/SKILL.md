@@ -28,13 +28,17 @@ sprints remain detached CLI workers.
 Choose the execution scope from the work, without asking the user to know the
 engine names. Briefly state the choice before launching:
 
-- Use ordinary `meow run` for a fix or cohesive feature with one shared plan.
-  It already schedules independent implementation tasks in parallel.
-- Add `--orchestrate` (`-o`) for an objective containing independently scoped
-  deliverables that need their own plans, reviews, and recovery, or when the
-  user explicitly requests full sprint orchestration. It combines the sprints
-  into one reviewed branch and PR. Multiple files or a long request alone do
-  not justify separate sprints.
+- Detect the scope automatically; never wait for wording like "in parallel".
+  Split the request into deliverables (separate features, fixes, or issues).
+- Use ordinary `meow run` for one fix or cohesive feature with one shared plan,
+  or when deliverables are tightly coupled (same code, one needs the other's
+  output). It already schedules independent plan tasks in parallel.
+- Add `--orchestrate` (`-o`) when there are two or more deliverables that can
+  be built without each other, or the user explicitly requests it. Each gets
+  its own plan, review, and recovery, and independent ones run in parallel
+  (`--max-parallel`); the decomposer adds `depends_on` for any that must
+  follow another. Results merge into one reviewed branch and PR. Multiple
+  files or a long request alone do not justify separate sprints.
 - `--tasks FILE`, `--jql QUERY`, and multiple `--jira KEY...` select full
   orchestration automatically; no additional flag is needed. A single Jira
   issue stays an ordinary sprint unless `--orchestrate` is explicit.
