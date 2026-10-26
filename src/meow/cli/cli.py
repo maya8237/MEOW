@@ -17,6 +17,7 @@ from meow.cli.ipython_cli import start_ipython
 from meow.cli.orchestration_cli import run_orchestration
 from meow.cli.parser import _build_arg_parser, expand_shortcuts
 from meow.cli.resume_cli import resume
+from meow.cli.skills_cli import skills_command
 from meow.cli.status_cli import status
 from meow.cli.validation import (
     _resolve_input_path,
@@ -165,6 +166,13 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
     if args.command in {"workflows", "agents"}:
         try:
             catalog_command(args, working_dir)
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(1) from exc
+        return
+    if args.command == "skills":
+        try:
+            skills_command(args, working_dir)
         except (OSError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from exc

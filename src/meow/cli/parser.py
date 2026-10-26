@@ -6,6 +6,7 @@ from importlib.metadata import version
 
 from meow.cli.catalog_cli import add_catalog_parsers
 from meow.cli.schedule_cli import add_schedule_parser
+from meow.cli.skills_cli import add_skills_parser
 from meow.native.native_cli import add_native_parser
 from meow.ui import DEFAULT_PORT
 
@@ -21,6 +22,7 @@ _VISIBLE_COMMANDS = (
     "ipython",
     "workflows",
     "agents",
+    "skills",
     "ui",
     "schedule",
 )
@@ -242,6 +244,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     scheduled.add_argument("schedule_id")
     _add_common_args(scheduled)
     add_catalog_parsers(subparsers)
+    add_skills_parser(subparsers)
     ui_parser = subparsers.add_parser(
         "ui", help="Browse workflows, agents, and skills in a local page."
     )

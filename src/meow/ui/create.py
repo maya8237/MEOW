@@ -5,20 +5,10 @@ import re
 import shutil
 from pathlib import Path
 
-from meow.project.claude_settings import append_plugin_dir, register_marketplace
 from meow.project.config import user_config_path
 from meow.project.custom.definitions import discover, load_agent
-from meow.project.custom.plugin import (
-    _SCOPE_PLUGIN_NAMES,
-    ensure_marketplace,
-    ensure_plugin_root,
-)
-from meow.project.custom.sources import (
-    CustomSource,
-    conventional_dir,
-    git_ignored,
-    scope_plugin_dir,
-)
+from meow.project.custom.sources import CustomSource, conventional_dir, git_ignored
+from meow.project.custom.sync import register_scope_plugin
 from meow.project.custom.workflows import load_workflow
 from meow.project.repos import repo_choices
 from meow.ui.catalog import build_catalog
@@ -166,20 +156,8 @@ def _skill_folder(scope: str, working_dir: Path) -> Path:
 
 def _register_skill_plugin(scope: str, working_dir: Path) -> None:
     """Make the scope's skill plugin load when Claude Code launches."""
-    root = scope_plugin_dir(scope, working_dir, user_config_path().parent)
     try:
-        ensure_plugin_root(root, scope)
-        if scope == "user":
-            append_plugin_dir(Path.home() / ".claude" / "settings.json", root)
-            return
-        ensure_marketplace(root.parent, scope)
-        settings = {"project": "settings.json", "local": "settings.local.json"}[scope]
-        register_marketplace(
-            working_dir / ".claude" / settings,
-            _SCOPE_PLUGIN_NAMES[scope],
-            root.parent,
-            relative_to=working_dir,
-        )
+        register_scope_plugin(scope, working_dir, user_config_path().parent)
     except (OSError, ValueError) as exc:
         raise CreateError(
             422, f"Could not register the {scope} skill plugin: {exc}"

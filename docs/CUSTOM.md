@@ -42,6 +42,20 @@ supporting files are retained. No `roles` means every role. Supported roles:
 CLI serves these as a generated `meow-custom:<name>` plugin, alongside installed
 and resolved built-in skills.
 
+### Claude Code registration
+
+Custom skills also load in Claude Code as namespaced plugin skills
+(`/meow-local:NAME`, `/meow-project:NAME`, `/meow-user:NAME`). `<scope>/plugin/skills/`
+(`.meow/local/`, `.meow/`, `~/.meow/`) is that scope's plugin. Skills from
+`[custom].skills` directories are copied into a generated `<scope>/linked/plugin`
+(`meow-<scope>-linked`). `meow skills sync` writes the manifests and enables
+them in `.claude/settings.local.json`, `.claude/settings.json`, or
+`~/.claude/settings.json` without touching other settings. Re-run it after
+editing a configured skill; restart Claude Code to load changes.
+`meow native verify` reports unregistered or stale skills as `skill_registration`.
+The UI skill creator syncs automatically. Project plugins in git-ignored folders
+are skipped.
+
 Agent TOML fields, model/session semantics, delegates, and Claude Code imports
 are defined in [WORKFLOWS.md](WORKFLOWS.md#agents).
 Configured agent sources retain planner/generator delegate compatibility,

@@ -81,7 +81,13 @@ _SCOPE_PLUGIN_NAMES = {
 }
 
 
-def ensure_plugin_root(root: Path, scope: str) -> Path:
+def plugin_name(scope: str, *, linked: bool = False) -> str:
+    """The Claude plugin name for a scope; `linked` serves `[custom].skills`."""
+    name = _SCOPE_PLUGIN_NAMES[scope]
+    return f"{name}-linked" if linked else name
+
+
+def ensure_plugin_root(root: Path, scope: str, *, linked: bool = False) -> Path:
     """Create a scope's Claude plugin root: its manifest and `skills/` folder."""
     (root / "skills").mkdir(parents=True, exist_ok=True)
     manifest = root / _MANIFEST
@@ -90,7 +96,7 @@ def ensure_plugin_root(root: Path, scope: str) -> Path:
         manifest.write_text(
             json.dumps(
                 {
-                    "name": _SCOPE_PLUGIN_NAMES[scope],
+                    "name": plugin_name(scope, linked=linked),
                     "description": f"MEOW {scope} skills.",
                     "version": "0.1.0",
                 },
@@ -102,12 +108,12 @@ def ensure_plugin_root(root: Path, scope: str) -> Path:
     return root
 
 
-def ensure_marketplace(base: Path, scope: str) -> None:
+def ensure_marketplace(base: Path, scope: str, *, linked: bool = False) -> None:
     """Write the marketplace file that lists the scope's plugin under `base`."""
     path = Path(base) / ".claude-plugin" / "marketplace.json"
     if path.is_file():
         return
-    name = _SCOPE_PLUGIN_NAMES[scope]
+    name = plugin_name(scope, linked=linked)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(

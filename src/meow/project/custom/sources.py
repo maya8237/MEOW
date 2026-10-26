@@ -94,6 +94,11 @@ def scope_plugin_dir(scope: str, project_dir: Path, user_dir: Path) -> Path:
     return _scope_base(scope, project_dir, user_dir) / _PLUGIN_DIR
 
 
+def linked_plugin_dir(scope: str, project_dir: Path, user_dir: Path) -> Path:
+    """Generated plugin root holding copies of `[custom].skills` directories."""
+    return _scope_base(scope, project_dir, user_dir) / "linked" / _PLUGIN_DIR
+
+
 def conventional_dir(scope: str, kind: str, project_dir: Path, user_dir: Path) -> Path:
     """Where `meow ... eject --scope <scope>` puts a definition, or a skill goes."""
     if kind == "skills":

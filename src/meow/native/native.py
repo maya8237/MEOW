@@ -24,10 +24,16 @@ from meow.native.native_prepare import (
 from meow.native.native_prompt import PROMPT_ROLES, role_prompt
 from meow.native.native_state import checkpoint, finalize, round_state
 from meow.project.command_policy import split_command
-from meow.project.config import config_paths, config_root, load_config
+from meow.project.config import (
+    config_paths,
+    config_root,
+    load_config,
+    user_config_path,
+)
 from meow.project.config_env import unresolved_environment_references
 from meow.project.config_models import resolve_command_cwd
 from meow.project.custom.rendering import effective_models
+from meow.project.custom.sync import check_skill_registration
 from meow.project.onboarding import boundary_ok, feature_gaps, is_onboarded
 
 __all__ = [
@@ -100,6 +106,9 @@ def verify(
         "models": effective_models(config),
         "tester": _verify_tester(config, active_dir or working_dir),
         "integrations": integrations,
+        "skill_registration": check_skill_registration(
+            config["customizations"].skills, working_dir, user_config_path().parent
+        ),
     }
     if run_lint:
         lint_result = lint(

@@ -26,6 +26,11 @@ from meow.project.custom.sources import (
     conventional_sources,
     parse_sources,
 )
+from meow.project.custom.sync import (
+    check_skill_registration,
+    register_scope_plugin,
+    sync_skill_plugins,
+)
 
 __all__ = [
     "AGENT_ROLES",
@@ -38,9 +43,12 @@ __all__ = [
     "Customizations",
     "builtin_dir",
     "builtin_sources",
+    "check_skill_registration",
     "conventional_dir",
     "conventional_sources",
     "discover",
     "parse_sources",
+    "register_scope_plugin",
     "skill_plugin_dir",
+    "sync_skill_plugins",
 ]

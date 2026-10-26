@@ -166,6 +166,36 @@ def register_marketplace(
     _write_settings(settings_path, data)
 
 
+def marketplace_registered(settings_path: Path, marketplace_name: str) -> bool:
+    """Whether a settings file enables the plugin of a directory marketplace."""
+    data = _load_settings(Path(settings_path))
+    known, enabled = data.get("extraKnownMarketplaces"), data.get("enabledPlugins")
+    return (
+        isinstance(known, dict)
+        and isinstance(enabled, dict)
+        and marketplace_name in known
+        and enabled.get(f"{marketplace_name}@{marketplace_name}") is True
+    )
+
+
+def plugin_dir_registered(
+    settings_path: Path,
+    plugin_dir: Path,
+    *,
+    separator: str | None = None,
+    relative_to: Path | None = None,
+) -> bool:
+    """Whether a settings file lists `plugin_dir` in its plugin-dir setting."""
+    settings_path = Path(settings_path)
+    base = Path(relative_to).expanduser().resolve() if relative_to else None
+    data = _load_settings(settings_path)
+    entries = _plugin_entries(
+        _settings_env(data, settings_path), settings_path, separator or os.pathsep
+    )
+    wanted = path_key(Path(plugin_dir).expanduser().resolve())
+    return wanted in {_entry_path(entry, base) for entry in entries}
+
+
 def register_checkout_plugin(settings_path: Path, checkout: Path) -> None:
     """Enable MEOW's own checkout as a user-wide plugin through its marketplace.
 
