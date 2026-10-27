@@ -2,8 +2,11 @@
 
 `McpFetcherAgent` holds everything the Jira, GitLab and GitHub fetchers share:
 a connectivity preflight that requires a real `mcp__<server>__*` tool call
-(a text-only "success" proves nothing), and a fetch that may write only its
-own JSON output file. Each subclass names its server, role and request kind.
+with a non-error result (a text-only "success" proves nothing), and a fetch
+that may write only its own JSON output file and must also get such a result.
+A fetch without one (the server crashed or failed) is retried once; each
+query launches a fresh server. Each subclass names its server, role and
+request kind.
 """
 
 import json
@@ -16,7 +19,9 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ResultMessage,
+    ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
     query,
 )
 
@@ -31,6 +36,33 @@ from meow.infrastructure.logging import get_logger
 from meow.project.prompts import mcp_fetch_prompt, mcp_probe_prompt
 
 logger = get_logger(__name__)
+
+_FETCH_ATTEMPTS = 2
+
+
+class _ServerCalls:
+    """Observe a stream; `succeeded` once a server tool returns a non-error result."""
+
+    def __init__(self, server: str):
+        self._prefix = f"mcp__{server}__"
+        self._pending: set[str] = set()
+        self.succeeded = False
+
+    def __call__(self, message: object) -> None:
+        if isinstance(message, AssistantMessage):
+            self._pending.update(
+                block.id
+                for block in message.content
+                if isinstance(block, ToolUseBlock)
+                and block.name.startswith(self._prefix)
+            )
+        elif isinstance(message, UserMessage) and isinstance(message.content, list):
+            self.succeeded = self.succeeded or any(
+                isinstance(block, ToolResultBlock)
+                and block.tool_use_id in self._pending
+                and not block.is_error
+                for block in message.content
+            )
 
 
 class McpFetcherAgent(Agent):
@@ -61,29 +93,23 @@ class McpFetcherAgent(Agent):
             mcp_servers=self._mcp_servers,
         )
 
-    def _used_server_tool(self, message: object) -> bool:
-        prefix = f"mcp__{self.server}__"
-        return isinstance(message, AssistantMessage) and any(
-            isinstance(block, ToolUseBlock) and block.name.startswith(prefix)
-            for block in message.content
-        )
-
     async def check_active(self) -> None:
         """Raise RuntimeError unless the MCP server actually answers a call."""
         options = self._options(
             system_prompt=mcp_probe_prompt(self.label, self.server.upper(), self.probe),
             allowed_tools=self._tools,
         )
-        used_tool = succeeded = False
+        calls = _ServerCalls(self.server)
+        succeeded = False
         logger.info("mcp_preflight_started", server=self.server)
         async for message in query(
             prompt=f"Check {self.label} MCP connectivity.", options=options
         ):
             log_stream_message(self.role, message, options=options)
-            used_tool = used_tool or self._used_server_tool(message)
+            calls(message)
             if isinstance(message, ResultMessage):
                 succeeded = message.subtype == "success"
-        if not used_tool or not succeeded:
+        if not calls.succeeded or not succeeded:
             raise RuntimeError(
                 f"No active {self.label} MCP server responded. {self.setup_hint}"
             )
@@ -99,10 +125,25 @@ class McpFetcherAgent(Agent):
             allowed_tools=[*self._tools, "Write"],
         )
         restrict_writes(options, output_file, self.context.active_working_dir())
-        prepare_output_file(output_file)
-        await self.run_query(
-            f"Fetch the {self.label} {self.request}.", options, self.role
-        )
+        for attempt in range(1, _FETCH_ATTEMPTS + 1):
+            prepare_output_file(output_file)
+            calls = _ServerCalls(self.server)
+            await self.run_query(
+                f"Fetch the {self.label} {self.request}.",
+                options,
+                self.role,
+                observe=calls,
+            )
+            if calls.succeeded:
+                break
+            logger.warning("mcp_fetch_no_result", server=self.server, attempt=attempt)
+        else:
+            output_file.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"{self.role} got no successful {self.label} MCP result in "
+                f"{_FETCH_ATTEMPTS} attempts -- the server may have crashed or "
+                f"rejected every call. {self.setup_hint}"
+            )
         if not output_file.is_file():
             raise RuntimeError(
                 f"{self.role} did not write {output_file} -- the {self.label} MCP "

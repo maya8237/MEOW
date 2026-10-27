@@ -7,6 +7,7 @@ import pytest
 
 from meow.agents.base import ProjectContext
 from meow.agents.mcp_fetcher import IssueFetcherAgent, fetch_issue_list, fetch_record
+from tests.integrations.mcp_fakes import server_call
 
 
 class StubFetcher:
@@ -110,8 +111,10 @@ def test_fetch_many_asks_for_an_issues_array(tmp_path, monkeypatch):
     output_file = tmp_path / "issues.json"
     captured = {}
 
-    async def fake_run_query(prompt, options, role):  # ruff: ignore[unused-async]
+    async def fake_run_query(prompt, options, role, *, observe):  # ruff: ignore[unused-async]
         captured.update(prompt=prompt, options=options)
+        for message in server_call("jira"):
+            observe(message)
         output_file.write_text('{"issues": []}', encoding="utf-8")
 
     monkeypatch.setattr(IssueFetcherAgent, "run_query", staticmethod(fake_run_query))
@@ -126,7 +129,9 @@ def test_fetch_many_asks_for_an_issues_array(tmp_path, monkeypatch):
 
 
 def test_fetch_many_fails_when_nothing_was_written(tmp_path, monkeypatch):
-    async def fake_run_query(prompt, options, role):  # ruff: ignore[unused-async]
+    async def fake_run_query(prompt, options, role, *, observe):  # ruff: ignore[unused-async]
+        for message in server_call("jira"):
+            observe(message)
         return ""
 
     monkeypatch.setattr(IssueFetcherAgent, "run_query", staticmethod(fake_run_query))
