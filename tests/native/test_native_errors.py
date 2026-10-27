@@ -37,9 +37,19 @@ def test_native_helper_transient_exit_75(tmp_path):
     assert "prepare" in payload["error"]
 
 
-def test_native_helper_unexpected_exception_is_classified(tmp_path):
+def test_native_helper_unrecognised_exception_is_blocking(tmp_path):
     repo = _repo(tmp_path)
     with patch("meow.native.native.prepare", side_effect=KeyError("lost")):
+        code, _out, err = run_native("prepare", "--work-dir", str(repo))
+    assert code == 1
+    payload = _error(err)
+    assert payload["retryable"] is False
+    assert payload["retry_after"] is None
+
+
+def test_native_helper_timeout_is_retryable(tmp_path):
+    repo = _repo(tmp_path)
+    with patch("meow.native.native.prepare", side_effect=TimeoutError("slow")):
         code, _out, err = run_native("prepare", "--work-dir", str(repo))
     assert code == EXIT_TEMPFAIL
     assert _error(err)["retryable"] is True
@@ -103,8 +113,45 @@ def test_helper_with_run_id_stamps_heartbeat(tmp_path):
     store = RunStore(repo)
     run_id = checkpoint(repo, repo, "generator_started", request="x")["run_id"]
     store.update_results(run_id, heartbeat_at=1.0)
-    run_native("finalize", run_id, "--work-dir", str(repo))  # may fail; still beats
+    code, out, err = run_native("finalize", run_id, "--work-dir", str(repo))
+    assert code == 0, err
+    assert json.loads(out)["complete"] is False  # no review yet
     assert store.load(run_id).results["heartbeat_at"] > 1.0
+
+
+def test_heartbeat_does_not_overwrite_concurrent_transition(tmp_path, monkeypatch):
+    """The heartbeat rides on the checkpoint's own write: no separate
+    read-modify-write that a concurrent transition could lose to."""
+    repo = _repo(tmp_path)
+    store = RunStore(repo)
+    run_id = checkpoint(repo, repo, "generator_started", request="x")["run_id"]
+    writes = []
+    real_write = RunStore._write
+
+    def counting(self, record):
+        writes.append(record.phase)
+        return real_write(self, record)
+
+    monkeypatch.setattr(RunStore, "_write", counting)
+    code, _out, err = run_native(
+        "checkpoint", "reviewer_started", "--run-id", run_id, "--work-dir", str(repo)
+    )
+    assert code == 0, err
+    assert writes == ["reviewer_started"]
+    record = store.load(run_id)
+    assert record.phase == "reviewer_started"
+    assert time.time() - record.results["heartbeat_at"] < FRESH
+
+
+def test_stale_run_checkpointing_again_is_not_parked_first(tmp_path):
+    repo = _repo(tmp_path, "[run]\nstale_after = 100\n")
+    store, run_id = _native_run(repo, intent="run", age=500)
+    code, _out, err = run_native(
+        "checkpoint", "reviewer_started", "--run-id", run_id, "--work-dir", str(repo)
+    )
+    assert code == 0, err
+    phases = [item["phase"] for item in store.load(run_id).transitions]
+    assert "parked" not in phases
 
 
 def _native_run(repo, *, intent, age, phase="generator_started"):
@@ -139,7 +186,9 @@ def test_fresh_plan_and_legacy_native_runs_are_left_alone(tmp_path):
     assert store.load(plan).phase == "planned"
 
 
-def test_stale_native_run_past_budget_is_not_parked_for_resume(tmp_path):
+def test_stale_native_run_past_budget_parks_and_reports_stop(tmp_path, capsys):
+    from meow.cli.run_contract import record_exit
+
     repo = _repo(tmp_path, "[run]\nstale_after = 100\nmax_total_resumes = 1\n")
     store, run_id = _native_run(repo, intent="run", age=500)
     store.transition(run_id, "resuming")
@@ -147,9 +196,13 @@ def test_stale_native_run_past_budget_is_not_parked_for_resume(tmp_path):
     store.update_results(run_id, heartbeat_at=time.time() - 500)
     assert reconcile_stale_runs(store) == [run_id]
     record = store.load(run_id)
-    assert record.phase == "failed"
-    assert record.results["failure"]["cause"] == "budget_exhausted"
-    assert "max_total_resumes reached" in record.last_failure
+    assert record.phase == "parked"
+    assert record.park["cause"] == "native_session_lost"
+    assert record.park["total_resumes"] == 1
+    assert "budget_exhausted" not in json.dumps(record.results)
+    assert record_exit(record) == 1
+    blocked = capsys.readouterr().err.split("MEOW_BLOCKED ", 1)[1]
+    assert json.loads(blocked)["stop"] == "budget_exhausted"
 
 
 def test_parked_plan_intent_run_is_never_auto_resumed(tmp_path):
@@ -160,3 +213,4 @@ def test_parked_plan_intent_run_is_never_auto_resumed(tmp_path):
     store, run_id = _native_run(repo, intent="plan", age=10, phase="planning")
     record = store.park(run_id, "crash", "transient", "native_reported")
     assert budget_refusal(record, run_config(repo)) == "plan-only native run"
+    assert record.results.get("next_command") is None

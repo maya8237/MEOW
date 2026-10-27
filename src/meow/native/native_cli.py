@@ -1,9 +1,9 @@
 """The `meow native ...` command group: argparse wiring and JSON output for the
 deterministic helpers in `native.native`. Every subcommand prints exactly one
 JSON document on stdout and exits 0. A failure prints one JSON line on stderr,
-`{"error", "retryable", "cause", "retry_after", "command"}`: exit 75 when a
-retry of the same command can succeed, 1 when it is blocking (logs also go to
-stderr, so stdout stays parseable).
+`{"error", "retryable", "cause", "retry_after", "command"}`: exit 75 for a
+recognised transient failure (retry the same command), 1 otherwise (logs also
+go to stderr, so stdout stays parseable).
 """
 
 import argparse
@@ -13,8 +13,8 @@ import sys
 from contextlib import suppress
 from pathlib import Path
 
-from meow.execution.run_failures import classify_failure
-from meow.execution.run_state import RunStateError, RunStore, reconcile_quietly
+from meow.execution.run_failures import classify_failure, recognised_transient
+from meow.execution.run_state import RunStore, reconcile_quietly
 from meow.native import native
 from meow.project.config import config_root, load_config
 from meow.project.custom import SKILL_ROLES
@@ -548,35 +548,46 @@ _HANDLERS = {
 
 EXIT_TEMPFAIL = 75
 RETRY_AFTER = 30
+UNRECOGNISED_CAUSE = "unrecognised_failure"
 
 
-def _heartbeat(working_dir: Path, run_id: object) -> None:
+# Handlers that write the run record themselves stamp the heartbeat in that
+# same write; a separate read-modify-write could lose a concurrent transition.
+_SELF_STAMPING = frozenset({"checkpoint", "finalize"})
+
+
+def _heartbeat(working_dir: Path, command: str, run_id: object) -> None:
     """Stamp a native run's heartbeat; never fails the helper."""
-    if not isinstance(run_id, str):
+    if not isinstance(run_id, str) or command in _SELF_STAMPING:
         return
-    with suppress(RunStateError, OSError, ValueError):
+    with suppress(Exception):
         store = RunStore(working_dir)
         if store.load(run_id).source == "native":
             store.heartbeat(run_id)
 
 
 def _classify(exc: BaseException) -> tuple[bool, str]:
-    """(retryable, cause). A helper's own ValueError is bad input or a failed
-    gate, which the same command cannot fix by retrying."""
+    """(retryable, cause). Only a recognised transient class is retried: a
+    helper has no run budget to stop a blind retry loop. A helper's own
+    ValueError is bad input or a failed gate."""
     kind, cause = classify_failure(exc)
-    if kind != "blocking" and isinstance(exc, ValueError):
+    if kind == "blocking":
+        return False, cause
+    if isinstance(exc, ValueError):
         return False, "invalid_input"
-    return kind != "blocking", cause
+    if recognised_transient(exc):
+        return True, cause
+    return False, UNRECOGNISED_CAUSE
 
 
 def run_native(args, argv: list[str] | None = None) -> None:
     """Dispatch one `meow native` subcommand, printing its JSON result."""
     working_dir = Path(args.working_dir).resolve()
     active_dir = _resolve(args.active_dir, working_dir) or working_dir
-    # Beat before reconciling, so a long-silent session is not parked by
-    # its own next helper call.
-    _heartbeat(working_dir, getattr(args, "run_id", None))
-    reconcile_quietly(working_dir)
+    # The run this call drives is alive: never park it on the way in.
+    run_id = getattr(args, "run_id", None)
+    _heartbeat(working_dir, args.native_command, run_id)
+    reconcile_quietly(working_dir, skip=run_id if isinstance(run_id, str) else None)
     try:
         result = _HANDLERS[args.native_command](args, working_dir, active_dir)
     except KeyboardInterrupt:

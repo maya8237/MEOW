@@ -4,6 +4,7 @@ import asyncio
 import json
 import subprocess
 import time
+from pathlib import Path
 
 import pytest
 
@@ -181,3 +182,182 @@ def test_pushed_but_pr_failed_exits_3(tmp_path):
         delivery={"pushed": True, "pr": None, "pr_error": "token expired"},
     )
     assert outcome_exit(repo, record.id, None, ["run", "x"]) == EXIT_PR_FAILED
+
+
+def _line_or_none(stderr, prefix):
+    return next(
+        (
+            json.loads(line[len(prefix) :])
+            for line in stderr.splitlines()
+            if line.startswith(prefix)
+        ),
+        None,
+    )
+
+
+def test_record_free_blocking_exits_1(tmp_path, monkeypatch, capsys):
+    repo = _repo(tmp_path)
+    monkeypatch.delenv("CLAUDECODE", raising=False)
+    missing = FileNotFoundError("No plan file found; pass --plan explicitly.")
+    monkeypatch.setattr(
+        "meow.cli.cli._dispatch", lambda *_a, **_k: (_ for _ in ()).throw(missing)
+    )
+    with pytest.raises(SystemExit) as exit_info:
+        cli_main(["run", "x", "-n", "--work-dir", str(repo)])
+    assert exit_info.value.code == 1
+    err = capsys.readouterr().err
+    payload = _line(err, "MEOW_BLOCKED ")
+    assert (payload["run_id"], payload["cause"]) == (None, "invalid_input")
+    assert "MEOW_RETRY" not in err
+
+
+def test_record_free_unrecognised_error_is_not_retried(tmp_path, monkeypatch, capsys):
+    repo = _repo(tmp_path)
+    monkeypatch.delenv("CLAUDECODE", raising=False)
+    monkeypatch.setattr(
+        "meow.cli.cli._dispatch",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("worktree add failed")),
+    )
+    with pytest.raises(SystemExit) as exit_info:
+        cli_main(["run", "x", "-n", "--work-dir", str(repo)])
+    assert exit_info.value.code == 1
+    assert _line(capsys.readouterr().err, "MEOW_BLOCKED ")["stop"] == "blocking"
+
+
+def test_record_free_timeout_is_retried(tmp_path, monkeypatch, capsys):
+    repo = _repo(tmp_path)
+    monkeypatch.delenv("CLAUDECODE", raising=False)
+    monkeypatch.setattr(
+        "meow.cli.cli._dispatch",
+        lambda *_a, **_k: (_ for _ in ()).throw(TimeoutError("fetch timed out")),
+    )
+    with pytest.raises(SystemExit) as exit_info:
+        cli_main(["run", "x", "-n", "--work-dir", str(repo)])
+    assert exit_info.value.code == EXIT_TEMPFAIL
+    payload = _line(capsys.readouterr().err, "MEOW_RETRY ")
+    assert payload["run_id"] is None
+    assert payload["next_command"].startswith("meow run x")
+
+
+def test_supervised_run_exit_follows_the_record(tmp_path, monkeypatch, capsys):
+    repo, _store, record = _parked(tmp_path)
+    monkeypatch.setenv("CLAUDECODE", "1")
+
+    def supervised(_repo, _argv, on_created=None):
+        on_created(record.id)
+        return 1  # the record, not the supervisor's code, decides
+
+    monkeypatch.setattr("meow.cli.cli.run_supervised", supervised)
+    with pytest.raises(SystemExit) as exit_info:
+        cli_main(["run", "x", "-n", "--work-dir", str(repo)])
+    assert exit_info.value.code == EXIT_TEMPFAIL
+    assert _line(capsys.readouterr().err, "MEOW_RETRY ")["run_id"] == record.id
+
+
+def test_resume_continue_maps_the_settled_record(tmp_path, monkeypatch, capsys):
+    repo, store, record = _parked(tmp_path)
+
+    async def resumed(*_args, **_kwargs):
+        await asyncio.sleep(0)
+        store.transition(record.id, "resuming")
+        store.transition(
+            record.id,
+            "delivered",
+            delivery={"pushed": True, "pr_error": "token expired"},
+        )
+        return 0
+
+    monkeypatch.setattr("meow.cli.cli.resume", resumed)
+    with pytest.raises(SystemExit) as exit_info:
+        cli_main(["resume", record.id, "--continue", "--work-dir", str(repo)])
+    assert exit_info.value.code == EXIT_PR_FAILED
+
+
+def test_resume_continue_failure_parks_and_retries(tmp_path, monkeypatch, capsys):
+    repo, store, record = _parked(tmp_path)
+
+    async def resumed(*_args, **_kwargs):
+        await asyncio.sleep(0)
+        store.transition(record.id, "resuming")
+        store.park(record.id, "boom again", "transient", "error")
+        raise RuntimeError("boom again")
+
+    monkeypatch.setattr("meow.cli.cli.resume", resumed)
+    with pytest.raises(SystemExit) as exit_info:
+        cli_main(["resume", record.id, "--continue", "--work-dir", str(repo)])
+    assert exit_info.value.code == EXIT_TEMPFAIL
+    assert _line(capsys.readouterr().err, "MEOW_RETRY ")["run_id"] == record.id
+
+
+def test_record_exit_reports_budget_exhausted(tmp_path, capsys):
+    from meow.cli.run_contract import record_exit
+
+    _repo_dir, store, record = _parked(tmp_path)
+    store.transition(record.id, "parked", park={**record.park, "total_resumes": 20})
+    assert record_exit(store.load(record.id)) == 1
+    payload = _line(capsys.readouterr().err, "MEOW_BLOCKED ")
+    assert payload["stop"] == "budget_exhausted"
+    assert "max_total_resumes reached" in payload["message"]
+
+
+def test_plan_intent_park_is_not_resumable(tmp_path, capsys):
+    from meow.cli.run_contract import record_exit
+
+    repo = _repo(tmp_path)
+    store = RunStore(repo)
+    record = store.create(
+        source="native", request="x", repo=repo, worktree=repo, branch="dev"
+    )
+    store.update_results(record.id, intent="plan")
+    store.transition(record.id, "planning")
+    parked = store.park(record.id, "crash", "transient", "native_reported")
+    assert parked.results.get("next_command") is None
+    assert record_exit(parked) == 1
+    assert _line(capsys.readouterr().err, "MEOW_BLOCKED ")["stop"] == "not_resumable"
+
+
+def test_status_json_without_runs_prints_json_error(tmp_path, capsys):
+    repo = _repo(tmp_path)
+    with pytest.raises(SystemExit) as exit_info:
+        cli_main(["status", "--json", "--work-dir", str(repo)])
+    assert exit_info.value.code == 1
+    assert "error" in json.loads(capsys.readouterr().out)
+
+
+def _flaky_push(monkeypatch):
+    from meow.execution import delivery
+
+    real_git = delivery._git
+
+    def flaky_git(directory, *args, check=True):
+        if args[:1] == ("push",):
+            raise RuntimeError("git push failed: Connection reset by peer")
+        return real_git(directory, *args, check=check)
+
+    monkeypatch.setattr(delivery, "_git", flaky_git)
+    monkeypatch.setattr(
+        delivery, "_branch_and_remote", lambda _a, _f=None: ("dev", "origin")
+    )
+
+    async def deliver(working_dir, *_args, run_id, record_root=None, **_kwargs):
+        await asyncio.sleep(0)
+        store = RunStore(record_root or working_dir)
+        (Path(working_dir) / "new.txt").write_text("x", encoding="utf-8")
+        store.transition(run_id, "checks_finished")
+        delivery.deliver_verified_run(store, run_id, commit=True)
+
+    monkeypatch.setattr(sprint_runner, "_drive_sprint", deliver)
+
+
+def test_transient_push_failure_parks_and_retries(tmp_path, monkeypatch, capsys):
+    repo = _repo(tmp_path)
+    monkeypatch.delenv("CLAUDECODE", raising=False)
+    _flaky_push(monkeypatch)
+    with pytest.raises(SystemExit) as exit_info:
+        cli_main(["run", "Add", "-np", "--work-dir", str(repo)])
+    err = capsys.readouterr().err
+    assert exit_info.value.code == EXIT_TEMPFAIL, err
+    record = RunStore(repo).load(_line(err, "MEOW_RETRY ")["run_id"])
+    assert record.phase == "parked"
+    assert record.park["phase_before"] == "committed"
+    assert _line_or_none(err, "MEOW_BLOCKED ") is None

@@ -369,3 +369,61 @@ def test_unresolved_issue_after_resource_exhaustion_parks_as_resource():
     error = OSError("[WinError 1450] Insufficient system resources")
     error.winerror = 1450
     assert classify_failure(_unresolved(error))[0] == "resource"
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (TimeoutError("slow"), True),
+        (subprocess.TimeoutExpired(["git"], 5), True),
+        (ProcessError("died", exit_code=1), True),
+        (TransientRunError("429", cause="rate_limit"), True),
+        (_ApiFailure("transient", "overloaded"), True),
+        (OSError(errno.ECONNRESET, "reset"), True),
+        (OSError("bare I/O"), True),
+        (MemoryError(), True),
+        (ExceptionGroup("g", [OSError(errno.EBUSY, "busy")]), True),
+        (RuntimeError("wrapped"), False),
+        (KeyError("bug"), False),
+        (PermissionError("denied"), False),
+        (FileNotFoundError("no plan"), False),
+        (RuntimeError("No origin remote configured"), False),
+    ],
+)
+def test_recognised_transient_table(exc, expected):
+    from meow.execution.run_failures import recognised_transient
+
+    assert recognised_transient(exc) is expected
+
+
+def test_recognised_transient_follows_explicit_cause():
+    from meow.execution.run_failures import recognised_transient
+
+    try:
+        try:
+            raise TimeoutError("slow")
+        except TimeoutError as inner:
+            raise RuntimeError("step failed") from inner
+    except RuntimeError as outer:
+        assert recognised_transient(outer)
+
+
+def test_missing_input_file_and_remote_are_blocking():
+    assert classify_failure(FileNotFoundError("no plan")) == (
+        "blocking",
+        "invalid_input",
+    )
+    assert classify_failure(RuntimeError("No origin remote configured"))[0] == (
+        "blocking"
+    )
+    unreachable = RuntimeError("'//share/x' does not appear to be a git repository")
+    assert classify_failure(unreachable)[0] == "transient"
+
+
+def test_failure_cleared_when_leaving_parked_or_failing_without_cause(tmp_path):
+    store, record = _store(tmp_path)
+    store.park(record.id, "boom", "transient", "error")
+    assert "failure" not in store.transition(record.id, "planned").results
+    store.park(record.id, "boom", "transient", "error")
+    failed = store.transition(record.id, "failed", last_failure="gates failed")
+    assert "failure" not in failed.results

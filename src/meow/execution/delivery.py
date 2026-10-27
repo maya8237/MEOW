@@ -4,6 +4,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from meow.execution.run_failures import classify_failure
 from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled, check_cancel, delivery_lock
 from meow.infrastructure.worktree import _is_linked_worktree, _run_git
@@ -202,5 +203,22 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
     except RunCancelled:
         raise
     except (OSError, RuntimeError) as exc:
-        store.transition(run_id, "delivery_failed", last_failure=str(exc))
+        _settle_delivery_failure(store, run_id, exc)
         raise
+
+
+def _settle_delivery_failure(store: RunStore, run_id: str, exc: Exception) -> None:
+    """A blocking cause (no remote, bad ref, policy) ends `delivery_failed`;
+    a transient or resource one (network, timeout) parks the run resumable."""
+    kind, cause = classify_failure(exc)
+    if kind == "blocking":
+        store.transition(
+            run_id,
+            "delivery_failed",
+            last_failure=str(exc),
+            results={"failure": {"kind": kind, "cause": cause}},
+        )
+    else:
+        store.park(
+            run_id, exc, kind, cause, retry_after=getattr(exc, "retry_after", None)
+        )

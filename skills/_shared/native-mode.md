@@ -14,7 +14,9 @@ and [WORKFLOWS.md](../../docs/WORKFLOWS.md); load relevant sections as needed.
 
 Helpers start no agents and print JSON on stdout; errors print one JSON line
 on stderr. Exit 75 (`"retryable": true`): wait `retry_after` and rerun the same
-command. Exit 1: report the error and stop dependent work. If `meow` is missing,
+command, at most `[run] auto_retries` (default 3) consecutive 75s without
+progress. Exit 1, or retries spent: report the error and stop dependent work.
+If `meow` is missing,
 point to the README installer; do not guess a venv path. Use `COMMAND --help`
 for flags. Pass `--work-dir PATH` (also `--working-dir`/`-d`) for the project
 root and `--active-dir PATH` where applicable for the prepared worktree. Keep
@@ -129,7 +131,10 @@ Checkpoint before/after planner, generator, reviewer, tester, and required-check
 phases. Use `interrupted_mutation` for an interrupted edit; inspect and review
 the actual worktree against the saved plan before retrying. Keep failed or
 interrupted worktrees. Inspect journals with `meow status RUN_ID` or
-`meow resume RUN_ID`; continuation requires `--continue`.
+`meow resume RUN_ID`; continuation requires `--continue`. `meow status RUN_ID
+--json` gives `retryable`, `next_command` and `not_resumed_reason`; `meow resume
+--parked` continues every parked run within budget; never resume a
+`--intent plan` run.
 
 Before native run preparation, inspect `meow native verify`. `--test` or
 `tester.configured: true` routes runs to CLI so configured servers stay alive

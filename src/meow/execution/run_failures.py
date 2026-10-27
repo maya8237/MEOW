@@ -45,10 +45,34 @@ _POLICY_DENIED = re.compile(r"permission denied by policy", re.I)
 # A --work-dir outside any Git checkout is a bad meow argument, not a crash.
 _NOT_A_REPO = re.compile(r"fatal: not a git repository", re.I)
 # A repository without the remote a push needs: setup, not a crash.
-_NO_REMOTE = re.compile(
-    r"No 'origin' remote configured|does not appear to be a git repository"
-    r"|No such remote",
-    re.I,
+# (Not "does not appear to be a git repository": an unreachable path or
+# share produces it too.)
+_NO_REMOTE = re.compile(r"No '?origin'? remote configured|No such remote", re.I)
+# Sharing/lock violations, access denied by a scanner, semaphore timeout,
+# network name gone: Windows I/O that a later retry usually gets past.
+_TRANSIENT_WINERRORS = frozenset({5, 32, 33, 64, 121})
+_TRANSIENT_ERRNOS = frozenset({
+    errno.EAGAIN,
+    errno.EBUSY,
+    errno.EINTR,
+    errno.EIO,
+    errno.ENOSPC,
+    errno.ETIMEDOUT,
+    errno.ECONNRESET,
+    errno.ECONNREFUSED,
+    errno.ECONNABORTED,
+    errno.EPIPE,
+    errno.ENETDOWN,
+    errno.ENETUNREACH,
+    errno.EHOSTUNREACH,
+})
+# OSError subclasses that describe the input (a wrong path), not the moment.
+_INPUT_OSERRORS = (
+    FileNotFoundError,
+    FileExistsError,
+    IsADirectoryError,
+    NotADirectoryError,
+    PermissionError,
 )
 _SAFE_ARG = re.compile(r"[\w@%+=:,./\\-]+")
 
@@ -106,6 +130,7 @@ def _blocking_cause(exc: BaseException) -> str | None:
             "policy_denied",
         ),
         (_is_git_missing(exc), "git_missing"),
+        (isinstance(exc, FileNotFoundError), "invalid_input"),
         (bool(_POLICY_DENIED.search(text)), "policy_denied"),
         (bool(_NOT_A_REPO.search(text)), "invalid_input"),
         (bool(_NO_REMOTE.search(text)), "invalid_input"),
@@ -128,6 +153,58 @@ def _is_resource(exc: BaseException) -> bool:
             return True
         current = current.__cause__ or current.__context__
     return False
+
+
+def _transient_os_error(exc: OSError) -> bool:
+    if getattr(exc, "winerror", None) in _TRANSIENT_WINERRORS:
+        return True
+    if exc.errno in _TRANSIENT_ERRNOS or isinstance(exc, ConnectionError):
+        return True
+    # A bare OSError (no errno subclass) is environmental I/O, not bad input.
+    return not isinstance(exc, _INPUT_OSERRORS) and exc.errno is None
+
+
+def _transient_leaf(exc: BaseException) -> bool:
+    from claude_agent_sdk import CLIConnectionError, ProcessError
+
+    if isinstance(exc, (TransientRunError, ProcessError, CLIConnectionError)):
+        return True
+    if isinstance(exc, (TimeoutError, subprocess.TimeoutExpired)):
+        return True
+    # ApiFailure (agents/api_errors.py), duck-typed: rate limit, overload, ...
+    if getattr(exc, "kind", None) in {"transient", "resource"} and isinstance(
+        getattr(exc, "cause", None), str
+    ):
+        return True
+    return isinstance(exc, OSError) and _transient_os_error(exc)
+
+
+def recognised_transient(exc: BaseException) -> bool:
+    """True when the failure is a known-retryable class: API/SDK process,
+    timeout, OS resource or transient I/O, in its `raise ... from` chain or
+    exception group. Used where no run record bounds the retries, so an
+    unrecognised exception is not retried blindly.
+    """
+    if _blocking_cause(exc):
+        return False
+    return _is_resource(exc) or any(_transient_leaf(item) for item in _leaves(exc))
+
+
+def _leaves(exc: BaseException):
+    """Every exception in groups and explicit `raise ... from` chains."""
+    seen: set[int] = set()
+    pending: list[BaseException] = [exc]
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, BaseExceptionGroup):
+            pending.extend(current.exceptions)
+            continue
+        yield current
+        if current.__cause__ is not None:  # an explicit wrapper, not context
+            pending.append(current.__cause__)
 
 
 def classify_failure(exc: BaseException) -> tuple[FailureKind, str]:
@@ -210,6 +287,8 @@ def _shell_arg(value: str) -> str:
 def next_command(record: "RunRecord") -> str | None:
     """The `meow resume` command that continues this run, or None."""
     if record.source not in RESUMABLE_SOURCES or record.phase in TERMINAL_PHASES:
+        return None
+    if record.results.get("intent") == "plan":  # stops at planned on purpose
         return None
     repair = " --repair" if record.source == "native" else ""
     return (

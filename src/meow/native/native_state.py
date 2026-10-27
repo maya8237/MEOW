@@ -5,12 +5,13 @@ import asyncio
 import hashlib
 import json
 import time
+from contextlib import suppress
 from dataclasses import asdict
 from pathlib import Path
 
 from meow.execution.cleanup import cleanup_completed
 from meow.execution.delivery import deliver_verified_run
-from meow.execution.run_state import PARKED_PHASE, RunStore
+from meow.execution.run_state import PARKED_PHASE, RunStateError, RunStore
 from meow.infrastructure.checks import (
     adopt_stage_artifacts,
     code_revision,
@@ -213,6 +214,8 @@ async def finalize(  # ruff: ignore[too-many-statements, complex-structure, too-
 ) -> dict:
     """Run current configured gates and seal a reviewed native run."""
     store = RunStore(repo)
+    with suppress(RunStateError, OSError):
+        store.heartbeat(run_id)  # the handler's own write, not a racing one
     record = store.load(run_id)
     from meow.cli.resume_cli import _validate
 

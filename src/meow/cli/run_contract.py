@@ -13,8 +13,13 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-from meow.cli.resume_cli import budget_refusal
-from meow.execution.run_failures import BLOCKING_CAUSES, classify_failure, next_command
+from meow.cli.resume_cli import _EXHAUSTED, budget_refusal
+from meow.execution.run_failures import (
+    BLOCKING_CAUSES,
+    classify_failure,
+    next_command,
+    recognised_transient,
+)
 from meow.execution.run_state import (
     PARKED_PHASE,
     TERMINAL_PHASES,
@@ -31,10 +36,12 @@ EXIT_PR_FAILED = 3
 EXIT_TEMPFAIL = 75
 EXIT_INTERRUPTED = 130
 DEFAULT_RETRY_AFTER = 30
+# A failure with no run record and no known-transient class: not retried.
+UNRECOGNISED_CAUSE = "unrecognised_failure"
 _SUCCESS_PHASES = frozenset({"complete", "delivered", "review_finished"})
 _SETTLED_PHASES = TERMINAL_PHASES | {PARKED_PHASE, "interrupted_mutation"}
 # Causes that stop a run without being a configuration/environment block.
-_STOPS = frozenset({"no_progress", "budget_exhausted", "exhausted", "cancelled"})
+_STOPS = frozenset({"no_progress", "exhausted", "cancelled"})
 
 
 def _config(record: RunRecord) -> dict:
@@ -171,9 +178,9 @@ def record_exit(record: RunRecord) -> int:
         retry_after = (record.park or {}).get("retry_after")
         return _retry(record.id, _continuation(record), retry_after)
     cause = failure_cause(record) or record.phase
-    if reason is not None and reason.endswith("reached"):
+    if reason in _EXHAUSTED:
         stop = "budget_exhausted"
-    elif reason is not None and "rerun" in reason:
+    elif _retryable_phase(record):  # retryable, but refused (plan-only, source)
         stop = "not_resumable"
     else:
         stop = cause if cause in _STOPS else "blocking"
@@ -189,8 +196,9 @@ def outcome_exit(
 ) -> int:
     """Exit code for a run-driving command, from its run record when known.
 
-    Without a record a failure is classified directly: blocking exits 1, any
-    other failure 75 with the original command as its `next_command`.
+    Without a record no budget bounds a retry, so only a recognised
+    transient failure exits 75 (the original command as `next_command`);
+    anything else exits 1 with `MEOW_BLOCKED`.
     """
     if run_id is not None:
         try:
@@ -201,9 +209,11 @@ def outcome_exit(
         return EXIT_OK
     kind, cause = classify_failure(exc)
     message = str(exc) or type(exc).__name__
-    if kind == "blocking":
-        return _blocked(run_id, cause, message, "blocking")
-    return _retry(run_id, shlex.join(["meow", *argv]), None)
+    if kind != "blocking" and recognised_transient(exc):
+        return _retry(run_id, shlex.join(["meow", *argv]), None)
+    if kind != "blocking":
+        cause = UNRECOGNISED_CAUSE
+    return _blocked(run_id, cause, message, "blocking")
 
 
 def finished_exit(working_dir: Path, run_id: str) -> int:

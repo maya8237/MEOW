@@ -244,9 +244,9 @@ def budget_refusal(record: RunRecord, config: dict) -> str | None:
     `max_total_resumes`/`managed_resumes` budget is spent), else None."""
     park = record.park if isinstance(record.park, dict) else {}
     checks = (
-        (next_command(record) is None, f"{record.source} runs are rerun, not resumed"),
         # The native plan skill stops at `planned` on purpose: never continue it.
         (record.results.get("intent") == "plan", "plan-only native run"),
+        (next_command(record) is None, f"{record.source} runs are rerun, not resumed"),
         (
             int(park.get("total_resumes", 0)) >= config["max_total_resumes"],
             "max_total_resumes reached",

@@ -261,6 +261,8 @@ def status(
             reconcile_worker(store, record.id)
             record = store.load(record.id)
     except RunStateError as exc:
+        if as_json:
+            print(json.dumps({"error": str(exc)}))
         print(str(exc), file=sys.stderr)
         return 1
     if as_json:

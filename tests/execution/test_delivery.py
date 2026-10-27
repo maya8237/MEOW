@@ -176,7 +176,9 @@ def test_missing_remote_preserves_verified_work(tmp_path):
 
     with pytest.raises(RuntimeError, match="origin"):
         deliver_verified_run(store, run_id, commit=True)
-    assert store.load(run_id).phase == "delivery_failed"
+    record = store.load(run_id)
+    assert record.phase == "delivery_failed"  # no remote: blocking, not parked
+    assert record.results["failure"]["kind"] == "blocking"
     assert git(repo, "status", "--porcelain") == "M file.txt"
 
 
@@ -264,7 +266,10 @@ def test_delivery_does_not_hang_on_a_stuck_push(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="timed out"):
         deliver_verified_run(store, run_id)
     assert time.monotonic() - started < MAX_HANG_SECONDS
-    assert store.load(run_id).phase == "delivery_failed"
+    record = store.load(run_id)  # a stuck push is transient: resumable
+    assert record.phase == "parked"
+    assert record.park["phase_before"] == "committed"
+    assert record.results["next_command"].startswith(f"meow resume {run_id}")
 
 
 def test_push_false_commits_without_pushing(tmp_path):
