@@ -38,7 +38,7 @@ from meow.execution.run_policy import (
     check_clean_tree,
     uses_orchestration,
 )
-from meow.execution.run_state import RunStateError, RunStore
+from meow.execution.run_state import RunStateError, RunStore, reconcile_quietly
 from meow.infrastructure.background import (
     BackgroundError,
     launch_background,
@@ -67,6 +67,20 @@ from meow.project.onboarding import onboard_if_needed
 from meow.ui import serve_ui
 
 logger = get_logger(__name__)
+
+# Commands that read or drive saved runs: each first parks runs whose driver
+# died without settling them (a killed foreground run, a crashed worker).
+_RECONCILE_COMMANDS = frozenset({
+    "status",
+    "resume",
+    "run",
+    "queue",
+    "cancel",
+    "plan",
+    "review",
+    "worktree",
+    "cleanup",
+})
 
 
 # Anything a run can raise on a misbehaving environment: I/O, timeouts (also an
@@ -148,6 +162,8 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         return
     working_dir = Path(args.working_dir).resolve()
     log_working_directory(working_dir)
+    if args.command in _RECONCILE_COMMANDS:
+        reconcile_quietly(working_dir)
     if args.command == "cleanup":
         cleanup_command(working_dir, args.run_id)
         return

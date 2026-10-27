@@ -142,11 +142,13 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, c
     run_id: str | None = None,
     record_root: Path | None = None,
     source: str = "prompt",
+    on_created: Callable[[str], None] | None = None,
     **options,
 ) -> None:
     """Journal one sprint (see `_drive_sprint` for `options`).
 
-    Creates the run record unless `run_id` continues one. When anything
+    Creates the run record unless `run_id` continues one, reporting a new ID
+    to `on_created`. When anything
     raises before the run reached a settled phase, `_settle_failure` parks it
     resumable, or fails it for a blocking cause, so no failure path leaves a
     run looking active.
@@ -186,6 +188,8 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, c
             branch="preparing",
             delivery=delivery,
         ).id
+        if on_created is not None:
+            on_created(run_id)
     elif delivery:
         record = store.load(run_id)
         store.transition(run_id, record.phase, delivery={**record.delivery, **delivery})

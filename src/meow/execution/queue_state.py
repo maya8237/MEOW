@@ -142,20 +142,30 @@ class QueueStore:
                 return item
         raise QueueStateError(f"Queue item {item_id} is missing")
 
+    def parked(self) -> list[QueueItem]:
+        return [item for item in self._load_all() if item.status == "parked"]
+
+    def requeue_parked(self) -> list[QueueItem]:
+        """Return every parked item to `pending` for the next queue worker."""
+        return [
+            self.update(item.id, status="pending", error=None) for item in self.parked()
+        ]
+
     def recover_orphans(self) -> list[QueueItem]:
-        """Fail items left `running` by a worker that died without cleaning up.
+        """Park items left `running` by a worker that died without cleaning up.
 
         Call only while holding the worker lock, when no live worker can own
-        them. They are failed, not retried: the interrupted run may have left
-        half-written work in the checkout for a person to inspect.
+        them. A dead worker is not a blocking failure, so they are parked, not
+        retried at once: the interrupted run may have left half-written work
+        in the checkout; `meow resume --parked` requeues them.
         """
         orphans = [item for item in self._load_all() if item.status == "running"]
         return [
             self.update(
                 item.id,
-                status="failed",
-                error="worker exited before finishing; inspect the checkout "
-                "and re-queue the request",
+                status="parked",
+                error="worker exited before finishing; inspect the checkout, "
+                "then requeue with meow resume --parked",
             )
             for item in orphans
         ]

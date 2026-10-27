@@ -10,6 +10,7 @@ import json
 import sys
 from pathlib import Path
 
+from meow.execution.run_state import reconcile_quietly
 from meow.native import native
 from meow.project.config import config_root, load_config
 from meow.project.custom import SKILL_ROLES
@@ -534,6 +535,7 @@ def run_native(args) -> None:
     """Dispatch one `meow native` subcommand, printing its JSON result."""
     working_dir = Path(args.working_dir).resolve()
     active_dir = _resolve(args.active_dir, working_dir) or working_dir
+    reconcile_quietly(working_dir)
     try:
         result = _HANDLERS[args.native_command](args, working_dir, active_dir)
     except (OSError, ValueError, RuntimeError) as exc:

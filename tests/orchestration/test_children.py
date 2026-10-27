@@ -208,7 +208,9 @@ def test_dead_worker_without_terminal_phase_is_failed(git_repo, fake_launcher):
     )
 
     assert poll_task(repo, store.load(oid).task("api")) == "failed"
-    assert RunStore(repo).load(run_id).phase == "interrupted_mutation"
+    parked = RunStore(repo).load(run_id)
+    assert parked.phase == "parked"
+    assert parked.park["kind"] == "crashed"
 
 
 def test_vanished_run_is_failed(git_repo, fake_launcher):

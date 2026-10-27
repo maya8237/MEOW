@@ -9,7 +9,7 @@ import pytest
 
 from meow.cli import cli as cli_core
 from meow.cli.status_cli import render
-from meow.execution.run_state import RunStore
+from meow.execution.run_state import RunStore, reconcile_stale_runs
 from meow.infrastructure import background
 
 
@@ -118,7 +118,7 @@ def test_real_worker_survives_launcher_and_reports_failure(tmp_path):
     assert (store.directory / f"{run_id}.log").is_file()
 
 
-def test_stale_pid_reconciles_as_interrupted(tmp_path, monkeypatch):
+def test_stale_pid_reconciles_as_parked(tmp_path, monkeypatch):
     store = RunStore(tmp_path)
     record = store.create(
         source="prompt",
@@ -132,11 +132,14 @@ def test_stale_pid_reconciles_as_interrupted(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(background, "_process_identity", lambda _pid: "real")
     assert background.reconcile_worker(store, record.id).state == "interrupted"
-    assert store.load(record.id).phase == "interrupted_mutation"
+    parked = store.load(record.id)
+    assert parked.phase == "parked"
+    assert parked.park["kind"] == "crashed"
+    assert parked.park["phase_before"] == "created"
     transition_count = len(store.load(record.id).transitions)
     background.reconcile_worker(store, record.id)
     assert len(store.load(record.id).transitions) == transition_count
-    assert "Background worker: interrupted" in render(store.load(record.id))
+    assert "Background worker: parked" in render(store.load(record.id))
     assert "Worker log: run.log" in render(store.load(record.id))
 
 
@@ -468,3 +471,92 @@ def test_worker_spawned_unbuffered(tmp_path, monkeypatch):
     argv, kwargs = spawned[0]
     assert argv[:3] == [sys.executable, "-u", "-c"]
     assert kwargs["env"]["PYTHONUNBUFFERED"] == "1"
+
+
+def _driven_record(store, tmp_path, phase="generator_started"):
+    record = store.create(
+        source="prompt",
+        request="feature",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="dev",
+    )
+    store.transition(record.id, phase)
+    store.set_driver(record.id)
+    current = store.load(record.id)
+    current.driver["start_identity"] = "a-process-that-exited"
+    return store._write(current)
+
+
+def test_dead_driver_parks_generator_started(tmp_path):
+    store = RunStore(tmp_path)
+    record = _driven_record(store, tmp_path)
+    store.directory.joinpath(f"{record.id}.error.log").write_text(
+        "".join(f"line {n}\n" for n in range(30)), encoding="utf-8"
+    )
+
+    assert reconcile_stale_runs(store) == [record.id]
+
+    parked = store.load(record.id)
+    assert parked.phase == "parked"
+    assert parked.park["kind"] == "crashed"
+    assert parked.park["cause"] == "driver_died"
+    assert parked.park["phase_before"] == "generator_started"
+    assert parked.last_failure.startswith("driver died during generator_started: ")
+    assert "line 29" in parked.last_failure
+    assert "line 10" in parked.last_failure
+    assert "line 9\n" not in parked.last_failure
+    assert parked.results["next_command"].startswith(f"meow resume {record.id}")
+    assert reconcile_stale_runs(store) == []  # already settled
+
+
+def test_live_driver_is_not_reconciled(tmp_path):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="f", repo=tmp_path, worktree=tmp_path, branch="d"
+    )
+    store.transition(record.id, "generator_started")
+    store.set_driver(record.id)  # this test process: alive
+    assert reconcile_stale_runs(store) == []
+    assert store.load(record.id).phase == "generator_started"
+
+
+def test_driverless_native_run_is_not_reconciled(tmp_path):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="native", request="f", repo=tmp_path, worktree=tmp_path, branch="d"
+    )
+    store.transition(record.id, "generator_started")
+    assert reconcile_stale_runs(store) == []
+    assert store.load(record.id).phase == "generator_started"
+
+
+@pytest.mark.parametrize(
+    "phase", ["complete", "failed", "cancelled", "interrupted_mutation"]
+)
+def test_settled_run_with_dead_driver_is_not_reconciled(tmp_path, phase):
+    store = RunStore(tmp_path)
+    record = _driven_record(store, tmp_path, phase)
+    assert reconcile_stale_runs(store) == []
+    assert store.load(record.id).phase == phase
+
+
+def test_parked_run_with_dead_driver_keeps_its_park(tmp_path):
+    store = RunStore(tmp_path)
+    record = _driven_record(store, tmp_path)
+    store.park(record.id, "rate limited", "transient", "rate_limit")
+    before = store.load(record.id)
+    assert reconcile_stale_runs(store) == []
+    assert store.load(record.id).park == before.park
+
+
+def test_killed_foreground_run_is_parked_on_next_status(tmp_path, capsys):
+    store = RunStore(tmp_path)
+    record = _driven_record(store, tmp_path)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli_core.cli_main(["status", record.id, "--work-dir", str(tmp_path)])
+
+    assert exit_info.value.code == 0
+    assert store.load(record.id).phase == "parked"
+    assert "Phase: parked" in capsys.readouterr().out

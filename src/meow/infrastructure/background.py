@@ -19,11 +19,13 @@ from meow.execution.run_state import (
     TERMINAL_PHASES,
     RunRecord,
     RunStore,
+    park_crashed,
+    run_owner_alive,
+    startup_grace,
 )
 from meow.project.config import _merge_config, config_paths
 from meow.project.config_env import _expand_config_environment
 
-_STARTUP_GRACE_SECONDS = 10
 # Phases no worker drives any more; a parked run waits for `meow resume`.
 _SETTLED = TERMINAL_PHASES | {PARKED_PHASE}
 
@@ -67,9 +69,8 @@ def inspect_worker(  # ruff: ignore[too-many-return-statements]
     expected = data.get("start_identity")
     if not isinstance(pid, int) or not isinstance(expected, str) or not expected:
         started = data.get("launch_started_at")
-        if (
-            isinstance(started, (int, float))
-            and time.time() - started > _STARTUP_GRACE_SECONDS
+        if isinstance(started, (int, float)) and time.time() - started > startup_grace(
+            Path(record.repo)
         ):
             return WorkerState("interrupted", None, log)
         return WorkerState("starting", None, log)
@@ -78,17 +79,11 @@ def inspect_worker(  # ruff: ignore[too-many-return-statements]
 
 
 def reconcile_worker(store: RunStore, run_id: str) -> WorkerState:
+    """Report the worker state; park the run if its worker and driver died."""
     record = store.load(run_id)
     state = inspect_worker(record)
-    if state.state == "interrupted" and record.phase not in {
-        *_SETTLED,
-        "interrupted_mutation",
-    }:
-        store.transition(
-            run_id,
-            "interrupted_mutation",
-            last_failure="Background worker exited; inspect worktree before resume",
-        )
+    if record.phase not in _SETTLED and run_owner_alive(record) is False:
+        park_crashed(store, run_id)
     return state
 
 

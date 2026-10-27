@@ -4,6 +4,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,9 +12,14 @@ from uuid import uuid4
 
 from meow.common.atomic import replace_with_retry
 from meow.common.process import process_identity
+from meow.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
 
 MAX_OUTPUT = 8000
 _DEFAULT_AUTO_RETRIES = 3
+_DEFAULT_STARTUP_GRACE = 180
+ERROR_LOG_TAIL_LINES = 20
 SCHEMA_VERSION = 1
 # Phases after which a run no longer drives work. The single source for worker
 # reconciliation, cancellation, and plan-ownership checks.
@@ -41,6 +47,8 @@ _ACTIVE_PHASES = frozenset({
 # Parked runs stopped on a retryable failure: settled (no driver owns them) but
 # not terminal, since `next_command` continues them.
 PARKED_PHASE = "parked"
+# Phases a dead driver must not overwrite: they already say why work stopped.
+_RECONCILE_SKIP = TERMINAL_PHASES | {PARKED_PHASE, "interrupted_mutation"}
 _SECRET_KEY = re.compile(
     r"(?:token|secret|password|credential|api.?key|authorization)", re.I
 )
@@ -493,3 +501,95 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
             },
             last_failure=message,
         )
+
+
+def _owner_alive(info: dict) -> bool | None:
+    """Whether the recorded process still runs; None when none was recorded."""
+    pid, identity = info.get("pid"), info.get("start_identity")
+    if not isinstance(pid, int) or not isinstance(identity, str) or not identity:
+        return None
+    return process_identity(pid) == identity
+
+
+def startup_grace(repo: Path) -> float:
+    """`[run] worker_startup_grace`: how long a launched worker may take to
+    register before it counts as dead."""
+    from meow.project.config import run_config
+
+    try:
+        return float(run_config(Path(repo))["worker_startup_grace"])
+    except (OSError, ValueError):
+        return _DEFAULT_STARTUP_GRACE
+
+
+def run_owner_alive(record: RunRecord) -> bool | None:
+    """True while a driver or background worker owns the run; False when every
+    recorded owner died; None when no owner was ever recorded (native runs)."""
+    owners: list[bool] = []
+    background = record.background if isinstance(record.background, dict) else {}
+    if background:
+        alive = _owner_alive(background)
+        if alive is None:  # launched, not registered yet
+            started = background.get("launch_started_at")
+            alive = not (
+                isinstance(started, (int, float))
+                and time.time() - started > startup_grace(Path(record.repo))
+            )
+        owners.append(alive)
+    if isinstance(record.driver, dict) and record.driver:
+        owners.append(bool(_owner_alive(record.driver)))
+    return any(owners) if owners else None
+
+
+def error_log_tail(store: RunStore, run_id: str) -> str:
+    """The last `ERROR_LOG_TAIL_LINES` lines of `<run_id>.error.log`."""
+    try:
+        text = (store.directory / f"{run_id}.error.log").read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except OSError:
+        return "(no error log)"
+    lines = text.strip().splitlines()[-ERROR_LOG_TAIL_LINES:]
+    return "\n".join(lines) or "(error log empty)"
+
+
+def park_crashed(store: RunStore, run_id: str) -> RunRecord | None:
+    """Park a run whose driver died without settling it; None if settled."""
+    record = store.load(run_id)
+    if record.phase in _RECONCILE_SKIP:
+        return None
+    tail = error_log_tail(store, run_id)
+    return store.park(
+        run_id,
+        f"driver died during {record.phase}: {tail}",
+        "crashed",
+        "driver_died",
+    )
+
+
+def reconcile_stale_runs(store: RunStore) -> list[str]:
+    """Park every unsettled run whose driver and worker are both gone.
+
+    Runs that never recorded an owner (native checkpoints) are left alone.
+    Returns the IDs that were parked (or failed on an exhausted budget).
+    """
+    settled = []
+    for path in sorted(store.record_paths()):
+        try:
+            record = store.load(path.stem)
+            if record.phase in _RECONCILE_SKIP or run_owner_alive(record) is not False:
+                continue
+            if park_crashed(store, record.id) is not None:
+                settled.append(record.id)
+        except (RunStateError, OSError) as exc:
+            logger.warning("run_reconcile_skipped", run=path.stem, reason=str(exc))
+    return settled
+
+
+def reconcile_quietly(repo: Path) -> list[str]:
+    """`reconcile_stale_runs` for command entry: never blocks the command."""
+    try:
+        return reconcile_stale_runs(RunStore(repo))
+    except (RunStateError, OSError, ValueError) as exc:
+        logger.warning("run_reconcile_failed", reason=str(exc))
+        return []

@@ -297,6 +297,9 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
         )
         return 1
     clear_cancel(store, record.id)
+    # Own the run before it looks active again, so a concurrent reconcile
+    # never mistakes this resume for the dead driver it replaces.
+    store.set_driver(record.id)
     record = store.transition(record.id, "resuming", attempt=record.attempt + 1)
     await run_sprint(
         Path(record.worktree),
