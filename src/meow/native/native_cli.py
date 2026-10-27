@@ -14,7 +14,7 @@ from contextlib import suppress
 from pathlib import Path
 
 from meow.execution.run_failures import classify_failure, recognised_transient
-from meow.execution.run_state import RunStore, reconcile_quietly
+from meow.execution.run_state import PARKED_PHASE, RunStore, reconcile_quietly
 from meow.native import native
 from meow.project.config import config_root, load_config
 from meow.project.custom import SKILL_ROLES
@@ -551,21 +551,6 @@ RETRY_AFTER = 30
 UNRECOGNISED_CAUSE = "unrecognised_failure"
 
 
-# Handlers that write the run record themselves stamp the heartbeat in that
-# same write; a separate read-modify-write could lose a concurrent transition.
-_SELF_STAMPING = frozenset({"checkpoint", "finalize"})
-
-
-def _heartbeat(working_dir: Path, command: str, run_id: object) -> None:
-    """Stamp a native run's heartbeat; never fails the helper."""
-    if not isinstance(run_id, str) or command in _SELF_STAMPING:
-        return
-    with suppress(Exception):
-        store = RunStore(working_dir)
-        if store.load(run_id).source == "native":
-            store.heartbeat(run_id)
-
-
 def _classify(exc: BaseException) -> tuple[bool, str]:
     """(retryable, cause). Only a recognised transient class is retried: a
     helper has no run budget to stop a blind retry loop. A helper's own
@@ -573,20 +558,40 @@ def _classify(exc: BaseException) -> tuple[bool, str]:
     kind, cause = classify_failure(exc)
     if kind == "blocking":
         return False, cause
-    if isinstance(exc, ValueError):
+    if isinstance(exc, (ValueError, FileNotFoundError)):
         return False, "invalid_input"
     if recognised_transient(exc):
         return True, cause
     return False, UNRECOGNISED_CAUSE
 
 
+def _parked_run(working_dir: Path, run_id: object) -> dict | None:
+    """The run's own retry decision when the failed call parked it."""
+    if not isinstance(run_id, str):
+        return None
+    with suppress(Exception):
+        record = RunStore(working_dir).load(run_id)
+        command = record.results.get("next_command")
+        if record.phase == PARKED_PHASE and command:
+            park = record.park if isinstance(record.park, dict) else {}
+            return {
+                "retryable": True,
+                "cause": park.get("cause"),
+                "retry_after": park.get("retry_after") or RETRY_AFTER,
+                "next_command": command,
+            }
+    return None
+
+
 def run_native(args, argv: list[str] | None = None) -> None:
-    """Dispatch one `meow native` subcommand, printing its JSON result."""
+    """Dispatch one `meow native` subcommand, printing its JSON result.
+
+    Run-ID helpers (`checkpoint`, `finalize`) stamp the heartbeat in their own
+    record write; reconcile never parks the run this call drives.
+    """
     working_dir = Path(args.working_dir).resolve()
     active_dir = _resolve(args.active_dir, working_dir) or working_dir
-    # The run this call drives is alive: never park it on the way in.
     run_id = getattr(args, "run_id", None)
-    _heartbeat(working_dir, args.native_command, run_id)
     reconcile_quietly(working_dir, skip=run_id if isinstance(run_id, str) else None)
     try:
         result = _HANDLERS[args.native_command](args, working_dir, active_dir)
@@ -594,14 +599,17 @@ def run_native(args, argv: list[str] | None = None) -> None:
         raise SystemExit(130) from None
     except Exception as exc:  # every failure reaches the managing session
         retryable, cause = _classify(exc)
-        command = ["meow", *(argv if argv is not None else sys.argv[1:])]
         payload = {
             "error": f"meow native {args.native_command}: {exc}",
             "retryable": retryable,
             "cause": cause,
             "retry_after": RETRY_AFTER if retryable else None,
-            "command": command,
+            "command": ["meow", *(argv if argv is not None else sys.argv[1:])],
+            "next_command": None,
         }
+        # A run the call parked (e.g. a transient push in finalize) is
+        # retryable through its record, whatever the raw exception says.
+        payload.update(_parked_run(working_dir, run_id) or {})
         print(json.dumps(payload), file=sys.stderr, flush=True)
-        raise SystemExit(EXIT_TEMPFAIL if retryable else 1) from exc
+        raise SystemExit(EXIT_TEMPFAIL if payload["retryable"] else 1) from exc
     print(json.dumps(result))

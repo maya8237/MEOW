@@ -1,5 +1,6 @@
 """Native helpers under a managing session: exit codes, parking, heartbeats."""
 
+import asyncio
 import json
 import subprocess
 import time
@@ -214,3 +215,22 @@ def test_parked_plan_intent_run_is_never_auto_resumed(tmp_path):
     record = store.park(run_id, "crash", "transient", "native_reported")
     assert budget_refusal(record, run_config(repo)) == "plan-only native run"
     assert record.results.get("next_command") is None
+
+
+def test_finalize_that_parks_its_run_exits_75_with_next_command(tmp_path):
+    repo = _repo(tmp_path)
+    store = RunStore(repo)
+    run_id = checkpoint(repo, repo, "generator_started", request="x")["run_id"]
+
+    async def parking_finalize(_wd, _active, rid):
+        await asyncio.sleep(0)
+        store.park(rid, "git push failed: early EOF", "transient", "error")
+        raise RuntimeError("git push failed: early EOF")
+
+    with patch("meow.native.native.finalize", parking_finalize):
+        code, _out, err = run_native("finalize", run_id, "--work-dir", str(repo))
+    assert code == EXIT_TEMPFAIL, err
+    payload = _error(err)
+    assert payload["retryable"] is True
+    assert payload["next_command"] == store.load(run_id).results["next_command"]
+    assert "--repair" in payload["next_command"]

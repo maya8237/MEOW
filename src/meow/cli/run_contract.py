@@ -207,13 +207,18 @@ def outcome_exit(
             pass
     if exc is None:
         return EXIT_OK
+    return _record_free_exit(run_id, exc, argv)
+
+
+def _record_free_exit(run_id: str | None, exc: BaseException, argv: list[str]) -> int:
     kind, cause = classify_failure(exc)
-    message = str(exc) or type(exc).__name__
     if kind != "blocking" and recognised_transient(exc):
         return _retry(run_id, shlex.join(["meow", *argv]), None)
-    if kind != "blocking":
+    if isinstance(exc, FileNotFoundError):  # a missing plan/config input
+        cause = "invalid_input"
+    elif kind != "blocking":
         cause = UNRECOGNISED_CAUSE
-    return _blocked(run_id, cause, message, "blocking")
+    return _blocked(run_id, cause, str(exc) or type(exc).__name__, "blocking")
 
 
 def finished_exit(working_dir: Path, run_id: str) -> int:

@@ -408,11 +408,8 @@ def test_recognised_transient_follows_explicit_cause():
         assert recognised_transient(outer)
 
 
-def test_missing_input_file_and_remote_are_blocking():
-    assert classify_failure(FileNotFoundError("no plan")) == (
-        "blocking",
-        "invalid_input",
-    )
+def test_missing_remote_is_blocking():
+    assert classify_failure(FileNotFoundError("no plan"))[0] == "transient"
     assert classify_failure(RuntimeError("No origin remote configured"))[0] == (
         "blocking"
     )
@@ -427,3 +424,9 @@ def test_failure_cleared_when_leaving_parked_or_failing_without_cause(tmp_path):
     store.park(record.id, "boom", "transient", "error")
     failed = store.transition(record.id, "failed", last_failure="gates failed")
     assert "failure" not in failed.results
+
+
+def test_mid_run_missing_file_parks(tmp_path):
+    store, record = _store(tmp_path)
+    _settle_failure(store, record.id, FileNotFoundError("tmp/slice.json vanished"))
+    assert store.load(record.id).phase == "parked"

@@ -470,3 +470,68 @@ def test_push_fix_refuses_a_switched_branch(tmp_path):
         push_fix(store, run_id, "MEOW run x: pipeline fix round 1")
     assert git(remote, "branch", "--list", "other") == ""
     assert git(active, "status", "--porcelain")
+
+
+def _failing_push(monkeypatch, message):
+    from meow.execution import delivery
+
+    real_git = delivery._git
+
+    def git_with_push_error(directory, *args, check=True):
+        if args[:1] == ("push",):
+            raise RuntimeError(f"git push failed: {message}")
+        return real_git(directory, *args, check=check)
+
+    monkeypatch.setattr(delivery, "_git", git_with_push_error)
+
+
+@pytest.mark.parametrize(
+    ("message", "cause"),
+    [
+        (
+            "! [rejected] meow/feature -> meow/feature (non-fast-forward)",
+            "policy_denied",
+        ),
+        ("! [remote rejected] main (pre-receive hook declined)", "policy_denied"),
+        (
+            "remote: GitLab: You are not allowed to push to a protected branch",
+            ("policy_denied"),
+        ),
+        ("fatal: Authentication failed for 'https://example.com/r.git/'", "auth"),
+        ("remote: something nobody has seen before", "unrecognised_failure"),
+    ],
+)
+def test_blocking_push_failure_is_delivery_failed(
+    tmp_path, monkeypatch, message, cause
+):
+    repo, _ = repository(tmp_path)
+    (repo / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, repo)
+    _failing_push(monkeypatch, message)
+    with pytest.raises(RuntimeError):
+        deliver_verified_run(store, run_id, commit=True)
+    record = store.load(run_id)
+    assert record.phase == "delivery_failed"
+    assert record.results["failure"] == {"kind": "blocking", "cause": cause}
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "fatal: unable to access 'https://h/r.git/': Could not resolve host: h",
+        "error: RPC failed; curl 56 Recv failure: Connection reset by peer",
+        "fatal: early EOF",
+        "The requested URL returned error: 502",
+        "ssh: connect to host h port 22: Connection timed out",
+    ],
+)
+def test_transient_push_failure_parks(tmp_path, monkeypatch, message):
+    repo, _ = repository(tmp_path)
+    (repo / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, repo)
+    _failing_push(monkeypatch, message)
+    with pytest.raises(RuntimeError):
+        deliver_verified_run(store, run_id, commit=True)
+    record = store.load(run_id)
+    assert record.phase == "parked"
+    assert record.park["kind"] == "transient"

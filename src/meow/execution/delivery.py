@@ -4,7 +4,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from meow.execution.run_failures import classify_failure
+from meow.execution.run_failures import classify_failure, recognised_transient
 from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled, check_cancel, delivery_lock
 from meow.infrastructure.worktree import _is_linked_worktree, _run_git
@@ -207,10 +207,55 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
         raise
 
 
-def _settle_delivery_failure(store: RunStore, run_id: str, exc: Exception) -> None:
-    """A blocking cause (no remote, bad ref, policy) ends `delivery_failed`;
-    a transient or resource one (network, timeout) parks the run resumable."""
+# Git push/commit text: what a retry cannot fix vs. a network hiccup.
+_GIT_AUTH = re.compile(
+    r"Authentication failed|could not read (?:Username|Password)"
+    r"|Permission denied \(publickey|returned error: 40[13]|invalid credentials",
+    re.I,
+)
+_GIT_POLICY = re.compile(
+    r"\[(?:remote )?rejected\]|non-fast-forward|declined|protected branch"
+    r"|hook|not allowed to push",
+    re.I,
+)
+_GIT_TRANSIENT = re.compile(
+    r"timed out|Could not resolve host|Connection reset|RPC failed|early EOF"
+    r"|unable to access|returned error: 5\d\d|Connection refused"
+    r"|remote end hung up unexpectedly",
+    re.I,
+)
+
+
+def delivery_failure_kind(exc: BaseException) -> tuple[str, str]:
+    """`(kind, cause)` for a commit/push failure.
+
+    Only recognisable network trouble (or a known transient class) is
+    retryable; auth, rejected/declined pushes, protected branches, hooks and
+    unrecognised git text are blocking, so a resume never replays review just
+    to be rejected again.
+    """
     kind, cause = classify_failure(exc)
+    text = str(exc)
+    decisions = (
+        (kind == "blocking", (kind, cause)),
+        (bool(_GIT_AUTH.search(text)), ("blocking", "auth")),
+        (bool(_GIT_POLICY.search(text)), ("blocking", "policy_denied")),
+        (kind == "resource", (kind, cause)),
+        (
+            bool(_GIT_TRANSIENT.search(text)) or recognised_transient(exc),
+            ("transient", cause),
+        ),
+    )
+    return next(
+        (decision for hit, decision in decisions if hit),
+        ("blocking", "unrecognised_failure"),
+    )
+
+
+def _settle_delivery_failure(store: RunStore, run_id: str, exc: Exception) -> None:
+    """A blocking failure ends `delivery_failed`; a transient or resource one
+    (network, timeout) parks the run resumable."""
+    kind, cause = delivery_failure_kind(exc)
     if kind == "blocking":
         store.transition(
             run_id,

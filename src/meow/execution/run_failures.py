@@ -130,7 +130,6 @@ def _blocking_cause(exc: BaseException) -> str | None:
             "policy_denied",
         ),
         (_is_git_missing(exc), "git_missing"),
-        (isinstance(exc, FileNotFoundError), "invalid_input"),
         (bool(_POLICY_DENIED.search(text)), "policy_denied"),
         (bool(_NOT_A_REPO.search(text)), "invalid_input"),
         (bool(_NO_REMOTE.search(text)), "invalid_input"),

@@ -79,9 +79,11 @@ reports `phase`, `settled`, `retryable`, `cause`, `next_command`, `attempts`,
 `budget_left`, `worker`, `intent` and `heartbeat_age`, plus `not_resumed_reason`
 when no resume will be tried. A failure before any run record exists exits 75
 only for a recognised transient class (timeout, SDK process, OS I/O or
-resource); anything else exits 1. Native helpers follow the same rule and print
-`{"error", "retryable", "cause", "retry_after", "command"}` on stderr. A
-transient push failure parks the run; only a blocking one ends `delivery_failed`.
+resource); anything else exits 1. A manager retries at most `[run] auto_retries`
+consecutive 75s that show no progress, then reports the failure. Native helpers follow the same rule and print
+`{"error", "retryable", "cause", "retry_after", "command", "next_command"}` on
+stderr. A network push failure (timeout, DNS, reset, 5xx) parks the run; auth,
+rejected or hook-declined pushes and unrecognised git errors end `delivery_failed`.
 `native checkpoint parked --failure TEXT` records a crash the session saw;
 `--intent run|plan` marks plan-only runs, which are never parked or resumed.
 Every helper with a run ID refreshes its heartbeat.
