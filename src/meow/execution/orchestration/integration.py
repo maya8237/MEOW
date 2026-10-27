@@ -14,6 +14,7 @@ from meow.execution.orchestration.model import (
     integration_worktree_name,
 )
 from meow.execution.orchestration.store import OrchestratorStore
+from meow.execution.run_failures import park_on_check_timeout
 from meow.execution.run_state import CheckResult
 from meow.infrastructure.checks import configured_checks, run_final_checks
 from meow.infrastructure.worktree import _ensure_branch_worktree
@@ -199,6 +200,7 @@ async def _failing_checks(worktree: Path, config: dict) -> list[CheckResult]:
     if not configured_checks(config):
         return []
     results = await run_final_checks(worktree, config)
+    park_on_check_timeout(results)
     return [result for result in results if result.required and not result.passed]
 
 

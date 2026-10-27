@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from meow.execution.run_state import MAX_OUTPUT
+from meow.execution.run_state import MAX_OUTPUT, CheckResult
 from meow.infrastructure.checks import (
     Check,
     checks_current,
@@ -294,3 +294,37 @@ def test_final_checks_do_not_settle_when_a_check_edits_tracked_source(tmp_path):
     with patch("meow.infrastructure.checks.configured_checks", return_value=[bump]):
         results = asyncio.run(run_final_checks(tmp_path, config))
     assert not checks_current(results, [bump], tmp_path)  # source keeps moving
+
+
+def test_check_timeout_reruns_once(tmp_path):
+    from unittest.mock import AsyncMock
+
+    (tmp_path / ".meow" / "config.toml").write_text("x=1", encoding="utf-8")
+    required = Check("lint", "lint-1", "x", (), True, 5)
+    advisory = Check("lint", "lint-2", "x", (), False, 5)
+    runner = AsyncMock(side_effect=[(None, "", True), (0, "ok", False)])
+    with patch("meow.infrastructure.checks.run_captured_async", runner):
+        assert run_check(tmp_path, required).passed
+    assert [runner.await_count] == [2]
+    runner = AsyncMock(return_value=(None, "", True))
+    with patch("meow.infrastructure.checks.run_captured_async", runner):
+        assert run_check(tmp_path, required).timed_out
+        assert [runner.await_count] == [2]
+        runner.reset_mock()
+        assert run_check(tmp_path, advisory).timed_out
+        assert runner.await_count == 1
+
+
+def test_timed_out_required_check_parks_instead_of_failing(tmp_path):
+    from meow.execution.run_failures import (
+        TransientRunError,
+        park_on_check_timeout,
+    )
+
+    timed_out = CheckResult("lint", "x", True, None, 1.0, "", "r", "f", True)
+    failed = CheckResult("lint", "x", True, 1, 1.0, "", "r", "f")
+    advisory = CheckResult("lint", "x", False, None, 1.0, "", "r", "f", True)
+    park_on_check_timeout([failed, advisory])
+    with pytest.raises(TransientRunError) as caught:
+        park_on_check_timeout([timed_out])
+    assert caught.value.cause == "check_timeout"

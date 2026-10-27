@@ -551,7 +551,10 @@ def run_owner_alive(record: RunRecord) -> bool | None:
         alive = _owner_alive(background)
         if alive is None:  # launched, not registered yet
             started = background.get("launch_started_at")
-            alive = not (
+            launcher = background.get("launcher_pid")
+            alive = (
+                isinstance(launcher, int) and process_identity(launcher) is not None
+            ) or not (
                 isinstance(started, (int, float))
                 and time.time() - started > startup_grace(Path(record.repo))
             )

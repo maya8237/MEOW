@@ -891,3 +891,24 @@ def test_detach_command_passes_env_through(tmp_path, monkeypatch):
     background.detach_command(tmp_path, ["tool"])
 
     assert seen == [{"MARK": "1"}, None]  # None inherits the caller's environment
+
+
+def test_slow_venv_worker_start_is_not_interrupted(tmp_path, monkeypatch):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt",
+        request="feature",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="dev",
+    )
+    store.update_background(
+        record.id, launcher_pid=4242, launch_started_at=time.time() - 120
+    )
+    monkeypatch.setattr(background, "_process_identity", lambda _pid: "alive")
+    assert background.inspect_worker(store.load(record.id)).state == "starting"
+    assert background.reconcile_worker(store, record.id).state == "starting"
+    assert store.load(record.id).phase != "parked"
+    monkeypatch.setattr(background, "_process_identity", lambda _pid: None)
+    store.update_background(record.id, launch_started_at=time.time() - 1000)
+    assert background.inspect_worker(store.load(record.id)).state == "interrupted"

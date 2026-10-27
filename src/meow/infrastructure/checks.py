@@ -428,12 +428,15 @@ async def _run_check(
         argv = [*split_command(check.command), *check.args]
         if not argv:
             raise ValueError("empty command")
-        exit_code, output, timed_out = await run_captured_async(
-            argv,
-            resolve_command_cwd(repo, check.cwd),
-            {**os.environ, **(check.env or {})},
-            check.timeout,
-        )
+        for _attempt in range(2 if check.required else 1):
+            exit_code, output, timed_out = await run_captured_async(
+                argv,
+                resolve_command_cwd(repo, check.cwd),
+                {**os.environ, **(check.env or {})},
+                check.timeout,
+            )
+            if not timed_out:
+                break
     except (OSError, ValueError) as exc:  # unlaunchable: a failed gate, not a crash
         output, exit_code, timed_out = str(exc), None, False
     return CheckResult(

@@ -9,6 +9,12 @@ from typing import Literal
 
 from meow.infrastructure.checks import run_captured
 from meow.infrastructure.logging import get_logger
+from meow.infrastructure.python_env import (
+    ENV_COMMAND_TIMEOUT,
+    env_command_env,
+    is_env_command,
+    repair_venvs,
+)
 
 logger = get_logger(__name__)
 
@@ -178,7 +184,34 @@ def copy_setup_file(
     return result
 
 
-def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-arguments, too-many-branches]
+def _run_setup_command(argv: list[str], worktree: Path, timeout: float | None) -> int:
+    """Run one setup command; a timeout repairs venvs and retries at double."""
+    env_command = is_env_command(argv)
+    limit = timeout or (ENV_COMMAND_TIMEOUT if env_command else _COMMAND_TIMEOUT)
+    env = env_command_env(argv, dict(os.environ))
+    for last in (False, True):
+        try:
+            exit_code, _output, timed_out = run_captured(argv, worktree, env, limit)
+        except (OSError, ValueError) as exc:
+            raise WorktreeSetupError(f"setup command failed: {argv[0]}: {exc}") from exc
+        if not timed_out:
+            return exit_code if exit_code is not None else 1
+        if last:
+            raise WorktreeSetupError(
+                f"setup command timed out twice: {argv[0]}", cause="setup_timeout"
+            )
+        repaired = repair_venvs(worktree)
+        logger.warning(
+            "setup_command_timeout_retry",
+            command=argv[0],
+            timeout=limit,
+            repaired=[str(path) for path in repaired],
+        )
+        limit *= 2
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-arguments]
     repo: Path,
     worktree: Path,
     manifest: dict[str, list],
@@ -206,14 +239,7 @@ def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-
                 f"setup command requires approval or is denied by policy: {argv[0]}",
                 cause="policy_denied",
             )
-        try:
-            exit_code, _output, timed_out = run_captured(
-                argv, worktree, dict(os.environ), _COMMAND_TIMEOUT
-            )
-        except (OSError, ValueError) as exc:
-            raise WorktreeSetupError(f"setup command failed: {argv[0]}: {exc}") from exc
-        if timed_out:
-            raise WorktreeSetupError(f"setup command timed out: {argv[0]}")
+        exit_code = _run_setup_command(argv, worktree, timeout)
         if record_action:
             record_action({
                 "kind": "command",

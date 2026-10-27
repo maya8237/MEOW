@@ -57,6 +57,10 @@ class WorkerState:
     log: str | None
 
 
+def _launcher_alive(pid: int) -> bool:
+    return _process_identity(pid) is not None
+
+
 def inspect_worker(  # ruff: ignore[too-many-return-statements]
     record: RunRecord, *, include_terminal: bool = False
 ) -> WorkerState:
@@ -69,6 +73,9 @@ def inspect_worker(  # ruff: ignore[too-many-return-statements]
         return WorkerState(record.phase, pid if isinstance(pid, int) else None, log)
     expected = data.get("start_identity")
     if not isinstance(pid, int) or not isinstance(expected, str) or not expected:
+        launcher = data.get("launcher_pid")
+        if isinstance(launcher, int) and _launcher_alive(launcher):
+            return WorkerState("starting", None, log)  # slow venv or imports
         started = data.get("launch_started_at")
         if isinstance(started, (int, float)) and time.time() - started > startup_grace(
             Path(record.repo)

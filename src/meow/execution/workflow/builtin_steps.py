@@ -20,6 +20,7 @@ from meow.execution.orchestrator import (
     _stage_baseline,
     _tester_results,
 )
+from meow.execution.run_failures import park_on_check_timeout
 from meow.infrastructure.cancellation import RunCancelled
 from meow.infrastructure.checks import (
     adopt_stage_artifacts,
@@ -250,6 +251,7 @@ async def verify(state, step):
         state.checks_results,
         state.checks_baseline,
     )
+    park_on_check_timeout(state.checks_results)
     status, verdict = _verify_verdict(state.checks_results)
     if status == "PASS" and not checks_current(
         state.checks_results,

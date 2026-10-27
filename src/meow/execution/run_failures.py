@@ -107,6 +107,17 @@ class InvalidConfigError(BlockingRunError, ValueError):
         super().__init__(message, cause="invalid_config")
 
 
+def park_on_check_timeout(results: list) -> None:
+    """A required check that timed out (after its rerun) is infrastructure
+    work, not a code failure: park the run instead of burning a fix round."""
+    timed_out = [r for r in results if r.required and r.timed_out]
+    if timed_out:
+        names = ", ".join(f"{r.kind} `{r.command}`" for r in timed_out)
+        raise TransientRunError(
+            f"required check timed out twice: {names}", cause="check_timeout"
+        )
+
+
 def _is_git_missing(exc: BaseException) -> bool:
     name = Path(str(getattr(exc, "filename", None) or "")).name.lower()
     return isinstance(exc, FileNotFoundError) and name in {"git", "git.exe"}
@@ -167,10 +178,12 @@ def _transient_os_error(exc: OSError) -> bool:
     return not isinstance(exc, _INPUT_OSERRORS) and exc.errno is None
 
 
-def _transient_leaf(exc: BaseException) -> bool:
+def _transient_leaf(exc: BaseException) -> bool:  # ruff: ignore[too-many-return-statements]
     from claude_agent_sdk import CLIConnectionError, ProcessError
 
     if isinstance(exc, (TransientRunError, ProcessError, CLIConnectionError)):
+        return True
+    if getattr(exc, "cause", None) == "setup_timeout":
         return True
     if isinstance(exc, (TimeoutError, subprocess.TimeoutExpired, GitTimeoutError)):
         return True
