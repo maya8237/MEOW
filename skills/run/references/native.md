@@ -56,7 +56,7 @@ For a saved native run, inspect and continue that same ID with `meow resume <run
    nonzero exit (e.g. uncommitted changes), report the message verbatim and
    stop. Keep `active_dir`, `plan_file`, `review_file`,
    `max_rounds`, `use_worktree` from the JSON; do all further work in `active_dir`.
-   Immediately call `meow native checkpoint preparing --request "<request>"
+   Immediately call `meow native checkpoint preparing --intent run --request "<request>"
    --work-dir "<project-path>" --active-dir "<active_dir>"` and keep its
    `run_id`. Reuse `--run-id <run_id>` for every later checkpoint.
    Pass `--target BRANCH` on this first checkpoint when explicitly requested;

@@ -180,3 +180,11 @@ sources, `--fix`, `--test`, and `--no-worktree`; it reviews the exact detached
 CI checkout and writes report/verdict artifacts. Stream `[reviewer]`/`[generator]`/
 `[review_fixer]` progress; report PASS or, after `max_rounds`, the review
 file path.
+
+## Continuation
+
+On entry, check `meow status --json` and `meow resume --parked` for existing
+parked runs. A command exiting `75` (or printing `MEOW_RETRY`): wait `retry_after`, then
+rerun its `next_command` or the same native helper, up to `managed_resumes`. Exit 1 /
+`MEOW_BLOCKED`: stop and report. Resume only when `meow status ID --json` gives
+no stop reason. Full rules: [native protocol](../_shared/native-mode.md#the-meow-native-helper).

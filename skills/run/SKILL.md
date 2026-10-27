@@ -108,26 +108,40 @@ If the user asks to disable tests, pass `--force-disable-tests`: it overrides
 For ordinary sprints, run from the project root (separate SDK sessions, headless):
 
 ```bash
-meow run "<feature request>" --name "<generated-feature-name>" --work-dir "<project-path>"
+meow run "<feature request>" --name "<generated-feature-name>" --background --work-dir "<project-path>"
 meow run --jira [ISSUE-KEY] --work-dir "<project-path>"   # Jira-sourced, retained branch
 ```
 
-**Watching a started run:** after launching any `meow run` (or `--orchestrate`)
-as a command from this session, create a recurring status check with
-`CronCreate` every 7 minutes (`*/7 * * * *`). Each tick runs
-`meow status <run_id> --work-dir "<project-path>"`, reports only meaningful
-changes (phase, task count, blockers, delivery), and surfaces failures. Stop
-the check with `CronDelete` once the run reaches a terminal state (delivered,
-failed, blocked, or cancelled) or the user cancels it. This is separate from
-scheduled runs, which still register through `/meow:schedule` and never
-sleep or poll in the session.
+**Launching and watching:** from a managing session, start ordinary runs with
+`--background` so a Bash timeout or compaction cannot kill them (orchestration
+rejects the flag and already detaches its sprints). After launching any
+`meow run` (or `--orchestrate`), create a recurring status check with
+`CronCreate` every 7 minutes (`*/7 * * * *`). Each tick: run
+`meow status ID --json`. For `retryable: true` with `settled` (parked)
+and `budget_left > 0`, run `next_command` exactly and report one line. For
+`retryable: false`, report `cause`, `last_failure` and the evidence paths, then stop the
+cron. Stop only on `complete`/`delivered`/`exhausted`/`cancelled` or `retryable: false`,
+with no stop on `failed` alone. Report only meaningful changes (phase, task
+count, blockers, delivery). Scheduled runs still register through
+`/meow:schedule` and never sleep or poll in the session.
+
+A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
+OSError-class failures: wait `retry_after` (it can be long for an API budget or rate
+limit; the cron simply skips ticks until then), then rerun the printed `next_command`
+or the same native helper, up to `managed_resumes` (default 6), and stop when
+`meow status ID --json` shows no progress. Exit 1 / `MEOW_BLOCKED` (including
+`stop=budget_exhausted`) means stop dependent work and report. Resume is attempted,
+not guaranteed: when status gives a reason (blocking `cause`, `not_resumed_reason`,
+budget exhausted, no progress, `not_resumable`, live driver), do not resume; report it.
+On entry, check `meow status --json` and `meow resume --parked` for existing
+parked runs before starting new work.
 
 **Resuming in CLI mode:** if the user asks to continue, resume, pick up, or
 build on existing code, a worktree, or an earlier plan (any wording), do not
 start a fresh run -- a plain `meow run --name X` plans from scratch in its own
 new worktree. When a saved run ID is available, inspect it with
-`meow status <run_id> --work-dir "<project-path>"`. Continue saved
-runs with `meow resume <run_id> --continue --work-dir
+`meow status <run_id> --json --work-dir "<project-path>"`. Continue saved
+runs (only when status gives no stop reason) with `meow resume <run_id> --continue --work-dir
 "<project-path>"`. If there is no saved run, look in
 `<project-path>/.worktrees/<name>/<docs_dir>` for a plan
 (`meow native latest-plan --work-dir "<project-path>" --active-dir
@@ -143,8 +157,8 @@ Runs execute automatically and commit/push verified work from their worktree.
 `-n` leaves changes uncommitted; `-nc` / `--no-worktree-commit` operates in the
 selected checkout and commits only; `-np` / `--no-worktree-push` operates there
 and commits/pushes. Existing linked worktrees selected with `--work-dir` are
-used directly. Add `-m` for plan approval (also when the user asks to review or approve the plan first), or `--background` to detach a run;
-background runs reject manual approval and lint-fix. `meow -u` updates MEOW.
+used directly. Add `-m` for plan approval (also when the user asks to review or approve the plan first);
+`--background` rejects manual approval and lint-fix. `meow -u` updates MEOW.
 Successful runs automatically retain the result and clean integrated task artifacts.
 Use `meow cleanup [RUN_ID]` to retry cleanup; omitted IDs scan saved runs.
 Report retained artifacts and their reasons; never force-delete unfinished work.

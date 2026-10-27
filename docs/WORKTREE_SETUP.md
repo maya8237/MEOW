@@ -22,6 +22,8 @@ Agents with `Bash` may install missing dependencies, repair `node_modules`, and
 raise `install_timeout` themselves; they must not switch Bun to `hoisted`.
 
 Failures retain the worktree and `.meow/worktree-setup.pending` for retry.
+A setup timeout parks the run (exit 75, `meow resume --parked` retries it); other
+setup errors block (exit 1, `MEOW_BLOCKED`).
 Successful setup is not repeated on ordinary reuse; completed copies are
 accepted when bytes match. Completed actions are journaled.
 

@@ -44,6 +44,11 @@ scheduling does not require loading it.
    fails, report the error; do not claim a timer exists or silently fall back to
    an in-session delay.
 
+Register `meow resume --parked --work-dir P` hourly beside scheduled runs (built-in
+triggers are one-shot: use OS cron/Task Scheduler) so parked runs continue unattended; check a run with `meow status ID --json`
+(`retryable`, `next_command`). A scheduled run exiting `75` is parked
+(`MEOW_RETRY`), not failed; exit 1 / `MEOW_BLOCKED` needs the user.
+
 Inspect schedules with `meow schedule list --work-dir "<project>"`. Change a
 pending schedule's time with `meow schedule edit <id> --at "<time>" --work-dir
 "<project>"`; resolve the time using the same timezone rules as creation. This
