@@ -115,21 +115,20 @@ meow run --jira [ISSUE-KEY] --work-dir "<project-path>"   # Jira-sourced, retain
 
 **Launching and watching:** from a managing session, start ordinary runs with
 `--background` so a Bash timeout or compaction cannot kill them (orchestration
-rejects the flag and already detaches its sprints). After launching any
-`meow run` (or `--orchestrate`), create a recurring status check with
-`CronCreate` every 7 minutes (`*/7 * * * *`). Each tick: run `meow status ID --json` and act only when
-`settled` is true.
-Settled with `retryable: true` and `budget_left > 0`: run `next_command` exactly,
-detached (host background execution, never the foreground; `meow resume` has no
-`--background`), and report one line. Settled with `retryable: false`: report
-`cause`, `last_failure`, `not_resumed_reason` and the evidence paths, then stop the
-cron. Not settled: keep watching and report only meaningful changes. Stop only on
-`complete`/`delivered`/`exhausted`/`cancelled` or settled `retryable: false`, with
-no stop on `failed` alone. Orchestrator IDs return only `phase`, `settled` and
-`next_command`: stop on settled; if the phase is unchanged across ticks, run
-`next_command` detached (a `DriverBusyError` refusal means a live driver owns it:
-expected and harmless).
-Scheduled runs still register through
+rejects the flag and already detaches its sprints). After launching any `meow run`
+(or `--orchestrate`), create a recurring status check with `CronCreate` every 7
+minutes (`*/7 * * * *`). Each tick: run `meow status ID --json` and act only when
+`settled` is true. Settled with `retryable: true` and `budget_left > 0`: run
+`next_command` exactly, detached (host background execution, never the foreground;
+`meow resume` has no `--background`), and report one line. Settled with `retryable:
+false`: report `cause`, `last_failure`, `not_resumed_reason` and the evidence paths,
+then stop the cron. Not settled: keep watching and report only meaningful changes.
+Stop only on `complete`/`delivered`/`exhausted`/`cancelled` or settled `retryable:
+false`, with no stop on `failed` alone. Orchestrator IDs return only `phase`,
+`settled` and `next_command`: stop on settled; if the phase is unchanged across
+ticks, run `next_command` detached. A `driver_busy` retry (`MEOW_RETRY` or helper
+error) means a live driver owns the run: keep watching, report that reason, and do
+not count it against `managed_resumes`. Scheduled runs still register through
 `/meow:schedule` and never sleep or poll in the session.
 
 A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare

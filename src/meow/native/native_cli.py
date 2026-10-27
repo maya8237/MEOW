@@ -13,7 +13,13 @@ import sys
 from contextlib import suppress
 from pathlib import Path
 
-from meow.execution.run_failures import classify_failure, recognised_transient
+from meow.execution.run_failures import (
+    DRIVER_BUSY,
+    DRIVER_BUSY_RETRY_AFTER,
+    classify_failure,
+    is_driver_busy,
+    recognised_transient,
+)
 from meow.execution.run_state import PARKED_PHASE, RunStore, reconcile_quietly
 from meow.native import native
 from meow.project.config import config_root, load_config
@@ -607,12 +613,19 @@ def run_native(args, argv: list[str] | None = None) -> None:
     except KeyboardInterrupt:
         raise SystemExit(130) from None
     except Exception as exc:  # every failure reaches the managing session
-        retryable, cause = _classify(exc)
+        busy = is_driver_busy(exc)  # a live driver owns it: not a failure
+        retryable, cause = (True, DRIVER_BUSY) if busy else _classify(exc)
         payload = {
             "error": f"meow native {args.native_command}: {exc}",
             "retryable": retryable,
             "cause": cause,
-            "retry_after": RETRY_AFTER if retryable else None,
+            "retry_after": (
+                DRIVER_BUSY_RETRY_AFTER
+                if cause == DRIVER_BUSY
+                else RETRY_AFTER
+                if retryable
+                else None
+            ),
             "command": ["meow", *(argv if argv is not None else sys.argv[1:])],
             "next_command": None,
         }

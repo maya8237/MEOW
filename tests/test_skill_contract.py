@@ -83,7 +83,7 @@ def test_tick_acts_only_on_settled_runs(path):
 def test_shared_tick_and_retry_wording_is_identical(path):
     text = _flat(path)
     for start, end in (
-        ("Each tick:", "expected and harmless)."),
+        ("Each tick:", "against `managed_resumes`."),
         ("A command exiting `75`", "detached or leave it to the hourly OS job."),
     ):
         block = text[text.index(start) : text.index(end) + len(end)]

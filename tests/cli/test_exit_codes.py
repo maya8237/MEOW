@@ -239,6 +239,22 @@ def test_record_free_timeout_is_retried(tmp_path, monkeypatch, capsys):
     assert payload["next_command"].startswith("meow run x")
 
 
+def test_driver_busy_refusal_is_a_retry_not_a_block(tmp_path, capsys):
+    from meow.execution.orchestration.store import DriverBusyError
+    from meow.execution.run_failures import DRIVER_BUSY_RETRY_AFTER
+
+    busy = DriverBusyError("Another driver already owns this orchestrator (cli)")
+    argv = ["resume", "abc123def456", "--continue"]
+    assert outcome_exit(tmp_path, "abc123def456", busy, argv) == EXIT_TEMPFAIL
+    err = capsys.readouterr().err
+    payload = _line(err, "MEOW_RETRY ")
+    assert payload["cause"] == "driver_busy"
+    assert payload["retry_after"] == DRIVER_BUSY_RETRY_AFTER
+    assert "driver" in payload["message"]
+    assert payload["next_command"].startswith("meow resume abc123def456")
+    assert "MEOW_BLOCKED" not in err
+
+
 def test_supervised_run_exit_follows_the_record(tmp_path, monkeypatch, capsys):
     repo, _store, record = _parked(tmp_path)
     monkeypatch.setenv("CLAUDECODE", "1")

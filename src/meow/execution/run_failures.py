@@ -81,6 +81,18 @@ _INPUT_OSERRORS = (
 _SAFE_ARG = re.compile(r"[\w@%+=:,./\\-]+")
 
 
+DRIVER_BUSY = "driver_busy"
+# About one status tick (`*/7`): the manager polls again once the owner may be done.
+DRIVER_BUSY_RETRY_AFTER = 420
+
+
+def is_driver_busy(exc: BaseException) -> bool:
+    """A refusal because a live driver owns the orchestrator: not a failure."""
+    from meow.execution.orchestration.store import DriverBusyError
+
+    return isinstance(exc, DriverBusyError)
+
+
 class TransientRunError(RuntimeError):
     """A retryable failure; `retry_after` (seconds) overrides the backoff."""
 

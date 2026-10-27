@@ -11,7 +11,8 @@ Future-time requests use [schedule](../schedule/SKILL.md) first. Formats:
 ## The `meow native` helper
 
 Helpers start no agents and print JSON on stdout; errors print one JSON line on
-stderr. If `meow` is missing, point to the README installer; do not guess a venv path. A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
+stderr. If `meow` is missing, point to the README installer; do not guess a venv
+path. A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
 OSError-class failures: wait `retry_after` (it can be long for an API budget or rate
 limit; the cron simply skips ticks until then), then run the printed `next_command`
 detached (host background execution), or rerun the same native helper, up to
@@ -112,38 +113,37 @@ confirmed stale/failed evidence. Isolate artifact-writing tests; preserve user f
 
 A round is one generate/fix step followed by review; an opening review counts
 as round 1. Keep one plan/report anchor. At each round start call
-`meow native round ANCHOR`; stop on `exhausted`. Reset only for a new or
-replanned sprint, never on resume. Use `--show`, not memory, to inspect.
-
-Generate/fix (skip until FAIL in review-first flows), lint, run required checks,
+`meow native round ANCHOR`; stop on `exhausted`. Reset only for a new or replanned
+sprint, never on resume. Use `--show`, not memory, to inspect. Generate/fix (skip until FAIL in review-first flows), lint, run required checks,
 dispatch a fresh reviewer, validate. PASS ends the loop. FAIL supplies the full
 review text to the next fix step: "The reviewer found issues. Fix them, then
 stop." Verify findings; report unsupported/out-of-scope ones. At the limit,
-report `max_rounds`, remaining findings, and review path.
-Failed checks skip reviewer dispatch and feed command output to the next fix round.
-Reuse current evidence after report-only writes; source edits rerun checks.
+report `max_rounds`, remaining findings, and review path. Failed checks skip
+reviewer dispatch and feed their output to the next fix round. Reuse current
+evidence after report-only writes; source edits rerun checks.
 
 ## Checkpoints, tester mode, and delivery
 
 Checkpoint before/after planner, generator, reviewer, tester, and required-check
-phases. Use `interrupted_mutation` for an interrupted edit; inspect and review
-the actual worktree against the saved plan before retrying. Keep failed or
-interrupted worktrees. Inspect journals with `meow status RUN_ID` or
-`meow resume RUN_ID`; continuation requires `--continue`. Never resume a
-`--intent plan` run. Before every resumed native step, call `meow native
-checkpoint parked --run-id ID --failure TEXT --work-dir P --active-dir A` when a
-subagent or tool crashes, then continue with `meow resume ID --continue --repair`
-(detached). Each tick: run `meow status ID --json` and act only when `settled` is true.
-Settled with `retryable: true` and `budget_left > 0`: run `next_command` exactly,
-detached (host background execution, never the foreground; `meow resume` has no
-`--background`), and report one line. Settled with `retryable: false`: report
-`cause`, `last_failure`, `not_resumed_reason` and the evidence paths, then stop the
-cron. Not settled: keep watching and report only meaningful changes. Stop only on
+phases. Use `interrupted_mutation` for an interrupted edit; inspect and review the
+actual worktree against the saved plan before retrying. Keep failed or interrupted
+worktrees. Inspect journals with `meow status RUN_ID` or `meow resume RUN_ID`;
+continuation requires `--continue`. Never resume a `--intent plan` run. Before every
+resumed native step, call `meow native checkpoint parked --run-id ID --failure TEXT
+--work-dir P --active-dir A` when a subagent or tool crashes, then continue with
+`meow resume ID --continue --repair` (detached). Each tick: run `meow status ID
+--json` and act only when `settled` is true. Settled with `retryable: true` and
+`budget_left > 0`: run `next_command` exactly, detached (host background execution,
+never the foreground; `meow resume` has no `--background`), and report one line.
+Settled with `retryable: false`: report `cause`, `last_failure`,
+`not_resumed_reason` and the evidence paths, then stop the cron. Not settled: keep
+watching and report only meaningful changes. Stop only on
 `complete`/`delivered`/`exhausted`/`cancelled` or settled `retryable: false`, with
 no stop on `failed` alone. Orchestrator IDs return only `phase`, `settled` and
 `next_command`: stop on settled; if the phase is unchanged across ticks, run
-`next_command` detached (a `DriverBusyError` refusal means a live driver owns it:
-expected and harmless).
+`next_command` detached. A `driver_busy` retry (`MEOW_RETRY` or helper error) means
+a live driver owns the run: keep watching, report that reason, and do not count it
+against `managed_resumes`.
 
 Before native run preparation, inspect `meow native verify`. `--test` or
 `tester.configured: true` routes runs to CLI so configured servers stay alive

@@ -95,7 +95,8 @@ A managing session starts runs with `--background` and polls `meow status ID --j
 and `budget_left > 0` it runs `next_command` detached; with `retryable: false`
 (or `not_resumed_reason` set) it reports `cause`, `last_failure` and evidence, and
 stops. On exit 75 it waits `retry_after`, up to `managed_resumes`, stopping on no
-progress (`attempts`, `no_progress`). Orchestrator status JSON has only `phase`,
+progress (`attempts`, `no_progress`). A `driver_busy` retry means a live driver owns
+the run: keep watching, do not count it. Orchestrator status JSON has only `phase`,
 `settled` and `next_command`. `meow resume --parked` does the same unattended
 and inline; run it detached or hourly via OS scheduling
 ([skills](../skills/schedule/SKILL.md)). Exit 75 includes bare transient

@@ -16,7 +16,10 @@ from pathlib import Path
 from meow.cli.resume_cli import _EXHAUSTED, budget_refusal
 from meow.execution.run_failures import (
     BLOCKING_CAUSES,
+    DRIVER_BUSY,
+    DRIVER_BUSY_RETRY_AFTER,
     classify_failure,
+    is_driver_busy,
     next_command,
     recognised_transient,
 )
@@ -142,7 +145,12 @@ def _emit(prefix: str, payload: dict) -> None:
     print(f"{prefix} {json.dumps(payload)}", file=sys.stderr, flush=True)
 
 
-def _retry(run_id: str | None, command: str | None, retry_after: object) -> int:
+def _retry(
+    run_id: str | None,
+    command: str | None,
+    retry_after: object,
+    extra: dict | None = None,
+) -> int:
     seconds = (
         retry_after
         if isinstance(retry_after, (int, float)) and not isinstance(retry_after, bool)
@@ -150,7 +158,12 @@ def _retry(run_id: str | None, command: str | None, retry_after: object) -> int:
     )
     _emit(
         "MEOW_RETRY",
-        {"run_id": run_id, "next_command": command, "retry_after": seconds},
+        {
+            "run_id": run_id,
+            "next_command": command,
+            "retry_after": seconds,
+            **(extra or {}),
+        },
     )
     return EXIT_TEMPFAIL
 
@@ -211,6 +224,10 @@ def outcome_exit(
 
 
 def _record_free_exit(run_id: str | None, exc: BaseException, argv: list[str]) -> int:
+    if is_driver_busy(exc):  # a live driver owns it: keep watching, no budget
+        extra = {"cause": DRIVER_BUSY, "message": str(exc)}
+        command = shlex.join(["meow", *argv])
+        return _retry(run_id, command, DRIVER_BUSY_RETRY_AFTER, extra)
     kind, cause = classify_failure(exc)
     if kind != "blocking" and recognised_transient(exc):
         return _retry(run_id, shlex.join(["meow", *argv]), None)

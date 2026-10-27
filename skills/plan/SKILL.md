@@ -46,9 +46,9 @@ Add `--no-worktree` to use the main repo instead of an isolated worktree. Report
 
 ## Continuation
 
-On entry, inspect saved run IDs with `meow status ID --json` (detach any
-`meow resume --parked`); never resume a `--intent plan` run. A native helper exiting `75`
-(or printing `MEOW_RETRY`): wait `retry_after`, then run its `next_command` detached (host background
-execution) or rerun the helper, up to
-`managed_resumes`. Exit 1 / `MEOW_BLOCKED`: stop and report. Full rules:
-[native protocol](../_shared/native-mode.md#the-meow-native-helper).
+On entry, inspect saved run IDs with `meow status ID --json` (detach any `meow
+resume --parked`); never resume a `--intent plan` run. A native helper exiting `75`
+(or printing `MEOW_RETRY`): wait `retry_after`, then run its `next_command` detached
+(host background execution) or rerun the helper, up to `managed_resumes`. Exit 1 /
+`MEOW_BLOCKED`: stop and report. Full rules: [native
+protocol](../_shared/native-mode.md#the-meow-native-helper).

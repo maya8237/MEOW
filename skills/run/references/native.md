@@ -12,7 +12,8 @@ or `tester.configured` is true, use [CLI mode](../SKILL.md#cli-mode): native mod
 cannot run the tester's server/agent lifecycle. CLI selects it by workflow and risk.
 Preserve the user's Jira, existing-plan, source-branch, and worktree options.
 For a saved native run, inspect and continue that same ID with `meow resume <run_id>
---continue --repair` (detached from a managing session); for an existing plan without a saved run use the documented
+--continue --repair` (detached from a managing session); for an existing plan
+without a saved run use the documented
 `--resume-at review --plan <plan_file>` flow, never a fresh sprint.
 
 1. **Request text**: whatever the user gave, unless they named a Jira issue

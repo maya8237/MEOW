@@ -247,3 +247,18 @@ def test_already_parked_run_failing_deterministically_exits_1(tmp_path):
     payload = _error(err)
     assert payload["retryable"] is False
     assert payload["next_command"] is None
+
+
+def test_native_helper_driver_busy_is_retryable_and_named(tmp_path):
+    from meow.execution.orchestration.store import DriverBusyError
+    from meow.execution.run_failures import DRIVER_BUSY, DRIVER_BUSY_RETRY_AFTER
+
+    repo = _repo(tmp_path)
+    busy = DriverBusyError("orchestrator abc is driven by a live cli driver")
+    with patch("meow.native.native.prepare", side_effect=busy):
+        code, _out, err = run_native("prepare", "--work-dir", str(repo))
+    assert code == EXIT_TEMPFAIL
+    payload = _error(err)
+    assert payload["cause"] == DRIVER_BUSY
+    assert payload["retry_after"] == DRIVER_BUSY_RETRY_AFTER
+    assert "live" in payload["error"]
