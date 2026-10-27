@@ -466,3 +466,38 @@ def resolve_review_comments(
             )
             resolved += 1
     return resolved
+
+
+def merge_shard_responses(responses: list[str]) -> str:
+    """Join shard reports under headings with one comments and one resolutions block.
+
+    Malformed or repeated blocks are left in place, so publishing rejects them.
+    """
+    pattern = re.compile(
+        r"^```meow-(comments|resolutions)\s*\n(.*?)^```\s*$", re.M | re.S
+    )
+    merged: dict[str, list] = {"comments": [], "resolutions": []}
+    seen = set()
+    sections = []
+    try:
+        for number, response in enumerate(responses, 1):
+            kinds = []
+            for kind, body in pattern.findall(response):
+                items = json.loads(body)
+                if not isinstance(items, list):
+                    raise ValueError(kind)
+                merged[kind].extend(items)
+                kinds.append(kind)
+            if len(kinds) != len(set(kinds)):
+                raise ValueError("repeated block")
+            seen.update(kinds)
+            body = pattern.sub("", response).strip()
+            sections.append(f"## Shard {number} of {len(responses)}\n\n{body}")
+    except ValueError:
+        return "\n\n".join(responses)
+    blocks = [
+        f"```meow-{kind}\n{json.dumps(merged[kind])}\n```"
+        for kind in ("comments", "resolutions")
+        if kind in seen
+    ]
+    return "\n\n".join(sections + blocks)

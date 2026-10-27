@@ -330,6 +330,14 @@ class ReviewerAgent(Agent):
             permission_mode="dontAsk",
         )
         prompt = f"Fixed diff:\n{context.diff or '(empty diff)'}"
+        if context.shard_label:
+            prompt += (
+                f"\n\nYou are reviewing shard {context.shard_label} of a diff too "
+                "large for one reviewer; other reviewers cover the other files. "
+                "Report issues only in the files of the diff above, and list "
+                "resolutions only for threads on those files. These other changed "
+                "files are context you may Read:\n" + "\n".join(context.other_files)
+            )
         if context.omitted_files:
             prompt += (
                 "\n\nThe full diff exceeded the size limit. These changed files are "

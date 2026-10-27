@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import subprocess
@@ -9,7 +10,16 @@ import pytest
 
 from meow.execution.run_state import RunStore
 from meow.infrastructure.usage import usage_scope
-from meow.integrations.ci_review import CiReviewError, prepare_ci_review, run_ci_review
+from meow.integrations.ci_comments import merge_shard_responses
+from meow.integrations.ci_review import (
+    CiReviewContext,
+    CiReviewError,
+    CiShard,
+    _review,
+    _sharded_diff,
+    prepare_ci_review,
+    run_ci_review,
+)
 
 
 def git(repo, *args):
@@ -329,15 +339,64 @@ def test_rewriting_dirty_index_without_worktree_change_invalidates_pass(checkout
     assert "checkout HEAD or files changed" in result.report_path.read_text()
 
 
-def test_oversized_diff_keeps_fitting_files_and_lists_the_rest(checkout):
-    repo, base, _, _ = checkout
-    (repo / "huge.txt").write_text("x\n" * 150_000)
-    (repo / "small.txt").write_text("small\n")
+def commit_files(repo, files):
+    for name, text in files.items():
+        (repo / name).write_text(text)
     git(repo, "add", ".")
-    git(repo, "commit", "-m", "big")
-    env = {**checkout[3], "CI_COMMIT_SHA": git(repo, "rev-parse", "HEAD")}
-    context = prepare_ci_review(repo, env, base, target_branch="dev")
+    git(repo, "commit", "-m", "more")
+    return git(repo, "rev-parse", "HEAD")
+
+
+def test_oversized_diff_is_sharded_and_unreviewable_files_listed(checkout):
+    repo, base, _, env = checkout
+    head = commit_files(repo, {"huge.txt": "x\n" * 150_000, "small.txt": "small\n"})
+    context = prepare_ci_review(
+        repo, {**env, "CI_COMMIT_SHA": head}, base, target_branch="dev"
+    )
     assert context.omitted_files == ("huge.txt",)
-    assert "small.txt" in context.diff
-    assert "file.txt" in context.diff
+    assert [s.files for s in context.shards] == [("file.txt", "small.txt")]
     assert "huge.txt" not in context.diff
+
+
+def test_shards_group_sorted_files_by_count(checkout, monkeypatch):
+    repo, base, _, _ = checkout
+    monkeypatch.setattr("meow.integrations.ci_review.FILES_PER_SHARD", 2)
+    monkeypatch.setattr("meow.integrations.ci_review.MAX_SHARDS", 2)
+    names = ["a/1.txt", "a/2.txt", "b/1.txt", "b/2.txt", "c.txt"]
+    for name in names:
+        (repo / name).parent.mkdir(exist_ok=True)
+    head = commit_files(repo, {name: "text\n" for name in names})
+    shards, omitted = _sharded_diff(repo, base, head)
+    assert [s.files for s in shards] == [("a/1.txt", "a/2.txt"), ("b/1.txt", "b/2.txt")]
+    assert omitted == ("c.txt", "file.txt")
+
+
+def test_sharded_review_merges_verdicts_and_comment_blocks(checkout):
+    repo, base, source, _ = checkout
+    shards = (CiShard(("a.py",), "diff a"), CiShard(("b.py",), "diff b"))
+    context = CiReviewContext(
+        source, "feature/x", "dev", base, base, "d", shards=shards
+    )
+    replies = {
+        "diff a": ("PASS", 'ok A\n```meow-comments\n[{"path": "a.py"}]\n```'),
+        "diff b": ("FAIL", 'bad B\n```meow-comments\n[{"path": "b.py"}]\n```'),
+    }
+
+    async def review(self, ctx):
+        await asyncio.sleep(0)
+        assert ctx.shard_label and ctx.other_files
+        return replies[ctx.diff]
+
+    with patch("meow.integrations.ci_review.ReviewerAgent.review_ci_branch", review):
+        verdict, text = asyncio.run(_review(repo, {}, context))
+    assert verdict == "FAIL"
+    assert text.count("```meow-comments") == 1
+    assert '"a.py"' in text and '"b.py"' in text
+    assert "## Shard 2 of 2" in text
+
+
+def test_merge_leaves_malformed_blocks_for_publishing_to_reject():
+    broken = "```meow-comments\nnot json\n```"
+    merged = merge_shard_responses([broken, "```meow-comments\n[]\n```"])
+    expected_blocks = 2
+    assert merged.count("```meow-comments") == expected_blocks

@@ -8,7 +8,7 @@ import re
 import subprocess
 import tempfile
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from meow.agents.base import ProjectContext
@@ -16,6 +16,8 @@ from meow.agents.reviewer import ReviewerAgent
 
 MAX_DIFF = 250_000
 MAX_REPORT = 40_000
+FILES_PER_SHARD = 25
+MAX_SHARDS = 4
 
 
 class CiReviewError(RuntimeError):
@@ -24,6 +26,12 @@ class CiReviewError(RuntimeError):
 
 class OutputTooLarge(CiReviewError):
     """Git output exceeded the review size limit."""
+
+
+@dataclass(frozen=True)
+class CiShard:
+    files: tuple[str, ...]
+    diff: str
 
 
 @dataclass(frozen=True)
@@ -40,6 +48,9 @@ class CiReviewContext:
     post_comments: bool = False
     existing_comments: str = ""
     omitted_files: tuple[str, ...] = ()
+    shards: tuple[CiShard, ...] = ()
+    other_files: tuple[str, ...] = ()
+    shard_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -64,26 +75,50 @@ def _git_bytes(repo: Path, *args: str) -> bytes:
     return result.stdout
 
 
-def _bounded_diff(repo: Path, base: str, head: str) -> tuple[str, tuple[str, ...]]:
-    """Whole files of the local diff that fit the budget, plus the omitted paths."""
+def _file_patch(repo: Path, base: str, head: str, name: str) -> str:
+    """One file's diff, or "" when it alone exceeds the review size limit."""
+    try:
+        return _git(
+            repo, "diff", "--no-ext-diff", "--no-renames", base, head, "--", name
+        )
+    except OutputTooLarge:
+        return ""
+
+
+def _sharded_diff(
+    repo: Path, base: str, head: str
+) -> tuple[tuple[CiShard, ...], tuple[str, ...]]:
+    """Group changed files by path into reviewer shards; return unreviewable paths.
+
+    A shard holds up to FILES_PER_SHARD files, starting a new one early only if
+    the next file would overflow the prompt budget. Files beyond MAX_SHARDS, or
+    too large alone, are omitted.
+    """
     names = _git_bytes(
         repo, "diff", "--no-ext-diff", "--no-renames", "--name-only", "-z", base, head
     )
-    parts, omitted, size = [], [], 0
-    for raw in filter(None, names.split(b"\0")):
-        name = os.fsdecode(raw)
-        try:
-            patch = _git(
-                repo, "diff", "--no-ext-diff", "--no-renames", base, head, "--", name
-            )
-        except OutputTooLarge:
-            patch = ""
-        if not patch or size + len(patch) > MAX_DIFF:
+    shards: list[tuple[list[str], list[str]]] = [([], [])]
+    omitted, size = [], 0
+    for name in sorted(os.fsdecode(raw) for raw in names.split(b"\0") if raw):
+        patch = _file_patch(repo, base, head, name)
+        if not patch:
             omitted.append(name)
             continue
-        parts.append(patch)
+        files, patches = shards[-1]
+        if files and (len(files) >= FILES_PER_SHARD or size + len(patch) > MAX_DIFF):
+            if len(shards) == MAX_SHARDS:
+                omitted.append(name)
+                continue
+            shards.append(([], []))
+            files, patches = shards[-1]
+            size = 0
+        files.append(name)
+        patches.append(patch)
         size += len(patch)
-    return "\n".join(parts), tuple(omitted)
+    return (
+        tuple(CiShard(tuple(f), "\n".join(p)) for f, p in shards if f),
+        tuple(omitted),
+    )
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -125,11 +160,13 @@ def prepare_ci_review(  # ruff: ignore[complex-structure, too-many-statements, t
         base = _git(repo, "merge-base", target_sha, head)
     except CiReviewError as exc:
         raise CiReviewError("target comparison history unavailable") from exc
+    shards: tuple[CiShard, ...] = ()
     omitted: tuple[str, ...] = ()
     try:
         diff = _git(repo, "diff", "--no-ext-diff", base, head, "--")
     except OutputTooLarge:
-        diff, omitted = _bounded_diff(repo, base, head)
+        shards, omitted = _sharded_diff(repo, base, head)
+        diff = "\n".join(shard.diff for shard in shards)
     mr_env = env if source == "merge_request_event" else {}
     return CiReviewContext(
         head,
@@ -143,6 +180,7 @@ def prepare_ci_review(  # ruff: ignore[complex-structure, too-many-statements, t
             mr_env.get("CI_MERGE_REQUEST_DESCRIPTION_IS_TRUNCATED") == "true"
         ),
         omitted_files=omitted,
+        shards=shards,
     )
 
 
@@ -201,6 +239,41 @@ def _safe_text(
         ):
             value = value.replace(secret, "[REDACTED]")
     return value[:limit]
+
+
+async def _review(
+    repo: Path, config: dict, context: CiReviewContext
+) -> tuple[str, str]:
+    """One reviewer, or one per shard in parallel when the diff was split."""
+
+    def reviewer() -> ReviewerAgent:
+        return ReviewerAgent(ProjectContext(repo, config))
+
+    if not context.shards:
+        return await reviewer().review_ci_branch(context)
+    everything = [name for shard in context.shards for name in shard.files]
+    contexts = [
+        replace(
+            context,
+            diff=shard.diff,
+            shards=(),
+            other_files=tuple(n for n in everything if n not in shard.files),
+            shard_label=f"{number} of {len(context.shards)}",
+        )
+        for number, shard in enumerate(context.shards, 1)
+    ]
+    results = await asyncio.gather(*(reviewer().review_ci_branch(c) for c in contexts))
+    verdicts = [verdict for verdict, _ in results]
+    verdict = (
+        "FAIL"
+        if "FAIL" in verdicts
+        else "PASS"
+        if all(v == "PASS" for v in verdicts)
+        else "UNVERIFIED"
+    )
+    from meow.integrations.ci_comments import merge_shard_responses
+
+    return verdict, merge_shard_responses([text for _, text in results])
 
 
 def _publish_comments(
@@ -275,9 +348,7 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
             if len(plan_text) > MAX_DIFF:
                 raise CiReviewError("plan file exceeds review size limit")
             context = CiReviewContext(**{**context.__dict__, "plan_text": plan_text})
-        verdict, response = asyncio.run(
-            ReviewerAgent(ProjectContext(repo, config)).review_ci_branch(context)
-        )
+        verdict, response = asyncio.run(_review(repo, config, context))
         if _snapshot(repo) != before:
             raise CiReviewError("checkout HEAD or files changed during review")
         if verdict not in {"PASS", "FAIL"}:
