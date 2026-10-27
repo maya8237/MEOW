@@ -5,9 +5,8 @@ Read this for native execution. `plan`, `review`, and `lint` default to native;
 Orchestrator task sprints remain detached CLI workers. Named workflows,
 including `quick`, execute through CLI ([WORKFLOWS.md](../../docs/WORKFLOWS.md)).
 
-Future-time requests use [schedule](../schedule/SKILL.md) before starting work.
-Configuration and definition formats live in [INTEGRATIONS.md](../../docs/INTEGRATIONS.md)
-and [WORKFLOWS.md](../../docs/WORKFLOWS.md); load relevant sections as needed.
+Future-time requests use [schedule](../schedule/SKILL.md) first. Config and
+definition formats: [INTEGRATIONS.md](../../docs/INTEGRATIONS.md), [WORKFLOWS.md](../../docs/WORKFLOWS.md).
 
 ## The `meow native` helper
 
@@ -75,7 +74,8 @@ mappings. Use the host's subagent API when tool names differ.
 | Generator (`generator`) | You. Use `superpowers:executing-plans`, `superpowers:test-driven-development`, `superpowers:verification-before-completion`; use `superpowers:systematic-debugging` on failures and `superpowers:receiving-code-review` before fixes. Stay within the contract; do not commit or grade your work. |
 | Reviewer | Fresh subagent every round; use `reviewer-plan`, `reviewer-prompt`, `reviewer-mr`, or `reviewer-branch` as the skill directs. |
 | Explorer (`explorer`) | Optional read-only subagent; use resolved prompt/model, never raw `prepare.models.explorer`. |
-| Review / lint fixer (`review-fixer`, `lint-fixer`) | You, no second agent; verify findings, smallest in-scope edits. |
+| Review fixer (`review-fixer`) | You; verify findings and make the smallest in-scope edits. |
+| Lint fixer (`lint-fixer`) | You; fix lint without a second agent. |
 | Decomposer / Triage | You; read-only except the output/decision file named by the orchestrator prompt. |
 | Integrator | Fresh subagent per conflict; only Read/Grep/Glob/Edit/Write, only listed paths, never git. |
 | Objective reviewer | Fresh subagent every round with returned orchestrator instructions/tools. |
