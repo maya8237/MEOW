@@ -295,6 +295,7 @@ async def checks(state):
         "checks_finished",
         results={"checks": [asdict(item) for item in state.checks_results]},
     )
+    park_on_check_timeout(state.checks_results)
     if not evidence_ready(state):
         raise RuntimeError(
             "Required checks, review, or tester evidence failed; inspect meow status"

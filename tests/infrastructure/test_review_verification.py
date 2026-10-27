@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -191,3 +192,19 @@ def test_starting_live_worker_is_not_relaunched_after_startup_grace(
     status, reserved = api._reserve(tmp_path, api._normalized(config))
     assert not reserved
     assert status["active"]
+
+
+def test_review_evidence_parks_on_a_timed_out_required_check(tmp_path, monkeypatch):
+    from meow.execution.run_failures import TransientRunError
+    from meow.execution.run_state import CheckResult
+
+    api = _api()
+    config = _config("build", "pass")
+    timed_out = CheckResult("build", "x", True, None, 1.0, "", "r", "f", True)
+
+    fake = AsyncMock(return_value=[timed_out])
+
+    monkeypatch.setattr(api, "run_final_checks", fake)
+    with pytest.raises(TransientRunError) as caught:
+        asyncio.run(api.review_evidence(tmp_path, config))
+    assert caught.value.cause == "check_timeout"

@@ -1,7 +1,7 @@
 import asyncio
 import subprocess
 import sys
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -147,3 +147,45 @@ def test_tester_reuses_commands_but_reruns_after_source_changes(tmp_path):
         assert counter.read_text(encoding="utf-8") == "xx"
 
     asyncio.run(exercise())
+
+
+def test_verify_step_parks_when_a_required_check_times_out(tmp_path):
+    from meow.execution.run_failures import TransientRunError, classify_failure
+    from meow.execution.run_state import CheckResult
+    from meow.execution.workflow import builtin_steps
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow/config.toml").write_text("", encoding="utf-8")
+    config = load_config(tmp_path)
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="main"
+    )
+    state = RunState(
+        Sprint(tmp_path, config, None, None),
+        store,
+        record.id,
+        plan_file=tmp_path / "plan.md",
+        checks_dir=tmp_path,
+    )
+    timed_out = CheckResult("lint", "x", True, None, 1.0, "", "r", "f", True)
+
+    fake = AsyncMock(return_value=[timed_out])
+
+    with (
+        patch("meow.execution.workflow.builtin_steps.run_final_checks", new=fake),
+        pytest.raises(TransientRunError) as caught,
+    ):
+        asyncio.run(builtin_steps.verify(state, None))
+    assert classify_failure(caught.value) == ("transient", "check_timeout")
+    with (
+        patch("meow.execution.workflow.builtin_steps.run_final_checks", new=fake),
+        patch(
+            "meow.execution.workflow.builtin_steps.reusable_results",
+            new=AsyncMock(return_value=None),
+        ),
+        pytest.raises(TransientRunError) as caught,
+    ):
+        asyncio.run(builtin_steps.checks(state))
+    assert caught.value.cause == "check_timeout"

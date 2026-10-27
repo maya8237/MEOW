@@ -20,6 +20,7 @@ from meow.execution.run_state import (
     TERMINAL_PHASES,
     RunRecord,
     RunStore,
+    launcher_starting,
     park_crashed,
     run_owner_alive,
     startup_grace,
@@ -57,10 +58,6 @@ class WorkerState:
     log: str | None
 
 
-def _launcher_alive(pid: int) -> bool:
-    return _process_identity(pid) is not None
-
-
 def inspect_worker(  # ruff: ignore[too-many-return-statements]
     record: RunRecord, *, include_terminal: bool = False
 ) -> WorkerState:
@@ -73,8 +70,7 @@ def inspect_worker(  # ruff: ignore[too-many-return-statements]
         return WorkerState(record.phase, pid if isinstance(pid, int) else None, log)
     expected = data.get("start_identity")
     if not isinstance(pid, int) or not isinstance(expected, str) or not expected:
-        launcher = data.get("launcher_pid")
-        if isinstance(launcher, int) and _launcher_alive(launcher):
+        if launcher_starting(data, Path(record.repo)):
             return WorkerState("starting", None, log)  # slow venv or imports
         started = data.get("launch_started_at")
         if isinstance(started, (int, float)) and time.time() - started > startup_grace(
@@ -209,7 +205,12 @@ def _spawn_worker(store: RunStore, repo: Path, run_id: str, argv: list[str]) -> 
                 creationflags=creationflags,
                 close_fds=True,
             )
-        store.update_background(run_id, launcher_pid=process.pid, state="starting")
+        store.update_background(
+            run_id,
+            launcher_pid=process.pid,
+            launcher_identity=_process_identity(process.pid),
+            state="starting",
+        )
     except (OSError, BackgroundError) as exc:
         if process is not None and process.poll() is None:
             process.terminate()

@@ -24,7 +24,7 @@ def _name(arg: str) -> str:
 
 # Leading argv (after the program name) that marks an environment command.
 _ENV_PREFIXES = {
-    "python": [["-m", "venv"], ["-m", "virtualenv"]],
+    "python": [["-m", "venv"], ["-m", "virtualenv"], ["-m", "pip", "install"]],
     "uv": [["sync"], ["venv"], ["pip", "install"]],
     "pip": [["install"]],
     "poetry": [["install"]],
@@ -60,7 +60,9 @@ def _interpreter(path: Path) -> Path:
 
 
 def venv_broken(path: Path) -> bool:
-    """A venv without `pyvenv.cfg`, or whose interpreter will not run."""
+    """A venv without `pyvenv.cfg`, or whose interpreter exits non-zero.
+
+    A probe that merely times out is a slow machine, not a broken venv."""
     if not (path / "pyvenv.cfg").is_file():
         return True
     try:
@@ -72,17 +74,40 @@ def venv_broken(path: Path) -> bool:
             check=False,
             env=dict(os.environ),
         )
+    except subprocess.TimeoutExpired:
+        return False
     except (OSError, subprocess.SubprocessError):
         return True
     return result.returncode != 0
 
 
+def _tracked(worktree: Path, path: Path) -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--", path.name],
+            cwd=worktree,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return True  # cannot tell: keep it
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
 def repair_venvs(worktree: Path) -> list[Path]:
-    """Remove each broken `.venv`/`venv` directly under the worktree."""
+    """Remove each broken `.venv`/`venv` directly under the worktree that git
+    does not track; return only the directories actually removed."""
     removed = []
     for name in (".venv", "venv"):
         path = worktree / name
-        if path.is_dir() and not path.is_symlink() and venv_broken(path):
-            shutil.rmtree(path, ignore_errors=True)
-            removed.append(path)
+        if not path.is_dir() or path.is_symlink() or not venv_broken(path):
+            continue
+        if _tracked(worktree, path):
+            continue
+        shutil.rmtree(path, ignore_errors=True)
+        if path.exists():
+            continue
+        removed.append(path)
     return removed

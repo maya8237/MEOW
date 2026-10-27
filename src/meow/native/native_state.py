@@ -11,6 +11,7 @@ from pathlib import Path
 
 from meow.execution.cleanup import cleanup_completed
 from meow.execution.delivery import deliver_verified_run
+from meow.execution.run_failures import park_on_check_timeout
 from meow.execution.run_state import PARKED_PHASE, RunStateError, RunStore
 from meow.infrastructure.checks import (
     adopt_stage_artifacts,
@@ -257,6 +258,7 @@ async def finalize(  # ruff: ignore[too-many-statements, complex-structure, too-
         await asyncio.to_thread(
             adopt_stage_artifacts, store, run_id, active_dir, baseline
         )
+        park_on_check_timeout(results)
     except BaseException as exc:
         from meow.execution.sprint_runner import _settle_failure
 

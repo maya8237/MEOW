@@ -72,11 +72,13 @@ def test_launch_creates_checkpoint_and_worker_log(tmp_path, monkeypatch):
         return SimpleNamespace(pid=worker_pid)
 
     monkeypatch.setattr(background.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(background, "_process_identity", lambda _pid: "birth")
     run_id = background.launch_background(
         tmp_path, ["run", "feature", "--name", "x", "--background"]
     )
     record = RunStore(tmp_path).load(run_id)
     assert record.background["launcher_pid"] == worker_pid
+    assert record.background["launcher_identity"] == "birth"
     assert record.background["state"] == "starting"
     assert (RunStore(tmp_path).directory / f"{run_id}.log").is_file()
     assert spawned[0][0][:3] == [sys.executable, "-u", "-c"]
@@ -893,7 +895,7 @@ def test_detach_command_passes_env_through(tmp_path, monkeypatch):
     assert seen == [{"MARK": "1"}, None]  # None inherits the caller's environment
 
 
-def test_slow_venv_worker_start_is_not_interrupted(tmp_path, monkeypatch):
+def _starting_run(tmp_path, **background_fields):
     store = RunStore(tmp_path)
     record = store.create(
         source="prompt",
@@ -902,13 +904,54 @@ def test_slow_venv_worker_start_is_not_interrupted(tmp_path, monkeypatch):
         worktree=tmp_path,
         branch="dev",
     )
-    store.update_background(
-        record.id, launcher_pid=4242, launch_started_at=time.time() - 120
+    store.update_background(record.id, **background_fields)
+    return store, record
+
+
+def _identity(monkeypatch, value):
+    from meow.execution import run_state
+
+    monkeypatch.setattr(background, "_process_identity", lambda _pid: value)
+    monkeypatch.setattr(run_state, "process_identity", lambda _pid: value)
+
+
+def test_slow_venv_worker_start_is_not_interrupted(tmp_path, monkeypatch):
+    store, record = _starting_run(
+        tmp_path,
+        launcher_pid=4242,
+        launcher_identity="alive",
+        launch_started_at=time.time() - 120,
     )
-    monkeypatch.setattr(background, "_process_identity", lambda _pid: "alive")
+    _identity(monkeypatch, "alive")
     assert background.inspect_worker(store.load(record.id)).state == "starting"
     assert background.reconcile_worker(store, record.id).state == "starting"
     assert store.load(record.id).phase != "parked"
-    monkeypatch.setattr(background, "_process_identity", lambda _pid: None)
+    _identity(monkeypatch, None)
     store.update_background(record.id, launch_started_at=time.time() - 1000)
     assert background.inspect_worker(store.load(record.id)).state == "interrupted"
+
+
+def test_reused_launcher_pid_is_not_a_live_launcher(tmp_path, monkeypatch):
+    store, record = _starting_run(
+        tmp_path,
+        launcher_pid=4242,
+        launcher_identity="original",
+        launch_started_at=time.time() - 1000,
+    )
+    _identity(monkeypatch, "someone-else")
+    assert background.inspect_worker(store.load(record.id)).state == "interrupted"
+    assert background.reconcile_worker(store, record.id).state == "interrupted"
+    assert store.load(record.id).phase == "parked"
+
+
+def test_hung_launcher_past_the_ceiling_is_interrupted(tmp_path, monkeypatch):
+    store, record = _starting_run(
+        tmp_path,
+        launcher_pid=4242,
+        launcher_identity="alive",
+        launch_started_at=time.time() - 3600,
+    )
+    _identity(monkeypatch, "alive")
+    assert background.inspect_worker(store.load(record.id)).state == "interrupted"
+    assert background.reconcile_worker(store, record.id).state == "interrupted"
+    assert store.load(record.id).phase == "parked"

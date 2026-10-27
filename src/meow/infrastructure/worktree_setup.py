@@ -200,7 +200,7 @@ def _run_setup_command(argv: list[str], worktree: Path, timeout: float | None) -
             raise WorktreeSetupError(
                 f"setup command timed out twice: {argv[0]}", cause="setup_timeout"
             )
-        repaired = repair_venvs(worktree)
+        repaired = repair_venvs(worktree) if env_command else []
         logger.warning(
             "setup_command_timeout_retry",
             command=argv[0],

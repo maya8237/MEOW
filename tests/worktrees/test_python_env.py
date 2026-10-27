@@ -26,6 +26,8 @@ from meow.infrastructure.worktree_setup import (
         ["uv", "venv"],
         ["uv", "pip", "install", "-e", "."],
         ["pip", "install", "-r", "r.txt"],
+        ["python", "-m", "pip", "install", "x"],
+        ["py", "-m", "pip", "install", "x"],
         ["poetry", "install"],
         ["pdm", "install"],
         ["hatch", "env", "create"],
@@ -121,3 +123,39 @@ def test_venv_without_pyvenv_cfg_is_broken_and_healthy_one_is_kept(tmp_path):
     assert not venv_broken(good)
     assert repair_venvs(tmp_path) == [bad]
     assert good.exists() and not bad.exists()
+
+
+def test_repair_keeps_tracked_dirs_and_reports_only_removed(tmp_path):
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    tracked = tmp_path / "venv"
+    tracked.mkdir()
+    (tracked / "data.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "venv"], cwd=tmp_path, check=True)
+    broken = tmp_path / ".venv"
+    broken.mkdir()
+    assert repair_venvs(tmp_path) == [broken]
+    assert tracked.exists()
+
+
+def test_slow_probe_does_not_delete_a_venv(tmp_path, monkeypatch):
+    import subprocess
+
+    from meow.infrastructure import python_env
+
+    (tmp_path / "pyvenv.cfg").write_text("home = x", encoding="utf-8")
+
+    def slow(*_a, **_k):
+        raise subprocess.TimeoutExpired("python", 60)
+
+    monkeypatch.setattr(python_env.subprocess, "run", slow)
+    assert not venv_broken(tmp_path)
+
+
+def test_non_env_timeout_does_not_repair_venvs(tmp_path, monkeypatch):
+    broken = tmp_path / ".venv"
+    broken.mkdir()
+    _stub(monkeypatch, [(None, "", True), (0, "", False)])
+    _setup(tmp_path, "make", "prep")
+    assert broken.exists()

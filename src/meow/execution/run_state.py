@@ -542,6 +542,23 @@ def startup_grace(repo: Path) -> float:
         return _DEFAULT_STARTUP_GRACE
 
 
+_LAUNCHER_CEILING_SECONDS = 1800
+
+
+def launcher_starting(background: dict, repo: Path) -> bool:
+    """True while the launched worker process itself (matched by start
+    identity, so a reused PID never counts) is alive and within
+    `max(10 x grace, 30 min)` of launch; a hung launcher is then dead."""
+    pid, identity = background.get("launcher_pid"), background.get("launcher_identity")
+    started = background.get("launch_started_at")
+    if not (isinstance(pid, int) and isinstance(identity, str) and identity):
+        return False
+    ceiling = max(startup_grace(repo) * 10, _LAUNCHER_CEILING_SECONDS)
+    if isinstance(started, (int, float)) and time.time() - started > ceiling:
+        return False
+    return process_identity(pid) == identity
+
+
 def run_owner_alive(record: RunRecord) -> bool | None:
     """True while a driver or background worker owns the run; False when every
     recorded owner died; None when no owner was ever recorded (native runs)."""
@@ -551,10 +568,7 @@ def run_owner_alive(record: RunRecord) -> bool | None:
         alive = _owner_alive(background)
         if alive is None:  # launched, not registered yet
             started = background.get("launch_started_at")
-            launcher = background.get("launcher_pid")
-            alive = (
-                isinstance(launcher, int) and process_identity(launcher) is not None
-            ) or not (
+            alive = launcher_starting(background, Path(record.repo)) or not (
                 isinstance(started, (int, float))
                 and time.time() - started > startup_grace(Path(record.repo))
             )
