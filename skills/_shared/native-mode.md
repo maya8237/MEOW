@@ -5,45 +5,44 @@ Read this for native execution. `plan`, `review`, and `lint` default to native;
 Orchestrator task sprints remain detached CLI workers. Named workflows,
 including `quick`, execute through CLI ([WORKFLOWS.md](../../docs/WORKFLOWS.md)).
 
-Future-time requests use [schedule](../schedule/SKILL.md) first. Config and
-definition formats: [INTEGRATIONS.md](../../docs/INTEGRATIONS.md), [WORKFLOWS.md](../../docs/WORKFLOWS.md).
+Future-time requests use [schedule](../schedule/SKILL.md) first. Formats:
+[INTEGRATIONS.md](../../docs/INTEGRATIONS.md), [WORKFLOWS.md](../../docs/WORKFLOWS.md).
 
 ## The `meow native` helper
 
-Helpers start no agents and print JSON on stdout; errors print one JSON line
-on stderr. If `meow` is missing, point to the README installer; do not guess a
-venv path. A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
+Helpers start no agents and print JSON on stdout; errors print one JSON line on
+stderr. If `meow` is missing, point to the README installer; do not guess a venv path. A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
 OSError-class failures: wait `retry_after` (it can be long for an API budget or rate
-limit; the cron simply skips ticks until then), then rerun the printed `next_command`
-or the same native helper, up to `managed_resumes` (default 6), and stop when
-`meow status ID --json` shows no progress (`attempts` not reset, or `cause` /
-`not_resumed_reason` `no_progress`). Exit 1 / `MEOW_BLOCKED` (including
-`stop=budget_exhausted`) means stop dependent work and report. Exit 3 (pushed, MR not
-opened): report the manual link, do not retry. Exit 130: interrupted, report it.
-Resume is attempted, not guaranteed: when status gives a reason (blocking `cause`,
-`not_resumed_reason`, budget exhausted, no progress, `not_resumable`, live driver),
-do not resume; report it.
-On entry, inspect a saved run ID with `meow status ID --json` (bare `meow status`
-shows only the latest run). `meow resume --parked` acts on every parked run: run it
-detached or leave it to the hourly OS job.
-Use `COMMAND --help` for flags. Pass `--work-dir PATH` for the project root and
-`--active-dir PATH` for the prepared worktree; keep them consistent.
+limit; the cron simply skips ticks until then), then run the printed `next_command`
+detached (host background execution), or rerun the same native helper, up to
+`managed_resumes` (default 6), and stop when `meow status ID --json` shows no
+progress (`attempts` not reset, or `cause` / `not_resumed_reason` `no_progress`).
+Exit 1 / `MEOW_BLOCKED` (including `stop=budget_exhausted`) means stop dependent
+work and report. Exit 3 (pushed, MR not opened): report the manual link, do not
+retry. Exit 130: interrupted, report it. Resume is attempted, not guaranteed: when
+status gives a reason (blocking `cause`, `not_resumed_reason`, budget exhausted, no
+progress, `not_resumable`, live driver), do not resume; report it. A resume the user
+asks for (`meow resume … --continue`) also runs detached from a managing session. On
+entry, inspect a saved run ID with `meow status ID --json` (bare `meow status` shows
+only the latest run). `meow resume --parked` acts on every parked run: run it
+detached or leave it to the hourly OS job. Use `COMMAND --help` for flags. Pass
+`--work-dir PATH` for the project root and `--active-dir PATH` for the prepared
+worktree; keep them consistent.
 
 | Command | Purpose |
 |---|---|
 | `prepare` | Guards, onboarding, setup, worktree; retain returned `name`, `active_dir`, `use_worktree`, `docs_dir`, `plan_file`, `review_file`, `max_rounds` |
 | `verify` | Config/launcher readiness without starting tests, servers, agents, or MCP; `ready_unchecked` is not execution/connectivity proof |
-| `workflow NAME` | Resolved workflow scope, fingerprint, and steps |
+| `onboard-status` / `run COMMAND` | Base setup state and add-on gaps / supervisor helpers (below) |
+| `workflow NAME` / `custom --role ROLE` | Resolved workflow scope, fingerprint, steps / applicable custom skills, capped delegates, scope overrides |
 | `latest-plan` / `latest-review` | Find artifacts in `docs_dir`; review JSON has source `flavor` |
 | `prompt ROLE` | Resolved SDK instructions, query, model, tools, skills, delegates, session; `reviewer-mr` returns a `query_template` instead of a query |
-| `custom --role ROLE` | Applicable custom skills, capped delegates, scope overrides |
 | `lint` | Project check; `--file PATH` auto-fixes one file, `--fix` auto-fixes project-wide, `--all-blocking` treats advisory commands as blocking |
 | `review-checks` | Required verification; `--background` starts a durable job, `--status` reads state and log/result paths |
 | `verdict FILE` | Validate the report and current verification/coverage bindings; returns status/summary |
 | `round ANCHOR` | Advance durable counter; `--show` inspects, `--reset` starts fresh |
 | `checkpoint PHASE` | Atomic transition; omit `--run-id` only to create a run (pass `--intent run` or `plan`), then reuse the returned ID; `parked --failure TEXT` records a crash |
 | `finalize RUN_ID` / `push BRANCH` | Revalidate evidence and gates, then deliver when eligible / push a named branch |
-| `onboard-status` / `run COMMAND` | Base setup state and add-on gaps / supervisor helpers (see below) |
 
 `prepare` applies setup before returning. Failed setup retains the worktree for
 retry; successful setup is not repeated. Missing Node dependencies install (new/reused
@@ -83,19 +82,19 @@ mappings. Use the host's subagent API when tool names differ.
 
 ## Lint discipline and reviewer dispatch
 
-1. After every source Write/Edit, run `meow native lint --file PATH` in
-   `active_dir`. Fix reported problems before proceeding.
+1. After every source Write/Edit, run `meow native lint --file PATH` in `active_dir`;
+   fix reported problems first.
 2. Before a local reviewer prompt, run project-wide `meow native lint` and fix
-   `blocking` findings; `informational` findings do not block. The prompt
-   carries lint evidence so the reviewer need not rerun it.
+   `blocking` findings (`informational` ones do not block). The prompt carries lint
+   evidence so the reviewer need not rerun it.
 3. Run `meow native review-checks --background` with the same directory flags.
    Inspect `review-checks --status` until current required lint/test/build
-   evidence is complete. Reuse unchanged passing evidence. Pending/interrupted
-   checks are infrastructure work, not a failed reviewer round.
+   evidence is complete; reuse unchanged passing evidence. Pending/interrupted checks
+   are infrastructure work, not a failed reviewer round.
 4. Build the reviewer prompt. Pass `--worktree` for `use_worktree: true` unless
-   the skill excludes it. Brief a fresh subagent with `system_prompt`, a blank
-   line, `query`, `active_dir`, allowed tools, and returned `review_file`.
-   For remote reviews fill `query_template` with fetched values.
+   the skill excludes it. Brief a fresh subagent with `system_prompt`, a blank line,
+   `query`, `active_dir`, allowed tools, and returned `review_file`; for remote
+   reviews fill `query_template` with fetched values.
 5. Run `meow native verdict <review_file>` after the reviewer returns. Trust
    file validation, not its chat summary. Missing/malformed verdicts fail.
    Local PASS requires current checks and requested scope coverage; remote
@@ -142,8 +141,9 @@ detached (host background execution, never the foreground; `meow resume` has no
 cron. Not settled: keep watching and report only meaningful changes. Stop only on
 `complete`/`delivered`/`exhausted`/`cancelled` or settled `retryable: false`, with
 no stop on `failed` alone. Orchestrator IDs return only `phase`, `settled` and
-`next_command`: stop on settled; run `next_command` only if the phase is unchanged
-across ticks and no worker is live.
+`next_command`: stop on settled; if the phase is unchanged across ticks, run
+`next_command` detached (a `DriverBusyError` refusal means a live driver owns it:
+expected and harmless).
 
 Before native run preparation, inspect `meow native verify`. `--test` or
 `tester.configured: true` routes runs to CLI so configured servers stay alive
@@ -152,7 +152,7 @@ Configured tests auto-enable it for behavior changes when workflow `auto_test` i
 true; quick requires `--test`. `--force-disable-tests` also routes to CLI: forward
 it to disable tester/test/browser gates and servers while keeping lint/build.
 Preserve plan/Jira/worktree options and saved IDs. Continue a native checkpoint
-with `meow resume RUN_ID --continue --repair` (no Claude session IDs). Review tester
+with `meow resume RUN_ID --continue --repair` (detached; no Claude session IDs). Review tester
 mode requires an explicit plan: `meow review --plan PATH --test` (optionally
 `--fix`); other sources, implicit discovery, and `--review-file` reject it. Never
 invent tester evidence.

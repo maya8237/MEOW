@@ -99,12 +99,12 @@ Status separates lint/test/build/browser evidence. Keep generated artifacts unde
 overrides may replace built-in lists. Explicit `[models].role` wins.
 `[delivery].target_branch` selects the default MR target; `meow run --target`
 overrides it per run. Auto-onboarding saves existing `dev` (local or origin),
-otherwise `master`. It also supplies the CI target unless `--target-ref` overrides it.
+otherwise `master`; it also supplies the CI target unless `--target-ref` is given.
 
 ## Custom skills and agents
 
-[CUSTOM.md](CUSTOM.md) covers `[custom]` paths, roles, scopes, validation, and
-permissions; [WORKFLOWS.md](WORKFLOWS.md) owns definition formats. Sources reload each run.
+[CUSTOM.md](CUSTOM.md): `[custom]` paths, roles, scopes, validation, permissions;
+[WORKFLOWS.md](WORKFLOWS.md): definition formats. Sources reload each run.
 
 ## Reviewer architecture check
 
@@ -161,14 +161,15 @@ Other hosts have no provider; missing provider MCP config reports
 `create_pull_request`, `create_merge_request`, `list_pull_requests`,
 `list_merge_requests`, or `search_pull_requests`; existing open requests can be
 reused. The agent writes only its result file. Creation failure never undoes a
-push: delivered state, exit 3, `MR not opened: REASON`, and a manual link. Native uses connected tools.
+push: delivered state, exit 3, `MR not opened: REASON`, and a manual link.
+Native uses connected tools.
 
 ## Run retry ladder
 
 `[run]`: `auto_retries` (3), `retry_backoff` ([60, 300, 900] s), `managed_resumes`
-(6, per parked run and queue item), `max_total_resumes` (20), `api_max_wait`
-(10800 s), `worker_startup_grace` (180 s), `supervise` (false), `stale_after`
-(21600 s: parks a silent native `--intent run`). See [RUNS.md](RUNS.md#managed-runs).
+(6, per parked run and queue item), `max_total_resumes` (20), `api_max_wait` (10800 s),
+`worker_startup_grace` (180 s), `supervise` (false), `stale_after` (21600 s: parks a
+silent native `--intent run`). See [RUNS.md](RUNS.md#managed-runs).
 
 ## Scheduling automatic runs
 
@@ -186,14 +187,13 @@ For recurrence, external Task Scheduler/cron/systemd/CI can invoke
 | Condition | Result |
 |---|---|
 | No config before first use | Base onboarding/defaults; no lint until configured |
-| Lint fields without entries, or unknown lint keys | ValueError naming the problem; model/skill/MCP-only config is valid |
-| No architecture doc | Optional context; generic architecture checks still apply |
+| Lint fields without entries, or unknown lint keys | ValueError naming it; model/skill/MCP-only config is valid |
+| No architecture doc | Optional context; generic checks still apply |
 | Missing Jira/GitLab/GitHub config | ValueError before agents |
 | Unreachable MCP | RuntimeError; preflight requires a real provider tool call |
-| Remote `--fix`, or remote/branch review-file resume | Rejected; check out locally or rerun the original source |
-| Missing review file | FileNotFoundError naming docs_dir and review-file |
-| Exhausted fix rounds | LintFixError with output, or review RuntimeError naming report |
+| Remote `--fix`, or remote/branch review-file resume | Rejected; check out locally or rerun the source |
+| Missing review file; exhausted fix rounds | FileNotFoundError naming docs_dir; LintFixError or review RuntimeError |
 | Jira delivery without origin | RuntimeError after PASS; evidence/worktree retained |
-| Orchestrator dirty start or missing Jira config | Exit 1 before work starts |
-| Orchestrator push failure | Failed state; repair origin and resume delivery |
+| Orchestrator dirty start, missing Jira config | Exit 1 before work starts |
+| Orchestrator push failure | Failed; repair origin, resume delivery |
 | Missing MR provider/creation failure | Delivered, exit 3, manual MR link |

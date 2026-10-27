@@ -83,7 +83,7 @@ def test_tick_acts_only_on_settled_runs(path):
 def test_shared_tick_and_retry_wording_is_identical(path):
     text = _flat(path)
     for start, end in (
-        ("Each tick:", "across ticks and no worker is live."),
+        ("Each tick:", "expected and harmless)."),
         ("A command exiting `75`", "detached or leave it to the hourly OS job."),
     ):
         block = text[text.index(start) : text.index(end) + len(end)]
@@ -97,3 +97,18 @@ def test_resumes_are_detached_and_crash_checkpoint_has_run_id():
     assert "checkpoint parked --run-id ID --failure" in native
     assert "detached" in native and "never the foreground" in native
     assert "`no_progress`" in native and "Exit 3" in native
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "skills/run/SKILL.md",
+        "skills/_shared/native-mode.md",
+        "skills/review/SKILL.md",
+        "skills/plan/SKILL.md",
+    ],
+)
+def test_exit_75_paragraph_runs_next_command_detached(path):
+    text = _flat(path)
+    start = text.index("exiting `75`")
+    assert "detached" in text[start : start + 400]

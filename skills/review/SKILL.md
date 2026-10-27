@@ -184,7 +184,8 @@ file path.
 ## Continuation
 
 On entry, inspect saved run IDs with `meow status ID --json` (detach any
-`meow resume --parked`). A command exiting `75` (or printing `MEOW_RETRY`): wait `retry_after`, then
-rerun its `next_command` or the same native helper, up to `managed_resumes`. Exit 1 /
+`meow resume --parked`). A command exiting `75` (or printing `MEOW_RETRY`): wait
+`retry_after`, then run its `next_command` detached (host background execution), or
+rerun the same native helper, up to `managed_resumes`. Exit 1 /
 `MEOW_BLOCKED`: stop and report. Resume only when `meow status ID --json` gives
 no stop reason. Full rules: [native protocol](../_shared/native-mode.md#the-meow-native-helper).
