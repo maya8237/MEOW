@@ -54,6 +54,8 @@ _SDK_CRASH_RETRY_BACKOFF = 1.0
 _NTSTATUS_SEVERITY_BIT = 0x80000000
 _OUTPUT_UNLINK_ATTEMPTS = 3
 _OUTPUT_UNLINK_BACKOFF = 0.2
+# How long an SDK stream may stay silent before the CLI's liveness is checked.
+_STREAM_POLL_SECONDS = 30.0
 
 
 def _is_os_failure(exc: BaseException) -> bool:
@@ -281,6 +283,48 @@ class GeneratorContext(AgentContext, Protocol):
     def lint_hook(self) -> object: ...
 
 
+def _transport_alive(client: object) -> bool:
+    """False only when the SDK's `claude` subprocess has visibly exited.
+
+    Reads SDK internals defensively: anything unknown counts as alive.
+    """
+    process = getattr(getattr(client, "_transport", None), "_process", None)
+    return process is None or getattr(process, "returncode", None) is None
+
+
+async def _next_item(iterator: AsyncIterator) -> object:
+    return await anext(iterator)
+
+
+async def _watch_stream(
+    stream: AsyncIterator, alive: Callable[[], bool], poll: float
+) -> AsyncIterator:
+    """Yield `stream`'s items; fail a turn whose CLI died without ending it.
+
+    When `poll` seconds pass with no item and `alive()` is False, raises
+    `CLIConnectionError`, which the session/query retry paths replay.
+    """
+    iterator = aiter(stream)
+    pending: asyncio.Task | None = None
+    try:
+        while True:
+            pending = asyncio.ensure_future(_next_item(iterator))
+            while not (await asyncio.wait({pending}, timeout=poll))[0]:
+                if not alive():
+                    raise CLIConnectionError("claude CLI exited mid-turn")
+            done, pending = pending, None
+            try:
+                item = done.result()
+            except StopAsyncIteration:
+                return
+            yield item
+    finally:
+        if pending is not None:
+            pending.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await pending
+
+
 def _last_text_block(message: AssistantMessage) -> str:
     """The text of the final `TextBlock` in an assistant message, or ""."""
     texts = [b.text for b in message.content if isinstance(b, TextBlock)]
@@ -294,7 +338,10 @@ async def _consume_query(  # ruff: ignore[complex-structure]
     non-success result. A `ProcessError` (the CLI subprocess crashed or
     otherwise failed) propagates unchanged for `Agent.run_query`'s retry
     loop to handle."""
-    messages: AsyncIterator = query(prompt=prompt, options=options)
+    # query() exposes no transport, so liveness defaults to alive here.
+    messages: AsyncIterator = _watch_stream(
+        query(prompt=prompt, options=options), lambda: True, _STREAM_POLL_SECONDS
+    )
     last_text = ""
     parts = []
     try:
@@ -762,7 +809,11 @@ class SessionAgent(Agent):
         last_call = 0
         try:
             await self._client.query(message)
-            async for item in self._client.receive_response():
+            async for item in _watch_stream(
+                self._client.receive_response(),
+                lambda: _transport_alive(self._client),
+                _STREAM_POLL_SECONDS,
+            ):
                 log_stream_message(self.role, item, options=self._session_options)
                 if isinstance(item, AssistantMessage):
                     text.extend(
