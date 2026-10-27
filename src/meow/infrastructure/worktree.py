@@ -395,11 +395,11 @@ class StartPointError(RuntimeError):
         self.transient = transient
 
 
-_TRANSIENT_FETCH_MARKERS = (
-    "could not resolve host",
-    "unable to access",
-    "connection",
-    "timed out",
+# Retryable by default: only these fetch failures are known to be permanent.
+_PERMANENT_FETCH_MARKERS = (
+    "couldn't find remote ref",
+    "does not appear to be a git repository",
+    "no such remote",
 )
 
 
@@ -444,7 +444,7 @@ def resolve_start_point(working_dir: Path, ref: str) -> str:
         fetch_returncode=code,
         fetch_stderr=stderr if failed else "",
         transient=timed_out
-        or (failed and any(m in stderr.lower() for m in _TRANSIENT_FETCH_MARKERS)),
+        or (failed and not any(m in stderr.lower() for m in _PERMANENT_FETCH_MARKERS)),
     )
 
 

@@ -275,3 +275,29 @@ def test_detached_worktree_from_linked_worktree_context(tmp_path):
 
     assert resolve_start_point(linked, "foundation") == sha
     assert main_repo(linked) == repo.resolve()
+
+
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        "fatal: some new error",
+        "fatal: Failed to connect to host",
+        "fatal: early EOF",
+        "remote: Repository not found.",
+    ],
+)
+def test_unrecognised_fetch_failure_is_transient(tmp_path, monkeypatch, stderr):
+    repo = origin_clone(tmp_path)
+    real = worktree_module._run_git
+
+    def fake(argv, **kwargs):
+        if "fetch" in argv:
+            return SimpleNamespace(returncode=128, stdout="", stderr=stderr)
+        return real(argv, **kwargs)
+
+    monkeypatch.setattr(worktree_module, "_run_git", fake)
+
+    with pytest.raises(StartPointError) as caught:
+        resolve_start_point(repo, "nope")
+
+    assert caught.value.transient is True
