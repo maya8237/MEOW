@@ -341,3 +341,12 @@ def test_park_reads_auto_retries_from_config(tmp_path):
         current = store.park(record.id, "boom", "transient", "error")
     assert current.phase == "failed"
     assert current.park["cause"] == "no_progress"
+
+
+def test_unresolved_issue_is_blocking_invalid_input():
+    from meow.integrations.issue_solver import IssueUnresolvedError
+
+    assert classify_failure(IssueUnresolvedError("no such issue")) == (
+        "blocking",
+        "invalid_input",
+    )

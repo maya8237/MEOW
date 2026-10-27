@@ -549,7 +549,8 @@ def _validate_max_rounds(config: dict) -> None:
 # waits between them; managed_resumes: resumes a managing session may run;
 # max_total_resumes: cumulative cap; api_max_wait: longest API wait before
 # parking; worker_startup_grace: time a detached worker gets to register;
-# supervise: relaunch parked background runs automatically.
+# supervise: run foreground `meow run` under the supervisor (as under Claude
+# Code); background runs are always supervised.
 RUN_DEFAULTS = {
     "auto_retries": 3,
     "retry_backoff": [60, 300, 900],

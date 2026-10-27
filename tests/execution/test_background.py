@@ -714,7 +714,7 @@ def test_run_child_uses_its_own_process_group(tmp_path, monkeypatch):
 
     def popen(command, **kwargs):
         seen.update(kwargs)
-        return SimpleNamespace(wait=lambda: 0)
+        return SimpleNamespace(wait=lambda timeout=None: 0)
 
     monkeypatch.setattr(supervisor.subprocess, "Popen", popen)
     assert supervisor._run_child(tmp_path, ["x"], {}) == 0
@@ -731,7 +731,7 @@ def test_windows_child_gets_a_new_process_group(tmp_path, monkeypatch):
 
     def popen(command, **kwargs):
         seen.update(kwargs)
-        return SimpleNamespace(wait=lambda: 0)
+        return SimpleNamespace(wait=lambda timeout=None: 0)
 
     monkeypatch.setattr(supervisor.subprocess, "Popen", popen)
     supervisor._run_child(tmp_path, ["x"], {})
@@ -784,3 +784,82 @@ def test_driver_without_start_identity_counts_as_alive(tmp_path):
     store._write(current)
     assert reconcile_stale_runs(store) == []
     assert store.load(record.id).phase == "generator_started"
+
+
+class _SlowChild:
+    """A child that finishes after two poll timeouts."""
+
+    def __init__(self, interrupt=False):
+        self.timeouts, self.interrupt, self.pid = [], interrupt, 4321
+
+    def wait(self, timeout=None):
+        self.timeouts.append(timeout)
+        if self.interrupt and len(self.timeouts) == 1:
+            raise KeyboardInterrupt
+        if timeout is not None and len(self.timeouts) < 3:  # ruff: ignore[magic-value-comparison]
+            raise supervisor.subprocess.TimeoutExpired("x", timeout)
+        return 0
+
+
+def test_run_child_polls_so_windows_ctrl_c_is_seen(tmp_path, monkeypatch):
+    child = _SlowChild()
+    monkeypatch.setattr(supervisor.subprocess, "Popen", lambda *_a, **_k: child)
+    assert supervisor._run_child(tmp_path, ["x"], {}) == 0
+    assert child.timeouts == [0.5, 0.5, 0.5]
+
+
+def test_run_child_forwards_ctrl_c(tmp_path, monkeypatch):
+    child = _SlowChild(interrupt=True)
+    interrupted = []
+    monkeypatch.setattr(supervisor.subprocess, "Popen", lambda *_a, **_k: child)
+    monkeypatch.setattr(supervisor, "_interrupt", interrupted.append)
+    with pytest.raises(KeyboardInterrupt):
+        supervisor._run_child(tmp_path, ["x"], {})
+    assert interrupted == [child]
+
+
+def test_windows_driver_turns_ctrl_break_into_keyboard_interrupt(monkeypatch):
+    installed = {}
+    monkeypatch.setattr(background.sys, "platform", "win32")
+    monkeypatch.setattr(background.signal, "SIGBREAK", 21, raising=False)
+    monkeypatch.setattr(
+        background.signal,
+        "signal",
+        lambda sig, handler: installed.update({sig: handler}),
+    )
+    background._install_break_handler()
+    with pytest.raises(KeyboardInterrupt):
+        installed[21](21, None)
+
+
+def test_jira_run_is_not_supervised_under_claude_code(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    dispatched = []
+    monkeypatch.setattr(
+        cli_core, "run_supervised", lambda *_a: pytest.fail("jira was supervised")
+    )
+    monkeypatch.setattr(
+        cli_core, "_dispatch", lambda args, *_a, **_k: dispatched.append(args.jira)
+    )
+    cli_core.cli_main(["run", "--jira", "ABC-1", "--work-dir", str(tmp_path)])
+    assert dispatched == ["ABC-1"]
+
+
+def test_drive_failure_prints_one_line(tmp_path, monkeypatch, capsys):
+    def fail(*_args):
+        raise RuntimeError("worktree setup failed")
+
+    monkeypatch.setattr(cli_core, "drive_main", fail)
+    with pytest.raises(SystemExit) as exit_info:
+        cli_core.cli_main([
+            "_drive",
+            "a" * 32,
+            "--nonce",
+            "n",
+            "--work-dir",
+            str(tmp_path),
+        ])
+    assert exit_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "worktree setup failed" in err
+    assert "Traceback" not in err

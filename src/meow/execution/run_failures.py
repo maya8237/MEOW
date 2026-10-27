@@ -81,6 +81,7 @@ def _blocking_cause(exc: BaseException) -> str | None:
     from claude_agent_sdk import CLINotFoundError
 
     from meow.infrastructure.worktree_setup import WorktreeSetupError
+    from meow.integrations.issue_solver import IssueUnresolvedError
 
     own = getattr(exc, "cause", None)
     text = str(exc)
@@ -98,6 +99,7 @@ def _blocking_cause(exc: BaseException) -> str | None:
             isinstance(exc, WorktreeSetupError) and own == "policy_denied",
             "policy_denied",
         ),
+        (isinstance(exc, IssueUnresolvedError), "invalid_input"),
         (_is_git_missing(exc), "git_missing"),
         (bool(_POLICY_DENIED.search(text)), "policy_denied"),
         (bool(_NOT_A_REPO.search(text)), "invalid_input"),

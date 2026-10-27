@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import os
 import secrets
+import signal
 import subprocess
 import sys
 import time
@@ -351,10 +352,23 @@ def worker_main(repo: Path, run_id: str, nonce: str) -> int:
         _notify_once(store, run_id)
 
 
+def _raise_interrupt(_signum: int, _frame: object) -> None:
+    raise KeyboardInterrupt
+
+
+def _install_break_handler() -> None:
+    """On Windows the supervisor forwards Ctrl-C as CTRL_BREAK_EVENT, which
+    would kill Python outright; turn it into KeyboardInterrupt so the run
+    settles (parks) first."""
+    if sys.platform == "win32" and hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _raise_interrupt)
+
+
 def drive_main(repo: Path, run_id: str, nonce: str) -> int:
     """Run the saved invocation in this process (the supervised driver)."""
     from meow.execution.sprint_runner import _settle_failure
 
+    _install_break_handler()
     store = RunStore(repo)
     try:
         record = store.load(run_id)

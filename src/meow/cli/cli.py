@@ -216,7 +216,14 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
     if args.command == "_worker":
         raise SystemExit(worker_main(working_dir, args.run_id, args.nonce))
     if args.command == "_drive":
-        raise SystemExit(drive_main(working_dir, args.run_id, args.nonce))
+        try:
+            raise SystemExit(drive_main(working_dir, args.run_id, args.nonce))
+        except KeyboardInterrupt:
+            raise SystemExit(130) from None
+        except (*_EXPECTED_FAILURES, BackgroundError) as exc:
+            # Already settled in the run record; the supervisor reconciles.
+            print(f"\n{_describe_failure(exc)}", file=sys.stderr)
+            raise SystemExit(1) from exc
     if args.command == "status":
         raise SystemExit(status(working_dir, args.run_id, args.verbose))
     if args.command == "cancel":
@@ -378,6 +385,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         args.command == "run"
         and not args.lint_fix
         and not args.manually_approve_plan
+        and args.jira is None  # keeps _dispatch_jira_build's handling
         and should_supervise(working_dir)
     ):
         try:

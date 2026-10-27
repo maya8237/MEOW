@@ -97,7 +97,8 @@ def test_dead_cli_mid_turn_recovers(tmp_path, monkeypatch):
 
     async def turn():
         async with agent:
-            return await agent.send("Implement the plan")
+            # A regression must fail fast, not hang the suite.
+            return await asyncio.wait_for(agent.send("Implement the plan"), 10)
 
     assert asyncio.run(turn()) == "recovered"
     first, second = _HangingThenHealthyClient.instances

@@ -29,6 +29,7 @@ EXIT_TEMPFAIL = 75  # EX_TEMPFAIL: parked, `next_command` continues it
 SUPERVISOR_ENV = "MEOW_SUPERVISOR_NONCE"
 _SUCCESS_PHASES = frozenset({"complete", "delivered"})
 _INTERRUPT_GRACE_SECONDS = 30
+_WAIT_POLL_SECONDS = 0.5
 
 
 def _sleep(seconds: float) -> None:
@@ -70,7 +71,10 @@ def _run_child(repo: Path, command: list[str], env: dict[str, str]) -> int:
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0,
     )
     try:
-        return process.wait()
+        while True:
+            # A bounded wait: on Windows an unbounded one never sees Ctrl-C.
+            with suppress(subprocess.TimeoutExpired):
+                return process.wait(timeout=_WAIT_POLL_SECONDS)
     except KeyboardInterrupt:
         _interrupt(process)
         raise
