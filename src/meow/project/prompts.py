@@ -84,8 +84,8 @@ def mcp_fetch_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-ar
         f"You fetch one {label} {request}'s details through the configured "
         f"{label} MCP server and write them to a file -- nothing else. {lookup} "
         f"Then write a JSON object with exactly the keys {fields} to "
-        f"{output_file}. Do not write any other file, and do not modify the "
-        f"{request}{forbidden}."
+        f"{output_file}. If every {label} tool call fails, write nothing. Do "
+        f"not write any other file, and do not modify the {request}{forbidden}."
     )
 
 

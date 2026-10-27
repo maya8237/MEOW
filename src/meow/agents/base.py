@@ -288,18 +288,23 @@ def _last_text_block(message: AssistantMessage) -> str:
 
 
 async def _consume_query(  # ruff: ignore[complex-structure]
-    prompt: str, options: ClaudeAgentOptions, role: str
+    prompt: str,
+    options: ClaudeAgentOptions,
+    role: str,
+    observe: Callable[[object], None] | None = None,
 ) -> str:
     """Run `query()` once to completion, raising `RuntimeError` on a
     non-success result. A `ProcessError` (the CLI subprocess crashed or
     otherwise failed) propagates unchanged for `Agent.run_query`'s retry
-    loop to handle."""
+    loop to handle. `observe`, when given, sees every streamed message."""
     messages: AsyncIterator = query(prompt=prompt, options=options)
     last_text = ""
     parts = []
     try:
         async for message in messages:
             log_stream_message(role, message, options=options)
+            if observe is not None:
+                observe(message)
             if isinstance(message, AssistantMessage):
                 last_text = _last_text_block(message) or last_text
                 parts.extend(
@@ -540,7 +545,13 @@ class Agent:
         return options
 
     @staticmethod
-    async def run_query(prompt: str, options: ClaudeAgentOptions, role: str) -> str:
+    async def run_query(
+        prompt: str,
+        options: ClaudeAgentOptions,
+        role: str,
+        *,
+        observe: Callable[[object], None] | None = None,
+    ) -> str:
         """Run a one-shot SDK query and raise when the SDK reports failure.
 
         Retries up to `_SDK_CRASH_RETRY_ATTEMPTS` times, with a short
@@ -562,7 +573,7 @@ class Agent:
         for attempt in range(1, _SDK_CRASH_RETRY_ATTEMPTS + 1):
             logger.info("agent_query_started", role=role, attempt=attempt)
             try:
-                response = await _consume_query(prompt, options, role)
+                response = await _consume_query(prompt, options, role, observe)
                 logger.info("agent_query_finished", role=role)
                 return response
             except ProcessError as exc:
