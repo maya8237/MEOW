@@ -92,8 +92,8 @@ sprints, `--dry-run` saves the decomposition, and `--no-mr` skips opening an MR.
 Local edits require explicit `--from BRANCH`; execution uses an isolated worktree.
 See [ORCHESTRATION.md](ORCHESTRATION.md) for sources, flags, delivery gates, and recovery.
 `/meow:run` chooses the engine; native supervision requires explicit opt-in.
-Exit codes: 0 settled, 75 parked or retryable (`MEOW_RETRY`), 1 blocked or budget
-exhausted (`MEOW_BLOCKED`), 3 delivered but `MR not opened` (manual link in output),
+Exit code 3 means delivered but `MR not opened` (manual link in output); 0 settled,
+75 parked or retryable (`MEOW_RETRY`), 1 blocked or budget exhausted (`MEOW_BLOCKED`),
 130 interrupted. `meow status ID --json` and `meow resume --parked` drive unattended
 continuation ([managed runs](RUNS.md#managed-runs)); `[run]` keys: [INTEGRATIONS.md](INTEGRATIONS.md#run-retry-ladder).
 
