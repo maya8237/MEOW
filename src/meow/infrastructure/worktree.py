@@ -354,11 +354,18 @@ def _require_registered_worktree(
         )
 
 
+def _git() -> str:
+    return shutil.which("git") or "git"
+
+
 def main_repo(working_dir: Path) -> Path:
-    """The main checkout owning `working_dir`, even from a linked worktree."""
-    git = shutil.which("git") or "git"
+    """The main checkout owning `working_dir`, even from a linked worktree.
+
+    Assumes a normal non-bare repo: bare repos and submodule gitdirs have a
+    common dir that is not `<checkout>/.git`.
+    """
     result = _run_git(
-        [git, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        [_git(), "rev-parse", "--path-format=absolute", "--git-common-dir"],
         cwd=working_dir,
     )
     if result.returncode != 0 or not result.stdout.strip():
@@ -369,44 +376,75 @@ def main_repo(working_dir: Path) -> Path:
     return Path(result.stdout.strip()).parent
 
 
-def _lookup_commit(repo: Path, spec: str) -> str | None:
+class StartPointError(RuntimeError):
+    """A start point could not be resolved; `transient` marks network trouble."""
+
+    def __init__(  # ruff: ignore[too-many-arguments]
+        self,
+        message: str,
+        *,
+        ref: str,
+        fetch_returncode: int | None = None,
+        fetch_stderr: str = "",
+        transient: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.ref = ref
+        self.fetch_returncode = fetch_returncode
+        self.fetch_stderr = fetch_stderr
+        self.transient = transient
+
+
+_TRANSIENT_FETCH_MARKERS = (
+    "could not resolve host",
+    "unable to access",
+    "connection",
+    "timed out",
+)
+
+
+def _lookup_commit(cwd: Path, spec: str) -> str | None:
     result = _run_git(
-        [
-            shutil.which("git") or "git",
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            f"{spec}^{{commit}}",
-        ],
-        cwd=repo,
+        [_git(), "rev-parse", "--verify", "--quiet", f"{spec}^{{commit}}"], cwd=cwd
     )
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def _first_commit(repo: Path, specs: list[str]) -> str | None:
-    return next((sha for spec in specs if (sha := _lookup_commit(repo, spec))), None)
+def _first_commit(cwd: Path, specs: list[str]) -> str | None:
+    return next((sha for spec in specs if (sha := _lookup_commit(cwd, spec))), None)
 
 
 def resolve_start_point(working_dir: Path, ref: str) -> str:
-    """Resolve `ref` to a full SHA through the main repo, local then origin.
+    """Resolve `ref` to a full SHA, local then origin.
 
-    Tries `<ref>^{commit}`, `refs/heads/<ref>`, `refs/remotes/origin/<ref>`,
-    then fetches `origin <ref>` once and retries the last two.
+    `<ref>^{commit}` runs in `working_dir` so `HEAD` is that checkout's HEAD;
+    branch lookups and the one `git fetch origin <ref>` go through the main
+    repo, which owns the shared refs.
     """
     if not ref or ref.startswith("-"):
-        raise RuntimeError(f"Invalid start point '{ref}'")
+        raise StartPointError(f"Invalid start point '{ref}'", ref=ref)
     repo = main_repo(working_dir)
     named = [f"refs/heads/{ref}", f"refs/remotes/origin/{ref}"]
-    if sha := _first_commit(repo, [ref, *named]):
+    if sha := _lookup_commit(working_dir, ref) or _first_commit(repo, named):
         return sha
-    git = shutil.which("git") or "git"
-    fetch = _run_git([git, "fetch", "origin", ref], cwd=repo)
+    try:
+        fetch = _run_git([_git(), "fetch", "origin", ref], cwd=repo)
+        code, stderr = fetch.returncode, fetch.stderr.strip()
+        timed_out = False
+    except RuntimeError as exc:
+        code, stderr, timed_out = None, str(exc), True
     if sha := _first_commit(repo, named):
         return sha
-    detail = "" if fetch.returncode == 0 else f"; fetch failed: {fetch.stderr.strip()}"
-    raise RuntimeError(
+    failed = timed_out or code != 0
+    detail = f"; fetch failed: {stderr}" if failed else ""
+    raise StartPointError(
         f"Cannot resolve start point '{ref}' (tried {ref}, "
-        f"{', '.join(named)}, git fetch origin {ref}){detail}"
+        f"{', '.join(named)}, git fetch origin {ref}){detail}",
+        ref=ref,
+        fetch_returncode=code,
+        fetch_stderr=stderr if failed else "",
+        transient=timed_out
+        or (failed and any(m in stderr.lower() for m in _TRANSIENT_FETCH_MARKERS)),
     )
 
 
@@ -420,18 +458,14 @@ def _add_detached_worktree(  # ruff: ignore[too-many-arguments]
 ) -> None:
     _remove_stale_worktree(git, working_dir, worktree_dir)
     try:
-        resolved = (
-            resolve_start_point(working_dir, source_branch)
-            if source_branch is not None
-            else None
+        resolved = resolve_start_point(
+            working_dir, "HEAD" if source_branch is None else source_branch
         )
     except RuntimeError:
         _release_claim(worktree_dir, release_on_failure)
         raise
     argv = [git, "-C", str(main_repo(working_dir)), "worktree", "add", "--detach"]
-    argv += ["--", str(worktree_dir)]
-    if resolved is not None:
-        argv.append(resolved)
+    argv += ["--", str(worktree_dir), resolved]
     try:
         subprocess.run(
             argv, check=True, capture_output=True, text=True, encoding="utf-8"
@@ -560,10 +594,9 @@ def _require_worktree_on_branch(worktree_dir: Path, branch_name: str) -> None:
 
 
 def _new_branch_argv(
-    git: str, worktree_dir: Path, branch_name: str, start_sha: str | None
+    git: str, worktree_dir: Path, branch_name: str, start_sha: str
 ) -> list[str]:
-    argv = [git, "worktree", "add", "-b", branch_name, str(worktree_dir)]
-    return [*argv, start_sha] if start_sha else argv
+    return [git, "worktree", "add", "-b", branch_name, str(worktree_dir), start_sha]
 
 
 @_serialize_worktree_creation
@@ -608,9 +641,7 @@ def _ensure_branch_worktree(
     if branch_exists:
         argv = [git, "worktree", "add", str(worktree_dir), branch_name]
     else:
-        start_sha = (
-            resolve_start_point(working_dir, start_point) if start_point else None
-        )
+        start_sha = resolve_start_point(working_dir, start_point or "HEAD")
         argv = _new_branch_argv(git, worktree_dir, branch_name, start_sha)
     result = _run_git(argv, cwd=main_repo(working_dir))
     if result.returncode != 0:
