@@ -49,7 +49,9 @@
         $root = Join-Path $HOME '.meow'
         $manifestUrl = 'https://raw.githubusercontent.com/maya8237/MEOW/release-channel/latest.json'
         if ($env:MEOW_RELEASE_MANIFEST_URL) { $manifestUrl = $env:MEOW_RELEASE_MANIFEST_URL }
+        Write-Host 'Locating Python 3.12+...'
         $python = Find-Python
+        Write-Host "Using $python`nFetching the latest release..."
         $release = Invoke-RestMethod $manifestUrl
         $tag = $release.tag_name
         if ($tag -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'No published stable MEOW release was found.' }
@@ -67,7 +69,7 @@
         # one built by another Python.
         $bundle = Join-Path $temporary 'bundle'
         New-Item -ItemType Directory -Path $bundle | Out-Null
-        Write-Host "Installing MEOW $tag with $python..."
+        Write-Host "Creating environment and installing MEOW $tag (pip output follows)..."
         $runtime = Join-Path $bundle 'runtime'
         $staged = Join-Path $runtime 'Scripts\python.exe'
         $requirement = Join-Path $temporary 'wheel.txt'
@@ -96,6 +98,7 @@
         }
         $purelib = "$(& $staged -c 'import sysconfig;print(sysconfig.get_path(''purelib''))')".Trim()
         Invoke-Checked 'Could not inspect the staged MEOW install.'
+        Write-Host 'Installing pinned dependencies and launcher (this can take minutes)...'
         $previousPath = $env:PYTHONPATH
         $env:PYTHONPATH = $purelib
         try {
