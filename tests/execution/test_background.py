@@ -776,14 +776,25 @@ def test_run_supervised_checkpoints_a_background_style_record(tmp_path, monkeypa
     }
 
 
-def test_driver_without_start_identity_counts_as_alive(tmp_path):
+@pytest.mark.parametrize("pid,parked", [(os.getpid(), False), (999_999_999, True)])
+def test_driver_without_start_identity_falls_back_to_pid_check(tmp_path, pid, parked):
     store = RunStore(tmp_path)
     record = _driven_record(store, tmp_path)
     current = store.load(record.id)
-    current.driver = {"pid": 999_999_999, "start_identity": None}
+    current.driver = {"pid": pid, "start_identity": None}
     store._write(current)
-    assert reconcile_stale_runs(store) == []
-    assert store.load(record.id).phase == "generator_started"
+    assert reconcile_stale_runs(store) == ([record.id] if parked else [])
+    assert store.load(record.id).phase == ("parked" if parked else "generator_started")
+
+
+def test_unreadable_driver_identity_falls_back_to_pid_check(tmp_path, monkeypatch):
+    store = RunStore(tmp_path)
+    record = _driven_record(store, tmp_path)  # this process, recorded identity
+    current = store.load(record.id)
+    current.driver["start_identity"] = "unreadable-now"
+    store._write(current)
+    monkeypatch.setattr("meow.execution.run_state.process_identity", lambda _p: None)
+    assert reconcile_stale_runs(store) == []  # the PID still exists
 
 
 class _SlowChild:

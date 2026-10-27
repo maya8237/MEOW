@@ -546,7 +546,8 @@ def _validate_max_rounds(config: dict) -> None:
 
 # `[run]`: the bounded retry ladder for parked runs (seconds where timed).
 # auto_retries: supervisor relaunches per park without progress; retry_backoff:
-# waits between them; managed_resumes: resumes a managing session may run;
+# waits between them; managed_resumes: resumes a managing session may run per
+# parked run, and attempts per queue item before requeueing stops;
 # max_total_resumes: cumulative cap; api_max_wait: longest API wait before
 # parking; worker_startup_grace: time a detached worker gets to register;
 # supervise: run foreground `meow run` under the supervisor (as under Claude

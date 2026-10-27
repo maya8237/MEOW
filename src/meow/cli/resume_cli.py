@@ -235,6 +235,8 @@ def _launched_by_supervisor(record: RunRecord) -> bool:
 
 
 _SUPERVISED = "its supervisor is still running"
+# Skips that no later sweep can fix: the manager must stop and escalate.
+_EXHAUSTED = frozenset({"max_total_resumes reached", "managed_resumes reached"})
 
 
 def _resume_budget_left(record: RunRecord, config: dict) -> str | None:
@@ -290,11 +292,17 @@ async def _resume_one(working_dir: Path, store: RunStore, record: RunRecord) -> 
     return {**entry, **({"error": error} if error else {})}
 
 
-def _parked_exit_code(summary: dict[str, list]) -> int:
-    """1 a resumed run is blocked; 75 work is still pending (a run left parked,
-    a live supervisor, a requeued item); else 0. Runs past their budget are
-    reported but never keep a sweep returning 75 forever."""
+def _parked_exit_code(summary: dict) -> int:
+    """1 a resumed run is blocked, or a run/queue item exhausted its budget
+    (`stop: no_progress`); 75 work is still pending (a run left parked, a
+    live supervisor, a requeued item); else 0."""
     phases = [entry["phase"] for entry in summary["resumed"]]
+    if (
+        any(entry["exhausted"] for entry in summary["skipped"])
+        or summary["not_requeued"]
+    ):
+        summary["stop"] = "no_progress"
+        return EXIT_BLOCKED
     if any(phase not in {"complete", "delivered", PARKED_PHASE} for phase in phases):
         return EXIT_BLOCKED
     if (
@@ -325,6 +333,7 @@ def _requeue_parked_items(working_dir: Path, store: RunStore, config: dict) -> d
                     item.run_id,
                     "cancelled",
                     last_failure=f"Superseded: queue item {item.id} requeued",
+                    results={"superseded_by": item.id},
                 )
     return {
         "requeued": [item.id for item in requeued],
@@ -356,11 +365,13 @@ async def resume_parked(working_dir: Path) -> int:
                 "run_id": run_id,
                 "reason": reason,
                 "retryable": reason == _SUPERVISED,
+                "exhausted": reason in _EXHAUSTED,
             })
         else:
             summary["resumed"].append(await _resume_one(working_dir, store, record))
+    code = _parked_exit_code(summary)
     print(json.dumps(summary))
-    return _parked_exit_code(summary)
+    return code
 
 
 def _count_manager_resume(store: RunStore, record: RunRecord) -> None:
@@ -403,13 +414,19 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
             "--request applies only to a blocked orchestration task.", file=sys.stderr
         )
         return 1
-    if (continue_run or repair) and (
-        (
-            not _launched_by_supervisor(record)
-            and inspect_worker(record, include_terminal=True).state
-            in {"running", "starting"}
+    if (continue_run or repair) and _driven_elsewhere(record):
+        print(
+            f"Cannot resume or repair: run {record.id} is still driven by live "
+            f"process PID {record.driver.get('pid')}. Wait for it to stop "
+            "before retrying.",
+            file=sys.stderr,
         )
-        or _driven_elsewhere(record)
+        return 1
+    if (
+        (continue_run or repair)
+        and not _launched_by_supervisor(record)
+        and inspect_worker(record, include_terminal=True).state
+        in {"running", "starting"}
     ):
         print(
             "Cannot resume or repair while the background worker is running or "

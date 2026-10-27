@@ -544,16 +544,21 @@ def run_owner_alive(record: RunRecord) -> bool | None:
 def driver_alive(record: RunRecord) -> bool | None:
     """Whether the recorded driver still runs; None when none was recorded.
 
-    A driver whose birth identity could not be read counts as alive: unknown
-    must never park (or be resumed over) a run that may still be driven.
+    The birth identity guards against PID reuse. When it is missing or cannot
+    be read now, a plain PID-exists check decides instead.
     """
+    from meow.execution.queue_state import _pid_is_alive
+
     driver = record.driver if isinstance(record.driver, dict) else {}
+    pid, expected = driver.get("pid"), driver.get("start_identity")
     if not driver:
         return None
-    alive = _owner_alive(driver)
-    if alive is None:
-        return isinstance(driver.get("pid"), int)
-    return alive
+    if not isinstance(pid, int) or isinstance(pid, bool):
+        return False
+    actual = process_identity(pid) if isinstance(expected, str) and expected else None
+    if actual is None:
+        return _pid_is_alive(pid)
+    return actual == expected
 
 
 def error_log_tail(store: RunStore, run_id: str) -> str:

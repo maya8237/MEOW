@@ -15,7 +15,7 @@ from meow.common.process import process_identity as _process_identity
 from meow.execution.queue_state import QueueStore
 from meow.execution.run_state import RunStore
 from meow.infrastructure.checks import config_fingerprint
-from meow.infrastructure.supervisor import EXIT_TEMPFAIL
+from meow.infrastructure.supervisor import EXIT_BLOCKED, EXIT_TEMPFAIL
 
 
 def _record(tmp_path):
@@ -381,7 +381,11 @@ def test_resume_parked_continues_each_run_and_prints_json(tmp_path, capsys):
     assert summary["skipped"] == []
     assert summary["requeued"] == [item.id]
     assert queue.pending()[0].id == item.id
-    assert store.load(queue_run.id).phase == "cancelled"
+    superseded = store.load(queue_run.id)
+    assert (superseded.phase, superseded.results["superseded_by"]) == (
+        "cancelled",
+        item.id,
+    )
     assert store.load(first.id).park["manager_resumes"] == 1
 
 
@@ -400,7 +404,9 @@ def test_resume_parked_skips_supervised_and_exhausted_runs(tmp_path, capsys):
     current = store.load(spent.id)
     store.transition(spent.id, "parked", park={**current.park, "manager_resumes": 6})
     with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
-        assert asyncio.run(resume_parked(tmp_path)) == EXIT_TEMPFAIL
+        # An exhausted budget means stop and escalate, even beside a run its
+        # supervisor will still retry.
+        assert asyncio.run(resume_parked(tmp_path)) == EXIT_BLOCKED
     run.assert_not_awaited()
     reasons = {
         entry["run_id"]: entry["reason"]
@@ -446,12 +452,31 @@ def test_resume_parked_budget_exhausted_is_reported_not_retried(tmp_path, capsys
     current = store.load(spent.id)
     store.transition(spent.id, "parked", park={**current.park, "manager_resumes": 6})
     with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
-        # Not 75: a later sweep could not do anything more for this run.
-        assert asyncio.run(resume_parked(tmp_path)) == 0
+        # Not 75: a later sweep could not do anything more; escalate.
+        assert asyncio.run(resume_parked(tmp_path)) == EXIT_BLOCKED
     run.assert_not_awaited()
-    assert json.loads(capsys.readouterr().out)["skipped"] == [
-        {"run_id": spent.id, "reason": "managed_resumes reached", "retryable": False}
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["skipped"] == [
+        {
+            "run_id": spent.id,
+            "reason": "managed_resumes reached",
+            "retryable": False,
+            "exhausted": True,
+        }
     ]
+    assert summary["stop"] == "no_progress"
+
+
+def test_resume_parked_non_resumable_skip_is_not_a_stop(tmp_path, capsys):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="queue", request="q", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    store.park(record.id, "boom", "transient", "error")
+    assert asyncio.run(resume_parked(tmp_path)) == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["skipped"][0]["exhausted"] is False
+    assert "stop" not in summary
 
 
 def test_resume_parked_requeue_counts_and_respects_item_budget(tmp_path, capsys):
@@ -461,7 +486,8 @@ def test_resume_parked_requeue_counts_and_respects_item_budget(tmp_path, capsys)
     queue.update(fresh.id, status="parked", attempts=1)
     queue.update(worn.id, status="parked", attempts=6)  # managed_resumes = 6
 
-    assert asyncio.run(resume_parked(tmp_path)) == EXIT_TEMPFAIL  # work queued
+    # The worn item exhausted its budget: stop and escalate.
+    assert asyncio.run(resume_parked(tmp_path)) == EXIT_BLOCKED
 
     summary = json.loads(capsys.readouterr().out)
     assert summary["requeued"] == [fresh.id]
@@ -470,7 +496,9 @@ def test_resume_parked_requeue_counts_and_respects_item_budget(tmp_path, capsys)
     assert statuses == {fresh.id: "pending", worn.id: "parked"}
 
 
-def test_resume_refuses_while_another_live_process_drives(tmp_path, monkeypatch):
+def test_resume_refuses_while_another_live_process_drives(
+    tmp_path, monkeypatch, capsys
+):
     store, record = _record(tmp_path)
     store.park(record.id, "boom", "transient", "error")
     current = store.load(record.id)
@@ -485,6 +513,17 @@ def test_resume_refuses_while_another_live_process_drives(tmp_path, monkeypatch)
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()
     assert store.load(record.id).phase == "parked"
+    err = capsys.readouterr().err
+    assert f"PID {os.getppid()}" in err
+    assert "background worker" not in err
+
+
+def test_resume_parked_requeue_only_is_tempfail(tmp_path, capsys):
+    queue = QueueStore(tmp_path)
+    item = queue.enqueue("fresh")
+    queue.update(item.id, status="parked", attempts=1)
+    assert asyncio.run(resume_parked(tmp_path)) == EXIT_TEMPFAIL
+    assert json.loads(capsys.readouterr().out)["requeued"] == [item.id]
 
 
 def test_resume_parked_rejects_a_run_id(tmp_path):

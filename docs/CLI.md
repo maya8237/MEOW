@@ -12,7 +12,7 @@ Use `meow COMMAND --help` for flag syntax. Read the relevant reference only:
 | `meow plan` | Plan without implementation |
 | `meow review` | Review existing code; `--fix` enables fixes |
 | `meow status [ID]` | Inspect the latest or named run; `--verbose` includes evidence |
-| `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates, `--parked` continues every parked run (JSON summary) |
+| `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates, `--parked` continues every parked run (JSON summary; exit 0 settled, 75 pending, 1 blocked or budget exhausted) |
 | `meow cancel ID` | Cooperatively stop a run, preserving recovery state |
 | `meow worktree` | List, inspect, or safely clean owned worktrees |
 | `meow cleanup [ID]` | [Keep results and remove integrated task artifacts](CLEANUP.md) |
@@ -93,6 +93,7 @@ Local edits require explicit `--from BRANCH`; execution uses an isolated worktre
 Exit code 3 means the branch was delivered but `MR not opened`; output includes a manual link.
 See [ORCHESTRATION.md](ORCHESTRATION.md) for sources, flags, delivery gates, and recovery.
 `/meow:run` chooses the engine; native supervision requires explicit opt-in.
+`[run] managed_resumes` caps manager resumes per parked run and attempts per queue item.
 
 ## Review
 
