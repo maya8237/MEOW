@@ -6,7 +6,7 @@ import os
 import re
 import time
 from collections.abc import AsyncIterator, Callable
-from contextlib import suppress
+from contextlib import aclosing, suppress
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -30,6 +30,7 @@ from claude_agent_sdk import (
     query,
 )
 
+from meow.execution.run_failures import TransientRunError
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
 from meow.project.config_models import LintCommand
@@ -56,6 +57,52 @@ _OUTPUT_UNLINK_ATTEMPTS = 3
 _OUTPUT_UNLINK_BACKOFF = 0.2
 # How long an SDK stream may stay silent before the CLI's liveness is checked.
 _STREAM_POLL_SECONDS = 30.0
+# LiteLLM (and Anthropic) 400s for a message history the API refuses.
+_SEQUENCE_ERROR = re.compile(
+    r"unexpected role ['\"`]?user['\"`]? after role ['\"`]?tool|"
+    r"roles must alternate|tool_use ids were found without .?tool_result|"
+    r"unexpected .?tool_use_id",
+    re.I,
+)
+_CLOSE_RACE = re.compile(r"asynchronous generator is already running", re.I)
+_SEQUENCE_REBUILDS = 2
+_SEQUENCE_RECAP_REASON = "had an invalid message history"
+
+
+class _InvalidSequence(Exception):
+    """The API rejected the session's message history (tool/user ordering)."""
+
+
+def _raise_if_invalid_sequence(*texts: object) -> None:
+    if any(_SEQUENCE_ERROR.search(str(text or "")) for text in texts):
+        raise _InvalidSequence
+
+
+def _sequence_giveup(role: str) -> TransientRunError:
+    return TransientRunError(
+        f"{role} kept hitting an invalid message history",
+        cause="invalid_sequence",
+    )
+
+
+def _fresh_options(options: ClaudeAgentOptions) -> ClaudeAgentOptions:
+    """A copy of `options` that starts a new conversation (no `resume`)."""
+    fresh = copy.copy(options)
+    for name in ("resume", "continue_conversation"):
+        if hasattr(fresh, name):
+            setattr(fresh, name, None if name == "resume" else False)
+    callback = getattr(options, "_meow_session_callback", None)
+    if callback is not None:
+        fresh._meow_session_callback = callback
+    return fresh
+
+
+def _restart_recap(reason: str) -> str:
+    return (
+        f"Your previous session {reason} and was replaced. "
+        "Re-read the plan and inspect the working tree (git status, git diff) "
+        "to see what is already done; do not redo finished work.\n\n"
+    )
 
 
 def _is_os_failure(exc: BaseException) -> bool:
@@ -296,6 +343,20 @@ async def _next_item(iterator: AsyncIterator) -> object:
     return await anext(iterator)
 
 
+async def _stop_iteration(pending: asyncio.Task | None, iterator: AsyncIterator):
+    """Stop the task iterating `iterator`, then close the iterator itself.
+
+    Closing a generator another task is still running raises "already running"."""
+    if pending is not None:
+        pending.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await pending
+    aclose = getattr(iterator, "aclose", None)
+    if aclose is not None:
+        with suppress(Exception):
+            await aclose()
+
+
 async def _watch_stream(
     stream: AsyncIterator, alive: Callable[[], bool], poll: float
 ) -> AsyncIterator:
@@ -319,16 +380,21 @@ async def _watch_stream(
                 return
             yield item
     finally:
-        if pending is not None:
-            pending.cancel()
-            with suppress(asyncio.CancelledError, Exception):
-                await pending
+        await _stop_iteration(pending, iterator)
 
 
 def _last_text_block(message: AssistantMessage) -> str:
     """The text of the final `TextBlock` in an assistant message, or ""."""
     texts = [b.text for b in message.content if isinstance(b, TextBlock)]
     return texts[-1] if texts else ""
+
+
+def _query_failure(role: str, message: ResultMessage, last_text: str) -> Exception:
+    _raise_if_invalid_sequence(message.result, last_text)
+    logger.error("agent_query_failed", role=role, subtype=message.subtype)
+    return RuntimeError(
+        f"{role} failed: {message.subtype}" + (f": {last_text}" if last_text else "")
+    )
 
 
 async def _consume_query(  # ruff: ignore[complex-structure]
@@ -345,30 +411,45 @@ async def _consume_query(  # ruff: ignore[complex-structure]
     last_text = ""
     parts = []
     try:
-        async for message in messages:
-            log_stream_message(role, message, options=options)
-            if isinstance(message, AssistantMessage):
-                last_text = _last_text_block(message) or last_text
-                parts.extend(
-                    block.text
-                    for block in message.content
-                    if isinstance(block, TextBlock)
-                )
-            if isinstance(message, ResultMessage):
-                last_text = message.result or last_text
-                if message.is_error or message.subtype != "success":
-                    logger.error(
-                        "agent_query_failed", role=role, subtype=message.subtype
+        async with aclosing(messages):
+            async for message in messages:
+                log_stream_message(role, message, options=options)
+                if isinstance(message, AssistantMessage):
+                    last_text = _last_text_block(message) or last_text
+                    parts.extend(
+                        block.text
+                        for block in message.content
+                        if isinstance(block, TextBlock)
                     )
-                    raise RuntimeError(
-                        f"{role} failed: {message.subtype}"
-                        + (f": {last_text}" if last_text else "")
-                    )
+                if isinstance(message, ResultMessage):
+                    last_text = message.result or last_text
+                    if message.is_error or message.subtype != "success":
+                        raise _query_failure(role, message, last_text)
     except ProcessError as exc:
         if not exc.stderr and last_text:
             exc.stderr = last_text
+        _raise_if_invalid_sequence(exc.stderr, exc, last_text)
         raise
     return "\n".join(parts)
+
+
+async def _consume_rebuilding(
+    prompt: str, options: ClaudeAgentOptions, role: str
+) -> str:
+    """`_consume_query`, retried once on a fresh conversation (no `resume`,
+    recap prepended) when the API refuses the message history."""
+    try:
+        return await _consume_query(prompt, options, role)
+    except _InvalidSequence:
+        logger.warning("agent_query_sequence_retry", role=role)
+    try:
+        return await _consume_query(
+            _restart_recap(_SEQUENCE_RECAP_REASON) + prompt,
+            _fresh_options(options),
+            role,
+        )
+    except _InvalidSequence as exc:
+        raise _sequence_giveup(role) from exc
 
 
 def _check_os_retry(exc: BaseException, role: str, attempt: int) -> None:
@@ -609,7 +690,7 @@ class Agent:
         for attempt in range(1, _SDK_CRASH_RETRY_ATTEMPTS + 1):
             logger.info("agent_query_started", role=role, attempt=attempt)
             try:
-                response = await _consume_query(prompt, options, role)
+                response = await _consume_rebuilding(prompt, options, role)
                 logger.info("agent_query_finished", role=role)
                 return response
             except ProcessError as exc:
@@ -709,8 +790,22 @@ class SessionAgent(Agent):
 
     async def __aexit__(self, *exc):
         self._entered = False
+        await self._close(self._client, *exc)
+
+    async def _close(self, client: object, *exc: object) -> None:
+        """Close `client`; a close that fails must not mask the real error.
+
+        Callers have already closed the receive iterator (`aclosing` in
+        `_run_turn`), so an "already running" race only means a stray task."""
         try:
-            await self._client.__aexit__(*exc)
+            await client.__aexit__(*exc)
+        except RuntimeError as error:
+            event = (
+                "session_close_race"
+                if _CLOSE_RACE.search(str(error))
+                else "session_close_failed"
+            )
+            logger.warning(event, role=self.role, reason=str(error))
         except Exception as error:  # the process may already be gone
             logger.warning("session_close_failed", role=self.role, reason=str(error))
 
@@ -720,25 +815,14 @@ class SessionAgent(Agent):
             "session_recycled", role=self.role, context_tokens=self._context_size
         )
         old = self._client
-        options = copy.copy(self._session_options)
-        for name in ("resume", "continue_conversation"):
-            if hasattr(options, name):
-                setattr(options, name, None if name == "resume" else False)
-        callback = getattr(self._session_options, "_meow_session_callback", None)
-        if callback is not None:
-            options._meow_session_callback = callback
+        options = _fresh_options(self._session_options)
         self._session_options = options
         self._client = ClaudeSDKClient(options=options)
         if self._entered:
-            with suppress(Exception):
-                await old.__aexit__(None, None, None)
+            await self._close(old, None, None, None)
             await self._client.__aenter__()
         self._context_size = 0
-        self._recap = (
-            f"Your previous session {reason} and was replaced. "
-            "Re-read the plan and inspect the working tree (git status, git diff) "
-            "to see what is already done; do not redo finished work.\n\n"
-        )
+        self._recap = _restart_recap(reason)
 
     async def _turn(  # ruff: ignore[too-many-statements]
         self, message: str
@@ -747,9 +831,8 @@ class SessionAgent(Agent):
 
         A full context window or a crashed CLI process replaces the session and
         replays the turn, the same recovery one-shot queries get for crashes."""
-        if self._entered and self._context_size > _SESSION_TOKEN_LIMIT:
-            await self._restart()
-        overflows = crashes = 0
+        await self._restart_if_full()
+        overflows = crashes = rebuilds = 0
         while True:
             logger.info("session_turn_started", role=self.role)
             try:
@@ -758,19 +841,24 @@ class SessionAgent(Agent):
                 overflows += 1
                 await self._recover_overflow(overflows)
                 continue
-            except ProcessError as exc:
-                crashes += 1
-                await self._recover_crash(exc, crashes)
+            except _InvalidSequence as exc:
+                rebuilds += 1
+                await self._recover_sequence(exc, rebuilds)
                 continue
-            except (OSError, CLIConnectionError) as exc:
+            except (ProcessError, OSError, CLIConnectionError) as exc:
                 crashes += 1
-                _check_os_retry(exc, self.role, crashes)
-                await asyncio.sleep(_SDK_CRASH_RETRY_BACKOFF * 2 ** (crashes - 1))
-                await self._restart("hit an operating-system error")
+                if isinstance(exc, ProcessError):
+                    await self._recover_crash(exc, crashes)
+                else:
+                    await self._recover_os_error(exc, crashes)
                 continue
             self._recap = ""
             logger.info("session_turn_finished", role=self.role)
             return text
+
+    async def _restart_if_full(self) -> None:
+        if self._entered and self._context_size > _SESSION_TOKEN_LIMIT:
+            await self._restart()
 
     async def _recover_overflow(self, overflows: int) -> None:
         """Replace a session that ran out of context, or give up."""
@@ -779,6 +867,17 @@ class SessionAgent(Agent):
                 f"{self.role} session exceeded its context window"
             ) from None
         await self._restart()
+
+    async def _recover_os_error(self, exc: BaseException, crashes: int) -> None:
+        _check_os_retry(exc, self.role, crashes)
+        await asyncio.sleep(_SDK_CRASH_RETRY_BACKOFF * 2 ** (crashes - 1))
+        await self._restart("hit an operating-system error")
+
+    async def _recover_sequence(self, exc: Exception, rebuilds: int) -> None:
+        """Rebuild a session whose history the API refused, or park the run."""
+        if rebuilds > _SEQUENCE_REBUILDS or not self._entered:
+            raise _sequence_giveup(self.role) from exc
+        await self._restart(_SEQUENCE_RECAP_REASON)
 
     async def _recover_crash(self, exc: ProcessError, crashes: int) -> None:
         """Replace a crashed session, or report a terminal process failure."""
@@ -804,51 +903,60 @@ class SessionAgent(Agent):
         await asyncio.sleep(_SDK_CRASH_RETRY_BACKOFF * 2 ** (crashes - 1))
         await self._restart("ended unexpectedly")
 
-    async def _run_turn(self, message: str) -> str:  # ruff: ignore[complex-structure]
+    async def _run_turn(self, message: str) -> str:
         text = []
         last_call = 0
         try:
             await self._client.query(message)
-            async for item in _watch_stream(
+            stream = _watch_stream(
                 self._client.receive_response(),
                 lambda: _transport_alive(self._client),
                 _STREAM_POLL_SECONDS,
-            ):
-                log_stream_message(self.role, item, options=self._session_options)
-                if isinstance(item, AssistantMessage):
-                    text.extend(
-                        block.text
-                        for block in item.content
-                        if isinstance(block, TextBlock)
-                    )
-                    if item.parent_tool_use_id is None:
-                        last_call = _context_tokens(item) or last_call
-                elif isinstance(item, ResultMessage):
-                    # The result's usage totals every API call of the turn; the
-                    # last call alone is what the next turn's context starts at.
-                    self._context_size = (
-                        last_call or _context_tokens(item) or self._context_size
-                    )
-                    self._check_result(item)
+            )
+            async with aclosing(stream):
+                async for item in stream:
+                    log_stream_message(self.role, item, options=self._session_options)
+                    if isinstance(item, AssistantMessage):
+                        text.extend(
+                            block.text
+                            for block in item.content
+                            if isinstance(block, TextBlock)
+                        )
+                        if item.parent_tool_use_id is None:
+                            last_call = _context_tokens(item) or last_call
+                    elif isinstance(item, ResultMessage):
+                        # The result's usage totals every API call of the turn; the
+                        # last call alone is what the next turn's context starts at.
+                        self._context_size = (
+                            last_call or _context_tokens(item) or self._context_size
+                        )
+                        self._check_result(item, text[-1] if text else "")
         except ProcessError as exc:
-            if not exc.stderr and text:
-                exc.stderr = text[-1]
-            if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
-                raise _ContextOverflow from exc
+            _classify_process_error(exc, text)
             raise
         return "\n".join(text)
 
-    def _check_result(self, result: ResultMessage) -> None:
+    def _check_result(self, result: ResultMessage, last_text: str = "") -> None:
         """A failed turn must fail, not hand its partial text back as success."""
         failed = getattr(result, "is_error", False) is True
         if not failed and getattr(result, "subtype", "success") == "success":
             return
         detail = str(getattr(result, "result", "") or "")
+        _raise_if_invalid_sequence(detail, last_text)
         if _CONTEXT_OVERFLOW.search(detail):
             raise _ContextOverflow
         raise RuntimeError(
             f"{self.role} failed: {result.subtype}" + (f": {detail}" if detail else "")
         )
+
+
+def _classify_process_error(exc: ProcessError, text: list[str]) -> None:
+    """Raise the typed recovery signal a failed CLI process calls for, if any."""
+    if not exc.stderr and text:
+        exc.stderr = text[-1]
+    _raise_if_invalid_sequence(exc.stderr, exc)
+    if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
+        raise _ContextOverflow from exc
 
 
 class _ContextOverflow(Exception):

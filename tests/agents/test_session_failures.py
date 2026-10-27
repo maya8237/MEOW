@@ -1,7 +1,8 @@
 import asyncio
+from contextlib import aclosing
 from types import SimpleNamespace
 from typing import ClassVar
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from claude_agent_sdk import (
@@ -142,3 +143,101 @@ def test_transport_alive_reads_the_process_returncode():
     assert base._transport_alive(client(None)) is True
     assert base._transport_alive(client(1)) is False
     assert base._transport_alive(SimpleNamespace()) is True  # unknown: alive
+
+
+def test_watch_stream_closes_the_inner_iterator_on_early_exit():
+    closed = []
+
+    async def source():  # ruff: ignore[unused-async] -- SDK async stream
+        try:
+            for i in range(5):
+                yield i
+        finally:
+            closed.append(True)
+
+    async def consume():
+        watched = base._watch_stream(source(), lambda: True, 0.01)
+        async with aclosing(watched):
+            async for _item in watched:
+                break
+        return list(closed)  # before asyncio.run's own generator cleanup
+
+    assert asyncio.run(consume()) == [True]
+
+
+def test_watch_stream_closes_the_inner_iterator_when_the_cli_died():
+    closed = []
+
+    async def silent():
+        try:
+            await asyncio.Event().wait()
+            yield None
+        finally:
+            closed.append(True)
+
+    async def consume():
+        try:
+            async for _item in base._watch_stream(silent(), lambda: False, 0.01):
+                pass
+        except CLIConnectionError:
+            return list(closed)
+
+    assert asyncio.run(consume()) == [True]
+
+
+_SEQUENCE_400 = (
+    "API Error: 400 litellm.BadRequestError: unexpected role 'user' after role 'tool'"
+)
+
+
+def _query_result(error=None):
+    from claude_agent_sdk import ResultMessage
+
+    return ResultMessage(
+        subtype="error" if error else "success",
+        duration_ms=1,
+        duration_api_ms=1,
+        is_error=bool(error),
+        num_turns=1,
+        session_id="s",
+        result=error,
+    )
+
+
+def test_run_query_retries_a_sequence_error_without_resume():
+    prompts = []
+    resumes = []
+
+    def fake_query(*, prompt, options):
+        prompts.append(prompt)
+        resumes.append(options.resume)
+
+        async def gen():  # ruff: ignore[unused-async] -- SDK async stream
+            yield _query_result(_SEQUENCE_400 if len(prompts) == 1 else None)
+
+        return gen()
+
+    options = SimpleNamespace(resume="old", continue_conversation=True)
+    with patch("meow.agents.base.query", fake_query):
+        asyncio.run(base.Agent.run_query("do it", options, "reviewer"))
+    assert resumes == ["old", None]
+    assert "invalid message history" in prompts[1]
+    assert prompts[1].endswith("do it")
+    assert options.resume == "old"
+
+
+def test_run_query_parks_after_a_second_sequence_error():
+    from meow.execution.run_failures import TransientRunError
+
+    def fake_query(*, prompt, options):
+        async def gen():  # ruff: ignore[unused-async] -- SDK async stream
+            yield _query_result(_SEQUENCE_400)
+
+        return gen()
+
+    with (
+        patch("meow.agents.base.query", fake_query),
+        pytest.raises(TransientRunError) as caught,
+    ):
+        asyncio.run(base.Agent.run_query("x", SimpleNamespace(resume="o"), "reviewer"))
+    assert caught.value.cause == "invalid_sequence"
