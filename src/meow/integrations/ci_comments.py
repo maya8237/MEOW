@@ -261,15 +261,6 @@ def _github_threads(target: str, token: str, env: Mapping[str, str]) -> list[dic
     raise CiReviewError("review threads pagination exceeds review size limit")
 
 
-def _open_github_threads(target: str, token: str, env: Mapping[str, str]) -> set:
-    """Root comment ids of unresolved threads; unknown (empty) if the API fails."""
-    try:
-        threads = _github_threads(target, token, env)
-    except CiReviewError:
-        return set()
-    return {t["root_id"] for t in threads if not t["resolved"]}
-
-
 def _comment_keys(  # ruff: ignore[complex-structure] -- provider-specific current-line coordinates
     provider: str, context: CiReviewContext, history: dict, open_ids: set
 ) -> list[tuple]:
@@ -305,9 +296,26 @@ def _comment_keys(  # ruff: ignore[complex-structure] -- provider-specific curre
     return keys
 
 
-def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revisions and deduplicate before provider writes
-    provider: str, context: CiReviewContext, response: str, env: Mapping[str, str]
+def _remember_open_threads(
+    target: str, token: str, env: Mapping[str, str], state: dict
+) -> set:
+    """Cache GitHub threads in state; without them outdated-thread dedupe is off."""
+    try:
+        state["threads"] = _github_threads(target, token, env)
+    except CiReviewError:
+        state["threads_error"] = True
+    return {t["root_id"] for t in state.get("threads", ()) if not t["resolved"]}
+
+
+def post_review_comments(  # ruff: ignore[too-many-statements, too-many-arguments, too-many-positional-arguments] -- validate revisions and deduplicate before provider writes
+    provider: str,
+    context: CiReviewContext,
+    response: str,
+    env: Mapping[str, str],
+    state: dict | None = None,
 ) -> int:
+    """Publish new findings; `state` shares fetched history with the resolve step."""
+    state = {} if state is None else state
     findings = _findings(response, context.diff)
     token, target = _connection(provider, env)
     remote = _request(target, token)
@@ -326,9 +334,11 @@ def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revis
         }
     if not matches:
         raise CiReviewError("remote review revisions differ from the reviewed checkout")
-    history = read_review_comments(provider, env)
+    history = state["history"] = read_review_comments(provider, env)
     open_ids = (
-        _open_github_threads(target, token, env) if provider == "github" else set()
+        _remember_open_threads(target, token, env, state)
+        if provider == "github"
+        else set()
     )
     existing = _comment_keys(provider, context, history, open_ids)
     posted = 0
@@ -400,18 +410,23 @@ def parse_resolutions(response: str) -> list[dict]:
     return items
 
 
-def _open_meow_threads(
-    provider: str, target: str, token: str, env: Mapping[str, str]
+def _open_meow_threads(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- provider connection plus shared fetch state
+    provider: str, target: str, token: str, env: Mapping[str, str], state: dict
 ) -> dict[str, dict]:
     """Unresolved threads whose first comment meow authored, keyed by public id."""
     if provider == "github":
+        if state.get("threads_error"):
+            raise CiReviewError(
+                "review threads unavailable; check GraphQL access (GITHUB_GRAPHQL_URL)"
+            )
         return {
             str(t["root_id"]): t
-            for t in _github_threads(target, token, env)
+            for t in state.get("threads") or _github_threads(target, token, env)
             if not t["resolved"] and not t["solved"] and MARKER in t["body"]
         }
     threads = {}
-    for discussion in read_review_comments(provider, env)["discussions"]:
+    history = state.get("history") or read_review_comments(provider, env)
+    for discussion in history["discussions"]:
         first, *replies = discussion.get("notes") or [{}]
         if (
             MARKER in first.get("body", "")
@@ -456,13 +471,16 @@ def _resolve_thread(  # ruff: ignore[too-many-arguments, too-many-positional-arg
 
 
 def resolve_review_comments(
-    provider: str, resolutions: list[dict], env: Mapping[str, str]
+    provider: str,
+    resolutions: list[dict],
+    env: Mapping[str, str],
+    state: dict | None = None,
 ) -> int:
     """Reply to and resolve open threads that meow itself started."""
     if not resolutions:
         return 0
     token, target = _connection(provider, env)
-    threads = _open_meow_threads(provider, target, token, env)
+    threads = _open_meow_threads(provider, target, token, env, state or {})
     resolved = 0
     for item in resolutions:
         thread = threads.pop(str(item["id"]), None)

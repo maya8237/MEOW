@@ -463,3 +463,63 @@ def test_gitlab_skips_thread_already_marked_solved(api):
         items = [{"id": "abc", "reason": "Fixed"}]
         assert resolve_review_comments("gitlab", items, env) == 0
     assert all(payload is None for payload in calls)
+
+
+def test_github_threads_are_fetched_once_for_post_and_resolve(api):
+    provider, env = api
+    if provider != "github":
+        pytest.skip("GitHub thread API")
+    context = CiReviewContext(
+        "head",
+        "feature",
+        "dev",
+        "target",
+        "base",
+        "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+    )
+    request, _, _ = fake_api(provider, context, [existing(provider)])
+    queries = []
+
+    def counting(url, token, payload=None, method=None):
+        if payload and "reviewThreads" in payload.get("query", ""):
+            queries.append(url)
+        return request(url, token, payload)
+
+    state = {}
+    with patch("meow.integrations.ci_comments._request", counting):
+        post_review_comments(provider, context, reply([]), env, state)
+        items = [{"id": 1, "reason": "Fixed"}]
+        assert resolve_review_comments(provider, items, env, state) == 1
+    assert len(queries) == 1
+
+
+def test_unavailable_threads_are_reported_not_silent(api):
+    from meow.integrations.ci_review import _publish_comments
+
+    provider, env = api
+    if provider != "github":
+        pytest.skip("GitHub thread API")
+    context = CiReviewContext(
+        "head",
+        "feature",
+        "dev",
+        "target",
+        "base",
+        "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+    )
+    request, _, _ = fake_api(provider, context, [])
+
+    def no_graphql(url, token, payload=None, method=None):
+        if payload and "query" in payload:
+            raise CiReviewError("review API failed (HTTP 403)")
+        return request(url, token, payload)
+
+    with patch("meow.integrations.ci_comments._request", no_graphql):
+        _, _, error = _publish_comments(provider, context, reply([]), env)
+        assert "open-thread lookup unavailable" in error
+        resolutions = block([{"id": 1, "reason": "Fixed"}])
+        _, resolved, error = _publish_comments(
+            provider, context, reply([]) + "\n" + resolutions, env
+        )
+    assert resolved is None
+    assert "GraphQL" in error

@@ -300,12 +300,20 @@ def _publish_comments(
 
     # A failed multi-note publish may have created some notes remotely.
     posted = resolved = None
+    state: dict = {}
     try:
-        posted = post_review_comments(provider, context, text, env)
-        resolved = resolve_review_comments(provider, parse_resolutions(text), env)
+        posted = post_review_comments(provider, context, text, env, state)
+        resolved = resolve_review_comments(
+            provider, parse_resolutions(text), env, state
+        )
     except Exception as exc:
         return posted, resolved, _safe_text(str(exc), env)[:1000]
-    return posted, resolved, None
+    warning = (
+        "open-thread lookup unavailable; notes on moved lines may be duplicates"
+        if state.get("threads_error")
+        else None
+    )
+    return posted, resolved, warning
 
 
 def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-many-positional-arguments, too-many-statements, too-many-branches, too-many-locals] -- public CI entry point
