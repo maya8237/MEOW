@@ -18,8 +18,11 @@ def _executable(directory, name, content):
     return path
 
 
+@pytest.mark.parametrize("setup", [False, True])
 @pytest.mark.parametrize("non_interactive", [False, True])
-def test_installer_switch_controls_setup_without_network(tmp_path, non_interactive):
+def test_installer_switch_controls_setup_without_network(
+    tmp_path, non_interactive, setup
+):
     tools = tmp_path / "tools"
     tools.mkdir()
     _executable(tools, "uv", "exit 1\n")
@@ -67,10 +70,12 @@ esac
     argv = [shutil.which("sh"), str(ROOT / "scripts/install.sh")]
     if non_interactive:
         argv.append("--non-interactive")
+    if setup:
+        argv.append("--setup")
     result = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
     activation = (tmp_path / "activation").read_text()
-    assert ("--setup" in activation) is not non_interactive
+    assert ("--setup" in activation) is (setup and not non_interactive)
     assert "--activate" in activation
 
 

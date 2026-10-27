@@ -142,7 +142,7 @@ def _print_features(project: Path, output: Callable[[str], None]) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Register MEOW for Claude Code and onboard project directories."
+        description="Register MEOW for Claude Code; optionally set up projects."
     )
     parser.add_argument(
         "--repo-dir",
@@ -155,6 +155,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--migrate-bun", nargs="+", help=argparse.SUPPRESS)
     parser.add_argument("--update-bun", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--setup", action="store_true", help="Offer optional Bun and project setup."
+    )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Skip all optional setup prompts.",
+    )
     return parser
 
 
@@ -345,7 +353,7 @@ def _setup_projects() -> int:
 
 
 def _update_bun() -> int:
-    """After `meow --update`: offer the shared store once, then migrate repos."""
+    """Explicitly offer the shared store once, then migrate registered repos."""
     if shared_store_configured(Path.home() / ".bunfig.toml"):
         return 0
     try:
@@ -358,14 +366,14 @@ def _update_bun() -> int:
 
 def _bun_command(args: argparse.Namespace) -> int:
     if args.update_bun:
-        return _update_bun()
+        return _update_bun() if not args.non_interactive else 0
     migrate_bun_projects([Path(repo) for repo in args.migrate_bun], print)
     print("Bun migration finished. Check the messages above for any failures.")
     return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:  # ruff: ignore[too-many-return-statements]
-    """Run the interactive portion shared by the PowerShell and POSIX scripts."""
+    """Register the plugin, running optional setup only when explicitly requested."""
     parser = _parser()
     args = parser.parse_args(argv)
     if args.migrate_bun or args.update_bun:
@@ -381,4 +389,4 @@ def main(argv: Sequence[str] | None = None) -> int:  # ruff: ignore[too-many-ret
         return 2
     if not _register_plugin(repo_dir, print):
         return 1
-    return _setup_projects()
+    return _setup_projects() if args.setup and not args.non_interactive else 0

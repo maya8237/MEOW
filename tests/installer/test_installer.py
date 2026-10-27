@@ -249,7 +249,7 @@ def test_main_onboards_each_literal_destination_and_prints_next_steps(
     answers = iter(("n", "y", str(project), ""))
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
 
-    assert installer.main(["--repo-dir", str(repo)]) == 0
+    assert installer.main(["--repo-dir", str(repo), "--setup"]) == 0
 
     output = capsys.readouterr().out
     assert calls == [project]
@@ -278,7 +278,7 @@ def test_main_registers_new_and_already_onboarded_projects(tmp_path, monkeypatch
     answers = iter(("n", "y", str(onboarded), str(fresh), ""))
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
 
-    assert installer.main(["--repo-dir", str(repo)]) == 0
+    assert installer.main(["--repo-dir", str(repo), "--setup"]) == 0
 
     saved = repos_module._saved()
     assert str(onboarded.resolve()) in saved
@@ -313,7 +313,7 @@ def test_main_skips_project_setup_when_the_user_declines(tmp_path, monkeypatch):
 
     monkeypatch.setattr("builtins.input", fake_input)
 
-    assert installer.main(["--repo-dir", str(repo)]) == 0
+    assert installer.main(["--repo-dir", str(repo), "--setup"]) == 0
     assert calls == []
     assert len(prompts) == len(("bun", "projects"))
     assert "[Y/n]" in prompts[0]
@@ -331,7 +331,10 @@ def test_main_exits_quietly_on_ctrl_c(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr("builtins.input", interrupt)
 
-    assert installer.main(["--repo-dir", str(repo)]) == _runtime.EXIT_INTERRUPTED
+    assert (
+        installer.main(["--repo-dir", str(repo), "--setup"])
+        == _runtime.EXIT_INTERRUPTED
+    )
     assert "Setup stopped." in capsys.readouterr().out
 
 

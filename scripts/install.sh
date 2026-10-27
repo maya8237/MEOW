@@ -3,11 +3,13 @@
 set -eu
 
 non_interactive=false
+setup=false
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --non-interactive) non_interactive=true ;;
+        --setup) setup=true ;;
         -h|--help)
-            printf '%s\n' 'Usage: sh install.sh [--non-interactive]' 'Skip optional Bun and project setup prompts with --non-interactive.'
+            printf '%s\n' 'Usage: sh install.sh [--setup] [--non-interactive]' 'Install and register only by default. --setup offers optional Bun and project setup.' 'With --non-interactive, optional setup is always skipped.'
             exit 0 ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
@@ -109,7 +111,7 @@ purelib=$("$bundle/runtime/bin/python3" -c "import sysconfig;print(sysconfig.get
 printf '%s\n' 'Installing pinned dependencies and launcher (this can take minutes)...'
 PYTHONPATH=$purelib "$python" -m meow.installer.releases --finish "$destination" --bundle "$bundle"
 
-if [ "$non_interactive" = true ]; then
+if [ "$setup" = false ] || [ "$non_interactive" = true ]; then
     "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination"
 elif [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
     "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup </dev/tty
