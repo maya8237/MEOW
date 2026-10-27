@@ -35,6 +35,7 @@ from meow.agents.api_errors import (
     ApiError,
     ApiRetries,
     classify_api_error,
+    redact,
 )
 from meow.execution.run_failures import TransientRunError
 from meow.infrastructure.logging import get_logger
@@ -113,11 +114,18 @@ def _fresh_options(options: ClaudeAgentOptions) -> ClaudeAgentOptions:
     return fresh
 
 
-def _retry_recap() -> str:
-    return (
-        "Your previous attempt was cut off by an invalid message history; "
-        "start over and complete the task below.\n\n"
-    )
+_RETRY_RECAP_LEAD = "Your previous attempt was cut off by "
+
+
+def _retry_recap(cause: str = "an invalid message history") -> str:
+    return f"{_RETRY_RECAP_LEAD}{cause}; start over and complete the task below.\n\n"
+
+
+def _recapped(prompt: str, cause: str = "an invalid message history") -> str:
+    """`prompt` behind a retry recap, never behind two."""
+    if prompt.startswith(_RETRY_RECAP_LEAD):
+        return prompt
+    return _retry_recap(cause) + prompt
 
 
 def _restart_recap(reason: str) -> str:
@@ -412,12 +420,20 @@ def _last_text_block(message: AssistantMessage) -> str:
     return texts[-1] if texts else ""
 
 
-def _api_failure(status: int | None, error: str | None, text: str) -> ApiError | None:
-    """An `ApiError` for text the retry policy handles (sequence and context
-    failures keep their own recovery paths)."""
+def _api_failure(
+    status: int | None, error: str | None, text: str, prose: str = ""
+) -> ApiError | None:
+    """An `ApiError` for a failure the retry policy handles. `text` is a
+    structured detail (result, stderr); `prose` is assistant text, used only
+    when it carries the CLI's `API Error:` notice. A sequence fault raises
+    `_InvalidSequence`; a context overflow keeps its own recovery path."""
+    if "API Error:" in prose:
+        text = f"{text} {prose}".strip()
     failure = classify_api_error(status=status, error=error, text=text)
-    if failure is None or failure.kind in {"sequence", "overflow"}:
+    if failure is None or failure.kind == "overflow":
         return None
+    if failure.kind == "sequence":
+        raise _InvalidSequence
     return ApiError(failure, text)
 
 
@@ -444,14 +460,15 @@ def _query_failure(  # ruff: ignore[too-many-arguments, too-many-positional-argu
     _raise_if_invalid_sequence(assistant=message.result or "")
     _raise_if_invalid_sequence(assistant=assistant)
     api = _api_failure(
-        message.api_error_status, assistant_error, message.result or assistant
+        message.api_error_status, assistant_error, message.result or "", assistant
     )
     if api is not None:
         logger.warning("agent_api_error", role=role, cause=api.failure.cause)
         return api
     logger.error("agent_query_failed", role=role, subtype=message.subtype)
     return RuntimeError(
-        f"{role} failed: {message.subtype}" + (f": {last_text}" if last_text else "")
+        f"{role} failed: {message.subtype}"
+        + (f": {redact(last_text)}" if last_text else "")
     )
 
 
@@ -494,9 +511,10 @@ async def _consume_query(  # ruff: ignore[complex-structure, too-many-branches, 
                         )
     except ProcessError as exc:
         _raise_if_invalid_sequence(exc.stderr, exc, assistant=last_text)
+        api = _api_failure(None, None, f"{exc.stderr or ''} {exc}", last_text)
         if not exc.stderr and last_text:
             exc.stderr = last_text
-        if (api := _api_failure(None, None, f"{exc.stderr or ''} {exc}")) is not None:
+        if api is not None:
             raise api from exc
         raise
     return "\n".join(parts)
@@ -516,7 +534,7 @@ async def _consume_rebuilding(
         logger.warning("agent_query_sequence_retry", role=role)
     try:
         return await _consume_query(
-            _retry_recap() + prompt,
+            _recapped(prompt),
             _fresh_options(options),
             role,
             retries,
@@ -530,6 +548,7 @@ async def _consume_resilient(
 ) -> str:
     """`_consume_rebuilding`, waiting out or backing off API errors (rate
     limits, overload, timeouts) and resending; a fresh session at most once."""
+    base_prompt = prompt
     retries = ApiRetries(
         role,
         lambda: _max_wait({}, getattr(options, "cwd", None)),
@@ -541,7 +560,7 @@ async def _consume_resilient(
         except ApiError as exc:
             if await retries.handle(exc):
                 continue
-            prompt = _restart_recap("hit an API error") + prompt
+            prompt = _recapped(base_prompt, "an API error")
             options = _fresh_options(options)
 
 
@@ -1062,21 +1081,25 @@ class SessionAgent(Agent):
         if _CONTEXT_OVERFLOW.search(detail):
             raise _ContextOverflow
         status = getattr(result, "api_error_status", None)
-        if (api := _api_failure(status, api_error, detail or last_text)) is not None:
+        if (api := _api_failure(status, api_error, detail, last_text)) is not None:
             raise api
         raise RuntimeError(
-            f"{self.role} failed: {result.subtype}" + (f": {detail}" if detail else "")
+            f"{self.role} failed: {result.subtype}"
+            + (f": {redact(detail)}" if detail else "")
         )
 
 
 def _classify_process_error(exc: ProcessError, text: list[str]) -> None:
     """Raise the typed recovery signal a failed CLI process calls for, if any."""
     _raise_if_invalid_sequence(exc.stderr, exc, assistant=text[-1] if text else "")
+    api = _api_failure(
+        None, None, f"{exc.stderr or ''} {exc}", text[-1] if text else ""
+    )
     if not exc.stderr and text:
         exc.stderr = text[-1]
     if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
         raise _ContextOverflow from exc
-    if (api := _api_failure(None, None, f"{exc.stderr or ''} {exc}")) is not None:
+    if api is not None:
         raise api from exc
 
 

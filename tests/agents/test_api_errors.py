@@ -16,6 +16,8 @@ from meow.agents.api_errors import ApiFailure, api_error_from, classify_api_erro
 from meow.agents.base import Agent, ProjectContext, SessionAgent
 from meow.execution.run_failures import BlockingRunError, TransientRunError
 
+TWICE = 2
+REPORTED_RESET = 45.0
 KEY = "sk-abc123def456ghi789"
 MODEL_KEY_BODY = (
     f"API Error: 429 litellm.RateLimitError: Model rate limit exceeded for key "
@@ -67,7 +69,9 @@ TABLE = [
 
 
 @pytest.mark.parametrize(("status", "error", "text", "kind", "cause"), TABLE)
-def test_classify_api_error_table(status, error, text, kind, cause):
+def test_classify_api_error_table(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+    status, error, text, kind, cause
+):
     failure = classify_api_error(status=status, error=error, text=text)
     assert (failure.kind, failure.cause) == (kind, cause)
 
@@ -141,7 +145,7 @@ def _event(resets_at, status="rejected"):
 def sleeps(monkeypatch):
     log = []
 
-    async def fake(seconds):
+    async def fake(seconds):  # ruff: ignore[unused-async] -- awaited stub
         log.append(seconds)
 
     monkeypatch.setattr(api_errors, "_sleep", fake)
@@ -155,7 +159,7 @@ def _scripted(monkeypatch, scripts):
         calls.append((prompt, options))
         script = scripts[min(len(calls), len(scripts)) - 1]
 
-        async def stream():
+        async def stream():  # ruff: ignore[unused-async] -- SDK async stream
             for item in script:
                 yield item
 
@@ -195,7 +199,7 @@ def test_model_per_key_429_waits_reported_reset(monkeypatch, sleeps):
     calls = _scripted(monkeypatch, [[_result(text=body, status=429)], [_ok()]])
     _run()
     assert sleeps == [45.0]
-    assert len(calls) == 2
+    assert len(calls) == TWICE
 
 
 def test_model_per_key_429_parks_with_retry_after_and_never_logs_key(
@@ -208,7 +212,7 @@ def test_model_per_key_429_parks_with_retry_after_and_never_logs_key(
         _run()
     out = capsys.readouterr().out
     assert caught.value.cause == "model_key_rate_limit"
-    assert caught.value.retry_after == 45.0
+    assert caught.value.retry_after == pytest.approx(REPORTED_RESET)
     assert KEY not in out
     assert "sk-abc1" in out
     assert "gpt-x" in out
@@ -236,7 +240,7 @@ def test_auth_retries_once_then_blocks(monkeypatch, sleeps):
         _run()
     assert caught.value.cause == "auth"
     assert sleeps == [30.0]
-    assert len(calls) == 2
+    assert len(calls) == TWICE
 
 
 def test_invalid_request_restarts_fresh_once_then_parks(monkeypatch, sleeps):
@@ -245,7 +249,7 @@ def test_invalid_request_restarts_fresh_once_then_parks(monkeypatch, sleeps):
     with pytest.raises(TransientRunError) as caught:
         _run(options)
     assert caught.value.cause == "invalid_request"
-    assert len(calls) == 2
+    assert len(calls) == TWICE
     assert calls[1][1].resume is None
     assert calls[1][0].endswith("do it")
 
@@ -270,7 +274,7 @@ def test_session_waits_in_the_same_session(monkeypatch, sleeps, tmp_path):
     assert made == [1]
 
 
-async def _aiter(items):
+async def _aiter(items):  # ruff: ignore[unused-async] -- SDK async stream
     for item in items:
         yield item
 
@@ -283,3 +287,137 @@ def test_sdk_env_sets_retry_defaults(tmp_path, monkeypatch):
     )
     assert options.env["CLAUDE_CODE_MAX_RETRIES"] == "8"
     assert options.env["API_TIMEOUT_MS"] == "1"
+
+
+def test_parked_error_message_never_contains_the_key(monkeypatch, sleeps):
+    monkeypatch.setattr(base, "_max_wait", lambda *_: 1.0)
+    body = MODEL_KEY_BODY + " retry after 45 seconds"
+    _scripted(monkeypatch, [[_result(text=body, status=429)]])
+    with pytest.raises(TransientRunError) as caught:
+        _run()
+    assert KEY not in str(caught.value)
+    assert "sk-abc1" not in str(caught.value).replace("[redacted-key]", "")
+
+
+def test_blocking_error_message_never_contains_the_key(monkeypatch, sleeps):
+    body = f"API Error: 401 invalid key {KEY}"
+    _scripted(monkeypatch, [[_result(text=body, status=401)]])
+    with pytest.raises(BlockingRunError) as caught:
+        _run()
+    assert KEY not in str(caught.value)
+
+
+def test_apierror_and_failed_turn_messages_redact_the_key():
+    failure = ApiFailure("backoff", "server_error")
+    assert KEY not in str(api_errors.ApiError(failure, f"key {KEY} broke"))
+    assert KEY not in api_errors.redact(f"Bearer {KEY} and key {KEY}")
+
+
+def test_session_failure_message_redacts_the_key(tmp_path):
+    agent = SessionAgent(ProjectContext(tmp_path, {}))
+    agent.role = "generator"
+    result = _result(text=f"max_turns hit using key {KEY}")
+    with pytest.raises(RuntimeError) as caught:
+        agent._check_result(result)
+    assert KEY not in str(caught.value)
+
+
+@pytest.mark.parametrize("prefix", ["", "litellm.BadRequestError: "])
+def test_structured_400_sequence_error_rebuilds(monkeypatch, sleeps, prefix):
+    bad = _result(text=f"{prefix}roles must alternate", status=400)
+    calls = _scripted(monkeypatch, [[bad], [_assistant("fine"), _ok()]])
+    assert _run() == "fine"
+    assert len(calls) == TWICE
+    assert calls[1][0].endswith("do it")
+    assert calls[1][0] != "do it"
+
+
+def test_session_structured_400_sequence_error_restarts(monkeypatch, sleeps, tmp_path):
+    streams = iter([
+        [_result(text="roles must alternate", status=400)],
+        [_assistant("ok"), _ok()],
+    ])
+    client = MagicMock()
+    client.query = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    client.receive_response = lambda: _aiter(next(streams))
+    made = []
+    monkeypatch.setattr(base, "ClaudeSDKClient", lambda **_: made.append(1) or client)
+    agent = SessionAgent(ProjectContext(tmp_path, {}))
+    agent.role = "generator"
+    agent.open(ClaudeAgentOptions())
+
+    async def go():
+        async with agent:
+            return await agent.send("go")
+
+    assert asyncio.run(go()) == "ok"
+    assert len(made) == TWICE
+
+
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "I added a fallback for overloaded servers",
+        "model foo rate limit per key, press any key to continue",
+    ],
+)
+def test_assistant_prose_is_not_classified(monkeypatch, sleeps, prose):
+    failing = [_assistant(prose), _result(text="", status=None)]
+    failing[1] = ResultMessage(
+        subtype="error_max_turns",
+        duration_ms=0,
+        duration_api_ms=0,
+        is_error=True,
+        num_turns=1,
+        session_id="s",
+        result=None,
+    )
+    _scripted(monkeypatch, [failing])
+    with pytest.raises(RuntimeError) as caught:
+        _run()
+    assert not isinstance(caught.value, TransientRunError)
+    assert sleeps == []
+
+
+def test_assistant_api_error_notice_is_classified(monkeypatch, sleeps):
+    notice = "API Error: 529 Overloaded"
+    failing = ResultMessage(
+        subtype="error_during_execution",
+        duration_ms=0,
+        duration_api_ms=0,
+        is_error=True,
+        num_turns=1,
+        session_id="s",
+        result=None,
+    )
+    _scripted(monkeypatch, [[_assistant(notice), failing], [_ok()]])
+    _run()
+    assert sleeps == [15]
+
+
+@pytest.mark.parametrize("status", [500, 501, 520, 524, 599])
+def test_any_5xx_is_a_server_error(status):
+    failure = classify_api_error(status=status, error=None, text="")
+    assert (failure.kind, failure.cause) == ("backoff", "server_error")
+
+
+def test_litellm_exceptions_module_prefix_is_read():
+    failure = classify_api_error(
+        status=None, error=None, text="litellm.exceptions.RateLimitError: slow"
+    )
+    assert failure.cause == "rate_limit"
+
+
+def test_restart_recap_is_generic_and_does_not_stack(monkeypatch, sleeps):
+    first = _result(status=400, text="API Error: 400 bad")
+    second = _result(
+        status=None, text="API Error: litellm.ContentPolicyViolationError: no"
+    )
+    calls = _scripted(monkeypatch, [[first], [second], [_ok()]])
+    _run()
+    prompt = calls[2][0]
+    assert prompt.endswith("do it")
+    assert "working tree" not in prompt
+    assert prompt.count("start over") == 1

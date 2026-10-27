@@ -28,7 +28,7 @@ _BLOCKING_DELAY = 30.0
 _PARK_DEFAULT = 3600.0
 
 _STATUS = re.compile(r"API Error: (\d{3})")
-_LITELLM = re.compile(r"litellm\.(\w+)")
+_LITELLM = re.compile(r"litellm\.(?:exceptions\.)?(\w+)")
 _SEQUENCE = re.compile(
     r"unexpected role ['\"`]?user['\"`]? after role ['\"`]?tool|"
     r"roles must alternate|tool_use ids were found without .?tool_result|"
@@ -53,6 +53,8 @@ _RETRY_AFTER = re.compile(
     re.I,
 )
 _KEY = re.compile(r"(?i)\bkey\W{0,6}(sk-[\w-]+|[0-9a-f]{32,64})")
+_TOO_MANY, _BAD_REQUEST, _TOO_LARGE, _SERVER = 429, 400, 413, 500
+_REDACTED = "[redacted-key]"
 _MODEL = re.compile(r"(?i)\bmodel[=:\s'\"]+([\w./:-]+)")
 _MODEL_STOP = frozenset({"rate", "per", "limit", "max", "budget", "not", "key"})
 
@@ -115,6 +117,14 @@ class ApiFailure:
     status: int | None = None
 
 
+def redact(text: str) -> str:
+    """`text` with anything key-like replaced; error bodies reach exception
+    messages, run records and stderr, so nothing there may carry a key."""
+    text = _KEY.sub(lambda m: m.group(0).replace(m.group(1), _REDACTED), text)
+    text = re.sub(r"\bsk-[\w-]{8,}", _REDACTED, text)
+    return re.sub(r"(?i)(Bearer )\S+", rf"\1{_REDACTED}", text)
+
+
 def _hint_seconds(text: str) -> float | None:
     """A reset the error body reports (Retry-After, x-ratelimit-reset-*)."""
     found = _RETRY_AFTER.search(text)
@@ -132,7 +142,7 @@ def _status_of(status: int | None, text: str) -> int | None:
     return int(found.group(1)) if found else None
 
 
-def classify_api_error(
+def classify_api_error(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-branches]
     *, status: int | None, error: str | None, text: str
 ) -> ApiFailure | None:
     """The `ApiFailure` a result/assistant error or error text describes, or
@@ -141,22 +151,28 @@ def classify_api_error(
     text = text or ""
     code = _status_of(status, text)
     classes = _LITELLM.findall(text)
-    rate_limited = code == 429 or "RateLimitError" in classes
+    rate_limited = code == _TOO_MANY or "RateLimitError" in classes
     hint = _hint_seconds(text)
 
     def make(kind: Kind, cause: str) -> ApiFailure:
         return ApiFailure(kind, cause, hint if kind == "wait" else None, code)
 
-    if (code in (None, 429) or rate_limited) and (
+    if (code in {None, _TOO_MANY} or rate_limited) and (
         _MODEL_KEY.search(text) or (rate_limited and _MODEL_AND_KEY.search(text))
     ):
         return make("wait", "model_key_rate_limit")
-    if code == 400 and _SEQUENCE.search(text):
+    if code == _BAD_REQUEST and _SEQUENCE.search(text):
         return make("sequence", "invalid_sequence")
-    if code == 413 or "ContextWindowExceededError" in classes or _CONTEXT.search(text):
+    if (
+        code == _TOO_LARGE
+        or "ContextWindowExceededError" in classes
+        or _CONTEXT.search(text)
+    ):
         return make("overflow", "context")
     if code in _BY_STATUS:
         return make(*_BY_STATUS[code])
+    if code is not None and _SERVER <= code < _SERVER + 100:
+        return make("backoff", "server_error")
     for name in classes:
         if name in _BY_CLASS:
             return make(*_BY_CLASS[name])
@@ -186,6 +202,8 @@ class ApiError(Exception):
     """A classified API failure raised out of a stream, for the retry loops."""
 
     def __init__(self, failure: ApiFailure, text: str = "") -> None:
+        self.ids = _safe_ids(text, None)  # before redaction: key prefix for logs
+        text = redact(text)
         super().__init__(f"{failure.cause}: {text[:200]}")
         self.failure = failure
         self.text = text
@@ -249,10 +267,12 @@ class ApiRetries:
             retry_after=retry_after,
         )
 
-    async def handle(self, error: ApiError) -> bool:
+    async def handle(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+        self, error: ApiError
+    ) -> bool:
         failure, text = error.failure, error.text
         cause = failure.cause
-        ids = _safe_ids(text, self.model)
+        ids = {**error.ids, **({"model": self.model} if self.model else {})}
         if failure.kind == "wait":
             return await self._wait(failure, text, ids)
         n = self._count(cause)
@@ -303,7 +323,7 @@ class ApiRetries:
         await self._pause("api_wait", cause, delay, n, ids)
         return True
 
-    async def _pause(
+    async def _pause(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
         self, event: str, cause: str, delay: float, attempt: int, ids: dict
     ) -> None:
         logger.warning(
