@@ -13,15 +13,27 @@ from pathlib import Path
 from typing import Literal
 
 from meow.common.process import process_identity as _process_identity
-from meow.execution.run_state import TERMINAL_PHASES, RunRecord, RunStore
+from meow.execution.run_failures import BlockingRunError
+from meow.execution.run_state import (
+    PARKED_PHASE,
+    TERMINAL_PHASES,
+    RunRecord,
+    RunStore,
+)
 from meow.project.config import _merge_config, config_paths
 from meow.project.config_env import _expand_config_environment
 
 _STARTUP_GRACE_SECONDS = 10
+# Phases no worker drives any more; a parked run waits for `meow resume`.
+_SETTLED = TERMINAL_PHASES | {PARKED_PHASE}
 
 
 class BackgroundError(RuntimeError):
     """A worker could not be launched or validated."""
+
+
+class InvalidInvocationError(BackgroundError, BlockingRunError):
+    """A saved worker invocation no resume can repair."""
 
 
 @dataclass(frozen=True)
@@ -50,7 +62,7 @@ def inspect_worker(  # ruff: ignore[too-many-return-statements]
     log = data.get("log")
     if not data:
         return WorkerState("not_background", None, None)
-    if record.phase in TERMINAL_PHASES and not include_terminal:
+    if record.phase in _SETTLED and not include_terminal:
         return WorkerState(record.phase, pid if isinstance(pid, int) else None, log)
     expected = data.get("start_identity")
     if not isinstance(pid, int) or not isinstance(expected, str) or not expected:
@@ -69,7 +81,7 @@ def reconcile_worker(store: RunStore, run_id: str) -> WorkerState:
     record = store.load(run_id)
     state = inspect_worker(record)
     if state.state == "interrupted" and record.phase not in {
-        *TERMINAL_PHASES,
+        *_SETTLED,
         "interrupted_mutation",
     }:
         store.transition(
@@ -318,7 +330,7 @@ def worker_main(  # ruff: ignore[too-many-statements]
         parse_inputs,
         pipeline_overrides,
     )
-    from meow.execution.sprint_runner import run_sprint
+    from meow.execution.sprint_runner import _settle_failure, run_sprint
     from meow.integrations.issue_solver import run_issue_solver
 
     store = RunStore(repo)
@@ -328,7 +340,9 @@ def worker_main(  # ruff: ignore[too-many-statements]
         try:
             kind = _invocation_kind(args)
         except BackgroundError as exc:
-            raise BackgroundError("Saved worker invocation is invalid") from exc
+            raise InvalidInvocationError(
+                "Saved worker invocation is invalid", cause="invalid_input"
+            ) from exc
         if kind == "orchestrator-task":
             from meow.execution.orchestration.task_worker import run_task_attempt
 
@@ -383,8 +397,7 @@ def worker_main(  # ruff: ignore[too-many-statements]
             )
         return 0
     except BaseException as exc:
-        if store.load(run_id).phase not in TERMINAL_PHASES:
-            store.transition(run_id, "failed", last_failure=f"Worker failed: {exc}")
+        _settle_failure(store, run_id, exc)  # park unless blocking
         raise
     finally:
         _notify_once(store, run_id)

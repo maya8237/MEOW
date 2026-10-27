@@ -229,7 +229,9 @@ async def finalize(  # ruff: ignore[too-many-statements, complex-structure, too-
             adopt_stage_artifacts, store, run_id, active_dir, baseline
         )
     except BaseException as exc:
-        store.transition(run_id, "failed", last_failure=str(exc))
+        from meow.execution.sprint_runner import _settle_failure
+
+        _settle_failure(store, run_id, exc)  # a crashed check parks resumable
         raise
     store.transition(
         run_id,

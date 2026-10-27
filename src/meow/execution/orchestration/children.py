@@ -13,7 +13,12 @@ from meow.execution.orchestration.model import (
 )
 from meow.execution.orchestration.scheduler import Launcher
 from meow.execution.orchestration.store import OrchestratorStore
-from meow.execution.run_state import TERMINAL_PHASES, RunStateError, RunStore
+from meow.execution.run_state import (
+    PARKED_PHASE,
+    TERMINAL_PHASES,
+    RunStateError,
+    RunStore,
+)
 from meow.infrastructure.background import RunSeed, launch_background, reconcile_worker
 from meow.infrastructure.cancellation import request_cancel
 from meow.infrastructure.worktree import _ensure_branch_worktree
@@ -142,8 +147,8 @@ def poll_task(
         return "failed"
     if phase in _PASSED_PHASES:
         return "passed"
-    if phase in TERMINAL_PHASES or phase == "interrupted_mutation":
-        return "failed"
+    if phase in TERMINAL_PHASES or phase in {"interrupted_mutation", PARKED_PHASE}:
+        return "failed"  # settled without passing; triage decides what next
     return "running"
 
 

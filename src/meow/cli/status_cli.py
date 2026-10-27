@@ -13,7 +13,9 @@ from meow.execution.orchestration.model import (
 )
 from meow.execution.orchestration.report import render_status, rollup_line
 from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
+from meow.execution.run_failures import RESUMABLE_SOURCES, next_command
 from meow.execution.run_state import (
+    PARKED_PHASE,
     TERMINAL_PHASES,
     RunRecord,
     RunStateError,
@@ -23,13 +25,12 @@ from meow.infrastructure.background import inspect_worker, reconcile_worker
 from meow.infrastructure.quality import Concern, QualityStoreError, concerns_for_run
 from meow.infrastructure.usage import usage_totals
 
-# Sources `meow resume --continue` can drive; others are rerun from scratch.
-RESUMABLE_SOURCES = frozenset({"prompt", "jira", "native", "orchestrator"})
-
 
 def recovery_command(record: RunRecord) -> str:
     if record.phase == "complete":
         return "Run complete"
+    if record.phase == PARKED_PHASE and (command := next_command(record)):
+        return command
     if record.source not in RESUMABLE_SOURCES:
         return f"Rerun the original meow {record.source} command"
     command = f"meow resume {record.id}"

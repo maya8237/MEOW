@@ -227,7 +227,10 @@ class _Supervisor:
                 self._fail_child(task)
 
     def _fail_child(self, task) -> None:
-        interrupted = run_phase(self.repo, task.run_ids[-1]) == "interrupted_mutation"
+        interrupted = run_phase(self.repo, task.run_ids[-1]) in {
+            "interrupted_mutation",
+            "parked",
+        }
         failure = FailureInfo(
             task.id,
             "worker-died" if interrupted else "child-failed",

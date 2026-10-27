@@ -301,3 +301,19 @@ def test_resume_does_not_report_a_missing_config_for_an_onboarded_worktree(
         assert asyncio.run(resume(repo, record.id, continue_run=True)) == 0
     run.assert_awaited_once()
     assert "configuration" not in capsys.readouterr().err.lower()
+
+
+def test_resume_accepts_parked(tmp_path):
+    store, record = _record(tmp_path)
+    store.transition(record.id, "planned")
+    parked = store.park(record.id, RuntimeError("boom"), "transient", "error")
+    assert parked.phase == "parked"
+    assert _validate(parked, tmp_path) is None
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    # Resume point comes from the phase the run was parked in, not "parked".
+    assert run.await_args.kwargs["resume_at"] == "generate"
+    current = store.load(record.id)
+    assert current.phase == "resuming"
+    assert current.park["phase_before"] == "planned"
+    assert "next_command" not in current.results

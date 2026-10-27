@@ -4,7 +4,7 @@ import json
 import os
 import re
 import tempfile
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -12,6 +12,7 @@ from uuid import uuid4
 from meow.common.atomic import replace_with_retry
 
 MAX_OUTPUT = 8000
+_DEFAULT_AUTO_RETRIES = 3
 SCHEMA_VERSION = 1
 # Phases after which a run no longer drives work. The single source for worker
 # reconciliation, cancellation, and plan-ownership checks.
@@ -36,6 +37,9 @@ _ACTIVE_PHASES = frozenset({
     "pipeline_waiting",
     "pipeline_fixing",
 })
+# Parked runs stopped on a retryable failure: settled (no driver owns them) but
+# not terminal, since `next_command` continues them.
+PARKED_PHASE = "parked"
 _SECRET_KEY = re.compile(
     r"(?:token|secret|password|credential|api.?key|authorization)", re.I
 )
@@ -152,11 +156,13 @@ class RunRecord:
     usage: object = "unavailable"
     delivery: dict = field(default_factory=dict)
     background: dict = field(default_factory=dict)
+    park: dict = field(default_factory=dict)
+    driver: dict = field(default_factory=dict)
     ui_session_id: str | None = None
     ui_attempt_id: str | None = None
 
 
-class RunStore:
+class RunStore:  # ruff: ignore[too-many-public-methods]
     def __init__(self, repo: Path):
         self.directory = Path(repo).resolve() / ".meow" / "runs"
 
@@ -288,6 +294,8 @@ class RunStore:
                 raise ValueError("invalid transitions")
             if not isinstance(record.results, dict):
                 raise ValueError("invalid results")
+            if not isinstance(record.park, dict) or not isinstance(record.driver, dict):
+                raise ValueError("invalid park or driver")
             if not isinstance(record.schema_version, int) or isinstance(
                 record.schema_version, bool
             ):
@@ -366,7 +374,9 @@ class RunStore:
         record.updated_at = _now()
         return self._write(record)
 
-    def transition(self, run_id: str, phase: str, **patch: object) -> RunRecord:
+    def transition(  # ruff: ignore[complex-structure]
+        self, run_id: str, phase: str, **patch: object
+    ) -> RunRecord:
         record = self.load(run_id)
         if not phase or not isinstance(phase, str):
             raise ValueError("phase must be a non-empty string")
@@ -379,6 +389,10 @@ class RunStore:
                 record.results.update(safe_value)
             else:
                 setattr(record, key, safe_value)
+        if phase in _ACTIVE_PHASES or phase in TERMINAL_PHASES:
+            # Only a parked run offers a continuation; `park` stays so the
+            # no-progress budget survives the resume.
+            record.results.pop("next_command", None)
         if "last_failure" not in patch and phase in _ACTIVE_PHASES:
             record.last_failure = None  # a resumed/progressing run is not failed
         record.phase = phase
@@ -390,3 +404,80 @@ class RunStore:
             "round": record.round,
         })
         return self._write(record)
+
+    def park(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+        self,
+        run_id: str,
+        reason: BaseException | str,
+        kind: str,
+        cause: str,
+        retry_after: float | None = None,
+    ) -> RunRecord:
+        """Settle a retryable failure as `parked` with a `next_command`.
+
+        `attempts` counts parks since the progress fingerprint last changed;
+        past `[run] auto_retries` with no progress the run ends `failed` with
+        cause `no_progress`, naming the failure that kept repeating.
+        """
+        from meow.execution.run_failures import next_command, progress_fingerprint
+        from meow.project.config import run_config
+
+        record = self.load(run_id)
+        message = (
+            reason if isinstance(reason, str) else str(reason) or type(reason).__name__
+        )
+        previous = record.park if isinstance(record.park, dict) else {}
+        phase_before = (
+            str(previous.get("phase_before") or "created")
+            if record.phase == PARKED_PHASE
+            else record.phase
+        )
+        fingerprint = progress_fingerprint(record)
+        unchanged = bool(previous) and previous.get("fingerprint") == fingerprint
+        attempts = int(previous.get("attempts", 0)) + 1 if unchanged else 1
+        park = {
+            "kind": kind,
+            "cause": cause,
+            "reason": message,
+            "phase_before": phase_before,
+            "attempts": attempts,
+            "total_resumes": sum(
+                1 for item in record.transitions if item.get("phase") == "resuming"
+            ),
+            "manager_resumes": int(previous.get("manager_resumes", 0)),
+            "fingerprint": fingerprint,
+            "parked_at": _now(),
+            "retry_after": retry_after,
+        }
+        try:
+            auto_retries = run_config(Path(record.repo))["auto_retries"]
+        except (OSError, ValueError):
+            auto_retries = _DEFAULT_AUTO_RETRIES
+        if unchanged and attempts > auto_retries:
+            park.update(
+                kind="blocking",
+                cause="no_progress",
+                repeated_kind=kind,
+                repeated_cause=cause,
+            )
+            return self.transition(
+                run_id,
+                "failed",
+                park=park,
+                results={"failure": {"kind": "blocking", "cause": "no_progress"}},
+                last_failure=(
+                    f"No progress: {cause} failure repeated {attempts} times "
+                    f"at {phase_before} with nothing new: {message}"
+                ),
+            )
+        parked = replace(record, phase=PARKED_PHASE)
+        return self.transition(
+            run_id,
+            PARKED_PHASE,
+            park=park,
+            results={
+                "failure": {"kind": kind, "cause": cause},
+                "next_command": next_command(parked),
+            },
+            last_failure=message,
+        )

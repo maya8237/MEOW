@@ -257,8 +257,9 @@ def test_prepare_failure_keeps_a_run_checkpoint(tmp_path):
     ):
         asyncio.run(run_sprint(tmp_path, "x", "request", use_worktree=False))
     record = RunStore(tmp_path).latest()
-    assert record.phase == "failed"
+    assert record.phase == "parked"  # a crash is retryable, not blocking
     assert record.last_failure == "setup failed"
+    assert (record.park["kind"], record.park["cause"]) == ("transient", "error")
 
 
 def test_run_journal_does_not_make_target_repo_dirty(tmp_path):
@@ -354,5 +355,6 @@ def test_final_check_exception_records_failure(tmp_path):
             run_sprint(tmp_path, "x", "request", use_worktree=False, plan_file=plan)
         )
     record = RunStore(tmp_path).latest()
-    assert record.phase == "failed"
+    assert record.phase == "parked"  # a crash is retryable, not blocking
     assert record.last_failure == "check crashed"
+    assert (record.park["kind"], record.park["cause"]) == ("transient", "error")

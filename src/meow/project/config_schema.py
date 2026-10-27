@@ -542,3 +542,67 @@ def _validate_max_rounds(config: dict) -> None:
             f"{CONFIG_FILENAME}: max_rounds must be a positive integer, got "
             f"{max_rounds!r}."
         )
+
+
+# `[run]`: the bounded retry ladder for parked runs (seconds where timed).
+# auto_retries: supervisor relaunches per park without progress; retry_backoff:
+# waits between them; managed_resumes: resumes a managing session may run;
+# max_total_resumes: cumulative cap; api_max_wait: longest API wait before
+# parking; worker_startup_grace: time a detached worker gets to register;
+# supervise: relaunch parked background runs automatically.
+RUN_DEFAULTS = {
+    "auto_retries": 3,
+    "retry_backoff": [60, 300, 900],
+    "managed_resumes": 6,
+    "max_total_resumes": 20,
+    "api_max_wait": 10800,
+    "worker_startup_grace": 180,
+    "supervise": False,
+}
+
+
+def _run_value(table: dict, key: str):
+    default = RUN_DEFAULTS[key]
+    value = table.get(key, default)
+    if isinstance(default, bool):
+        valid, need = isinstance(value, bool), "true or false"
+    elif key == "retry_backoff":
+        valid = (
+            isinstance(value, list)
+            and bool(value)
+            and all(
+                isinstance(item, (int, float))
+                and not isinstance(item, bool)
+                and item >= 0
+                for item in value
+            )
+        )
+        need = "a non-empty list of numbers >= 0"
+    elif key in {"api_max_wait", "worker_startup_grace"}:
+        valid = (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value > 0
+        )
+        need = "a number > 0"
+    else:
+        valid = isinstance(value, int) and not isinstance(value, bool) and value >= 0
+        need = "an integer >= 0"
+    if not valid:
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [run].{key} must be {need}, got {value!r}."
+        )
+    return list(value) if isinstance(value, list) else value
+
+
+def _normalize_run_config(user_config: dict) -> dict:
+    """Validate `[run]` and fill in the retry-ladder defaults."""
+    table = user_config.get("run", {})
+    if not isinstance(table, dict):
+        raise ValueError(f"{CONFIG_FILENAME}: [run] must be a table")
+    unknown = sorted(set(table) - set(RUN_DEFAULTS))
+    if unknown:
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [run] has unknown keys: {', '.join(unknown)}"
+        )
+    return {key: _run_value(table, key) for key in RUN_DEFAULTS}

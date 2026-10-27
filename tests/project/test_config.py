@@ -55,6 +55,7 @@ class ModuleSurfaceTests(unittest.TestCase):
                 "DEFAULT_CONFIG",
                 "config_paths",
                 "load_config",
+                "run_config",
                 "user_config_path",
             },
         )

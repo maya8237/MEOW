@@ -14,7 +14,7 @@ from meow.cli.status_cli import (
 from meow.execution.orchestration.model import is_orchestrator_id
 from meow.execution.orchestration.report import render_status
 from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
-from meow.execution.run_state import RunRecord, RunStateError, RunStore
+from meow.execution.run_state import PARKED_PHASE, RunRecord, RunStateError, RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.background import inspect_worker
 from meow.infrastructure.cancellation import clear_cancel
@@ -171,7 +171,10 @@ def _tasks_unfinished(record: RunRecord) -> bool:
 def _resume_at(record: RunRecord) -> str:
     if _tasks_unfinished(record):
         return "generate"  # replay unfinished slices; integrated ones are kept
-    review_first = record.phase not in {"created", "preparing", "planning", "planned"}
+    phase = record.phase
+    if phase == PARKED_PHASE:  # continue from where the failure struck
+        phase = str(record.park.get("phase_before") or phase)
+    review_first = phase not in {"created", "preparing", "planning", "planned"}
     review_first = (
         review_first
         and bool(record.plan_file)

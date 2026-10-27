@@ -54,7 +54,8 @@ Keep native/CLI guidance aligned.
 - CLI/native orchestration share `execution/orchestration/tick.py`.
   Push only in delivering; task refs use `orchestrator/<id>-<task>`,
   never `orchestrator/<id>/<task>`, beside integration `orchestrator/<id>`.
-- `run_sprint` marks pre-terminal exceptions failed; inner steps record phases only.
+- `run_sprint` settles pre-terminal exceptions as parked unless blocking
+  (`execution/run_failures.py`); inner steps record phases only.
 - Definitions replace whole files: local > project > user > builtin.
   Gates/permissions remain code-owned.
 - Claude owns transcripts; journals store role/session IDs, resumed only by `meow resume`.

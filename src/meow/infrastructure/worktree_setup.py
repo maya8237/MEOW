@@ -25,7 +25,14 @@ _COMMAND_TIMEOUT = 300
 
 
 class WorktreeSetupError(RuntimeError):
-    """Configured setup failed while retaining the new worktree."""
+    """Configured setup failed while retaining the new worktree.
+
+    `cause` names a known failure (`policy_denied` blocks the run).
+    """
+
+    def __init__(self, message: str, *, cause: str | None = None) -> None:
+        super().__init__(message)
+        self.cause = cause
 
 
 def setup_command_decision(config: dict, argv: list[str]) -> str | None:
@@ -196,7 +203,8 @@ def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-
         decision = command_decision(argv) if command_decision else None
         if decision in {"deny", "ask"}:
             raise WorktreeSetupError(
-                f"setup command requires approval or is denied by policy: {argv[0]}"
+                f"setup command requires approval or is denied by policy: {argv[0]}",
+                cause="policy_denied",
             )
         try:
             exit_code, _output, timed_out = run_captured(

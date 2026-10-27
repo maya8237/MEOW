@@ -187,6 +187,7 @@ def test_launch_requires_an_integration_branch(git_repo, fake_launcher):
         ("failed", "failed"),
         ("cancelled", "failed"),
         ("interrupted_mutation", "failed"),
+        ("parked", "failed"),
     ],
 )
 def test_poll_maps_phases(git_repo, fake_launcher, phase, expected):

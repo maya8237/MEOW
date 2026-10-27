@@ -140,6 +140,24 @@ def test_stale_pid_reconciles_as_interrupted(tmp_path, monkeypatch):
     assert "Worker log: run.log" in render(store.load(record.id))
 
 
+def test_parked_run_with_dead_worker_stays_parked(tmp_path, monkeypatch):
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt",
+        request="feature",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="dev",
+    )
+    store.update_background(
+        record.id, pid=os.getpid(), start_identity="different", log="run.log"
+    )
+    store.park(record.id, RuntimeError("boom"), "transient", "error")
+    monkeypatch.setattr(background, "_process_identity", lambda _pid: "real")
+    assert background.reconcile_worker(store, record.id).state == "parked"
+    assert store.load(record.id).phase == "parked"
+
+
 def test_status_labels_browser_with_no_result_unavailable(tmp_path):
     store = RunStore(tmp_path)
     record = store.create(
@@ -407,7 +425,9 @@ def test_worker_rejects_an_unknown_saved_invocation(tmp_path):
     with pytest.raises(background.BackgroundError, match="Saved worker invocation"):
         background.worker_main(tmp_path, record.id, "n")
 
-    assert store.load(record.id).phase == "failed"
+    current = store.load(record.id)
+    assert current.phase == "failed"
+    assert current.results["failure"] == {"kind": "blocking", "cause": "invalid_input"}
 
 
 def test_windows_detach_hides_the_console_without_detaching_it(tmp_path, monkeypatch):

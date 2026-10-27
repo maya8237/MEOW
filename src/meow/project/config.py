@@ -4,6 +4,7 @@ import platform
 import tomllib
 from pathlib import Path
 
+from meow.execution.run_failures import InvalidConfigError
 from meow.infrastructure.worktree import default_target_branch
 from meow.project.command_policy import _os_mismatch, _validate_os_compatibility
 from meow.project.config_env import _expand_config_environment
@@ -20,6 +21,7 @@ from meow.project.config_schema import (
     _normalize_lint_commands,
     _normalize_orchestrator_config,
     _normalize_pipeline_config,
+    _normalize_run_config,
     _normalize_tester_config,
     _validate_max_rounds,
 )
@@ -35,6 +37,7 @@ __all__ = [
     "DEFAULT_CONFIG",
     "config_paths",
     "load_config",
+    "run_config",
     "user_config_path",
 ]
 
@@ -152,19 +155,41 @@ def _workflow_config(user_config):
     return {"default": selection}
 
 
-def load_config(working_dir: Path) -> dict:
-    from meow.infrastructure.checks import normalize_build
-    from meow.infrastructure.worktree_setup import install_timeout, validate_setup
-    from meow.project.permissions import parse_policy
-
-    user_config = {}
+def _layered(working_dir: Path) -> tuple[dict, list[CustomSource]]:
+    user_config: dict = {}
     custom_sources: list[CustomSource] = []
     for config_path in reversed(config_paths(working_dir)):
         with open(config_path, "rb") as f:
             layer = _expand_config_environment(tomllib.load(f))
         custom_sources.extend(_layer_custom_sources(layer, config_path, working_dir))
         user_config = _merge_config(user_config, layer)
+    return user_config, custom_sources
 
+
+def run_config(working_dir: Path) -> dict:
+    """Only the validated `[run]` table, without loading definitions."""
+    try:
+        return _normalize_run_config(_layered(working_dir)[0])
+    except ValueError as exc:
+        raise InvalidConfigError(str(exc)) from exc
+
+
+def load_config(working_dir: Path) -> dict:
+    """Load layered config; any invalid value raises `InvalidConfigError`."""
+    try:
+        return _load_config(working_dir)
+    except InvalidConfigError:
+        raise
+    except ValueError as exc:
+        raise InvalidConfigError(str(exc)) from exc
+
+
+def _load_config(working_dir: Path) -> dict:
+    from meow.infrastructure.checks import normalize_build
+    from meow.infrastructure.worktree_setup import install_timeout, validate_setup
+    from meow.project.permissions import parse_policy
+
+    user_config, custom_sources = _layered(working_dir)
     config = {**DEFAULT_CONFIG, **user_config}
     config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}
     lint_configured = "lint" in user_config
@@ -188,6 +213,7 @@ def load_config(working_dir: Path) -> dict:
     config["workflow"] = _workflow_config(user_config)
     config["orchestrator"] = _normalize_orchestrator_config(user_config)
     config["pipeline"] = _normalize_pipeline_config(user_config)
+    config["run"] = _normalize_run_config(user_config)
     for table_name, commands in (
         ("[[tester.tests]]", config["tester"]["tests"]),
         ("[[tester.dev_server]]", config["tester"]["dev_server"]),
