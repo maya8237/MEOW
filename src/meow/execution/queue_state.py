@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from meow.common.atomic import replace_with_retry
+
 _WINDOWS_QUERY_LIMITED_INFORMATION = 0x1000
 _WINDOWS_SYNCHRONIZE = 0x100000
 # A lock with no readable owner after this long was left by a worker that died
@@ -106,7 +108,7 @@ class QueueStore:
         temporary = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
         payload = json.dumps([asdict(item) for item in items], indent=2)
         temporary.write_text(payload, encoding="utf-8")
-        os.replace(temporary, self.path)
+        replace_with_retry(temporary, self.path)
 
     def enqueue(self, request: str, feature_name: str | None = None) -> QueueItem:
         if not request.strip():

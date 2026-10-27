@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from meow.common.atomic import replace_with_retry
 from meow.common.process import process_identity
 from meow.execution.orchestration.model import (
     MODES,
@@ -120,7 +121,7 @@ class OrchestratorStore:
                 stream.write(payload)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, directory / STATE_FILE)
+            replace_with_retry(temporary, directory / STATE_FILE)
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
@@ -248,7 +249,7 @@ class DriverLock:
     def _write_over(self) -> None:
         temporary = self.path.with_name(f"{LOCK_FILE}.{os.getpid()}.tmp")
         temporary.write_text(self._payload(), encoding="utf-8")
-        os.replace(temporary, self.path)
+        replace_with_retry(temporary, self.path)
 
     def _take_native(self, holder: dict) -> bool:
         if holder.get("pid") != os.getpid() and self._live_native(holder):

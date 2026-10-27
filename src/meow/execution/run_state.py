@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from meow.common.atomic import replace_with_retry
+
 MAX_OUTPUT = 8000
 SCHEMA_VERSION = 1
 # Phases after which a run no longer drives work. The single source for worker
@@ -185,7 +187,7 @@ class RunStore:
                 stream.write(payload)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, self._path(record.id))
+            replace_with_retry(temporary, self._path(record.id))
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)

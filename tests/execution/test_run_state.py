@@ -193,3 +193,63 @@ def test_stored_check_results_tolerate_schema_drift():
     assert CheckResult.from_record({**item, "added_later": 1}).passed
     assert CheckResult.from_record({"kind": "lint"}) is None
     assert CheckResult.from_record("garbage") is None
+
+
+DEFAULT_ATTEMPTS = 10
+
+
+def _denied(winerror=5):
+    error = PermissionError(13, "denied")
+    error.winerror = winerror
+    return error
+
+
+def _fake_replace(monkeypatch, failures):
+    import os
+
+    real = os.replace
+    calls = {"n": 0}
+
+    def replace(source, target):
+        calls["n"] += 1
+        if failures is None or calls["n"] <= failures:
+            raise _denied()
+        return real(source, target)
+
+    monkeypatch.setattr("meow.common.atomic.os.replace", replace)
+    sleeps = []
+    monkeypatch.setattr("meow.common.atomic.time.sleep", sleeps.append)
+    return calls, sleeps
+
+
+def test_replace_retries_winerror_5(tmp_path, monkeypatch):
+    from meow.common.atomic import replace_with_retry
+
+    _, sleeps = _fake_replace(monkeypatch, 2)
+    source, target = tmp_path / "a.tmp", tmp_path / "a"
+    source.write_text("x")
+    replace_with_retry(source, target)
+    assert target.read_text() == "x"
+    assert sleeps == [0.05, 0.1]
+
+
+def test_replace_gives_up(tmp_path, monkeypatch):
+    calls, sleeps = _fake_replace(monkeypatch, None)
+    store = RunStore(tmp_path)
+    with pytest.raises(PermissionError):
+        store.create(
+            source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="d"
+        )
+    assert calls["n"] == DEFAULT_ATTEMPTS
+    assert len(sleeps) == DEFAULT_ATTEMPTS - 1
+    assert list(store.directory.glob("*.tmp")) == []
+
+
+def test_replace_does_not_retry_other_errors(tmp_path, monkeypatch):
+    from meow.common.atomic import replace_with_retry
+
+    calls, sleeps = _fake_replace(monkeypatch, 0)
+    with pytest.raises(FileNotFoundError):
+        replace_with_retry(tmp_path / "missing", tmp_path / "target")
+    assert calls["n"] == 1
+    assert sleeps == []
