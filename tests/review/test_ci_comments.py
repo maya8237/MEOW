@@ -173,7 +173,7 @@ def test_moved_head_posts_nothing(checkout, tmp_path):
                 "CI_MERGE_REQUEST_IID": "3",
             },
         )
-    assert result.verdict == "FAIL"
+    assert result.verdict == "UNVERIFIED"
     assert "remote review revisions" in result.report_path.read_text()
     assert request.call_count == 2  # ruff: ignore[magic-value-comparison] -- history fetch then revision verification
 

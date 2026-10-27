@@ -24,6 +24,10 @@ class CiReviewError(RuntimeError):
     """CI context or review infrastructure could not be verified."""
 
 
+class RevisionMismatch(CiReviewError):
+    """The remote PR/MR no longer matches the reviewed checkout."""
+
+
 class OutputTooLarge(CiReviewError):
     """Git output exceeded the review size limit."""
 
@@ -306,6 +310,8 @@ def _publish_comments(
         resolved = resolve_review_comments(
             provider, parse_resolutions(text), env, state
         )
+    except RevisionMismatch:
+        raise  # the review may be stale, so the verdict is unverified
     except Exception as exc:
         return posted, resolved, _safe_text(str(exc), env)[:1000]
     warning = (

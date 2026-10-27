@@ -186,7 +186,7 @@ and remote revisions. Existing comments inform the review; matching inline notes
 (reworded, or open with a moved line) are skipped on reruns. Open threads meow
 started (marked `<!-- meow-review -->`) that the reviewer finds fixed are resolved
 with a "Resolved: reason" reply, or "✅ Solved: reason" if resolving is refused.
-Unreadable history exits 2. Publishing failures keep the PASS/FAIL exit code and
+Unreadable history or a moved PR/MR head exits 2. Other publishing failures keep the PASS/FAIL exit code and
 appear as `comments_error` in `verdict.json`; partial publishes can leave notes posted.
 
 ## Maintainer and internal commands

@@ -11,7 +11,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from meow.integrations.ci_review import MAX_DIFF, CiReviewContext, CiReviewError
+from meow.integrations.ci_review import (
+    MAX_DIFF,
+    CiReviewContext,
+    CiReviewError,
+    RevisionMismatch,
+)
 
 PAGE_SIZE = 100
 SIMILARITY = 0.9
@@ -333,7 +338,9 @@ def post_review_comments(  # ruff: ignore[too-many-statements, too-many-argument
             "head_sha": context.source_sha,
         }
     if not matches:
-        raise CiReviewError("remote review revisions differ from the reviewed checkout")
+        raise RevisionMismatch(
+            "remote review revisions differ from the reviewed checkout"
+        )
     history = state["history"] = read_review_comments(provider, env)
     open_ids = (
         _remember_open_threads(target, token, env, state)
