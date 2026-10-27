@@ -299,3 +299,13 @@ class InvalidSequenceTests(unittest.IsolatedAsyncioTestCase):
             async with agent:
                 await agent.send("go")
         self.assertEqual(order[:2], ["iterator closed", "client closed"])
+
+    async def test_prose_mentioning_the_phrase_is_not_a_sequence_error(self):
+        prose = "I fixed the bug where roles must alternate in the chat builder."
+        first = _client([_text(prose), _result(error="Invalid API key")])
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", side_effect=[first]):
+            agent.open(MagicMock())
+            async with agent:
+                with self.assertRaisesRegex(RuntimeError, "Invalid API key"):
+                    await agent.send("go")

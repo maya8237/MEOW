@@ -278,6 +278,51 @@ def test_ci_reviewer_grants_only_read_tools(  # ruff: ignore[too-many-statements
     assert len(store.load(record.id).usage["entries"]) == 1
 
 
+def test_ci_reviewer_closes_its_stream_after_an_error_result(checkout):
+    import asyncio
+
+    from claude_agent_sdk import ResultMessage
+
+    from meow.agents.base import ProjectContext
+    from meow.agents.reviewer import ReviewerAgent
+
+    repo, _, _, env = checkout
+    context = prepare_ci_review(
+        repo,
+        env
+        | {
+            "CI_PIPELINE_SOURCE": "merge_request_event",
+            "CI_MERGE_REQUEST_EVENT_TYPE": "detached",
+            "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME": "feature/x",
+            "CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "dev",
+        },
+    )
+    agent = ReviewerAgent(ProjectContext(repo, {"models": {"reviewer": None}}))
+    closed = []
+
+    async def sdk_stream(*, prompt, options):  # ruff: ignore[unused-async] -- SDK seam
+        try:
+            yield ResultMessage(
+                subtype="error",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=True,
+                num_turns=1,
+                session_id="test",
+            )
+            yield None
+        finally:
+            closed.append(True)
+
+    async def run():
+        with pytest.raises(RuntimeError, match="CI reviewer failed"):
+            await agent.review_ci_branch(context)
+        return list(closed)  # before asyncio.run's own generator cleanup
+
+    with patch("meow.agents.reviewer.query", sdk_stream):
+        assert asyncio.run(run()) == [True]
+
+
 @pytest.mark.parametrize(
     "filename", ["file.txt", "existing-untracked.txt", " leading café.txt"]
 )

@@ -73,8 +73,15 @@ class _InvalidSequence(Exception):
     """The API rejected the session's message history (tool/user ordering)."""
 
 
-def _raise_if_invalid_sequence(*texts: object) -> None:
-    if any(_SEQUENCE_ERROR.search(str(text or "")) for text in texts):
+def _raise_if_invalid_sequence(*texts: object, assistant: str = "") -> None:
+    """Raise `_InvalidSequence` for an error detail that names a sequence
+    fault, or for assistant text that is itself the LiteLLM 400 notice (prose
+    that merely mentions the phrase does not count)."""
+    if any(_SEQUENCE_ERROR.search(str(text or "")) for text in texts) or (
+        "API Error: 400" in assistant
+        and "litellm" in assistant.lower()
+        and _SEQUENCE_ERROR.search(assistant)
+    ):
         raise _InvalidSequence
 
 
@@ -95,6 +102,13 @@ def _fresh_options(options: ClaudeAgentOptions) -> ClaudeAgentOptions:
     if callback is not None:
         fresh._meow_session_callback = callback
     return fresh
+
+
+def _retry_recap() -> str:
+    return (
+        "Your previous attempt was cut off by an invalid message history; "
+        "start over and complete the task below.\n\n"
+    )
 
 
 def _restart_recap(reason: str) -> str:
@@ -389,8 +403,10 @@ def _last_text_block(message: AssistantMessage) -> str:
     return texts[-1] if texts else ""
 
 
-def _query_failure(role: str, message: ResultMessage, last_text: str) -> Exception:
-    _raise_if_invalid_sequence(message.result, last_text)
+def _query_failure(
+    role: str, message: ResultMessage, last_text: str, assistant: str
+) -> Exception:
+    _raise_if_invalid_sequence(message.result, assistant=assistant)
     logger.error("agent_query_failed", role=role, subtype=message.subtype)
     return RuntimeError(
         f"{role} failed: {message.subtype}" + (f": {last_text}" if last_text else "")
@@ -408,7 +424,7 @@ async def _consume_query(  # ruff: ignore[complex-structure]
     messages: AsyncIterator = _watch_stream(
         query(prompt=prompt, options=options), lambda: True, _STREAM_POLL_SECONDS
     )
-    last_text = ""
+    last_text = assistant_text = ""
     parts = []
     try:
         async with aclosing(messages):
@@ -422,13 +438,13 @@ async def _consume_query(  # ruff: ignore[complex-structure]
                         if isinstance(block, TextBlock)
                     )
                 if isinstance(message, ResultMessage):
-                    last_text = message.result or last_text
+                    assistant_text, last_text = last_text, message.result or last_text
                     if message.is_error or message.subtype != "success":
-                        raise _query_failure(role, message, last_text)
+                        raise _query_failure(role, message, last_text, assistant_text)
     except ProcessError as exc:
+        _raise_if_invalid_sequence(exc.stderr, exc, assistant=last_text)
         if not exc.stderr and last_text:
             exc.stderr = last_text
-        _raise_if_invalid_sequence(exc.stderr, exc, last_text)
         raise
     return "\n".join(parts)
 
@@ -444,7 +460,7 @@ async def _consume_rebuilding(
         logger.warning("agent_query_sequence_retry", role=role)
     try:
         return await _consume_query(
-            _restart_recap(_SEQUENCE_RECAP_REASON) + prompt,
+            _retry_recap() + prompt,
             _fresh_options(options),
             role,
         )
@@ -942,7 +958,7 @@ class SessionAgent(Agent):
         if not failed and getattr(result, "subtype", "success") == "success":
             return
         detail = str(getattr(result, "result", "") or "")
-        _raise_if_invalid_sequence(detail, last_text)
+        _raise_if_invalid_sequence(detail, assistant=last_text)
         if _CONTEXT_OVERFLOW.search(detail):
             raise _ContextOverflow
         raise RuntimeError(
@@ -952,9 +968,9 @@ class SessionAgent(Agent):
 
 def _classify_process_error(exc: ProcessError, text: list[str]) -> None:
     """Raise the typed recovery signal a failed CLI process calls for, if any."""
+    _raise_if_invalid_sequence(exc.stderr, exc, assistant=text[-1] if text else "")
     if not exc.stderr and text:
         exc.stderr = text[-1]
-    _raise_if_invalid_sequence(exc.stderr, exc)
     if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
         raise _ContextOverflow from exc
 

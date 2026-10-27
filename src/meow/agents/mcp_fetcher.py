@@ -10,6 +10,7 @@ import json
 import re
 import tempfile
 from collections.abc import Awaitable, Callable
+from contextlib import aclosing
 from pathlib import Path
 
 from claude_agent_sdk import (
@@ -76,13 +77,13 @@ class McpFetcherAgent(Agent):
         )
         used_tool = succeeded = False
         logger.info("mcp_preflight_started", server=self.server)
-        async for message in query(
-            prompt=f"Check {self.label} MCP connectivity.", options=options
-        ):
-            log_stream_message(self.role, message, options=options)
-            used_tool = used_tool or self._used_server_tool(message)
-            if isinstance(message, ResultMessage):
-                succeeded = message.subtype == "success"
+        stream = query(prompt=f"Check {self.label} MCP connectivity.", options=options)
+        async with aclosing(stream):
+            async for message in stream:
+                log_stream_message(self.role, message, options=options)
+                used_tool = used_tool or self._used_server_tool(message)
+                if isinstance(message, ResultMessage):
+                    succeeded = message.subtype == "success"
         if not used_tool or not succeeded:
             raise RuntimeError(
                 f"No active {self.label} MCP server responded. {self.setup_hint}"

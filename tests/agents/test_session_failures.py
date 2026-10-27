@@ -222,6 +222,7 @@ def test_run_query_retries_a_sequence_error_without_resume():
         asyncio.run(base.Agent.run_query("do it", options, "reviewer"))
     assert resumes == ["old", None]
     assert "invalid message history" in prompts[1]
+    assert "working tree" not in prompts[1]
     assert prompts[1].endswith("do it")
     assert options.resume == "old"
 
