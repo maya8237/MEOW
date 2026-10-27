@@ -233,6 +233,7 @@ _GIT_TRANSIENT = re.compile(
     r"Could not resolve host|Connection (?:reset|refused|timed out)|RPC failed"
     r"|early EOF|unable to access|returned error: 5\d\d\b"
     r"|remote end hung up unexpectedly|Operation timed out"
+    r"|Network is unreachable|No route to host|kex_exchange_identification"
     r"|index\.lock'?: File exists|Unable to create '[^']*\.lock'",
     re.I,
 )

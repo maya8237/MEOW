@@ -30,6 +30,12 @@ from claude_agent_sdk import (
     query,
 )
 
+from meow.agents.api_errors import (
+    DEFAULT_MAX_WAIT,
+    ApiError,
+    ApiRetries,
+    classify_api_error,
+)
 from meow.execution.run_failures import TransientRunError
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
@@ -49,6 +55,9 @@ _PREVIEW_LEN = 200
 _BASH_TIMEOUT_ENV = {
     "BASH_DEFAULT_TIMEOUT_MS": str(30 * 60 * 1000),
     "BASH_MAX_TIMEOUT_MS": str(2 * 60 * 60 * 1000),
+    # First rung of the API retry ladder: the CLI retries internally first.
+    "CLAUDE_CODE_MAX_RETRIES": "8",
+    "API_TIMEOUT_MS": "600000",
 }
 _SDK_CRASH_RETRY_ATTEMPTS = 3
 _SDK_CRASH_RETRY_BACKOFF = 1.0
@@ -403,18 +412,54 @@ def _last_text_block(message: AssistantMessage) -> str:
     return texts[-1] if texts else ""
 
 
-def _query_failure(
-    role: str, message: ResultMessage, last_text: str, assistant: str
+def _api_failure(status: int | None, error: str | None, text: str) -> ApiError | None:
+    """An `ApiError` for text the retry policy handles (sequence and context
+    failures keep their own recovery paths)."""
+    failure = classify_api_error(status=status, error=error, text=text)
+    if failure is None or failure.kind in {"sequence", "overflow"}:
+        return None
+    return ApiError(failure, text)
+
+
+def _max_wait(config: object, cwd: object) -> float:
+    """`[run] api_max_wait`: from loaded config, else the project at `cwd`."""
+    run = config.get("run") if isinstance(config, dict) else None
+    if isinstance(run, dict) and "api_max_wait" in run:
+        return float(run["api_max_wait"])
+    try:
+        from meow.project.config import run_config
+
+        return float(run_config(Path(str(cwd)))["api_max_wait"])
+    except Exception:
+        return DEFAULT_MAX_WAIT
+
+
+def _query_failure(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+    role: str,
+    message: ResultMessage,
+    last_text: str,
+    assistant: str,
+    assistant_error: str | None = None,
 ) -> Exception:
-    _raise_if_invalid_sequence(message.result, assistant=assistant)
+    _raise_if_invalid_sequence(assistant=message.result or "")
+    _raise_if_invalid_sequence(assistant=assistant)
+    api = _api_failure(
+        message.api_error_status, assistant_error, message.result or assistant
+    )
+    if api is not None:
+        logger.warning("agent_api_error", role=role, cause=api.failure.cause)
+        return api
     logger.error("agent_query_failed", role=role, subtype=message.subtype)
     return RuntimeError(
         f"{role} failed: {message.subtype}" + (f": {last_text}" if last_text else "")
     )
 
 
-async def _consume_query(  # ruff: ignore[complex-structure]
-    prompt: str, options: ClaudeAgentOptions, role: str
+async def _consume_query(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+    prompt: str,
+    options: ClaudeAgentOptions,
+    role: str,
+    retries: ApiRetries | None = None,
 ) -> str:
     """Run `query()` once to completion, raising `RuntimeError` on a
     non-success result. A `ProcessError` (the CLI subprocess crashed or
@@ -425,12 +470,16 @@ async def _consume_query(  # ruff: ignore[complex-structure]
         query(prompt=prompt, options=options), lambda: True, _STREAM_POLL_SECONDS
     )
     last_text = assistant_text = ""
+    assistant_error = None
     parts = []
     try:
         async with aclosing(messages):
             async for message in messages:
                 log_stream_message(role, message, options=options)
+                if retries is not None:
+                    retries.note(message)
                 if isinstance(message, AssistantMessage):
+                    assistant_error = message.error or assistant_error
                     last_text = _last_text_block(message) or last_text
                     parts.extend(
                         block.text
@@ -440,22 +489,29 @@ async def _consume_query(  # ruff: ignore[complex-structure]
                 if isinstance(message, ResultMessage):
                     assistant_text, last_text = last_text, message.result or last_text
                     if message.is_error or message.subtype != "success":
-                        raise _query_failure(role, message, last_text, assistant_text)
+                        raise _query_failure(
+                            role, message, last_text, assistant_text, assistant_error
+                        )
     except ProcessError as exc:
         _raise_if_invalid_sequence(exc.stderr, exc, assistant=last_text)
         if not exc.stderr and last_text:
             exc.stderr = last_text
+        if (api := _api_failure(None, None, f"{exc.stderr or ''} {exc}")) is not None:
+            raise api from exc
         raise
     return "\n".join(parts)
 
 
 async def _consume_rebuilding(
-    prompt: str, options: ClaudeAgentOptions, role: str
+    prompt: str,
+    options: ClaudeAgentOptions,
+    role: str,
+    retries: ApiRetries | None = None,
 ) -> str:
     """`_consume_query`, retried once on a fresh conversation (no `resume`,
     recap prepended) when the API refuses the message history."""
     try:
-        return await _consume_query(prompt, options, role)
+        return await _consume_query(prompt, options, role, retries)
     except _InvalidSequence:
         logger.warning("agent_query_sequence_retry", role=role)
     try:
@@ -463,9 +519,30 @@ async def _consume_rebuilding(
             _retry_recap() + prompt,
             _fresh_options(options),
             role,
+            retries,
         )
     except _InvalidSequence as exc:
         raise _sequence_giveup(role) from exc
+
+
+async def _consume_resilient(
+    prompt: str, options: ClaudeAgentOptions, role: str
+) -> str:
+    """`_consume_rebuilding`, waiting out or backing off API errors (rate
+    limits, overload, timeouts) and resending; a fresh session at most once."""
+    retries = ApiRetries(
+        role,
+        lambda: _max_wait({}, getattr(options, "cwd", None)),
+        model=getattr(options, "model", None),
+    )
+    while True:
+        try:
+            return await _consume_rebuilding(prompt, options, role, retries)
+        except ApiError as exc:
+            if await retries.handle(exc):
+                continue
+            prompt = _restart_recap("hit an API error") + prompt
+            options = _fresh_options(options)
 
 
 def _check_os_retry(exc: BaseException, role: str, attempt: int) -> None:
@@ -706,7 +783,7 @@ class Agent:
         for attempt in range(1, _SDK_CRASH_RETRY_ATTEMPTS + 1):
             logger.info("agent_query_started", role=role, attempt=attempt)
             try:
-                response = await _consume_rebuilding(prompt, options, role)
+                response = await _consume_resilient(prompt, options, role)
                 logger.info("agent_query_finished", role=role)
                 return response
             except ProcessError as exc:
@@ -840,7 +917,7 @@ class SessionAgent(Agent):
         self._context_size = 0
         self._recap = _restart_recap(reason)
 
-    async def _turn(  # ruff: ignore[too-many-statements]
+    async def _turn(  # ruff: ignore[too-many-statements, too-many-branches, complex-structure]
         self, message: str
     ) -> str:
         """Send one message and return the assistant's text for that turn.
@@ -849,10 +926,17 @@ class SessionAgent(Agent):
         replays the turn, the same recovery one-shot queries get for crashes."""
         await self._restart_if_full()
         overflows = crashes = rebuilds = 0
+        retries = ApiRetries(
+            self.role,
+            lambda: _max_wait(
+                self.context.config, getattr(self._session_options, "cwd", None)
+            ),
+            model=getattr(self._session_options, "model", None),
+        )
         while True:
             logger.info("session_turn_started", role=self.role)
             try:
-                text = await self._run_turn(self._recap + message)
+                text = await self._run_turn(self._recap + message, retries)
             except _ContextOverflow:
                 overflows += 1
                 await self._recover_overflow(overflows)
@@ -860,6 +944,10 @@ class SessionAgent(Agent):
             except _InvalidSequence as exc:
                 rebuilds += 1
                 await self._recover_sequence(exc, rebuilds)
+                continue
+            except ApiError as exc:
+                if not await retries.handle(exc):
+                    await self._restart("hit an API error")
                 continue
             except (ProcessError, OSError, CLIConnectionError) as exc:
                 crashes += 1
@@ -919,9 +1007,12 @@ class SessionAgent(Agent):
         await asyncio.sleep(_SDK_CRASH_RETRY_BACKOFF * 2 ** (crashes - 1))
         await self._restart("ended unexpectedly")
 
-    async def _run_turn(self, message: str) -> str:
+    async def _run_turn(  # ruff: ignore[complex-structure, too-many-statements]
+        self, message: str, retries: ApiRetries | None = None
+    ) -> str:
         text = []
         last_call = 0
+        api_error = None
         try:
             await self._client.query(message)
             stream = _watch_stream(
@@ -932,7 +1023,10 @@ class SessionAgent(Agent):
             async with aclosing(stream):
                 async for item in stream:
                     log_stream_message(self.role, item, options=self._session_options)
+                    if retries is not None:
+                        retries.note(item)
                     if isinstance(item, AssistantMessage):
+                        api_error = item.error or api_error
                         text.extend(
                             block.text
                             for block in item.content
@@ -946,21 +1040,30 @@ class SessionAgent(Agent):
                         self._context_size = (
                             last_call or _context_tokens(item) or self._context_size
                         )
-                        self._check_result(item, text[-1] if text else "")
+                        self._check_result(item, text[-1] if text else "", api_error)
         except ProcessError as exc:
             _classify_process_error(exc, text)
             raise
         return "\n".join(text)
 
-    def _check_result(self, result: ResultMessage, last_text: str = "") -> None:
+    def _check_result(
+        self,
+        result: ResultMessage,
+        last_text: str = "",
+        api_error: str | None = None,
+    ) -> None:
         """A failed turn must fail, not hand its partial text back as success."""
         failed = getattr(result, "is_error", False) is True
         if not failed and getattr(result, "subtype", "success") == "success":
             return
         detail = str(getattr(result, "result", "") or "")
-        _raise_if_invalid_sequence(detail, assistant=last_text)
+        _raise_if_invalid_sequence(assistant=detail)
+        _raise_if_invalid_sequence(assistant=last_text)
         if _CONTEXT_OVERFLOW.search(detail):
             raise _ContextOverflow
+        status = getattr(result, "api_error_status", None)
+        if (api := _api_failure(status, api_error, detail or last_text)) is not None:
+            raise api
         raise RuntimeError(
             f"{self.role} failed: {result.subtype}" + (f": {detail}" if detail else "")
         )
@@ -973,6 +1076,8 @@ def _classify_process_error(exc: ProcessError, text: list[str]) -> None:
         exc.stderr = text[-1]
     if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
         raise _ContextOverflow from exc
+    if (api := _api_failure(None, None, f"{exc.stderr or ''} {exc}")) is not None:
+        raise api from exc
 
 
 class _ContextOverflow(Exception):

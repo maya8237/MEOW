@@ -525,6 +525,9 @@ def test_blocking_push_failure_is_delivery_failed(
         "fatal: early EOF",
         "The requested URL returned error: 502",
         "ssh: connect to host h port 22: Connection timed out",
+        "ssh: connect to host h port 22: Network is unreachable",
+        "ssh: connect to host h port 22: No route to host",
+        "kex_exchange_identification: read: Connection closed by remote host",
     ],
 )
 def test_transient_push_failure_parks(tmp_path, monkeypatch, message):
