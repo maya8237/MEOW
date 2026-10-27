@@ -21,6 +21,7 @@ def test_run_defaults_filled(tmp_path):
         "api_max_wait": 10800,
         "worker_startup_grace": 180,
         "supervise": False,
+        "stale_after": 21600,
     }
     assert load_config(tmp_path)["run"] == RUN_DEFAULTS
     assert run_config(tmp_path) == RUN_DEFAULTS

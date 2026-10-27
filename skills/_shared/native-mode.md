@@ -12,8 +12,9 @@ and [WORKFLOWS.md](../../docs/WORKFLOWS.md); load relevant sections as needed.
 
 ## The `meow native` helper
 
-Helpers start no agents and print JSON on stdout; errors go to stderr with a
-nonzero exit. Report errors and stop dependent work. If `meow` is missing,
+Helpers start no agents and print JSON on stdout; errors print one JSON line
+on stderr. Exit 75 (`"retryable": true`): wait `retry_after` and rerun the same
+command. Exit 1: report the error and stop dependent work. If `meow` is missing,
 point to the README installer; do not guess a venv path. Use `COMMAND --help`
 for flags. Pass `--work-dir PATH` (also `--working-dir`/`-d`) for the project
 root and `--active-dir PATH` where applicable for the prepared worktree. Keep
@@ -31,7 +32,7 @@ these directories consistent across calls.
 | `review-checks` | Required verification; `--background` starts a durable job, `--status` reads state and log/result paths |
 | `verdict FILE` | Validate the report and current verification/coverage bindings; returns status/summary |
 | `round ANCHOR` | Advance durable counter; `--show` inspects, `--reset` starts fresh |
-| `checkpoint PHASE` | Atomic transition; omit `--run-id` only to create a run, then reuse the returned ID |
+| `checkpoint PHASE` | Atomic transition; omit `--run-id` only to create a run (pass `--intent run` or `plan`), then reuse the returned ID; `parked --failure TEXT` records a crash |
 | `finalize RUN_ID` | Revalidate evidence and required gates, then deliver when eligible |
 | `push BRANCH` | Push a named branch to origin |
 | `onboard-status` | Base setup state and optional add-on gaps |

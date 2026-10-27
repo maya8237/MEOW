@@ -279,6 +279,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     status_parser = subparsers.add_parser("status", help="Inspect a saved run.")
     status_parser.add_argument("run_id", nargs="?")
     status_parser.add_argument("--verbose", "-v", action="store_true")
+    status_parser.add_argument(
+        "--json",
+        dest="as_json",
+        action="store_true",
+        help="Print the retry contract (phase, retryable, next_command) as JSON.",
+    )
     _add_common_args(status_parser)
     cancel_parser = subparsers.add_parser(
         "cancel", help="Request a running sprint to stop."

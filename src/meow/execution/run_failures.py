@@ -7,6 +7,7 @@ other exception parks it resumable (see `RunStore.park`).
 import errno
 import re
 import subprocess
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -15,7 +16,7 @@ from meow.execution.run_state import (
     TERMINAL_PHASES,
     RunStateError,
 )
-from meow.infrastructure.worktree import StartPointError
+from meow.infrastructure.worktree import DirtyWorkingTreeError, StartPointError
 
 if TYPE_CHECKING:
     from meow.execution.run_state import RunRecord
@@ -43,6 +44,12 @@ _RESOURCE_TEXT = re.compile(r"\[WinError (?:8|14|1450|1455)\]")
 _POLICY_DENIED = re.compile(r"permission denied by policy", re.I)
 # A --work-dir outside any Git checkout is a bad meow argument, not a crash.
 _NOT_A_REPO = re.compile(r"fatal: not a git repository", re.I)
+# A repository without the remote a push needs: setup, not a crash.
+_NO_REMOTE = re.compile(
+    r"No 'origin' remote configured|does not appear to be a git repository"
+    r"|No such remote",
+    re.I,
+)
 _SAFE_ARG = re.compile(r"[\w@%+=:,./\\-]+")
 
 
@@ -101,6 +108,8 @@ def _blocking_cause(exc: BaseException) -> str | None:
         (_is_git_missing(exc), "git_missing"),
         (bool(_POLICY_DENIED.search(text)), "policy_denied"),
         (bool(_NOT_A_REPO.search(text)), "invalid_input"),
+        (bool(_NO_REMOTE.search(text)), "invalid_input"),
+        (isinstance(exc, DirtyWorkingTreeError), "invalid_input"),
     )
     return next((cause for hit, cause in checks if hit), None)
 
@@ -177,6 +186,21 @@ def progress_fingerprint(record: "RunRecord") -> str:
         _head(record.worktree),
         str(len(steps)),
     ))
+
+
+_RUN_ID_ATTR = "meow_run_id"
+
+
+def attach_run_id(exc: BaseException, run_id: str) -> None:
+    """Remember which run an escaping exception settled (read at exit)."""
+    with suppress(AttributeError, TypeError):
+        if getattr(exc, _RUN_ID_ATTR, None) is None:
+            setattr(exc, _RUN_ID_ATTR, run_id)
+
+
+def run_id_of(exc: BaseException | None) -> str | None:
+    value = getattr(exc, _RUN_ID_ATTR, None)
+    return value if isinstance(value, str) else None
 
 
 def _shell_arg(value: str) -> str:

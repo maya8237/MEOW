@@ -81,7 +81,7 @@ def test_native_update_warning_preserves_json_stdout(monkeypatch, capsys):
 
     monkeypatch.setattr(maintenance, "version", lambda name: "0.1.2")
     monkeypatch.setattr(maintenance, "latest_version", lambda **kwargs: "0.2.0")
-    monkeypatch.setattr(cli, "run_native", lambda args: print('{"status": "ok"}'))
+    monkeypatch.setattr(cli, "run_native", lambda args, *_: print('{"status": "ok"}'))
 
     cli.cli_main(["native", "latest-plan"])
 

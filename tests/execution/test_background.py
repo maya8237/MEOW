@@ -743,7 +743,9 @@ def test_foreground_run_is_supervised_under_claude_code(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDECODE", "1")
     calls = []
     monkeypatch.setattr(
-        cli_core, "run_supervised", lambda repo, argv: calls.append(argv) or 75
+        cli_core,
+        "run_supervised",
+        lambda repo, argv, on_created=None: calls.append(argv) or 75,
     )
     monkeypatch.setattr(
         cli_core, "_dispatch", lambda *_a, **_k: pytest.fail("ran unsupervised")

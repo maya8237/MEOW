@@ -4,12 +4,13 @@ run-journal checkpoints and gated finalize shared with CLI runs."""
 import asyncio
 import hashlib
 import json
+import time
 from dataclasses import asdict
 from pathlib import Path
 
 from meow.execution.cleanup import cleanup_completed
 from meow.execution.delivery import deliver_verified_run
-from meow.execution.run_state import RunStore
+from meow.execution.run_state import PARKED_PHASE, RunStore
 from meow.infrastructure.checks import (
     adopt_stage_artifacts,
     code_revision,
@@ -92,10 +93,24 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
     reviewer: str | None = None,
     tester: str | None = None,
     target_branch: str | None = None,
+    intent: str | None = None,
+    failure: str | None = None,
 ) -> dict:
-    """Persist one native phase using the CLI run journal schema."""
+    """Persist one native phase using the CLI run journal schema.
+
+    Phase `parked` records a crash the native driver saw (`failure`) through
+    `RunStore.park`, so it gets a `next_command` and the no-progress budget.
+    Every checkpoint stamps the run's heartbeat; `intent` (`run` or `plan`)
+    tells reconciliation whether a silent run is a lost session.
+    """
     if phase == "complete":
         raise ValueError("Native completion requires current gate evidence")
+    if (phase == PARKED_PHASE) != bool(failure):
+        raise ValueError("Phase parked requires --failure (and only parked takes it)")
+    if phase == PARKED_PHASE and run_id is None:
+        raise ValueError("Phase parked requires --run-id")
+    if intent not in {None, "run", "plan"}:
+        raise ValueError(f"intent must be run or plan, got {intent!r}")
     if tester == "PASS" and load_config(config_root(repo, active_dir)).get(
         "tester", {}
     ).get("tests"):
@@ -173,7 +188,18 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
             results["tester_revision"] = ""
     if not record.config_fingerprint and config_paths(repo):
         patch["config_fingerprint"] = config_fingerprint(repo)
-    record = store.transition(run_id, phase, **patch)
+    results = patch.setdefault("results", {})
+    results["heartbeat_at"] = time.time()
+    if intent is not None:
+        results["intent"] = intent
+    if phase == PARKED_PHASE:
+        if set(patch) == {"results"}:
+            store.update_results(run_id, **results)
+        else:
+            store.transition(run_id, record.phase, **patch)
+        record = store.park(run_id, failure, "transient", "native_reported")
+    else:
+        record = store.transition(run_id, phase, **patch)
     return {
         "run_id": record.id,
         "phase": record.phase,

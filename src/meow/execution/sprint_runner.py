@@ -15,6 +15,7 @@ from meow.execution.orchestrator import (
 from meow.execution.run_failures import (
     BlockingRunError,
     InvalidConfigError,
+    attach_run_id,
     classify_failure,
 )
 from meow.execution.run_state import (
@@ -169,6 +170,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, c
         )
         if run_id is not None:  # a continued run must not stay "resuming"
             _settle_failure(store, run_id, error)
+            attach_run_id(error, run_id)
         if error is exc:
             raise
         raise error from exc
@@ -210,6 +212,7 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, c
         raise
     except BaseException as exc:
         _settle_failure(store, run_id, exc)
+        attach_run_id(exc, run_id)
         raise
 
 

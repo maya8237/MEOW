@@ -42,9 +42,11 @@ def _dispatch_jira_build(args, working_dir: Path) -> None:
     print(json.dumps(result))
 
 
-def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> None:
+def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> str | None:
+    """Drive one sprint; return its run ID (None if none was created)."""
     plan_file = _resolve_input_path(args.plan, working_dir)
     approve_plan = _prompt_plan_approval if args.manually_approve_plan else None
+    created: list[str] = []
     try:
         asyncio.run(
             run_sprint(
@@ -56,6 +58,7 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
                 source_branch=args.source_branch,
                 **({"target_branch": args.target_branch} if args.target_branch else {}),
                 approve_plan=approve_plan,
+                on_created=created.append,
                 resume_at=args.resume_at,
                 **(
                     {"commit": args.push is not None, "push": args.push is True}
@@ -76,15 +79,17 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> Non
     except PlanNotApprovedError as exc:
         print(f"\n{exc}", file=sys.stderr)
         raise SystemExit(1) from exc
+    return created[0] if created else None
 
 
-def _dispatch_run(args, working_dir: Path, *, use_worktree: bool) -> None:
+def _dispatch_run(args, working_dir: Path, *, use_worktree: bool) -> str | None:
     if args.lint_fix:
         _dispatch_lint_fix(args, working_dir)
     elif args.jira is not None:
         _dispatch_jira_build(args, working_dir)
     else:
-        _dispatch_plain_build(args, working_dir, use_worktree=use_worktree)
+        return _dispatch_plain_build(args, working_dir, use_worktree=use_worktree)
+    return None
 
 
 def _dispatch_review(args, working_dir: Path) -> None:
@@ -115,13 +120,13 @@ def _dispatch_review(args, working_dir: Path) -> None:
         raise SystemExit(1) from exc
 
 
-def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
+def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> str | None:
+    """Run the command; return the run ID a `meow run` sprint created."""
     if args.command == "run":
-        _dispatch_run(args, working_dir, use_worktree=use_worktree)
-        return
+        return _dispatch_run(args, working_dir, use_worktree=use_worktree)
     if args.command == "review":
         _dispatch_review(args, working_dir)
-        return
+        return None
     if args.command == "queue":
         raise SystemExit(queue(working_dir, args.request, args.feature_name))
     plan_file = asyncio.run(
@@ -135,3 +140,4 @@ def _dispatch(args, working_dir: Path, *, use_worktree: bool) -> None:
     )
     # The name may differ from --name when that worktree was already taken.
     print(f"Plan written: {plan_file}")
+    return None

@@ -1,5 +1,6 @@
 """Read-only rendering of saved run checkpoints."""
 
+import json
 import sys
 from collections import Counter
 from datetime import UTC, datetime
@@ -242,10 +243,16 @@ def saved_run_id(working_dir: Path, run_id: str | None) -> str | None:
     return max(candidates, key=lambda record: record.updated_at).id
 
 
-def status(working_dir: Path, run_id: str | None = None, verbose: bool = False) -> int:
+def status(
+    working_dir: Path,
+    run_id: str | None = None,
+    verbose: bool = False,
+    *,
+    as_json: bool = False,
+) -> int:
     run_id = saved_run_id(working_dir, run_id)
     if run_id is not None and is_orchestrator_id(run_id):
-        return _orchestration_status(working_dir, run_id)
+        return _orchestration_status(working_dir, run_id, as_json=as_json)
     store = RunStore(working_dir)
     rollups = active_orchestrator_lines(working_dir)
     try:
@@ -256,6 +263,17 @@ def status(working_dir: Path, run_id: str | None = None, verbose: bool = False) 
     except RunStateError as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    if as_json:
+        # Imported here: run_contract builds on resume_cli, which imports us.
+        from meow.cli.run_contract import status_payload
+
+        print(json.dumps(status_payload(record, inspect_worker(record).state)))
+        return 0
+    _print_run(record, verbose, rollups)
+    return 0
+
+
+def _print_run(record: RunRecord, verbose: bool, rollups: list[str]) -> None:
     try:
         concerns = tuple(
             concerns_for_run(
@@ -268,12 +286,27 @@ def status(working_dir: Path, run_id: str | None = None, verbose: bool = False) 
     print(render(record, verbose=verbose, concerns=concerns))
     if rollups:
         print("\n".join(rollups))
-    return 0
 
 
-def _orchestration_status(working_dir: Path, run_id: str) -> int:
+def _orchestration_status(
+    working_dir: Path, run_id: str, *, as_json: bool = False
+) -> int:
     try:
-        print(render_status(OrchestratorStore(working_dir).load(run_id)))
+        record = OrchestratorStore(working_dir).load(run_id)
+        if as_json:
+            print(
+                json.dumps({
+                    "id": record.id,
+                    "phase": record.phase,
+                    "settled": record.phase in ORCHESTRATOR_TERMINAL_PHASES,
+                    "orchestrator": True,
+                    "next_command": None
+                    if record.phase in ORCHESTRATOR_TERMINAL_PHASES
+                    else f"meow resume {record.id} --continue",
+                })
+            )
+            return 0
+        print(render_status(record))
     except (OrchestratorStateError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

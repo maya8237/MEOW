@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
 
@@ -147,11 +148,14 @@ def supervise(repo: Path, run_id: str, nonce: str) -> int:
         command = _meow("resume", run_id, "--continue", "--work-dir", str(repo))
 
 
-def run_supervised(repo: Path, argv: list[str]) -> int:
+def run_supervised(
+    repo: Path, argv: list[str], on_created: Callable[[str], None] | None = None
+) -> int:
     """Foreground `meow run` under a supervisor in this process.
 
     The run is checkpointed like a background run (this process registers as
     its worker), so `_drive` and `meow resume` continue it the same way.
+    `on_created` receives the new run ID.
     """
     from meow.cli.parser import _build_arg_parser
     from meow.execution.sprint_runner import _settle_failure
@@ -161,6 +165,8 @@ def run_supervised(repo: Path, argv: list[str]) -> int:
     repo = Path(repo).resolve()
     store = RunStore(repo)
     record = _create_run(store, repo, _build_arg_parser().parse_args(saved), None)
+    if on_created is not None:
+        on_created(record.id)
     nonce = secrets.token_hex(16)
     store.update_background(
         record.id,

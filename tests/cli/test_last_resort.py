@@ -1,4 +1,6 @@
-"""Failures that reach the CLI's outermost handler end as one message, exit 1."""
+"""Failures that reach the CLI's outermost handler end as one message.
+
+A run command with no blocking cause exits 75 with a `MEOW_RETRY` line."""
 
 import subprocess
 from unittest.mock import patch
@@ -7,6 +9,7 @@ import pytest
 from claude_agent_sdk import ProcessError
 
 from meow.cli import cli
+from meow.cli.run_contract import EXIT_TEMPFAIL
 
 
 class _Quit(RuntimeError):
@@ -28,7 +31,7 @@ class _Quit(RuntimeError):
         (ExceptionGroup("branches", [OSError("disk full")]), "disk full"),
     ],
 )
-def test_unexpected_failures_exit_one_without_a_traceback(error, expected, capsys):
+def test_unexpected_failures_exit_75_without_a_traceback(error, expected, capsys):
     with (
         patch("meow.execution.run_policy._ensure_clean_tree"),
         patch("meow.cli.cli._boot_repo"),
@@ -37,13 +40,14 @@ def test_unexpected_failures_exit_one_without_a_traceback(error, expected, capsy
         pytest.raises(SystemExit) as raised,
     ):
         cli.cli_main()
-    assert raised.value.code == 1
+    assert raised.value.code == EXIT_TEMPFAIL
     err = capsys.readouterr().err
+    assert "MEOW_RETRY " in err
     assert expected in err
     assert "Traceback" not in err
 
 
-def test_resume_failure_exits_one_without_a_traceback(capsys):
+def test_resume_failure_exits_75_without_a_traceback(capsys):
     async def failing(*_args, **_kwargs):  # ruff: ignore[unused-async]
         raise RuntimeError("Parallel task execution stopped: a: failed")
 
@@ -53,7 +57,8 @@ def test_resume_failure_exits_one_without_a_traceback(capsys):
         pytest.raises(SystemExit) as raised,
     ):
         cli.cli_main()
-    assert raised.value.code == 1
+    assert raised.value.code == EXIT_TEMPFAIL
     err = capsys.readouterr().err
+    assert "MEOW_RETRY " in err
     assert "Parallel task execution stopped" in err
     assert "Traceback" not in err

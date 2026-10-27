@@ -683,10 +683,11 @@ def _ensure_existing_branch_worktree(
         argv = [git, "worktree", "add", str(worktree_dir), branch_name]
     else:
         if not _ref_exists(git, working_dir, f"refs/remotes/origin/{branch_name}"):
-            raise RuntimeError(
+            raise StartPointError(
                 f"Branch '{branch_name}' was not found locally or as "
                 f"'origin/{branch_name}'. Fetch it first (`git fetch origin "
-                f"{branch_name}`) or check the branch name."
+                f"{branch_name}`) or check the branch name.",
+                ref=branch_name,
             )
         argv = [
             git,

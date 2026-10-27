@@ -69,6 +69,20 @@ Status shows received SDK turns, tokens, and USD cost; verbose lists results
 by role, with missing metrics marked `unavailable`. Claude owns transcripts;
 MEOW stores only role/session references.
 
+### Managed runs
+
+`run` and `resume --continue` exit 0 when settled, 75 when parked or retryable
+(stderr `MEOW_RETRY {"run_id", "next_command", "retry_after"}`), 1 when blocked
+or out of budget (`MEOW_BLOCKED {"run_id", "cause", "message", "stop"}`), 3 when
+pushed but the MR failed, and 130 when interrupted. `meow status ID --json`
+reports `phase`, `settled`, `retryable`, `cause`, `next_command`, `attempts`,
+`budget_left`, `worker`, `intent` and `heartbeat_age`, plus `not_resumed_reason`
+when no resume will be tried. Native helpers print `{"error", "retryable",
+"cause", "retry_after", "command"}` on stderr: exit 75 retries the same command,
+1 is blocking. `native checkpoint parked --failure TEXT` records a crash the
+session saw; `--intent run|plan` marks plan-only runs, which are never parked.
+Every helper with a run ID refreshes its heartbeat.
+
 Cancellation is cooperative between phases and during agents/checks. It stops
 owned tasks, records `cancelled`, and preserves output/worktree/resume identity;
 it does not signal unrelated PIDs. Explicit continuation validates state and

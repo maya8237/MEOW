@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 MAX_OUTPUT = 8000
 _DEFAULT_AUTO_RETRIES = 3
 _DEFAULT_STARTUP_GRACE = 180
+NATIVE_LOST_CAUSE = "native_session_lost"
 ERROR_LOG_TAIL_LINES = 20
 SCHEMA_VERSION = 1
 # Phases after which a run no longer drives work. The single source for worker
@@ -387,6 +388,10 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
         record.updated_at = _now()
         return self._write(record)
 
+    def heartbeat(self, run_id: str) -> RunRecord:
+        """Stamp `results.heartbeat_at`: a driverless (native) run is alive."""
+        return self.update_results(run_id, heartbeat_at=time.time())
+
     def update_results(self, run_id: str, **patch: object) -> RunRecord:
         """Persist workflow progress without adding a phase transition."""
         record = self.load(run_id)
@@ -394,7 +399,7 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
         record.updated_at = _now()
         return self._write(record)
 
-    def transition(  # ruff: ignore[complex-structure]
+    def transition(  # ruff: ignore[complex-structure, too-many-branches]
         self, run_id: str, phase: str, **patch: object
     ) -> RunRecord:
         record = self.load(run_id)
@@ -413,6 +418,8 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
             # Only a parked run offers a continuation; `park` stays so the
             # no-progress budget survives the resume.
             record.results.pop("next_command", None)
+        if phase in _ACTIVE_PHASES:
+            record.results.pop("failure", None)  # describes the last stop only
         if "last_failure" not in patch and phase in _ACTIVE_PHASES:
             record.last_failure = None  # a resumed/progressing run is not failed
         record.phase = phase
@@ -587,19 +594,83 @@ def park_crashed(store: RunStore, run_id: str) -> RunRecord | None:
     )
 
 
+def _run_settings(repo: Path) -> dict:
+    from meow.project.config import run_config
+    from meow.project.config_schema import RUN_DEFAULTS
+
+    try:
+        return run_config(Path(repo))
+    except (OSError, ValueError):
+        return dict(RUN_DEFAULTS)
+
+
+def _native_silent(record: RunRecord, stale_after: float) -> bool:
+    """A full native run (`intent=run`) whose session stopped checkpointing.
+
+    Plan-only native runs, and records without an intent or heartbeat (older
+    sessions), are never treated as lost.
+    """
+    beat = record.results.get("heartbeat_at")
+    return (
+        record.source == "native"
+        and record.results.get("intent") == "run"
+        and isinstance(beat, (int, float))
+        and not isinstance(beat, bool)
+        and time.time() - beat > stale_after
+    )
+
+
+def park_lost_native(store: RunStore, record: RunRecord, settings: dict) -> RunRecord:
+    """Park a silent native run, or fail it when no resume may be tried.
+
+    Past `max_total_resumes`/`managed_resumes` the run ends `failed` (cause
+    `budget_exhausted`) with the reason, instead of parking for a resume that
+    the budget forbids; `park` itself applies the no-progress stop rule.
+    """
+    park = record.park if isinstance(record.park, dict) else {}
+    total = sum(1 for item in record.transitions if item.get("phase") == "resuming")
+    message = f"native session lost during {record.phase}: no checkpoint since " + (
+        datetime.fromtimestamp(record.results["heartbeat_at"], UTC).isoformat()
+    )
+    managed = int(park.get("manager_resumes", 0))
+    for spent, name in ((total, "max_total_resumes"), (managed, "managed_resumes")):
+        if spent >= settings[name]:
+            return store.transition(
+                record.id,
+                "failed",
+                results={"failure": {"kind": "blocking", "cause": "budget_exhausted"}},
+                last_failure=f"{message}; not resumed: {name} reached",
+            )
+    return store.park(record.id, message, "transient", NATIVE_LOST_CAUSE)
+
+
+def _settle_stale(store: RunStore, record: RunRecord, settings: dict) -> bool:
+    """Settle one unsettled run if its owner (or native session) is gone."""
+    owner = run_owner_alive(record)
+    if owner is None:  # driverless: a native run is judged by its heartbeat
+        if not _native_silent(record, float(settings["stale_after"])):
+            return False
+        park_lost_native(store, record, settings)
+        return True
+    return owner is False and park_crashed(store, record.id) is not None
+
+
 def reconcile_stale_runs(store: RunStore) -> list[str]:
     """Park every unsettled run whose driver and worker are both gone.
 
-    Runs that never recorded an owner (native checkpoints) are left alone.
+    Driverless native runs are judged by their heartbeat instead: only
+    `intent=run` records silent past `[run] stale_after` are parked.
     Returns the IDs that were parked (or failed on an exhausted budget).
     """
+    paths = sorted(store.record_paths())
+    settings = _run_settings(store.directory.parent.parent) if paths else {}
     settled = []
-    for path in sorted(store.record_paths()):
+    for path in paths:
         try:
             record = store.load(path.stem)
-            if record.phase in _RECONCILE_SKIP or run_owner_alive(record) is not False:
-                continue
-            if park_crashed(store, record.id) is not None:
+            if record.phase not in _RECONCILE_SKIP and _settle_stale(
+                store, record, settings
+            ):
                 settled.append(record.id)
         except (RunStateError, OSError) as exc:
             logger.warning("run_reconcile_skipped", run=path.stem, reason=str(exc))

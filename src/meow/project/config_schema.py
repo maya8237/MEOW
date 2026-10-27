@@ -551,7 +551,8 @@ def _validate_max_rounds(config: dict) -> None:
 # max_total_resumes: cumulative cap; api_max_wait: longest API wait before
 # parking; worker_startup_grace: time a detached worker gets to register;
 # supervise: run foreground `meow run` under the supervisor (as under Claude
-# Code); background runs are always supervised.
+# Code); background runs are always supervised; stale_after: silence after
+# which a native `intent=run` record counts as a lost session and is parked.
 RUN_DEFAULTS = {
     "auto_retries": 3,
     "retry_backoff": [60, 300, 900],
@@ -560,6 +561,7 @@ RUN_DEFAULTS = {
     "api_max_wait": 10800,
     "worker_startup_grace": 180,
     "supervise": False,
+    "stale_after": 21600,
 }
 
 
@@ -580,7 +582,7 @@ def _run_value(table: dict, key: str):
             )
         )
         need = "a non-empty list of numbers >= 0"
-    elif key in {"api_max_wait", "worker_startup_grace"}:
+    elif key in {"api_max_wait", "worker_startup_grace", "stale_after"}:
         valid = (
             isinstance(value, (int, float))
             and not isinstance(value, bool)

@@ -239,16 +239,14 @@ _SUPERVISED = "its supervisor is still running"
 _EXHAUSTED = frozenset({"max_total_resumes reached", "managed_resumes reached"})
 
 
-def _resume_budget_left(record: RunRecord, config: dict) -> str | None:
-    """Why `resume --parked` must skip this record, or None to resume it."""
+def budget_refusal(record: RunRecord, config: dict) -> str | None:
+    """Why no resume of this run can be attempted (not resumable, or its
+    `max_total_resumes`/`managed_resumes` budget is spent), else None."""
     park = record.park if isinstance(record.park, dict) else {}
     checks = (
         (next_command(record) is None, f"{record.source} runs are rerun, not resumed"),
-        (
-            inspect_worker(record, include_terminal=True).state
-            in {"running", "starting"},
-            _SUPERVISED,
-        ),
+        # The native plan skill stops at `planned` on purpose: never continue it.
+        (record.results.get("intent") == "plan", "plan-only native run"),
         (
             int(park.get("total_resumes", 0)) >= config["max_total_resumes"],
             "max_total_resumes reached",
@@ -259,6 +257,15 @@ def _resume_budget_left(record: RunRecord, config: dict) -> str | None:
         ),
     )
     return next((reason for hit, reason in checks if hit), None)
+
+
+def _resume_budget_left(record: RunRecord, config: dict) -> str | None:
+    """Why `resume --parked` must skip this record, or None to resume it."""
+    if next_command(record) is not None and inspect_worker(
+        record, include_terminal=True
+    ).state in {"running", "starting"}:
+        return _SUPERVISED
+    return budget_refusal(record, config)
 
 
 def _parked_run_ids(store: RunStore) -> list[str]:
