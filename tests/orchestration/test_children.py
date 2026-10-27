@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from meow.common.process import process_identity
 from meow.execution.orchestration.children import (
     cancel_children,
     failure_evidence,
@@ -364,3 +365,16 @@ def test_fail_child_helper_marks_the_run_exhausted(git_repo, fake_launcher):
 
     record = RunStore(repo).load(run_id)
     assert (record.phase, record.last_failure) == ("exhausted", "gates failed")
+
+
+def test_parked_child_with_live_supervisor_keeps_running(git_repo, fake_launcher):
+    repo, _ = git_repo
+    store, oid = new_orchestrator(repo, [api_task()])
+    run_id = launch(repo, store, oid, "api", fake_launcher)
+    runs = RunStore(repo)
+    runs.update_background(
+        run_id, pid=os.getpid(), start_identity=process_identity(os.getpid())
+    )
+    runs.park(run_id, "boom", "transient", "error")
+
+    assert poll_task(repo, store.load(oid).task("api")) == "running"

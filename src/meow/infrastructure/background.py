@@ -317,84 +317,106 @@ def _notify_once(  # ruff: ignore[complex-structure, too-many-return-statements]
     store.update_background(run_id, notification=outcome)
 
 
-def worker_main(  # ruff: ignore[too-many-statements]
-    repo: Path, run_id: str, nonce: str
-) -> int:
-    """Run saved invocation in the detached process, never prompting."""
+def _saved_invocation(record: RunRecord) -> argparse.Namespace:
+    """Parse and validate the saved worker argv; reject anything unexpected."""
     from meow.cli.parser import _build_arg_parser
-    from meow.cli.validation import (
-        _resolve_input_path,
-        parse_inputs,
-        pipeline_overrides,
-    )
-    from meow.execution.sprint_runner import _settle_failure, run_sprint
-    from meow.integrations.issue_solver import run_issue_solver
+
+    args = _build_arg_parser().parse_args(record.background["argv"])
+    try:
+        _invocation_kind(args)
+    except BackgroundError as exc:
+        raise InvalidInvocationError(
+            "Saved worker invocation is invalid", cause="invalid_input"
+        ) from exc
+    return args
+
+
+def worker_main(repo: Path, run_id: str, nonce: str) -> int:
+    """The detached worker: register, then supervise the run's driver.
+
+    The driver runs as a `_drive` child (see `supervisor.supervise`), which
+    relaunches a parked run within the `[run]` retry budget.
+    """
+    from meow.execution.sprint_runner import _settle_failure
+    from meow.infrastructure.supervisor import supervise
 
     store = RunStore(repo)
     try:
-        record = _wait_for_registration(store, run_id, nonce)
-        args = _build_arg_parser().parse_args(record.background["argv"])
-        try:
-            kind = _invocation_kind(args)
-        except BackgroundError as exc:
-            raise InvalidInvocationError(
-                "Saved worker invocation is invalid", cause="invalid_input"
-            ) from exc
-        if kind == "orchestrator-task":
-            from meow.execution.orchestration.task_worker import run_task_attempt
-
-            asyncio.run(run_task_attempt(repo, run_id, args))
-        elif args.jira is not None:
-            asyncio.run(
-                run_issue_solver(
-                    repo,
-                    args.jira or None,
-                    test=args.test,
-                    **(
-                        {"force_disable_tests": True}
-                        if args.force_disable_tests
-                        else {}
-                    ),
-                    run_id=run_id,
-                    **({"workflow": args.workflow} if args.workflow else {}),
-                    **({"inputs": parse_inputs(args.input)} if args.input else {}),
-                )
-            )
-        else:
-            asyncio.run(
-                run_sprint(
-                    repo,
-                    args.feature_name,
-                    args.request,
-                    use_worktree=not args.no_worktree,
-                    plan_file=_resolve_input_path(args.plan, repo),
-                    source_branch=args.source_branch,
-                    resume_at=args.resume_at,
-                    test=args.test,
-                    **(
-                        {"force_disable_tests": True}
-                        if args.force_disable_tests
-                        else {}
-                    ),
-                    run_id=run_id,
-                    record_root=repo,
-                    **(
-                        {"commit": args.push is not None, "push": args.push is True}
-                        if args.no_worktree
-                        else {}
-                    ),
-                    **({"workflow": args.workflow} if args.workflow else {}),
-                    **({"inputs": parse_inputs(args.input)} if args.input else {}),
-                    **(
-                        {"pipeline_options": opts}
-                        if (opts := pipeline_overrides(args))
-                        else {}
-                    ),
-                )
-            )
-        return 0
+        _saved_invocation(_wait_for_registration(store, run_id, nonce))
+        return supervise(repo, run_id, nonce)
     except BaseException as exc:
         _settle_failure(store, run_id, exc)  # park unless blocking
         raise
     finally:
         _notify_once(store, run_id)
+
+
+def drive_main(repo: Path, run_id: str, nonce: str) -> int:
+    """Run the saved invocation in this process (the supervised driver)."""
+    from meow.execution.sprint_runner import _settle_failure
+
+    store = RunStore(repo)
+    try:
+        record = store.load(run_id)
+        if record.background.get("nonce") != nonce:
+            raise BackgroundError("Driver nonce does not match saved run")
+        _drive_invocation(repo, run_id, _saved_invocation(record))
+        return 0
+    except BaseException as exc:
+        _settle_failure(store, run_id, exc)  # park unless blocking
+        raise
+
+
+def _drive_invocation(repo: Path, run_id: str, args: argparse.Namespace) -> None:
+    from meow.cli.validation import (
+        _resolve_input_path,
+        parse_inputs,
+        pipeline_overrides,
+    )
+    from meow.execution.sprint_runner import run_sprint
+    from meow.integrations.issue_solver import run_issue_solver
+
+    if _invocation_kind(args) == "orchestrator-task":
+        from meow.execution.orchestration.task_worker import run_task_attempt
+
+        asyncio.run(run_task_attempt(repo, run_id, args))
+    elif args.jira is not None:
+        asyncio.run(
+            run_issue_solver(
+                repo,
+                args.jira or None,
+                test=args.test,
+                **({"force_disable_tests": True} if args.force_disable_tests else {}),
+                run_id=run_id,
+                **({"workflow": args.workflow} if args.workflow else {}),
+                **({"inputs": parse_inputs(args.input)} if args.input else {}),
+            )
+        )
+    else:
+        asyncio.run(
+            run_sprint(
+                repo,
+                args.feature_name,
+                args.request,
+                use_worktree=not args.no_worktree,
+                plan_file=_resolve_input_path(args.plan, repo),
+                source_branch=args.source_branch,
+                resume_at=args.resume_at,
+                test=args.test,
+                **({"force_disable_tests": True} if args.force_disable_tests else {}),
+                run_id=run_id,
+                record_root=repo,
+                **(
+                    {"commit": args.push is not None, "push": args.push is True}
+                    if args.no_worktree
+                    else {}
+                ),
+                **({"workflow": args.workflow} if args.workflow else {}),
+                **({"inputs": parse_inputs(args.input)} if args.input else {}),
+                **(
+                    {"pipeline_options": opts}
+                    if (opts := pipeline_overrides(args))
+                    else {}
+                ),
+            )
+        )

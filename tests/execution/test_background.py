@@ -10,7 +10,7 @@ import pytest
 from meow.cli import cli as cli_core
 from meow.cli.status_cli import render
 from meow.execution.run_state import RunStore, reconcile_stale_runs
-from meow.infrastructure import background
+from meow.infrastructure import background, supervisor
 
 
 def test_background_requires_background_flag(tmp_path):
@@ -187,6 +187,17 @@ def test_status_labels_browser_with_no_result_unavailable(tmp_path):
     assert "Browser: UNAVAILABLE" in render(store.load(record.id))
 
 
+def _drive_in_process(monkeypatch, repo, run_id):
+    """Run the supervisor's `_drive` child in this process."""
+
+    def child(_repo, command, env):
+        assert command[3:6] == ["meow", "_drive", run_id]
+        assert env[supervisor.SUPERVISOR_ENV] == "n"
+        return background.drive_main(repo, run_id, "n")
+
+    monkeypatch.setattr(supervisor, "_run_child", child)
+
+
 @pytest.mark.parametrize(
     "flag,delivery",
     [
@@ -227,6 +238,7 @@ def test_worker_runs_saved_sprint_and_completes(tmp_path, monkeypatch, flag, del
         store.transition(record.id, "complete")
 
     monkeypatch.setattr("meow.execution.sprint_runner.run_sprint", fake_run_sprint)
+    _drive_in_process(monkeypatch, tmp_path, record.id)
     assert background.worker_main(tmp_path, record.id, "n") == 0
     assert store.load(record.id).phase == "complete"
     assert store.load(record.id).background["start_identity"] == identity
@@ -406,6 +418,7 @@ def test_worker_dispatches_orchestrator_task(tmp_path, monkeypatch):
         fake_run_task_attempt,
     )
 
+    _drive_in_process(monkeypatch, tmp_path, record.id)
     assert background.worker_main(tmp_path, record.id, "n") == 0
 
     assert seen == {"repo": tmp_path, "run_id": record.id, "resume_at": "review"}
@@ -560,3 +573,204 @@ def test_killed_foreground_run_is_parked_on_next_status(tmp_path, capsys):
     assert exit_info.value.code == 0
     assert store.load(record.id).phase == "parked"
     assert "Phase: parked" in capsys.readouterr().out
+
+
+def _supervised_record(store, tmp_path):
+    record = store.create(
+        source="prompt", request="f", repo=tmp_path, worktree=tmp_path, branch="d"
+    )
+    store.update_background(
+        record.id,
+        nonce="n",
+        pid=os.getpid(),
+        start_identity=background._process_identity(os.getpid()),
+        argv=["run", "f", "--name", "x", "--background"],
+    )
+    return record
+
+
+def _crash(store, run_id):
+    """What a hard-killed driver leaves behind: an active phase, no settle."""
+    store.transition(run_id, "generator_started")
+    return -9
+
+
+def _fake_children(monkeypatch, store, run_id, outcomes):
+    launches, sleeps = [], []
+
+    def child(_repo, command, _env):
+        launches.append(command[4])
+        if command[4] == "resume":
+            store.transition(run_id, "resuming")
+        outcome = outcomes[min(len(launches), len(outcomes)) - 1]
+        if outcome == "crash":
+            return _crash(store, run_id)
+        store.transition(run_id, outcome)
+        return 0
+
+    monkeypatch.setattr(supervisor, "_run_child", child)
+    monkeypatch.setattr(supervisor, "_sleep", sleeps.append)
+    return launches, sleeps
+
+
+def test_supervisor_retries_parked_run(tmp_path, monkeypatch):
+    store = RunStore(tmp_path)
+    record = _supervised_record(store, tmp_path)
+    launches, sleeps = _fake_children(
+        monkeypatch, store, record.id, ["crash", "complete"]
+    )
+
+    assert supervisor.supervise(tmp_path, record.id, "n") == 0
+
+    final = store.load(record.id)
+    assert final.phase == "complete"
+    assert final.park["attempts"] == 1
+    assert final.park["kind"] == "crashed"
+    assert launches == ["_drive", "resume"]
+    assert sleeps == [60]
+
+
+def test_supervisor_stops_after_auto_retries(tmp_path, monkeypatch):
+    store = RunStore(tmp_path)
+    record = _supervised_record(store, tmp_path)
+    launches, sleeps = _fake_children(monkeypatch, store, record.id, ["crash"])
+
+    assert supervisor.supervise(tmp_path, record.id, "n") == 1
+
+    final = store.load(record.id)
+    assert launches == ["_drive", "resume", "resume", "resume"]  # 3 relaunches
+    assert sleeps == [60, 300, 900]
+    assert final.phase == "failed"
+    assert final.park["cause"] == "no_progress"
+    assert final.park["repeated_cause"] == "driver_died"
+
+
+def test_supervisor_honours_retry_after(tmp_path, monkeypatch):
+    store = RunStore(tmp_path)
+    record = _supervised_record(store, tmp_path)
+    sleeps = []
+
+    def child(_repo, command, _env):
+        if command[4] == "_drive":
+            store.transition(record.id, "generator_started")
+            store.park(record.id, "429", "transient", "rate_limit", retry_after=1234)
+        else:
+            store.transition(record.id, "complete")
+        return 0
+
+    monkeypatch.setattr(supervisor, "_run_child", child)
+    monkeypatch.setattr(supervisor, "_sleep", sleeps.append)
+    assert supervisor.supervise(tmp_path, record.id, "n") == 0
+    assert sleeps == [1234]
+
+
+def test_supervisor_stops_when_resume_refuses_to_start(tmp_path, monkeypatch):
+    store = RunStore(tmp_path)
+    record = _supervised_record(store, tmp_path)
+    launches = []
+
+    def child(_repo, command, _env):
+        launches.append(command[4])
+        if command[4] == "_drive":
+            _crash(store, record.id)
+        return 1  # `meow resume` rejected the run without touching it
+
+    monkeypatch.setattr(supervisor, "_run_child", child)
+    monkeypatch.setattr(supervisor, "_sleep", lambda _seconds: None)
+    assert supervisor.supervise(tmp_path, record.id, "n") == supervisor.EXIT_TEMPFAIL
+    assert launches == ["_drive", "resume"]
+    assert store.load(record.id).phase == "parked"
+
+
+def test_supervisor_does_not_relaunch_a_run_cancelled_while_waiting(
+    tmp_path, monkeypatch
+):
+    store = RunStore(tmp_path)
+    record = _supervised_record(store, tmp_path)
+    launches = []
+
+    def child(_repo, command, _env):
+        launches.append(command[4])
+        return _crash(store, record.id)
+
+    monkeypatch.setattr(supervisor, "_run_child", child)
+    monkeypatch.setattr(
+        supervisor, "_sleep", lambda _s: store.transition(record.id, "cancelled")
+    )
+    assert supervisor.supervise(tmp_path, record.id, "n") == 1
+    assert launches == ["_drive"]
+
+
+def test_supervisor_leaves_blocking_failure_failed(tmp_path, monkeypatch):
+    store = RunStore(tmp_path)
+    record = _supervised_record(store, tmp_path)
+    _launches, sleeps = _fake_children(monkeypatch, store, record.id, ["failed"])
+    assert supervisor.supervise(tmp_path, record.id, "n") == 1
+    assert sleeps == []
+
+
+def test_run_child_uses_its_own_process_group(tmp_path, monkeypatch):
+    seen = {}
+
+    def popen(command, **kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(wait=lambda: 0)
+
+    monkeypatch.setattr(supervisor.subprocess, "Popen", popen)
+    assert supervisor._run_child(tmp_path, ["x"], {}) == 0
+    assert seen["start_new_session"] is True
+
+
+def test_windows_child_gets_a_new_process_group(tmp_path, monkeypatch):
+    seen = {}
+    new_group = 0x200
+    monkeypatch.setattr(supervisor.sys, "platform", "win32")
+    monkeypatch.setattr(
+        supervisor.subprocess, "CREATE_NEW_PROCESS_GROUP", new_group, raising=False
+    )
+
+    def popen(command, **kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(wait=lambda: 0)
+
+    monkeypatch.setattr(supervisor.subprocess, "Popen", popen)
+    supervisor._run_child(tmp_path, ["x"], {})
+    assert seen["creationflags"] == new_group
+    assert seen["start_new_session"] is False
+
+
+def test_foreground_run_is_supervised_under_claude_code(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    calls = []
+    monkeypatch.setattr(
+        cli_core, "run_supervised", lambda repo, argv: calls.append(argv) or 75
+    )
+    monkeypatch.setattr(
+        cli_core, "_dispatch", lambda *_a, **_k: pytest.fail("ran unsupervised")
+    )
+    argv = ["run", "feature", "--name", "x", "-n", "--work-dir", str(tmp_path)]
+    with pytest.raises(SystemExit) as exit_info:
+        cli_core.cli_main(argv)
+    assert exit_info.value.code == supervisor.EXIT_TEMPFAIL
+    assert calls == [argv]
+
+
+def test_run_supervised_checkpoints_a_background_style_record(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_supervise(repo, run_id, nonce):
+        record = RunStore(repo).load(run_id)
+        seen.update(
+            argv=record.background["argv"],
+            nonce=record.background["nonce"] == nonce,
+            pid=record.background["pid"],
+        )
+        return 0
+
+    monkeypatch.setattr(supervisor, "supervise", fake_supervise)
+    assert supervisor.run_supervised(tmp_path, ["run", "f", "--name", "x", "-n"]) == 0
+    assert seen == {
+        "argv": ["run", "f", "--name", "x", "-n", "--background"],
+        "nonce": True,
+        "pid": os.getpid(),
+    }

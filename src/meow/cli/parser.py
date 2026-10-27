@@ -251,10 +251,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     ui_parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     ui_parser.add_argument("--no-browser", action="store_true")
     _add_common_args(ui_parser)
-    worker_parser = _add_hidden_parser(subparsers, "_worker")
-    worker_parser.add_argument("run_id")
-    worker_parser.add_argument("--nonce", required=True)
-    _add_common_args(worker_parser)
+    for hidden in ("_worker", "_drive"):
+        worker_parser = _add_hidden_parser(subparsers, hidden)
+        worker_parser.add_argument("run_id")
+        worker_parser.add_argument("--nonce", required=True)
+        _add_common_args(worker_parser)
     orchestrator_task_parser = _add_hidden_parser(subparsers, "_orchestrator-task")
     orchestrator_task_parser.add_argument("orchestrator_id")
     orchestrator_task_parser.add_argument("task_id")
@@ -332,6 +333,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
             "Re-baseline resume gates that block a run: adopt the current plan, "
             "config, branch, and workflow, relocate a moved worktree, and "
             "start fresh sessions for missing Claude session references."
+        ),
+    )
+    resume_parser.add_argument(
+        "--parked",
+        action="store_true",
+        help=(
+            "Continue every parked run within its retry budget, one after "
+            "another, requeue parked queue items, and print a JSON summary."
         ),
     )
     _add_common_args(resume_parser)

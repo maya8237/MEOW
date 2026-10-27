@@ -12,7 +12,7 @@ Use `meow COMMAND --help` for flag syntax. Read the relevant reference only:
 | `meow plan` | Plan without implementation |
 | `meow review` | Review existing code; `--fix` enables fixes |
 | `meow status [ID]` | Inspect the latest or named run; `--verbose` includes evidence |
-| `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates |
+| `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates, `--parked` continues every parked run (JSON summary) |
 | `meow cancel ID` | Cooperatively stop a run, preserving recovery state |
 | `meow worktree` | List, inspect, or safely clean owned worktrees |
 | `meow cleanup [ID]` | [Keep results and remove integrated task artifacts](CLEANUP.md) |

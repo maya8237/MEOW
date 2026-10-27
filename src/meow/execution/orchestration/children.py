@@ -19,7 +19,12 @@ from meow.execution.run_state import (
     RunStateError,
     RunStore,
 )
-from meow.infrastructure.background import RunSeed, launch_background, reconcile_worker
+from meow.infrastructure.background import (
+    RunSeed,
+    inspect_worker,
+    launch_background,
+    reconcile_worker,
+)
 from meow.infrastructure.cancellation import request_cancel
 from meow.infrastructure.worktree import _ensure_branch_worktree
 from meow.project.plan_files import plan_test_file
@@ -142,12 +147,20 @@ def poll_task(
     run_id = task.run_ids[-1]
     try:
         reconcile_worker(runs, run_id)
-        phase = runs.load(run_id).phase
+        record = runs.load(run_id)
     except RunStateError:
         return "failed"
+    phase = record.phase
+    # A parked child whose supervisor still lives is relaunched within budget.
+    supervised = (
+        phase == PARKED_PHASE
+        and inspect_worker(record, include_terminal=True).state == "running"
+    )
     if phase in _PASSED_PHASES:
         return "passed"
-    if phase in TERMINAL_PHASES or phase in {"interrupted_mutation", PARKED_PHASE}:
+    if not supervised and (
+        phase in TERMINAL_PHASES or phase in {"interrupted_mutation", PARKED_PHASE}
+    ):
         return "failed"  # settled without passing; triage decides what next
     return "running"
 

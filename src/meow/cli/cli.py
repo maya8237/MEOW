@@ -16,7 +16,7 @@ from meow.cli.dispatch import _dispatch
 from meow.cli.ipython_cli import start_ipython
 from meow.cli.orchestration_cli import run_orchestration
 from meow.cli.parser import _build_arg_parser, expand_shortcuts
-from meow.cli.resume_cli import resume
+from meow.cli.resume_cli import resume, resume_parked
 from meow.cli.skills_cli import skills_command
 from meow.cli.status_cli import status
 from meow.cli.validation import (
@@ -41,11 +41,13 @@ from meow.execution.run_policy import (
 from meow.execution.run_state import RunStateError, RunStore, reconcile_quietly
 from meow.infrastructure.background import (
     BackgroundError,
+    drive_main,
     launch_background,
     worker_main,
 )
 from meow.infrastructure.cancellation import request_cancel
 from meow.infrastructure.logging import configure_logging, get_logger
+from meow.infrastructure.supervisor import run_supervised, should_supervise
 from meow.infrastructure.worktree import (
     DirtyWorkingTreeError,
     _boot_repo,
@@ -213,6 +215,8 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         return
     if args.command == "_worker":
         raise SystemExit(worker_main(working_dir, args.run_id, args.nonce))
+    if args.command == "_drive":
+        raise SystemExit(drive_main(working_dir, args.run_id, args.nonce))
     if args.command == "status":
         raise SystemExit(status(working_dir, args.run_id, args.verbose))
     if args.command == "cancel":
@@ -268,6 +272,13 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
             raise SystemExit(2) from exc
         print(report.render(args.verbose))
         return
+    if args.command == "resume" and args.parked:
+        if args.run_id or args.continue_run or args.task_id or args.request:
+            parser.error("--parked takes no run ID, --continue, --task or --request")
+        try:
+            raise SystemExit(asyncio.run(resume_parked(working_dir)))
+        except KeyboardInterrupt:
+            raise SystemExit(130) from None
     if args.command == "resume":
         try:
             code = asyncio.run(
@@ -363,6 +374,22 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         print(f"Background run: {run_id}")
         print(f"Inspect: meow status {run_id}")
         return
+    if (
+        args.command == "run"
+        and not args.lint_fix
+        and not args.manually_approve_plan
+        and should_supervise(working_dir)
+    ):
+        try:
+            code = run_supervised(
+                working_dir, sys.argv[1:] if argv is None else list(argv)
+            )
+        except KeyboardInterrupt:
+            raise SystemExit(130) from None
+        except (*_EXPECTED_FAILURES, BackgroundError) as exc:
+            print(f"\n{_describe_failure(exc)}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        raise SystemExit(code)
     try:
         _dispatch(args, working_dir, use_worktree=use_worktree)
     except _EXPECTED_FAILURES as exc:

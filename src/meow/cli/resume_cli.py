@@ -1,8 +1,11 @@
 """Inspect and explicitly resume a saved run after identity validation."""
 
 import hashlib
+import json
+import os
 import subprocess
 import sys
+from contextlib import redirect_stdout, suppress
 from pathlib import Path
 
 from meow.cli.orchestration_cli import resume_orchestration
@@ -14,13 +17,20 @@ from meow.cli.status_cli import (
 from meow.execution.orchestration.model import is_orchestrator_id
 from meow.execution.orchestration.report import render_status
 from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
+from meow.execution.queue_state import QueueStateError, QueueStore
+from meow.execution.run_failures import next_command
 from meow.execution.run_state import PARKED_PHASE, RunRecord, RunStateError, RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.background import inspect_worker
 from meow.infrastructure.cancellation import clear_cancel
 from meow.infrastructure.checks import config_fingerprint
+from meow.infrastructure.supervisor import (
+    EXIT_BLOCKED,
+    EXIT_TEMPFAIL,
+    SUPERVISOR_ENV,
+)
 from meow.infrastructure.worktree import current_branch
-from meow.project.config import config_root, load_config
+from meow.project.config import config_root, load_config, run_config
 from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
 
 
@@ -206,6 +216,103 @@ def _resume_at(record: RunRecord) -> str:
     return "review" if review_first else "generate"
 
 
+def _launched_by_supervisor(record: RunRecord) -> bool:
+    """True inside the relaunch the run's own live supervisor started."""
+    nonce = os.environ.get(SUPERVISOR_ENV)
+    return bool(nonce) and nonce == record.background.get("nonce")
+
+
+def _resume_budget_left(record: RunRecord, config: dict) -> str | None:
+    """Why `resume --parked` must skip this record, or None to resume it."""
+    park = record.park if isinstance(record.park, dict) else {}
+    checks = (
+        (record.phase != PARKED_PHASE, f"phase {record.phase}"),
+        (next_command(record) is None, f"{record.source} runs are rerun, not resumed"),
+        (
+            inspect_worker(record, include_terminal=True).state
+            in {"running", "starting"},
+            "its supervisor is still running",
+        ),
+        (
+            int(park.get("total_resumes", 0)) >= config["max_total_resumes"],
+            "max_total_resumes reached",
+        ),
+        (
+            int(park.get("manager_resumes", 0)) >= config["managed_resumes"],
+            "managed_resumes reached",
+        ),
+    )
+    return next((reason for hit, reason in checks if hit), None)
+
+
+def _parked_records(store: RunStore) -> list[RunRecord]:
+    """Parked runs, oldest update first; unreadable records are skipped."""
+    records = []
+    for path in store.record_paths():
+        with suppress(RunStateError):
+            records.append(store.load(path.stem))
+    return sorted(
+        (record for record in records if record.phase == PARKED_PHASE),
+        key=lambda item: item.updated_at,
+    )
+
+
+async def _resume_one(working_dir: Path, store: RunStore, record: RunRecord) -> dict:
+    """Continue one parked run (its output to stderr); summarize the result."""
+    _count_manager_resume(store, record)
+    error = None
+    with redirect_stdout(sys.stderr):
+        try:
+            code = await resume(
+                working_dir,
+                record.id,
+                continue_run=True,
+                repair=record.source == "native",
+            )
+        except Exception as exc:  # the run settles itself; keep going
+            code, error = EXIT_BLOCKED, str(exc) or type(exc).__name__
+    entry = {"run_id": record.id, "phase": store.load(record.id).phase, "exit": code}
+    return {**entry, **({"error": error} if error else {})}
+
+
+def _parked_exit_code(summary: dict[str, list]) -> int:
+    phases = [entry["phase"] for entry in summary["resumed"]]
+    if any(phase not in {"complete", "delivered", PARKED_PHASE} for phase in phases):
+        return EXIT_BLOCKED
+    if PARKED_PHASE in phases or summary["skipped"]:
+        return EXIT_TEMPFAIL
+    return 0
+
+
+async def resume_parked(working_dir: Path) -> int:
+    """Continue every parked run within budget, then print a JSON summary.
+
+    Parked queue items are requeued for the next `meow queue` worker. Each
+    run's own output goes to stderr so stdout stays one JSON document.
+    Exit: 0 all settled successfully, 75 something is still parked, 1 a run
+    is blocked.
+    """
+    store = RunStore(working_dir)
+    config = run_config(working_dir)
+    summary: dict[str, list] = {"resumed": [], "skipped": [], "requeued": []}
+    for record in _parked_records(store):
+        if reason := _resume_budget_left(record, config):
+            summary["skipped"].append({"run_id": record.id, "reason": reason})
+        else:
+            summary["resumed"].append(await _resume_one(working_dir, store, record))
+    with suppress(QueueStateError):
+        requeued = QueueStore(working_dir).requeue_parked()
+        summary["requeued"] = [item.id for item in requeued]
+    print(json.dumps(summary))
+    return _parked_exit_code(summary)
+
+
+def _count_manager_resume(store: RunStore, record: RunRecord) -> None:
+    park = dict(record.park)
+    park["manager_resumes"] = int(park.get("manager_resumes", 0)) + 1
+    store.transition(record.id, record.phase, park=park)
+
+
 async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-many-return-statements, too-many-statements, too-many-branches] -- inspect-first recovery with validation
     working_dir: Path,
     run_id: str | None = None,
@@ -240,9 +347,12 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
             "--request applies only to a blocked orchestration task.", file=sys.stderr
         )
         return 1
-    if (continue_run or repair) and inspect_worker(
-        record, include_terminal=True
-    ).state in {"running", "starting"}:
+    if (
+        (continue_run or repair)
+        and not _launched_by_supervisor(record)
+        and inspect_worker(record, include_terminal=True).state
+        in {"running", "starting"}
+    ):
         print(
             "Cannot resume or repair while the background worker is running or "
             "starting. Wait for it to stop before retrying.",
