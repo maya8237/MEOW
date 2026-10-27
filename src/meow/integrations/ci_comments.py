@@ -4,6 +4,7 @@ import json
 import re
 from codecs import escape_decode
 from collections.abc import Mapping
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import override
 from urllib.error import HTTPError, URLError
@@ -13,6 +14,8 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from meow.integrations.ci_review import MAX_DIFF, CiReviewContext, CiReviewError
 
 PAGE_SIZE = 100
+SIMILARITY = 0.9
+MARKER = "<!-- meow-review -->"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -21,7 +24,9 @@ class _NoRedirect(HTTPRedirectHandler):
         raise CiReviewError("review API redirected; check the configured API URL")
 
 
-def _request(url: str, token: str, payload: dict | None = None) -> dict | list:
+def _request(
+    url: str, token: str, payload: dict | None = None, method: str | None = None
+) -> dict | list:
     if urlsplit(url).scheme != "https":
         raise CiReviewError("review API URL must use HTTPS")
     request = Request(
@@ -32,6 +37,7 @@ def _request(url: str, token: str, payload: dict | None = None) -> dict | list:
             "Content-Type": "application/json",
             "Accept": "application/json",
         },
+        method=method,
     )
     try:
         with build_opener(_NoRedirect()).open(request, timeout=30) as response:
@@ -191,32 +197,105 @@ def read_review_comments(  # ruff: ignore[complex-structure] -- bounded paginati
     return history
 
 
+THREADS_QUERY = (
+    "query($owner:String!,$name:String!,$number:Int!,$after:String){"
+    "repository(owner:$owner,name:$name){pullRequest(number:$number){"
+    "reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor}"
+    "nodes{id isResolved comments(first:1){nodes{databaseId body}}}}}}}"
+)
+RESOLVE_MUTATION = (
+    "mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}"
+)
+
+
+def _normalize(body: str) -> str:
+    text = body.replace(MARKER, "").casefold()
+    return " ".join(re.sub(r"[^\w\s]", " ", text).split())
+
+
+def _similar(left: str, right: str) -> bool:
+    left, right = _normalize(left), _normalize(right)
+    return left == right or SequenceMatcher(None, left, right).ratio() >= SIMILARITY
+
+
+def _graphql_url(env: Mapping[str, str]) -> str:
+    api = env.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
+    if env.get("GITHUB_GRAPHQL_URL"):
+        return env["GITHUB_GRAPHQL_URL"]
+    if api.endswith("/api/v3"):
+        return api.removesuffix("/v3") + "/graphql"
+    return api + "/graphql"
+
+
+def _github_threads(target: str, token: str, env: Mapping[str, str]) -> list[dict]:
+    """Review threads as {id, resolved, root_id, body}; raises on API trouble."""
+    owner, name = _required(env, "GITHUB_REPOSITORY").split("/", 1)
+    variables = {"owner": owner, "name": name, "number": int(target.rsplit("/", 1)[1])}
+    threads = []
+    for _ in range(100):
+        try:
+            data = _request(
+                _graphql_url(env),
+                token,
+                {"query": THREADS_QUERY, "variables": variables},
+            )
+            page = data["data"]["repository"]["pullRequest"]["reviewThreads"]
+            for node in page["nodes"]:
+                root = node["comments"]["nodes"][0]
+                threads.append({
+                    "id": node["id"],
+                    "resolved": node["isResolved"],
+                    "root_id": root["databaseId"],
+                    "body": root["body"],
+                })
+            if not page["pageInfo"]["hasNextPage"]:
+                return threads
+            variables["after"] = page["pageInfo"]["endCursor"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise CiReviewError("review threads API returned invalid data") from exc
+    raise CiReviewError("review threads pagination exceeds review size limit")
+
+
+def _open_github_threads(target: str, token: str, env: Mapping[str, str]) -> set:
+    """Root comment ids of unresolved threads; unknown (empty) if the API fails."""
+    try:
+        threads = _github_threads(target, token, env)
+    except CiReviewError:
+        return set()
+    return {t["root_id"] for t in threads if not t["resolved"]}
+
+
 def _comment_keys(  # ruff: ignore[complex-structure] -- provider-specific current-line coordinates
-    provider: str, context: CiReviewContext, history: dict
-) -> set:
-    keys = set()
+    provider: str, context: CiReviewContext, history: dict, open_ids: set
+) -> list[tuple]:
+    """Existing comments as (path, line, side, body); line None = open outdated."""
+    keys = []
     if provider == "github":
         for comment in history["comments"]:
-            # A null line denotes an outdated comment; never use original_line.
-            if comment.get("line") is not None:
-                keys.add((
+            line = comment.get("line")
+            # Outdated (null line) comments only count while their thread is open.
+            if line is not None or comment.get("id") in open_ids:
+                keys.append((
                     comment.get("path"),
-                    comment["line"],
+                    line,
                     comment.get("side"),
-                    " ".join(comment.get("body", "").split()),
+                    comment.get("body", ""),
                 ))
     else:
         for discussion in history["discussions"]:
             for note in discussion.get("notes", []):
                 position = note.get("position") or {}
-                if position.get("head_sha") != context.source_sha:
+                current = position.get("head_sha") == context.source_sha
+                if not current and note.get("resolved", True):
                     continue
                 side = "RIGHT" if position.get("new_line") is not None else "LEFT"
-                keys.add((
+                keys.append((
                     position.get("new_path" if side == "RIGHT" else "old_path"),
-                    position.get("new_line" if side == "RIGHT" else "old_line"),
+                    position.get("new_line" if side == "RIGHT" else "old_line")
+                    if current
+                    else None,
                     side,
-                    " ".join(note.get("body", "").split()),
+                    note.get("body", ""),
                 ))
     return keys
 
@@ -242,7 +321,11 @@ def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revis
         }
     if not matches:
         raise CiReviewError("remote review revisions differ from the reviewed checkout")
-    existing = _comment_keys(provider, context, read_review_comments(provider, env))
+    history = read_review_comments(provider, env)
+    open_ids = (
+        _open_github_threads(target, token, env) if provider == "github" else set()
+    )
+    existing = _comment_keys(provider, context, history, open_ids)
     posted = 0
     for finding in findings:
         old_path, new_path = _locations(context.diff)[
@@ -253,13 +336,12 @@ def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revis
             if provider == "github"
             else finding["path"]
         )
-        key = (
-            path,
-            finding["line"],
-            finding["side"],
-            " ".join(finding["body"].split()),
-        )
-        if key in existing:
+        if any(
+            (e_path, e_side) == (path, finding["side"])
+            and (e_line is None or e_line == finding["line"])
+            and _similar(e_body, finding["body"])
+            for e_path, e_line, e_side, e_body in existing
+        ):
             continue
         if provider == "github":
             _request(
@@ -269,6 +351,7 @@ def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revis
                 | {
                     "path": path,
                     "commit_id": context.source_sha,
+                    "body": f"{finding['body']}\n\n{MARKER}",
                 },
             )
         else:
@@ -276,10 +359,110 @@ def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revis
                 target + "/discussions",
                 token,
                 {
-                    "body": finding["body"],
+                    "body": f"{finding['body']}\n\n{MARKER}",
                     "position": _gitlab_position(context, finding, refs),
                 },
             )
-        existing.add(key)
+        existing.append((path, finding["line"], finding["side"], finding["body"]))
         posted += 1
     return posted
+
+
+def _valid_resolution(item: object) -> bool:
+    return (
+        isinstance(item, dict)
+        and set(item) == {"id", "reason"}
+        and isinstance(item["id"], str | int)
+        and not isinstance(item["id"], bool)
+        and isinstance(item["reason"], str)
+        and bool(item["reason"].strip())
+    )
+
+
+def parse_resolutions(response: str) -> list[dict]:
+    """Validate the optional meow-resolutions block; absent means none."""
+    blocks = re.findall(
+        r"^```meow-resolutions\s*\n(.*?)^```\s*$", response, re.M | re.S
+    )
+    if len(blocks) > 1:
+        raise CiReviewError("review must contain at most one meow-resolutions block")
+    try:
+        items = json.loads(blocks[0]) if blocks else []
+    except ValueError as exc:
+        raise CiReviewError("invalid meow-resolutions JSON") from exc
+    if not isinstance(items, list) or not all(map(_valid_resolution, items)):
+        raise CiReviewError("meow-resolutions must be an array of {id, reason}")
+    return items
+
+
+def _open_meow_threads(
+    provider: str, target: str, token: str, env: Mapping[str, str]
+) -> dict[str, dict]:
+    """Unresolved threads whose first comment meow authored, keyed by public id."""
+    if provider == "github":
+        return {
+            str(t["root_id"]): t
+            for t in _github_threads(target, token, env)
+            if not t["resolved"] and MARKER in t["body"]
+        }
+    threads = {}
+    for discussion in read_review_comments(provider, env)["discussions"]:
+        first = (discussion.get("notes") or [{}])[0]
+        if (
+            MARKER in first.get("body", "")
+            and first.get("resolvable")
+            and not first.get("resolved")
+        ):
+            threads[str(discussion.get("id"))] = discussion
+    return threads
+
+
+def _resolve_thread(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- provider write needs connection, thread and reason
+    provider: str,
+    target: str,
+    token: str,
+    env: Mapping[str, str],
+    thread: dict,
+    reason: str,
+) -> None:
+    """Resolve the thread, or mark it solved with a check mark if that is refused."""
+    base = f"{target}/discussions/{quote(str(thread['id']), safe='')}"
+    try:
+        if provider == "github":
+            result = _request(
+                _graphql_url(env),
+                token,
+                {"query": RESOLVE_MUTATION, "variables": {"id": thread["id"]}},
+            )
+            # GraphQL reports permission failures as HTTP 200 with "errors".
+            if not isinstance(result, dict) or result.get("errors"):
+                raise CiReviewError("thread could not be resolved")
+        else:
+            _request(base, token, {"resolved": True}, method="PUT")
+        label = "Resolved"
+    except CiReviewError:
+        label = "✅ Solved"
+    reply = {"body": f"{label}: {reason}"}
+    if provider == "github":
+        _request(f"{target}/comments/{thread['root_id']}/replies", token, reply)
+    else:
+        _request(base + "/notes", token, reply)
+
+
+def resolve_review_comments(
+    provider: str, resolutions: list[dict], env: Mapping[str, str]
+) -> int:
+    """Reply to and resolve open threads that meow itself started."""
+    if not resolutions:
+        return 0
+    token, target = _connection(provider, env)
+    threads = _open_meow_threads(provider, target, token, env)
+    resolved = 0
+    for item in resolutions:
+        thread = threads.pop(str(item["id"]), None)
+        if thread is not None:
+            _resolve_thread(
+                provider, target, token, env, thread, item["reason"].strip()
+            )
+            resolved += 1
+    return resolved

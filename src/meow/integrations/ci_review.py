@@ -171,7 +171,28 @@ def _safe_text(
     return value[:limit]
 
 
-def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-many-positional-arguments, too-many-statements, too-many-branches] -- public CI entry point
+def _publish_comments(
+    provider: str, context: CiReviewContext, text: str, env: Mapping[str, str]
+) -> tuple[int | None, int | None, str | None]:
+    """Publish findings; failures are reported but never change the verdict."""
+    from meow.integrations.ci_comments import (
+        parse_resolutions,
+        post_review_comments,
+        resolve_review_comments,
+    )
+
+    # A failed multi-note publish may have created some notes remotely.
+    posted = resolved = None
+    try:
+        resolutions = parse_resolutions(text)
+        posted = post_review_comments(provider, context, text, env)
+        resolved = resolve_review_comments(provider, resolutions, env)
+    except Exception as exc:
+        return posted, resolved, _safe_text(str(exc), env)[:1000]
+    return posted, resolved, None
+
+
+def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-many-positional-arguments, too-many-statements, too-many-branches, too-many-locals] -- public CI entry point
     repo: Path,
     config: dict,
     env: Mapping[str, str],
@@ -193,6 +214,8 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
     response = ""
     reason = None
     comments_posted = 0
+    comments_resolved = 0
+    comments_error = None
     try:
         context = prepare_ci_review(
             repo,
@@ -228,11 +251,7 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
         if verdict not in {"PASS", "FAIL"}:
             raise CiReviewError("reviewer returned no unambiguous verdict")
         if post_comments:
-            from meow.integrations.ci_comments import post_review_comments
-
-            # A failed multi-note publish may have created some notes remotely.
-            comments_posted = None
-            comments_posted = post_review_comments(
+            comments_posted, comments_resolved, comments_error = _publish_comments(
                 post_comments, context, _safe_text(response, env, limit=None), env
             )
     except Exception as exc:
@@ -254,6 +273,8 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
         "report_path": str(report_path),
         "failure_reason": reason,
         "comments_posted": comments_posted,
+        "comments_resolved": comments_resolved,
+        "comments_error": comments_error,
     }
     report = (
         "# CI review\n\n"
@@ -262,6 +283,11 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
         f"Merge base: {payload['merge_base']}\n\n"
         f"Verdict: {verdict}\n\n"
         + (f"Failure reason: {reason}\n\n" if reason else "")
+        + (
+            f"Comment publishing failed (verdict unaffected): {comments_error}\n\n"
+            if comments_error
+            else ""
+        )
         + _safe_text(response, env)
     )[:MAX_REPORT]
     _atomic_write(report_path, report)

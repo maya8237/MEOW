@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from meow.integrations.ci_comments import _findings, _gitlab_position, _request
+from meow.integrations.ci_comments import (
+    MARKER,
+    _findings,
+    _gitlab_position,
+    _request,
+)
 from meow.integrations.ci_review import CiReviewContext, CiReviewError, run_ci_review
 
 
@@ -77,7 +82,10 @@ def test_github_posts_inline_note(checkout, tmp_path):
         )
     assert result.verdict == "FAIL"
     assert calls[-1][0] == "https://api.github.com/repos/owner/repo/pulls/7/comments"
-    assert calls[-1][2] == comment | {"commit_id": source}
+    assert calls[-1][2] == comment | {
+        "commit_id": source,
+        "body": f"Bug here\n\n{MARKER}",
+    }
     assert json.loads(result.json_path.read_text())["comments_posted"] == 1
 
 
@@ -114,7 +122,7 @@ def test_gitlab_posts_deleted_line_discussion(checkout, tmp_path):
     assert result.verdict == "FAIL"
     assert calls[-1][0].endswith("/projects/12/merge_requests/3/discussions")
     assert calls[-1][2] == {
-        "body": "Regression",
+        "body": f"Regression\n\n{MARKER}",
         "position": {
             "position_type": "text",
             "base_sha": base,
@@ -142,7 +150,8 @@ def test_invalid_location_posts_nothing(checkout, tmp_path):
             ],
             {"MEOW_GITLAB_TOKEN": "secret"},
         )
-    assert result.verdict == "UNVERIFIED"
+    assert result.verdict == "FAIL"
+    assert "Comment publishing failed" in result.report_path.read_text()
     assert "diff" in result.report_path.read_text()
     request.assert_not_called()
 
@@ -164,7 +173,7 @@ def test_moved_head_posts_nothing(checkout, tmp_path):
                 "CI_MERGE_REQUEST_IID": "3",
             },
         )
-    assert result.verdict == "UNVERIFIED"
+    assert result.verdict == "FAIL"
     assert "remote review revisions" in result.report_path.read_text()
     assert request.call_count == 2  # ruff: ignore[magic-value-comparison] -- history fetch then revision verification
 
@@ -306,9 +315,12 @@ def test_posting_failure_retains_redacted_report(checkout, tmp_path):
                 "CI_MERGE_REQUEST_IID": "3",
             },
         )
-    assert result.verdict == "UNVERIFIED"
-    assert result.exit_code == 2  # ruff: ignore[magic-value-comparison] -- infrastructure status
+    assert result.verdict == "FAIL"
+    assert result.exit_code == 1
     assert "[REDACTED] failed" in result.report_path.read_text()
+    payload = json.loads(result.json_path.read_text())
+    assert payload["comments_error"] == "[REDACTED] failed"
+    assert payload["comments_posted"] is None
     assert "secret-token" not in result.json_path.read_text()
     assert json.loads(result.json_path.read_text())["comments_posted"] is None
 

@@ -4,7 +4,12 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from meow.integrations.ci_comments import post_review_comments
+from meow.integrations.ci_comments import (
+    MARKER,
+    parse_resolutions,
+    post_review_comments,
+    resolve_review_comments,
+)
 from meow.integrations.ci_review import CiReviewContext, CiReviewError, run_ci_review
 from tests.review.test_ci_comments import reply
 
@@ -34,11 +39,24 @@ def api(request, tmp_path):
     return provider, env
 
 
-def fake_api(provider, context, history):  # ruff: ignore[complex-structure] -- paginated provider API test seam
+def threads_response(resolved=False):
+    root = {"databaseId": 1, "body": "Bug here\n\n" + MARKER}
+    node = {"id": "T1", "isResolved": resolved, "comments": {"nodes": [root]}}
+    page = {"pageInfo": {"hasNextPage": False}, "nodes": [node]}
+    return {"data": {"repository": {"pullRequest": {"reviewThreads": page}}}}
+
+
+def fake_api(provider, context, history, *, thread_resolved=False):  # ruff: ignore[complex-structure] -- paginated provider API test seam
     posted = []
     reads = []
+    graphql = threads_response(thread_resolved)
 
-    def request(url, token, payload=None):  # ruff: ignore[too-many-return-statements] -- provider API test seam
+    def request(url, token, payload=None):  # ruff: ignore[complex-structure, too-many-return-statements] -- provider API test seam
+        if payload is not None and "query" in payload:
+            if "mutation" in payload["query"]:
+                posted.append(payload)
+                return {}
+            return graphql
         if payload is not None:
             posted.append(payload)
             return {}
@@ -114,7 +132,7 @@ def test_existing_and_repeated_findings_are_not_posted(api):
             provider, context, reply([duplicate, new, new]), env
         )
     assert count == 1
-    assert [item["body"] for item in posted] == ["A different bug"]
+    assert [item["body"].split("\n\n<!--")[0] for item in posted] == ["A different bug"]
 
 
 def test_history_is_paginated_and_reaches_reviewer(api, checkout, tmp_path):
@@ -173,8 +191,7 @@ def test_unreadable_history_prevents_review_and_posting(api, checkout, tmp_path)
     assert "comments" in json.loads(result.json_path.read_text())["failure_reason"]
 
 
-def test_outdated_location_does_not_suppress_current_finding(api):
-    provider, env = api
+def outdated_case(provider, resolved):
     context = CiReviewContext(
         "head",
         "feature",
@@ -185,11 +202,42 @@ def test_outdated_location_does_not_suppress_current_finding(api):
     )
     stale = existing(provider, sha="previous")
     if provider == "github":
-        stale.update(line=None, original_line=1)
-    request, posted, _ = fake_api(provider, context, [stale])
+        stale.update(line=None, original_line=7)
+    else:
+        stale["notes"][0].update(resolved=resolved)
+    request, posted, _ = fake_api(provider, context, [stale], thread_resolved=resolved)
+    return context, request, posted
+
+
+@pytest.mark.parametrize("resolved", [False, True])
+def test_outdated_comment_suppresses_finding_only_while_open(api, resolved):
+    provider, env = api
+    context, request, posted = outdated_case(provider, resolved)
     finding = {"path": "file.txt", "line": 1, "side": "RIGHT", "body": "Bug here"}
     with patch("meow.integrations.ci_comments._request", request):
-        assert post_review_comments(provider, context, reply([finding]), env) == 1
+        count = post_review_comments(provider, context, reply([finding]), env)
+    assert count == (1 if resolved else 0)
+    assert len(posted) == count
+
+
+def test_reworded_finding_on_same_line_is_duplicate(api):
+    provider, env = api
+    context = CiReviewContext(
+        "head",
+        "feature",
+        "dev",
+        "target",
+        "base",
+        "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+    )
+    request, posted, _ = fake_api(provider, context, [existing(provider)])
+    reworded = {"path": "file.txt", "line": 1, "side": "RIGHT", "body": "Bug here!"}
+    different = reworded | {"body": "Completely unrelated null dereference"}
+    with patch("meow.integrations.ci_comments._request", request):
+        count = post_review_comments(
+            provider, context, reply([reworded, different]), env
+        )
+    assert count == 1
     assert len(posted) == 1
 
 
@@ -209,7 +257,7 @@ def test_partial_publish_retry_skips_successfully_posted_notes(api):
     second = first | {"body": "Another bug"}
 
     def partial(url, token, payload=None):
-        if payload is not None:
+        if payload is not None and "query" not in payload:
             if history:
                 raise CiReviewError("publish interrupted")
             history.append(existing(provider))
@@ -222,7 +270,10 @@ def test_partial_publish_retry_skips_successfully_posted_notes(api):
         post_review_comments(provider, context, reply([first, second]), env)
     with patch("meow.integrations.ci_comments._request", request):
         assert post_review_comments(provider, context, reply([first, second]), env) == 1
-    assert [item["body"] for item in posted] == ["Bug here", "Another bug"]
+    assert [item["body"].split("\n\n<!--")[0] for item in posted] == [
+        "Bug here",
+        "Another bug",
+    ]
 
 
 def test_comments_arriving_during_review_are_checked_before_posting(
@@ -256,3 +307,119 @@ def test_comments_arriving_during_review_are_checked_before_posting(
     assert result.verdict == "FAIL"
     assert json.loads(result.json_path.read_text())["comments_posted"] == 0
     assert posted == []
+
+
+def gitlab_thread(body="Bug here\n\n" + MARKER, resolved=False):
+    note = {"id": 1, "body": body, "resolvable": True, "resolved": resolved}
+    return {"id": "abc", "notes": [note]}
+
+
+def block(items):
+    return "```meow-resolutions\n" + json.dumps(items) + "\n```"
+
+
+def test_resolutions_are_optional_and_validated():
+    assert parse_resolutions("no block") == []
+    assert parse_resolutions(block([{"id": 1, "reason": "Fixed"}])) == [
+        {"id": 1, "reason": "Fixed"}
+    ]
+    for bad in ([{"id": 1}], [{"id": True, "reason": "x"}], [{"id": 1, "reason": " "}]):
+        with pytest.raises(CiReviewError):
+            parse_resolutions(block(bad))
+    with pytest.raises(CiReviewError, match="at most one"):
+        parse_resolutions(block([]) + "\n" + block([]))
+
+
+def test_github_resolves_only_open_meow_threads(api):
+    provider, env = api
+    if provider != "github":
+        pytest.skip("GitHub thread API")
+    calls = []
+
+    def request(url, token, payload=None, method=None):
+        calls.append((url, payload, method))
+        return threads_response() if "reviewThreads" in payload.get("query", "") else {}
+
+    items = [{"id": 1, "reason": "Fixed"}, {"id": 99, "reason": "Unknown"}]
+    with patch("meow.integrations.ci_comments._request", request):
+        assert resolve_review_comments("github", items, env) == 1
+    assert calls[1][1]["variables"] == {"id": "T1"}
+    assert calls[2][0].endswith("/pulls/7/comments/1/replies")
+    assert calls[2][1] == {"body": "Resolved: Fixed"}
+
+
+def test_github_marks_solved_when_resolve_is_refused(api):
+    provider, env = api
+    if provider != "github":
+        pytest.skip("GitHub thread API")
+    calls = []
+
+    def request(url, token, payload=None, method=None):
+        calls.append((url, payload))
+        query = payload.get("query", "")
+        if "reviewThreads" in query:
+            return threads_response()
+        return {"errors": [{"message": "forbidden"}]} if "mutation" in query else {}
+
+    with patch("meow.integrations.ci_comments._request", request):
+        items = [{"id": 1, "reason": "Fixed"}]
+        assert resolve_review_comments("github", items, env) == 1
+    assert calls[-1][1] == {"body": "✅ Solved: Fixed"}
+
+
+@pytest.mark.parametrize(
+    "thread", [gitlab_thread(body="Human comment"), gitlab_thread(resolved=True)]
+)
+def test_gitlab_skips_human_and_resolved_threads(api, thread):
+    provider, env = api
+    if provider != "gitlab":
+        pytest.skip("GitLab discussion API")
+    calls = []
+
+    def request(url, token, payload=None, method=None):
+        calls.append((url, payload, method))
+        return [thread] if "?" in url else {}
+
+    with patch("meow.integrations.ci_comments._request", request):
+        items = [{"id": "abc", "reason": "Fixed"}]
+        assert resolve_review_comments("gitlab", items, env) == 0
+    assert all(payload is None for _, payload, _ in calls)
+
+
+def test_gitlab_replies_then_resolves_meow_thread(api):
+    provider, env = api
+    if provider != "gitlab":
+        pytest.skip("GitLab discussion API")
+    calls = []
+
+    def request(url, token, payload=None, method=None):
+        calls.append((url, payload, method))
+        return [gitlab_thread()] if "?" in url else {}
+
+    with patch("meow.integrations.ci_comments._request", request):
+        items = [{"id": "abc", "reason": "Fixed"}]
+        assert resolve_review_comments("gitlab", items, env) == 1
+    assert calls[-2][0].endswith("/discussions/abc")
+    assert calls[-2][1:] == ({"resolved": True}, "PUT")
+    assert calls[-1][0].endswith("/discussions/abc/notes")
+    assert calls[-1][1] == {"body": "Resolved: Fixed"}
+
+
+def test_gitlab_marks_solved_when_resolve_is_refused(api):
+    provider, env = api
+    if provider != "gitlab":
+        pytest.skip("GitLab discussion API")
+    calls = []
+
+    def request(url, token, payload=None, method=None):
+        calls.append((url, payload, method))
+        if "?" in url:
+            return [gitlab_thread()]
+        if method == "PUT":
+            raise CiReviewError("review API failed (HTTP 403)")
+        return {}
+
+    with patch("meow.integrations.ci_comments._request", request):
+        items = [{"id": "abc", "reason": "Fixed"}]
+        assert resolve_review_comments("gitlab", items, env) == 1
+    assert calls[-1][1] == {"body": "✅ Solved: Fixed"}
