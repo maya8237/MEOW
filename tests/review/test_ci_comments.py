@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from meow.integrations.ci_comments import _findings, _gitlab_position, _request
+from meow.integrations.ci_comments import (
+    MARKER,
+    _findings,
+    _gitlab_position,
+    _request,
+)
 from meow.integrations.ci_review import CiReviewContext, CiReviewError, run_ci_review
 
 
@@ -77,7 +82,10 @@ def test_github_posts_inline_note(checkout, tmp_path):
         )
     assert result.verdict == "FAIL"
     assert calls[-1][0] == "https://api.github.com/repos/owner/repo/pulls/7/comments"
-    assert calls[-1][2] == comment | {"commit_id": source}
+    assert calls[-1][2] == comment | {
+        "commit_id": source,
+        "body": f"Bug here\n\n{MARKER}",
+    }
     assert json.loads(result.json_path.read_text())["comments_posted"] == 1
 
 
@@ -114,7 +122,7 @@ def test_gitlab_posts_deleted_line_discussion(checkout, tmp_path):
     assert result.verdict == "FAIL"
     assert calls[-1][0].endswith("/projects/12/merge_requests/3/discussions")
     assert calls[-1][2] == {
-        "body": "Regression",
+        "body": f"Regression\n\n{MARKER}",
         "position": {
             "position_type": "text",
             "base_sha": base,

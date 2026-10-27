@@ -171,7 +171,7 @@ def _safe_text(
     return value[:limit]
 
 
-def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-many-positional-arguments, too-many-statements, too-many-branches] -- public CI entry point
+def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-many-positional-arguments, too-many-statements, too-many-branches, too-many-locals] -- public CI entry point
     repo: Path,
     config: dict,
     env: Mapping[str, str],
@@ -193,6 +193,7 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
     response = ""
     reason = None
     comments_posted = 0
+    comments_resolved = 0
     try:
         context = prepare_ci_review(
             repo,
@@ -228,13 +229,18 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
         if verdict not in {"PASS", "FAIL"}:
             raise CiReviewError("reviewer returned no unambiguous verdict")
         if post_comments:
-            from meow.integrations.ci_comments import post_review_comments
-
-            # A failed multi-note publish may have created some notes remotely.
-            comments_posted = None
-            comments_posted = post_review_comments(
-                post_comments, context, _safe_text(response, env, limit=None), env
+            from meow.integrations.ci_comments import (
+                parse_resolutions,
+                post_review_comments,
+                resolve_review_comments,
             )
+
+            text = _safe_text(response, env, limit=None)
+            resolutions = parse_resolutions(text)
+            # A failed multi-note publish may have created some notes remotely.
+            comments_posted = comments_resolved = None
+            comments_posted = post_review_comments(post_comments, context, text, env)
+            comments_resolved = resolve_review_comments(post_comments, resolutions, env)
     except Exception as exc:
         verdict = "UNVERIFIED"
         reason = _safe_text(str(exc), env)[:1000]
@@ -254,6 +260,7 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
         "report_path": str(report_path),
         "failure_reason": reason,
         "comments_posted": comments_posted,
+        "comments_resolved": comments_resolved,
     }
     report = (
         "# CI review\n\n"

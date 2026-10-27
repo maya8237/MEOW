@@ -15,6 +15,7 @@ from meow.integrations.ci_review import MAX_DIFF, CiReviewContext, CiReviewError
 
 PAGE_SIZE = 100
 SIMILARITY = 0.9
+MARKER = "<!-- meow-review -->"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -23,7 +24,9 @@ class _NoRedirect(HTTPRedirectHandler):
         raise CiReviewError("review API redirected; check the configured API URL")
 
 
-def _request(url: str, token: str, payload: dict | None = None) -> dict | list:
+def _request(
+    url: str, token: str, payload: dict | None = None, method: str | None = None
+) -> dict | list:
     if urlsplit(url).scheme != "https":
         raise CiReviewError("review API URL must use HTTPS")
     request = Request(
@@ -34,6 +37,7 @@ def _request(url: str, token: str, payload: dict | None = None) -> dict | list:
             "Content-Type": "application/json",
             "Accept": "application/json",
         },
+        method=method,
     )
     try:
         with build_opener(_NoRedirect()).open(request, timeout=30) as response:
@@ -197,12 +201,16 @@ THREADS_QUERY = (
     "query($owner:String!,$name:String!,$number:Int!,$after:String){"
     "repository(owner:$owner,name:$name){pullRequest(number:$number){"
     "reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor}"
-    "nodes{isResolved comments(first:1){nodes{databaseId}}}}}}}"
+    "nodes{id isResolved comments(first:1){nodes{databaseId body}}}}}}}"
+)
+RESOLVE_MUTATION = (
+    "mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}"
 )
 
 
 def _normalize(body: str) -> str:
-    return " ".join(re.sub(r"[^\w\s]", " ", body.casefold()).split())
+    text = body.replace(MARKER, "").casefold()
+    return " ".join(re.sub(r"[^\w\s]", " ", text).split())
 
 
 def _similar(left: str, right: str) -> bool:
@@ -210,32 +218,51 @@ def _similar(left: str, right: str) -> bool:
     return left == right or SequenceMatcher(None, left, right).ratio() >= SIMILARITY
 
 
-def _open_github_threads(target: str, token: str, env: Mapping[str, str]) -> set:
-    """Root comment ids of unresolved threads; unknown (empty) if GraphQL fails."""
+def _graphql_url(env: Mapping[str, str]) -> str:
     api = env.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
-    url = env.get("GITHUB_GRAPHQL_URL") or (
-        api.removesuffix("/v3") + "/graphql"
-        if api.endswith("/api/v3")
-        else api + "/graphql"
-    )
+    if env.get("GITHUB_GRAPHQL_URL"):
+        return env["GITHUB_GRAPHQL_URL"]
+    if api.endswith("/api/v3"):
+        return api.removesuffix("/v3") + "/graphql"
+    return api + "/graphql"
+
+
+def _github_threads(target: str, token: str, env: Mapping[str, str]) -> list[dict]:
+    """Review threads as {id, resolved, root_id, body}; raises on API trouble."""
     owner, name = _required(env, "GITHUB_REPOSITORY").split("/", 1)
     variables = {"owner": owner, "name": name, "number": int(target.rsplit("/", 1)[1])}
-    open_ids = set()
-    try:
-        for _ in range(100):
+    threads = []
+    for _ in range(100):
+        try:
             data = _request(
-                url, token, {"query": THREADS_QUERY, "variables": variables}
+                _graphql_url(env),
+                token,
+                {"query": THREADS_QUERY, "variables": variables},
             )
-            threads = data["data"]["repository"]["pullRequest"]["reviewThreads"]
-            for node in threads["nodes"]:
-                if not node["isResolved"]:
-                    open_ids.update(c["databaseId"] for c in node["comments"]["nodes"])
-            if not threads["pageInfo"]["hasNextPage"]:
-                return open_ids
-            variables["after"] = threads["pageInfo"]["endCursor"]
-    except (CiReviewError, KeyError, TypeError, ValueError):
-        pass
-    return set()
+            page = data["data"]["repository"]["pullRequest"]["reviewThreads"]
+            for node in page["nodes"]:
+                root = node["comments"]["nodes"][0]
+                threads.append({
+                    "id": node["id"],
+                    "resolved": node["isResolved"],
+                    "root_id": root["databaseId"],
+                    "body": root["body"],
+                })
+            if not page["pageInfo"]["hasNextPage"]:
+                return threads
+            variables["after"] = page["pageInfo"]["endCursor"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise CiReviewError("review threads API returned invalid data") from exc
+    raise CiReviewError("review threads pagination exceeds review size limit")
+
+
+def _open_github_threads(target: str, token: str, env: Mapping[str, str]) -> set:
+    """Root comment ids of unresolved threads; unknown (empty) if the API fails."""
+    try:
+        threads = _github_threads(target, token, env)
+    except CiReviewError:
+        return set()
+    return {t["root_id"] for t in threads if not t["resolved"]}
 
 
 def _comment_keys(  # ruff: ignore[complex-structure] -- provider-specific current-line coordinates
@@ -324,6 +351,7 @@ def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revis
                 | {
                     "path": path,
                     "commit_id": context.source_sha,
+                    "body": f"{finding['body']}\n\n{MARKER}",
                 },
             )
         else:
@@ -331,10 +359,100 @@ def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revis
                 target + "/discussions",
                 token,
                 {
-                    "body": finding["body"],
+                    "body": f"{finding['body']}\n\n{MARKER}",
                     "position": _gitlab_position(context, finding, refs),
                 },
             )
         existing.append((path, finding["line"], finding["side"], finding["body"]))
         posted += 1
     return posted
+
+
+def _valid_resolution(item: object) -> bool:
+    return (
+        isinstance(item, dict)
+        and set(item) == {"id", "reason"}
+        and isinstance(item["id"], str | int)
+        and not isinstance(item["id"], bool)
+        and isinstance(item["reason"], str)
+        and bool(item["reason"].strip())
+    )
+
+
+def parse_resolutions(response: str) -> list[dict]:
+    """Validate the optional meow-resolutions block; absent means none."""
+    blocks = re.findall(
+        r"^```meow-resolutions\s*\n(.*?)^```\s*$", response, re.M | re.S
+    )
+    if len(blocks) > 1:
+        raise CiReviewError("review must contain at most one meow-resolutions block")
+    try:
+        items = json.loads(blocks[0]) if blocks else []
+    except ValueError as exc:
+        raise CiReviewError("invalid meow-resolutions JSON") from exc
+    if not isinstance(items, list) or not all(map(_valid_resolution, items)):
+        raise CiReviewError("meow-resolutions must be an array of {id, reason}")
+    return items
+
+
+def _open_meow_threads(
+    provider: str, target: str, token: str, env: Mapping[str, str]
+) -> dict[str, dict]:
+    """Unresolved threads whose first comment meow authored, keyed by public id."""
+    if provider == "github":
+        return {
+            str(t["root_id"]): t
+            for t in _github_threads(target, token, env)
+            if not t["resolved"] and MARKER in t["body"]
+        }
+    threads = {}
+    for discussion in read_review_comments(provider, env)["discussions"]:
+        first = (discussion.get("notes") or [{}])[0]
+        if (
+            MARKER in first.get("body", "")
+            and first.get("resolvable")
+            and not first.get("resolved")
+        ):
+            threads[str(discussion.get("id"))] = discussion
+    return threads
+
+
+def _resolve_thread(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- provider write needs connection, thread and reason
+    provider: str,
+    target: str,
+    token: str,
+    env: Mapping[str, str],
+    thread: dict,
+    reason: str,
+) -> None:
+    reply = {"body": f"Resolved: {reason}"}
+    if provider == "github":
+        _request(f"{target}/comments/{thread['root_id']}/replies", token, reply)
+        _request(
+            _graphql_url(env),
+            token,
+            {"query": RESOLVE_MUTATION, "variables": {"id": thread["id"]}},
+        )
+        return
+    base = f"{target}/discussions/{quote(str(thread['id']), safe='')}"
+    _request(base + "/notes", token, reply)
+    _request(base, token, {"resolved": True}, method="PUT")
+
+
+def resolve_review_comments(
+    provider: str, resolutions: list[dict], env: Mapping[str, str]
+) -> int:
+    """Reply to and resolve open threads that meow itself started."""
+    if not resolutions:
+        return 0
+    token, target = _connection(provider, env)
+    threads = _open_meow_threads(provider, target, token, env)
+    resolved = 0
+    for item in resolutions:
+        thread = threads.pop(str(item["id"]), None)
+        if thread is not None:
+            _resolve_thread(
+                provider, target, token, env, thread, item["reason"].strip()
+            )
+            resolved += 1
+    return resolved
