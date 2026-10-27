@@ -150,7 +150,8 @@ def test_invalid_location_posts_nothing(checkout, tmp_path):
             ],
             {"MEOW_GITLAB_TOKEN": "secret"},
         )
-    assert result.verdict == "UNVERIFIED"
+    assert result.verdict == "FAIL"
+    assert "Comment publishing failed" in result.report_path.read_text()
     assert "diff" in result.report_path.read_text()
     request.assert_not_called()
 
@@ -172,7 +173,7 @@ def test_moved_head_posts_nothing(checkout, tmp_path):
                 "CI_MERGE_REQUEST_IID": "3",
             },
         )
-    assert result.verdict == "UNVERIFIED"
+    assert result.verdict == "FAIL"
     assert "remote review revisions" in result.report_path.read_text()
     assert request.call_count == 2  # ruff: ignore[magic-value-comparison] -- history fetch then revision verification
 
@@ -314,9 +315,12 @@ def test_posting_failure_retains_redacted_report(checkout, tmp_path):
                 "CI_MERGE_REQUEST_IID": "3",
             },
         )
-    assert result.verdict == "UNVERIFIED"
-    assert result.exit_code == 2  # ruff: ignore[magic-value-comparison] -- infrastructure status
+    assert result.verdict == "FAIL"
+    assert result.exit_code == 1
     assert "[REDACTED] failed" in result.report_path.read_text()
+    payload = json.loads(result.json_path.read_text())
+    assert payload["comments_error"] == "[REDACTED] failed"
+    assert payload["comments_posted"] is None
     assert "secret-token" not in result.json_path.read_text()
     assert json.loads(result.json_path.read_text())["comments_posted"] is None
 
