@@ -1,9 +1,9 @@
 # Native mode: shared protocol
 
 Read this for native execution. `plan`, `review`, and `lint` default to native;
-`run` defaults to CLI. You execute roles in this session or fresh subagents. Orchestrator task sprints remain detached CLI
-workers. Named workflows, including `quick`, execute through CLI
-([WORKFLOWS.md](../../docs/WORKFLOWS.md)).
+`run` defaults to CLI. You execute roles in this session or fresh subagents.
+Orchestrator task sprints remain detached CLI workers. Named workflows,
+including `quick`, execute through CLI ([WORKFLOWS.md](../../docs/WORKFLOWS.md)).
 
 Future-time requests use [schedule](../schedule/SKILL.md) before starting work.
 Configuration and definition formats live in [INTEGRATIONS.md](../../docs/INTEGRATIONS.md)
@@ -17,21 +17,25 @@ venv path. A command exiting `75` (or printing `MEOW_RETRY`) is transient, inclu
 OSError-class failures: wait `retry_after` (it can be long for an API budget or rate
 limit; the cron simply skips ticks until then), then rerun the printed `next_command`
 or the same native helper, up to `managed_resumes` (default 6), and stop when
-`meow status ID --json` shows no progress. Exit 1 / `MEOW_BLOCKED` (including
-`stop=budget_exhausted`) means stop dependent work and report. Resume is attempted,
-not guaranteed: when status gives a reason (blocking `cause`, `not_resumed_reason`,
-budget exhausted, no progress, `not_resumable`, live driver), do not resume; report it.
-On entry, check `meow status --json` and `meow resume --parked` for existing
-parked runs before starting new work. Use `COMMAND --help` for flags. Pass
-`--work-dir PATH` for the project root and `--active-dir PATH` for the prepared
-worktree; keep them consistent across calls.
+`meow status ID --json` shows no progress (`attempts` not reset, or `cause` /
+`not_resumed_reason` `no_progress`). Exit 1 / `MEOW_BLOCKED` (including
+`stop=budget_exhausted`) means stop dependent work and report. Exit 3 (pushed, MR not
+opened): report the manual link, do not retry. Exit 130: interrupted, report it.
+Resume is attempted, not guaranteed: when status gives a reason (blocking `cause`,
+`not_resumed_reason`, budget exhausted, no progress, `not_resumable`, live driver),
+do not resume; report it.
+On entry, inspect a saved run ID with `meow status ID --json` (bare `meow status`
+shows only the latest run). `meow resume --parked` acts on every parked run: run it
+detached or leave it to the hourly OS job.
+Use `COMMAND --help` for flags. Pass `--work-dir PATH` for the project root and
+`--active-dir PATH` for the prepared worktree; keep them consistent.
 
 | Command | Purpose |
 |---|---|
 | `prepare` | Guards, onboarding, setup, worktree; retain returned `name`, `active_dir`, `use_worktree`, `docs_dir`, `plan_file`, `review_file`, `max_rounds` |
 | `verify` | Config/launcher readiness without starting tests, servers, agents, or MCP; `ready_unchecked` is not execution/connectivity proof |
-| `workflow NAME` | Resolved workflow scope, fingerprint, and expanded steps |
-| `latest-plan` / `latest-review` | Find artifacts in `docs_dir`; review JSON includes source `flavor` |
+| `workflow NAME` | Resolved workflow scope, fingerprint, and steps |
+| `latest-plan` / `latest-review` | Find artifacts in `docs_dir`; review JSON has source `flavor` |
 | `prompt ROLE` | Resolved SDK instructions, query, model, tools, skills, delegates, session; `reviewer-mr` returns a `query_template` instead of a query |
 | `custom --role ROLE` | Applicable custom skills, capped delegates, scope overrides |
 | `lint` | Project check; `--file PATH` auto-fixes one file, `--fix` auto-fixes project-wide, `--all-blocking` treats advisory commands as blocking |
@@ -39,18 +43,15 @@ worktree; keep them consistent across calls.
 | `verdict FILE` | Validate the report and current verification/coverage bindings; returns status/summary |
 | `round ANCHOR` | Advance durable counter; `--show` inspects, `--reset` starts fresh |
 | `checkpoint PHASE` | Atomic transition; omit `--run-id` only to create a run (pass `--intent run` or `plan`), then reuse the returned ID; `parked --failure TEXT` records a crash |
-| `finalize RUN_ID` | Revalidate evidence and required gates, then deliver when eligible |
-| `push BRANCH` | Push a named branch to origin |
-| `onboard-status` | Base setup state and optional add-on gaps |
-| `run COMMAND` | Supervisor helpers; see below |
+| `finalize RUN_ID` / `push BRANCH` | Revalidate evidence and gates, then deliver when eligible / push a named branch |
+| `onboard-status` / `run COMMAND` | Base setup state and add-on gaps / supervisor helpers (see below) |
 
 `prepare` applies setup before returning. Failed setup retains the worktree for
-retry; successful setup is not repeated. Missing Node dependencies install under
-the `setup` role ([dependency rules](dependencies.md); never switch Bun to
-`hoisted`). Do not dispatch after preparation fails. Report `onboarding.files`;
-existing config is preserved and onboarding edits stay in the original checkout.
-Implementation belongs in `active_dir`. Do not invent lint commands;
-`/meow:onboard` handles add-ons.
+retry; successful setup is not repeated. Missing Node dependencies install (new/reused
+worktrees, in-place runs) under the `setup` role ([dependency rules](dependencies.md);
+never switch Bun to `hoisted`). Do not dispatch after preparation fails. Report
+`onboarding.files`; onboarding edits stay in the original checkout. Implement in
+`active_dir`. Do not invent lint commands; `/meow:onboard` handles add-ons.
 
 ## Roles
 
@@ -74,8 +75,7 @@ mappings. Use the host's subagent API when tool names differ.
 | Generator (`generator`) | You. Use `superpowers:executing-plans`, `superpowers:test-driven-development`, `superpowers:verification-before-completion`; use `superpowers:systematic-debugging` on failures and `superpowers:receiving-code-review` before fixes. Stay within the contract; do not commit or grade your work. |
 | Reviewer | Fresh subagent every round; use `reviewer-plan`, `reviewer-prompt`, `reviewer-mr`, or `reviewer-branch` as the skill directs. |
 | Explorer (`explorer`) | Optional read-only subagent; use resolved prompt/model, never raw `prepare.models.explorer`. |
-| Review fixer (`review-fixer`) | You; verify findings and make the smallest in-scope edits. |
-| Lint fixer (`lint-fixer`) | You; fix lint without a second agent. |
+| Review / lint fixer (`review-fixer`, `lint-fixer`) | You, no second agent; verify findings, smallest in-scope edits. |
 | Decomposer / Triage | You; read-only except the output/decision file named by the orchestrator prompt. |
 | Integrator | Fresh subagent per conflict; only Read/Grep/Glob/Edit/Write, only listed paths, never git. |
 | Objective reviewer | Fresh subagent every round with returned orchestrator instructions/tools. |
@@ -106,8 +106,8 @@ fresh reviewer with a new prompt; checks alone cannot refresh a report binding.
 Preserve verification/coverage sidecars with the report. Finish scoped edits
 before final checks. Keep one durable job ID: a lost shell handle is not a failed
 job. If a run exceeds its baseline, inspect logs, child start times, and
-source/config changes; restart only for confirmed stale/failed evidence.
-Isolate artifact-writing tests; preserve user files.
+source/config changes; add no audit passes while checks run; restart only for
+confirmed stale/failed evidence. Isolate artifact-writing tests; preserve user files.
 
 ## Round limits and review loop
 
@@ -131,60 +131,60 @@ phases. Use `interrupted_mutation` for an interrupted edit; inspect and review
 the actual worktree against the saved plan before retrying. Keep failed or
 interrupted worktrees. Inspect journals with `meow status RUN_ID` or
 `meow resume RUN_ID`; continuation requires `--continue`. Never resume a
-`--intent plan` run. Before every resumed native step, call
-`meow native checkpoint parked --failure TEXT` when a subagent or tool crashes, then
-continue with `meow resume ID --continue --repair`. Tick rules:
-
-Each tick: run `meow status ID --json`. For `retryable: true` with `settled` (parked)
-and `budget_left > 0`, run `next_command` exactly and report one line. For
-`retryable: false`, report `cause`, `last_failure` and the evidence paths, then stop the
-cron. Stop only on `complete`/`delivered`/`exhausted`/`cancelled` or `retryable: false`,
-with no stop on `failed` alone.
+`--intent plan` run. Before every resumed native step, call `meow native
+checkpoint parked --run-id ID --failure TEXT --work-dir P --active-dir A` when a
+subagent or tool crashes, then continue with `meow resume ID --continue --repair`
+(detached). Each tick: run `meow status ID --json` and act only when `settled` is true.
+Settled with `retryable: true` and `budget_left > 0`: run `next_command` exactly,
+detached (host background execution, never the foreground; `meow resume` has no
+`--background`), and report one line. Settled with `retryable: false`: report
+`cause`, `last_failure`, `not_resumed_reason` and the evidence paths, then stop the
+cron. Not settled: keep watching and report only meaningful changes. Stop only on
+`complete`/`delivered`/`exhausted`/`cancelled` or settled `retryable: false`, with
+no stop on `failed` alone. Orchestrator IDs return only `phase`, `settled` and
+`next_command`: stop on settled; run `next_command` only if the phase is unchanged
+across ticks and no worker is live.
 
 Before native run preparation, inspect `meow native verify`. `--test` or
 `tester.configured: true` routes runs to CLI so configured servers stay alive
 throughout tester validation; native execution cannot own that lifecycle.
-Configured tests auto-enable it for behavior changes when workflow `auto_test` is true;
-quick requires `--test`. `--force-disable-tests` also routes to CLI: forward it to
-disable tester/test/browser gates and servers while keeping lint/build.
+Configured tests auto-enable it for behavior changes when workflow `auto_test` is
+true; quick requires `--test`. `--force-disable-tests` also routes to CLI: forward
+it to disable tester/test/browser gates and servers while keeping lint/build.
 Preserve plan/Jira/worktree options and saved IDs. Continue a native checkpoint
-with `meow resume RUN_ID --continue --repair` because it has no Claude session
-IDs. Review tester mode requires an explicit plan:
-`meow review --plan PATH --test` (optionally `--fix`); other sources, implicit
-discovery, and `--review-file` reject it. Never invent tester evidence.
+with `meow resume RUN_ID --continue --repair` (no Claude session IDs). Review tester
+mode requires an explicit plan: `meow review --plan PATH --test` (optionally
+`--fix`); other sources, implicit discovery, and `--review-file` reject it. Never
+invent tester evidence.
 
 Completion requires reviewer PASS, enabled tester PASS, and current required
 gates. PASS checkpoints bind the report fingerprint; finalization checks it
 again and routes configured tester projects to CLI even with `--tester PASS`.
 Report success only when `finalize` returns `complete: true`.
-Separate-worktree finalization commits and pushes; in-place runs do not
-automatically deliver.
+Separate-worktree finalization commits and pushes; in-place runs do not deliver.
 For worktree delivery, the first checkpoint saves `--target` or
 `[delivery].target_branch`, never `--from` (which only chooses the start).
 State the saved MR target from `meow status RUN_ID`, also on resume.
-The loop is finished and final delivery is being verified through
-the MR pipeline: open the MR/PR with connected tools and report the pipeline
-status. The pipeline-fix loop is CLI-only ([pipeline](../../docs/PIPELINE.md));
-claim "Verified by pipeline" only when it actually passed.
+The loop is finished and final delivery is being verified through the MR pipeline:
+open the MR/PR with connected tools and report the pipeline status. The
+pipeline-fix loop is CLI-only ([pipeline](../../docs/PIPELINE.md)); claim
+"Verified by pipeline" only when it passed.
 
-Claude owns transcripts; journals retain role/session references.
-Successful finalization cleans integrated task artifacts and retains the result;
-`meow cleanup [RUN_ID]` retries cleanup (evidence archived in `.meow/cleanup/`).
-
-Use artifact paths returned by helpers, never reconstruct names (default
-`docs_dir`: `.meow/plans`). Verdicts start `SUMMARY: ...`, then `STATUS: PASS|FAIL`,
-then criterion evidence. Edit no other files under `docs_dir`.
-
-Cancel only processes whose recorded run ID or handle proves exclusive ownership;
-never kill by name/pattern.
+Claude owns transcripts; journals retain role/session references (missing SDK
+usage is `unavailable`). Successful finalization cleans integrated task artifacts
+and retains the result; `meow cleanup [RUN_ID]` retries (evidence in `.meow/cleanup/`).
+Use artifact paths returned by helpers, never reconstruct names (default `docs_dir`:
+`.meow/plans`). Verdicts start `SUMMARY: ...`, then `STATUS: PASS|FAIL`, then
+criterion evidence. Edit no other files under `docs_dir`. Cancel only processes
+whose recorded run ID or handle proves exclusive ownership; never kill by
+name/pattern; leave uncertain ownership alone.
 
 ## The multi-sprint run helpers
 
-Load [the run supervisor procedure](../run/references/orchestration.md)
-only for explicitly requested native multi-sprint supervision;
-it defines the sequence, returned fields, and state transitions.
-Commands take `--work-dir`. Mutations refresh the native driver lock;
-`status` is read-only. A live CLI driver blocks native mutations; a native
+Load [the run supervisor procedure](../run/references/orchestration.md) only for
+explicitly requested native multi-sprint supervision (sequence, returned fields,
+state transitions). Commands take `--work-dir`. Mutations refresh the native driver
+lock; `status` is read-only. A live CLI driver blocks native mutations; a native
 heartbeat older than 10 minutes is reclaimable. IDs are 12 characters.
 
 | Command | Operation |

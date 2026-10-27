@@ -116,25 +116,33 @@ meow run --jira [ISSUE-KEY] --work-dir "<project-path>"   # Jira-sourced, retain
 `--background` so a Bash timeout or compaction cannot kill them (orchestration
 rejects the flag and already detaches its sprints). After launching any
 `meow run` (or `--orchestrate`), create a recurring status check with
-`CronCreate` every 7 minutes (`*/7 * * * *`). Each tick: run
-`meow status ID --json`. For `retryable: true` with `settled` (parked)
-and `budget_left > 0`, run `next_command` exactly and report one line. For
-`retryable: false`, report `cause`, `last_failure` and the evidence paths, then stop the
-cron. Stop only on `complete`/`delivered`/`exhausted`/`cancelled` or `retryable: false`,
-with no stop on `failed` alone. Report only meaningful changes (phase, task
-count, blockers, delivery). Scheduled runs still register through
+`CronCreate` every 7 minutes (`*/7 * * * *`). Each tick: run `meow status ID --json` and act only when `settled` is true.
+Settled with `retryable: true` and `budget_left > 0`: run `next_command` exactly,
+detached (host background execution, never the foreground; `meow resume` has no
+`--background`), and report one line. Settled with `retryable: false`: report
+`cause`, `last_failure`, `not_resumed_reason` and the evidence paths, then stop the
+cron. Not settled: keep watching and report only meaningful changes. Stop only on
+`complete`/`delivered`/`exhausted`/`cancelled` or settled `retryable: false`, with
+no stop on `failed` alone. Orchestrator IDs return only `phase`, `settled` and
+`next_command`: stop on settled; run `next_command` only if the phase is unchanged
+across ticks and no worker is live.
+Scheduled runs still register through
 `/meow:schedule` and never sleep or poll in the session.
 
 A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
 OSError-class failures: wait `retry_after` (it can be long for an API budget or rate
 limit; the cron simply skips ticks until then), then rerun the printed `next_command`
 or the same native helper, up to `managed_resumes` (default 6), and stop when
-`meow status ID --json` shows no progress. Exit 1 / `MEOW_BLOCKED` (including
-`stop=budget_exhausted`) means stop dependent work and report. Resume is attempted,
-not guaranteed: when status gives a reason (blocking `cause`, `not_resumed_reason`,
-budget exhausted, no progress, `not_resumable`, live driver), do not resume; report it.
-On entry, check `meow status --json` and `meow resume --parked` for existing
-parked runs before starting new work.
+`meow status ID --json` shows no progress (`attempts` not reset, or `cause` /
+`not_resumed_reason` `no_progress`). Exit 1 / `MEOW_BLOCKED` (including
+`stop=budget_exhausted`) means stop dependent work and report. Exit 3 (pushed, MR not
+opened): report the manual link, do not retry. Exit 130: interrupted, report it.
+Resume is attempted, not guaranteed: when status gives a reason (blocking `cause`,
+`not_resumed_reason`, budget exhausted, no progress, `not_resumable`, live driver),
+do not resume; report it.
+On entry, inspect a saved run ID with `meow status ID --json` (bare `meow status`
+shows only the latest run). `meow resume --parked` acts on every parked run: run it
+detached or leave it to the hourly OS job.
 
 **Resuming in CLI mode:** if the user asks to continue, resume, pick up, or
 build on existing code, a worktree, or an earlier plan (any wording), do not

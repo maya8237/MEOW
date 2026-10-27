@@ -3,18 +3,18 @@
 First config-dependent use creates base project configuration; `/meow:onboard`
 configures optional features. Use [the template](../templates/meow-config.toml.example)
 for fields, [custom sources](CUSTOM.md) for discovery, and
-[worktree setup](WORKTREE_SETUP.md) for dependency installation.
+[worktree setup](WORKTREE_SETUP.md) for installs.
 
 ## Monorepo lint and tester
 
 Priority: ignored `.meow/config.local.toml` > shared `.meow/config.toml` >
-`~/.meow/config.toml` > defaults. Worktrees normally read the launch project's
-config, including local values. Onboarding creates missing shared config there;
-its edits stay outside feature/task branches. Without lint entries, none run.
+`~/.meow/config.toml` > defaults. Worktrees read the launch project's config,
+including local values. Onboarding creates missing shared config there, outside
+feature/task branches. Without lint entries, none run.
 
 String values recursively expand `$NAME`, `${NAME}`, or `%NAME%` without shell
-evaluation; unknown variables remain visible. Keep credentials/machine settings
-in local/user config or the environment, never shared config.
+evaluation; unknown variables remain visible. Keep credentials and machine
+settings in local/user config or the environment, never shared config.
 
 `[[lint]]` accepts `command`, `args`, `cwd`, `include`, `exclude`, `env`,
 `timeout`, and `gate` (default true). Include/exclude are repository-relative
@@ -25,8 +25,8 @@ Timeout: per-entry or `lint_timeout` (60 s). [Verification](VERIFICATION.md).
 `--force-disable-tests` overrides it. `meow review --plan PATH --test` is
 report-only unless `--fix` is added; other review sources reject tester mode.
 Without configured commands the tester may inspect/run documented tests.
-`[tester] write_tests = true` (default false) lets it add new test files, not
-edit or delete existing ones. Native tester flows route through CLI.
+`[tester] write_tests = true` (default false) lets it add new test files, not edit
+or delete existing ones. Native tester flows route through CLI.
 
 ```toml
 [models]
@@ -66,7 +66,8 @@ evaluation; timeout defaults to 300 seconds.
 ## New-worktree setup
 
 See [WORKTREE_SETUP.md](WORKTREE_SETUP.md): `[worktree_setup]`, setup-role
-permissions, retained failures, Node package managers, Bun shared storage.
+permissions, retained failures, Node package managers, Bun shared storage; it applies
+to SDK/native preparation, reused worktrees, and in-place dependency repair.
 
 ## Role permissions
 
@@ -87,9 +88,10 @@ Path-scoped roles must deny both Bash and Agent.
 and `entrypoint`; `required` defaults false. Provider `inputs`, `outputs`,
 and `permissions` can be tables/lists. Commands also accept `args`, `cwd`,
 `env`, `timeout`, named `flows`, and repository-relative `artifacts`.
-MEOW starts a configured dev server for browser checks and stops it afterward.
-Required failures/unavailable providers block completion. Keep generated
-artifacts under `.meow/` so checks do not alter the reviewed revision.
+Configure a dev server/readiness URL when needed; MEOW starts it for browser checks
+and stops it afterward. Required failures/unavailable providers block completion.
+Status separates lint/test/build/browser evidence. Keep generated artifacts under
+`.meow/` so checks do not alter the reviewed revision.
 
 ## Agent skills and delivery defaults
 
@@ -124,13 +126,12 @@ Center `JIRA_PERSONAL_TOKEN`. Native skills use session-connected tools.
 
 ## GitLab and GitHub MCP
 
-`[gitlab.mcp]` and `[github.mcp]` require `command` for their CLI flows;
-optional `args = []` and `env = {}` configure their launchers.
-The URL is supplied per review; there is no provider project-key setting.
-Servers must expose title/description/unified-diff read tools.
-MCP env is passed to the server as configured: keep tokens private.
-Typical variables: GitLab `GITLAB_URL`/`GITLAB_TOKEN`,
-GitHub `GITHUB_PERSONAL_ACCESS_TOKEN`. Native skills use connected tools instead.
+`[gitlab.mcp]` and `[github.mcp]` require `command` for CLI flows; optional
+`args = []` and `env = {}` configure launchers.
+The URL is supplied per review; there is no provider project-key setting. Servers
+must expose title/description/unified-diff read tools. MCP env is passed as
+configured: keep tokens private. Typical variables: GitLab `GITLAB_URL`/`GITLAB_TOKEN`,
+GitHub `GITHUB_PERSONAL_ACCESS_TOKEN`. Native skills use connected tools.
 
 ## Orchestrator
 
@@ -147,22 +148,20 @@ open_pr = true
 ```
 
 Concurrency/review rounds are integers ≥1, recovery cycles ≥0 (shared by split
-lineage), and polling seconds >0. Prefixes must be nonempty, without spaces,
-`..`, or leading `-`; integration uses `<prefix>ID`, tasks `<prefix>ID-TASK`.
-Wrong types/unknown keys fail config validation. CLI `--max-parallel` and
-`--no-mr` override defaults; models can set `decomposer`, `triage`,
-`integrator`, and `pull_request`. Jira inputs require project/server config
-and never comment on or transition issues.
+lineage), polling seconds >0. Prefixes must be nonempty, without spaces, `..`, or
+leading `-`; integration uses `<prefix>ID`, tasks `<prefix>ID-TASK`. Wrong
+types/unknown keys fail validation. CLI `--max-parallel` and `--no-mr` override
+defaults; models can set `decomposer`, `triage`, `integrator`, and `pull_request`.
+Jira inputs require project/server config and never comment on or transition issues.
 
 MR provider comes from origin: hosts containing `github` select GitHub;
 `gitlab` or the host in `[gitlab.mcp].env.GITLAB_URL` selects GitLab.
-Other hosts have no provider. Missing provider MCP config reports
+Other hosts have no provider; missing provider MCP config reports
 `provider not configured`. MR tools are restricted to names containing
 `create_pull_request`, `create_merge_request`, `list_pull_requests`,
-`list_merge_requests`, or `search_pull_requests`; existing open requests
-can be reused. The agent writes only its result file.
-Creation failure never undoes a push: delivered state, exit 3,
-`MR not opened: REASON`, and a manual link. Native uses connected tools.
+`list_merge_requests`, or `search_pull_requests`; existing open requests can be
+reused. The agent writes only its result file. Creation failure never undoes a
+push: delivered state, exit 3, `MR not opened: REASON`, and a manual link. Native uses connected tools.
 
 ## Run retry ladder
 
@@ -177,7 +176,8 @@ Creation failure never undoes a push: delivered state, exit 3,
 Jira schedules need reachable project/MCP config and scheduler-user credentials;
 an omitted key selects the latest issue at execution.
 Claude/Git credentials must work noninteractively; registration preserves the
-executable PATH but not shell-only secrets. `MEOW_LOG_FILE` adds a persistent log.
+executable PATH but not shell-only secrets, so use persistent account/integration
+credentials. `MEOW_LOG_FILE` adds a persistent log.
 For recurrence, external Task Scheduler/cron/systemd/CI can invoke
 `meow run` with absolute executable/project paths; built-in triggers are one-shot.
 

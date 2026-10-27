@@ -111,8 +111,8 @@ the selected checkout and permit pending changes.
 `--scope project` covers every inventoried area, including frontend/backend,
 despite pending changes or an existing plan. Prompt/Jira reviews also accept
 `diff` or `auto`; whole-project wording such as "from 0" selects project scope.
-Project verdicts require current `COVERAGE:` records; local PASS also needs current
-lint/test/build evidence (remote reviews use their diff only).
+Project verdicts require grounded, current `COVERAGE:` records; local PASS also needs
+current lint/test/build evidence (remote reviews use their diff only).
 
 `--review-file PATH` (`-r`) always resumes fixes for prompt/plan reviews.
 Pass the original prompt for prompt reviews; rerun remote/branch sources instead.

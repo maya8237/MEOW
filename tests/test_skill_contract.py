@@ -55,3 +55,45 @@ def test_native_and_run_share_exit_75_wording():
     assert "meow resume --parked" in (ROOT / "skills/schedule/SKILL.md").read_text(
         encoding="utf-8"
     )
+
+
+def _read(path):
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def _flat(path):
+    return " ".join(_read(path).split())
+
+
+@pytest.mark.parametrize(
+    "path", ["skills/run/SKILL.md", "skills/_shared/native-mode.md", "docs/RUNS.md"]
+)
+def test_tick_acts_only_on_settled_runs(path):
+    text = _flat(path)
+    assert (
+        "act only when `settled` is true" in text
+        or "acting only when `settled`" in text
+    )
+    assert "retryable: false" in text
+
+
+@pytest.mark.parametrize(
+    "path", ["skills/run/SKILL.md", "skills/_shared/native-mode.md"]
+)
+def test_shared_tick_and_retry_wording_is_identical(path):
+    text = _flat(path)
+    for start, end in (
+        ("Each tick:", "across ticks and no worker is live."),
+        ("A command exiting `75`", "detached or leave it to the hourly OS job."),
+    ):
+        block = text[text.index(start) : text.index(end) + len(end)]
+        run = _flat("skills/run/SKILL.md")
+        assert block in run
+        assert block in _flat("skills/_shared/native-mode.md")
+
+
+def test_resumes_are_detached_and_crash_checkpoint_has_run_id():
+    native = _flat("skills/_shared/native-mode.md")
+    assert "checkpoint parked --run-id ID --failure" in native
+    assert "detached" in native and "never the foreground" in native
+    assert "`no_progress`" in native and "Exit 3" in native

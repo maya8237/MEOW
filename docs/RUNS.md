@@ -90,12 +90,14 @@ and unrecognised git errors end `delivery_failed`.
 `--intent run|plan` marks plan-only runs, which are never parked or resumed.
 Every helper with a run ID refreshes its heartbeat.
 
-A managing session starts runs with `--background`, polls `meow status ID --json`
-(cron `*/7 * * * *`) and, for `retryable: true` with `budget_left > 0`, runs
-`next_command` exactly. On exit 75 it waits `retry_after`, up to `managed_resumes`,
-and stops on no progress. It reports `cause`, `last_failure` and evidence, and
-does not resume, when `retryable` is false or `not_resumed_reason` is set.
-`meow resume --parked` does the same unattended; schedule it hourly
+A managing session starts runs with `--background` and polls `meow status ID --json`
+(cron `*/7 * * * *`), acting only when `settled` is true: with `retryable: true`
+and `budget_left > 0` it runs `next_command` detached; with `retryable: false`
+(or `not_resumed_reason` set) it reports `cause`, `last_failure` and evidence, and
+stops. On exit 75 it waits `retry_after`, up to `managed_resumes`, stopping on no
+progress (`attempts`, `no_progress`). Orchestrator status JSON has only `phase`,
+`settled` and `next_command`. `meow resume --parked` does the same unattended
+and inline; run it detached or hourly via OS scheduling
 ([skills](../skills/schedule/SKILL.md)). Exit 75 includes bare transient
 OS errors, so the retry cap lives in the managing session, not the exit code.
 
