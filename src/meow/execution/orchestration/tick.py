@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Literal
 
 from meow.execution.orchestration.children import (
+    LIVE_DRIVER,
     Launcher,
     cancel_children,
     failure_evidence,
@@ -244,15 +245,21 @@ class _Supervisor:
 
     def _resumed(self, task) -> bool:
         """Resume a parked child within budget before it reaches triage;
-        otherwise journal why not and let triage decide."""
+        otherwise journal why not. True means handled (resumed, or a live
+        driver still settles it); False sends it to triage."""
         run = self.config.get("run") or run_config(self.repo)
         reason = resume_refusal(self.repo, task, run)
         if reason is None:
             return bool(resume_attempt(self.repo, self.store, self.orch_id, task.id))
-        journal_resume(
-            self.store, self.orch_id, task.id, "child_resume_skipped", reason
-        )
-        return False
+        last = task.history[-1] if task.history else {}
+        if (last.get("action"), last.get("rationale")) != (
+            "child_resume_skipped",
+            reason,
+        ):
+            journal_resume(
+                self.store, self.orch_id, task.id, "child_resume_skipped", reason
+            )
+        return reason == LIVE_DRIVER  # a live driver settles it: wait, no triage
 
     def _pending_conflict(self) -> ConflictInfo | None:
         record = self._load()

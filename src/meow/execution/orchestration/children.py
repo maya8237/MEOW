@@ -2,6 +2,9 @@
 
 import os
 import secrets
+import signal
+import time
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -22,6 +25,7 @@ from meow.execution.run_state import (
     TERMINAL_PHASES,
     RunStateError,
     RunStore,
+    driver_alive,
 )
 from meow.infrastructure.background import (
     BackgroundError,
@@ -192,27 +196,40 @@ def journal_resume(  # ruff: ignore[too-many-arguments, too-many-positional-argu
     store.update(orch_id, mutate)
 
 
+LIVE_DRIVER = "its driver is still running"
+
+
 def resume_refusal(repo: Path, task: OrchestratorTask, run: dict) -> str | None:
-    """Why the task's latest child run must go to triage instead of being
-    resumed, or None to resume it. `run` is the `[run]` config table; the
-    child budget is `managed_resumes` counted per task."""
+    """Why the task's latest (parked) child run is not resumed now, or None
+    to resume it. `run` is the `[run]` config table: `managed_resumes` caps
+    resumes of this run, `max_total_resumes` those of the whole task.
+    `LIVE_DRIVER` means wait, not triage."""
+    run_id = task.run_ids[-1]
     try:
-        record = RunStore(repo).load(task.run_ids[-1])
+        record = RunStore(repo).load(run_id)
     except RunStateError as exc:
         return f"run record unreadable: {exc}"
     park = record.park if isinstance(record.park, dict) else {}
-    resumed = sum(1 for e in task.history if e.get("action") == "child_resumed")
+    resumes = [e for e in task.history if e.get("action") == "child_resumed"]
+    this_run = sum(1 for e in resumes if e.get("run_id") == run_id)
     checks = (
-        (record.phase != PARKED_PHASE, f"run is {record.phase}, not parked"),
+        (driver_alive(record) is True, LIVE_DRIVER),
         (park.get("kind") == "blocking", f"blocking failure: {park.get('cause')}"),
         (next_command(record) is None, f"{record.source} runs are not resumable"),
         (
-            int(park.get("total_resumes", 0)) >= run["max_total_resumes"],
+            max(len(resumes), int(park.get("total_resumes", 0)))
+            >= run["max_total_resumes"],
             "max_total_resumes reached",
         ),
-        (resumed >= run["managed_resumes"], "managed_resumes reached"),
+        (this_run >= run["managed_resumes"], "managed_resumes reached"),
     )
     return next((reason for hit, reason in checks if hit), None)
+
+
+def _terminate(pid: int) -> None:
+    """Stop a worker that could not be registered (best effort)."""
+    with suppress(OSError):
+        os.kill(pid, signal.SIGTERM)
 
 
 def _spawn_resume(repo: Path, runs: RunStore, run_id: str) -> None:
@@ -220,18 +237,24 @@ def _spawn_resume(repo: Path, runs: RunStore, run_id: str) -> None:
     run's worker, so polls see it running and `resume` accepts it."""
     nonce = secrets.token_hex(16)
     log = runs.directory / f"{run_id}.log"
-    runs.update_background(run_id, nonce=nonce, log=str(log))
+    # A fresh launch time keeps an unreadable identity within startup grace.
+    runs.update_background(
+        run_id, nonce=nonce, log=str(log), launch_started_at=time.time()
+    )
     env = {**os.environ, "PYTHONUNBUFFERED": "1", SUPERVISOR_ENV: nonce}
     argv = _meow("resume", run_id, "--continue", "--work-dir", str(repo))
-    info = detach_command(repo, argv, str(log), env=env)
-    pid = int(info["pid"])
-    runs.update_background(
-        run_id,
-        pid=pid,
-        start_identity=process_identity(pid),
-        state="running",
-        resumed_by="orchestrator",
-    )
+    pid = int(detach_command(repo, argv, str(log), env=env)["pid"])
+    try:
+        runs.update_background(
+            run_id,
+            pid=pid,
+            start_identity=process_identity(pid),
+            state="running",
+            resumed_by="orchestrator",
+        )
+    except BaseException:
+        _terminate(pid)
+        raise
 
 
 def resume_attempt(

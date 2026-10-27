@@ -5,10 +5,12 @@ the state-transition table is checked in isolation; the last tests run the
 real collaborators against a git repository."""
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
 
+from meow.common.process import process_identity
 from meow.execution.orchestration import children as children_module
 from meow.execution.orchestration import tick as tick_module
 from meow.execution.orchestration.integration import MergeOutcome
@@ -22,6 +24,8 @@ from meow.execution.orchestration.tick import (
     tick,
 )
 from meow.execution.run_state import RunStore
+from meow.infrastructure.background import inspect_worker
+from meow.infrastructure.supervisor import SUPERVISOR_ENV
 from tests.orchestration.fakes import (
     ScriptedLauncher,
     create_orchestrator,
@@ -659,3 +663,173 @@ def test_tick_triages_when_resume_cannot_start(tmp_path, monkeypatch):
     assert result.failures[0].cause == "worker-died"
     failed = [e for e in task.history if e["action"] == "child_resume_failed"]
     assert "no handles left" in failed[0]["rationale"]
+
+
+def launched_and_parked(tmp_path, monkeypatch, *, run=None):
+    """A real orchestrator whose one child run has parked; a fake spawner."""
+    repo, store, oid, config = real_orchestrator(
+        tmp_path, [OrchestratorTask("api", "Build the api")]
+    )
+    if run:
+        config = {**config, "run": {**config["run"], **run}}
+    spawner = FakeResumeSpawner()
+    monkeypatch.setattr(children_module, "_spawn_resume", spawner)
+    launcher = ScriptedLauncher()
+    asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+    park_child(repo, launcher.run_ids("api")[0])
+    return repo, store, oid, config, spawner, launcher
+
+
+def actions(store, oid, action):
+    return [e for e in store.load(oid).task("api").history if e["action"] == action]
+
+
+def test_retry_gets_fresh_managed_budget_but_task_total_caps_it(tmp_path, monkeypatch):
+    repo, store, oid, config, spawner, launcher = launched_and_parked(
+        tmp_path, monkeypatch, run={"managed_resumes": 1, "max_total_resumes": 2}
+    )
+
+    def run_tick_once():
+        return asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+
+    def retry_and_park():
+        # What triage's `retry` does: a fresh attempt, i.e. a new child run.
+        store.update(oid, lambda r: setattr(r.task("api"), "status", "pending"))
+        run_tick_once()
+        park_child(repo, launcher.run_ids("api")[-1])
+
+    run_tick_once()  # run 1: resumed
+    park_child(repo, launcher.run_ids("api")[0])
+    assert run_tick_once().failures[0].cause == "worker-died"
+    retry_and_park()
+    run_tick_once()  # run 2: a fresh managed budget, resumed again
+    assert [call[1] for call in spawner.calls] == launcher.run_ids("api")
+    retry_and_park()
+
+    result = run_tick_once()  # run 3: the task-wide cap stops it
+
+    assert [call[1] for call in spawner.calls] == launcher.run_ids("api")[:2]
+    assert result.failures[0].cause == "worker-died"
+    skipped = actions(store, oid, "child_resume_skipped")
+    assert skipped[0]["rationale"] == "managed_resumes reached"
+    assert skipped[-1]["rationale"] == "max_total_resumes reached"
+    assert skipped[-1]["run_id"] == launcher.run_ids("api")[2]
+
+
+def test_blocking_park_is_triaged_without_resume(tmp_path, monkeypatch):
+    repo, store, oid, config, spawner, launcher = launched_and_parked(
+        tmp_path, monkeypatch
+    )
+    RunStore(repo).park(launcher.run_ids("api")[0], "bad key", "blocking", "auth")
+
+    result = asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+
+    assert spawner.calls == []
+    assert result.failures[0].cause == "worker-died"
+    skipped = actions(store, oid, "child_resume_skipped")
+    assert skipped[0]["rationale"] == "blocking failure: auth"
+
+
+def test_live_resumed_worker_keeps_polling_running(tmp_path, monkeypatch):
+    repo, store, oid, config, spawner, launcher = launched_and_parked(
+        tmp_path, monkeypatch
+    )
+    run_id = launcher.run_ids("api")[0]
+
+    def live(repo, runs, run_id):
+        spawner.calls.append((repo, run_id))
+        pid = os.getpid()
+        runs.update_background(
+            run_id, pid=pid, start_identity=process_identity(pid), state="running"
+        )
+
+    monkeypatch.setattr(children_module, "_spawn_resume", live)
+    asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+
+    result = asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+
+    assert spawner.calls == [(repo, run_id)]
+    assert result.state == "waiting"
+    assert result.running == ("api",)
+    assert len(actions(store, oid, "child_resumed")) == 1
+
+
+def test_live_driver_skips_without_spending_budget(tmp_path, monkeypatch):
+    repo, store, oid, config, spawner, launcher = launched_and_parked(
+        tmp_path, monkeypatch
+    )
+    run_id = launcher.run_ids("api")[0]
+    RunStore(repo).set_driver(run_id)  # this live process drives it
+
+    first = asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+    second = asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+
+    assert spawner.calls == []
+    assert (first.state, second.state) == ("waiting", "waiting")
+    assert store.load(oid).task("api").status == "running"
+    skipped = actions(store, oid, "child_resume_skipped")
+    assert [e["rationale"] for e in skipped] == [children_module.LIVE_DRIVER]
+
+
+def test_spawn_resume_registers_the_detached_worker(tmp_path, monkeypatch):
+    repo, store, oid, _config, _spawner, launcher = launched_and_parked(
+        tmp_path, monkeypatch
+    )
+    monkeypatch.undo()
+    run_id = launcher.run_ids("api")[0]
+    runs = RunStore(repo)
+    runs.update_background(run_id, launch_started_at=0.0)  # long ago
+    seen = {}
+
+    def detach(working_dir, argv, log=None, env=None):
+        seen.update(argv=argv, log=log, env=env, cwd=working_dir)
+        seen["nonce"] = runs.load(run_id).background["nonce"]
+        return {"pid": 4242, "log": log, "argv": argv}
+
+    monkeypatch.setattr(children_module, "detach_command", detach)
+    monkeypatch.setattr(children_module, "process_identity", lambda pid: None)
+
+    assert children_module.resume_attempt(repo, store, oid, "api") == run_id
+
+    background = runs.load(run_id).background
+    assert seen["env"][SUPERVISOR_ENV] == seen["nonce"] == background["nonce"]
+    assert seen["argv"][-5:] == [
+        "resume",
+        run_id,
+        "--continue",
+        "--work-dir",
+        str(repo),
+    ]
+    assert seen["cwd"] == repo
+    assert (background["pid"], background["start_identity"]) == (4242, None)
+    assert background["launch_started_at"] > 0  # refreshed: within startup grace
+    record = runs.load(run_id)
+    assert inspect_worker(record, include_terminal=True).state == "starting"
+
+
+def test_spawn_resume_kills_worker_it_cannot_register(tmp_path, monkeypatch):
+    repo, store, oid, _config, _spawner, _launcher = launched_and_parked(
+        tmp_path, monkeypatch
+    )
+    monkeypatch.undo()
+    killed = []
+    monkeypatch.setattr(
+        children_module,
+        "detach_command",
+        lambda working_dir, argv, log=None, env=None: {"pid": 4243},
+    )
+    monkeypatch.setattr(children_module, "_terminate", killed.append)
+    original = RunStore.update_background
+
+    def update(self, rid, **patch):
+        if "pid" in patch:
+            raise OSError("access denied")
+        return original(self, rid, **patch)
+
+    monkeypatch.setattr(RunStore, "update_background", update)
+
+    assert children_module.resume_attempt(repo, store, oid, "api") == ""
+
+    assert killed == [4243]
+    failed = actions(store, oid, "child_resume_failed")
+    assert "access denied" in failed[0]["rationale"]

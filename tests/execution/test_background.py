@@ -874,3 +874,18 @@ def test_drive_failure_prints_one_line(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "worktree setup failed" in err
     assert "Traceback" not in err
+
+
+def test_detach_command_passes_env_through(tmp_path, monkeypatch):
+    seen = []
+
+    def popen(argv, **kwargs):
+        seen.append(kwargs["env"])
+        return SimpleNamespace(pid=7)
+
+    monkeypatch.setattr(background.subprocess, "Popen", popen)
+
+    background.detach_command(tmp_path, ["tool"], env={"MARK": "1"})
+    background.detach_command(tmp_path, ["tool"])
+
+    assert seen == [{"MARK": "1"}, None]  # None inherits the caller's environment
