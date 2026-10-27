@@ -10,7 +10,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 import uuid
 from pathlib import Path
 
@@ -32,7 +31,6 @@ PYTHON_NAME = re.compile(r"python(3(\.\d+)?)?")
 @contextlib.contextmanager
 def progress(message: str):
     """Show MESSAGE with a spinner on a terminal, or plainly when piped."""
-    start = time.monotonic()
     if not sys.stdout.isatty():
         print(f"{message}...", flush=True)
         yield
@@ -41,8 +39,7 @@ def progress(message: str):
 
     def spin() -> None:
         for frame in itertools.cycle("|/-\\"):
-            elapsed = int(time.monotonic() - start)
-            print(f"\r{message}... {frame} {elapsed}s", end="", flush=True)
+            print(f"\r{message}... {frame}", end="", flush=True)
             if done.wait(0.15):
                 return
 
@@ -53,9 +50,7 @@ def progress(message: str):
     finally:
         done.set()
         thread.join()
-        print(
-            f"\r{message}... done ({time.monotonic() - start:.0f}s)\033[K", flush=True
-        )
+        print(f"\r{message}... done\033[K", flush=True)
 
 
 def settings_path() -> Path:
