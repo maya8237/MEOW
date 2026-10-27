@@ -104,6 +104,13 @@ class TransientRunError(RuntimeError):
         self.retry_after = retry_after
 
 
+class WindowsQueryTimeout(TransientRunError, ValueError):
+    """A Windows tool (`schtasks`, ...) outlasted its timeout; try again later."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, cause="windows_query_timeout")
+
+
 class BlockingRunError(RuntimeError):
     """A failure no resume can fix; the run ends `failed` with `cause`."""
 

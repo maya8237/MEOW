@@ -1,12 +1,15 @@
 """Layered MEOW configuration loading and merging."""
 
-import platform
 import tomllib
 from pathlib import Path
 
 from meow.execution.run_failures import InvalidConfigError
 from meow.infrastructure.worktree import default_target_branch
-from meow.project.command_policy import _os_mismatch, _validate_os_compatibility
+from meow.project.command_policy import (
+    _os_mismatch,
+    _validate_os_compatibility,
+    system_name,
+)
 from meow.project.config_env import _expand_config_environment
 from meow.project.config_files import (
     CONFIG_FILENAME as _CONFIG_FILENAME,
@@ -220,7 +223,7 @@ def _load_config(working_dir: Path) -> dict:
     ):
         for position, command in enumerate(commands, 1):
             problem = _os_mismatch(
-                " ".join([command.command, *command.args]), platform.system()
+                " ".join([command.command, *command.args]), system_name()
             )
             if problem:
                 raise ValueError(

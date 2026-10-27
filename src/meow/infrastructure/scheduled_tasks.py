@@ -7,12 +7,20 @@ from datetime import datetime
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+_WINDOWS_TOOLS = frozenset({"schtasks", "whoami"})
+
 
 def scheduler_command(argv: list[str]) -> str:
     try:
         result = subprocess.run(
             argv, capture_output=True, text=True, check=True, timeout=30
         )
+    except subprocess.TimeoutExpired as exc:
+        if argv[0] in _WINDOWS_TOOLS:
+            from meow.execution.run_failures import WindowsQueryTimeout
+
+            raise WindowsQueryTimeout(f"OS scheduler timed out: {argv[0]}") from exc
+        raise ValueError(f"OS scheduler timed out: {argv[0]}") from exc
     except (OSError, subprocess.SubprocessError) as exc:
         detail = getattr(exc, "stderr", None) or str(exc)
         raise ValueError(f"OS scheduler failed: {detail.strip()}") from exc

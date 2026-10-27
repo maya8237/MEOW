@@ -208,7 +208,7 @@ class LoadConfigOsValidationTests(unittest.TestCase):
                 '[[lint]]\ncommand = "lint.bat --check"\n', encoding="utf-8"
             )
             with (
-                patch("meow.project.config.platform.system", return_value="Linux"),
+                patch("meow.project.config.system_name", return_value="Linux"),
                 self.assertRaisesRegex(ValueError, "lint.bat"),
             ):
                 load_config(working_dir)

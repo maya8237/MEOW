@@ -115,6 +115,10 @@ def test_classify_failure_table(tmp_path, make, expected):
         (_ApiFailure("park", "rate_limit"), ("transient", "rate_limit")),
         (TransientRunError("later", cause="budget"), ("transient", "budget")),
         (
+            TransientRunError("slow", cause="windows_query_timeout"),
+            ("transient", "windows_query_timeout"),
+        ),
+        (
             WorktreeSetupError("setup timed out", cause="setup_timeout"),
             ("transient", "setup_timeout"),
         ),

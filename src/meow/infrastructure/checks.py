@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 
+from meow.common.process import run_windows_tool
 from meow.execution.run_state import MAX_OUTPUT, CheckResult, RunStore
 from meow.infrastructure.test_runner import capture_windows_command, prepared_test_stage
 from meow.project.command_policy import split_command
@@ -269,11 +270,7 @@ def configured_checks(config: dict) -> list[Check]:
 def kill_process_tree(process: subprocess.Popen) -> None:
     """Kill the command and everything it spawned, not just the direct child."""
     if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-            capture_output=True,
-            check=False,
-        )
+        run_windows_tool(["taskkill", "/PID", str(process.pid), "/T", "/F"])
     else:
         with suppress(ProcessLookupError, PermissionError):
             os.killpg(process.pid, signal.SIGKILL)

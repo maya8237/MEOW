@@ -28,6 +28,7 @@ from meow.cli.validation import (
     _validate_run_flags,
     validate_workflow_args,
 )
+from meow.common.safe_platform import install_safe_platform
 from meow.evaluation import evaluate_run
 from meow.execution.orchestration.cleanup import clean_orchestrator
 from meow.execution.orchestration.model import is_orchestrator_id
@@ -148,6 +149,7 @@ def _check_clean_tree(args, working_dir: Path) -> None:
 
 
 def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-statements, too-many-locals] -- command dispatch
+    install_safe_platform()
     configure_logging()
     from meow.installer.maintenance import check_for_updates
 
