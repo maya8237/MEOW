@@ -421,3 +421,41 @@ def test_restart_recap_is_generic_and_does_not_stack(monkeypatch, sleeps):
     assert prompt.endswith("do it")
     assert "working tree" not in prompt
     assert prompt.count("start over") == 1
+
+
+def test_key_in_assistant_text_is_never_logged(monkeypatch, sleeps, capsys):
+    monkeypatch.setattr(base, "_max_wait", lambda *_: 1.0)
+    body = MODEL_KEY_BODY + " retry after 45 seconds"
+    failing = [_assistant(body), _result(text=body, status=429)]
+    _scripted(monkeypatch, [failing])
+    with pytest.raises(TransientRunError):
+        _run()
+    captured = capsys.readouterr()
+    assert KEY not in captured.out + captured.err
+
+
+def test_process_error_stderr_is_redacted(monkeypatch, sleeps, capsys):
+    from claude_agent_sdk import ProcessError
+
+    def boom(*, prompt, options):
+        async def stream():  # ruff: ignore[unused-async] -- SDK async stream
+            raise ProcessError("failed", exit_code=2, stderr=f"bad key {KEY} here")
+            yield  # pragma: no cover
+
+        return stream()
+
+    monkeypatch.setattr(base, "query", boom)
+    with pytest.raises(RuntimeError) as caught:
+        _run()
+    assert KEY not in str(caught.value)
+    assert KEY not in str(caught.value.__cause__)
+    captured = capsys.readouterr()
+    assert KEY not in captured.out + captured.err
+
+
+def test_classify_process_error_redacts_stderr():
+    from claude_agent_sdk import ProcessError
+
+    exc = ProcessError("failed", exit_code=2, stderr=f"bad key {KEY} here")
+    base._classify_process_error(exc, [])
+    assert KEY not in exc.stderr

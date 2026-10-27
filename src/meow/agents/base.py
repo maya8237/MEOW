@@ -269,7 +269,7 @@ def prepare_output_file(output_file: Path) -> None:
 
 
 def _preview(text: str) -> str:
-    text = text.strip().replace("\n", " ")
+    text = redact(text).strip().replace("\n", " ")
     return text if len(text) <= _PREVIEW_LEN else text[:_PREVIEW_LEN] + "..."
 
 
@@ -437,6 +437,14 @@ def _api_failure(
     return ApiError(failure, text)
 
 
+def _redact_process_error(exc: ProcessError) -> None:
+    """Strip key-like tokens from a process error before it is logged,
+    chained or turned into a park reason."""
+    if exc.stderr:
+        exc.stderr = redact(exc.stderr)
+    exc.args = tuple(redact(a) if isinstance(a, str) else a for a in exc.args)
+
+
 def _max_wait(config: object, cwd: object) -> float:
     """`[run] api_max_wait`: from loaded config, else the project at `cwd`."""
     run = config.get("run") if isinstance(config, dict) else None
@@ -514,6 +522,7 @@ async def _consume_query(  # ruff: ignore[complex-structure, too-many-branches, 
         api = _api_failure(None, None, f"{exc.stderr or ''} {exc}", last_text)
         if not exc.stderr and last_text:
             exc.stderr = last_text
+        _redact_process_error(exc)
         if api is not None:
             raise api from exc
         raise
@@ -1097,6 +1106,7 @@ def _classify_process_error(exc: ProcessError, text: list[str]) -> None:
     )
     if not exc.stderr and text:
         exc.stderr = text[-1]
+    _redact_process_error(exc)
     if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
         raise _ContextOverflow from exc
     if api is not None:
