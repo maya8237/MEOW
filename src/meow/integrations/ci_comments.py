@@ -4,6 +4,7 @@ import json
 import re
 from codecs import escape_decode
 from collections.abc import Mapping
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import override
 from urllib.error import HTTPError, URLError
@@ -13,6 +14,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from meow.integrations.ci_review import MAX_DIFF, CiReviewContext, CiReviewError
 
 PAGE_SIZE = 100
+SIMILARITY = 0.9
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -191,32 +193,82 @@ def read_review_comments(  # ruff: ignore[complex-structure] -- bounded paginati
     return history
 
 
+THREADS_QUERY = (
+    "query($owner:String!,$name:String!,$number:Int!,$after:String){"
+    "repository(owner:$owner,name:$name){pullRequest(number:$number){"
+    "reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor}"
+    "nodes{isResolved comments(first:1){nodes{databaseId}}}}}}}"
+)
+
+
+def _normalize(body: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", body.casefold()).split())
+
+
+def _similar(left: str, right: str) -> bool:
+    left, right = _normalize(left), _normalize(right)
+    return left == right or SequenceMatcher(None, left, right).ratio() >= SIMILARITY
+
+
+def _open_github_threads(target: str, token: str, env: Mapping[str, str]) -> set:
+    """Root comment ids of unresolved threads; unknown (empty) if GraphQL fails."""
+    api = env.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
+    url = env.get("GITHUB_GRAPHQL_URL") or (
+        api.removesuffix("/v3") + "/graphql"
+        if api.endswith("/api/v3")
+        else api + "/graphql"
+    )
+    owner, name = _required(env, "GITHUB_REPOSITORY").split("/", 1)
+    variables = {"owner": owner, "name": name, "number": int(target.rsplit("/", 1)[1])}
+    open_ids = set()
+    try:
+        for _ in range(100):
+            data = _request(
+                url, token, {"query": THREADS_QUERY, "variables": variables}
+            )
+            threads = data["data"]["repository"]["pullRequest"]["reviewThreads"]
+            for node in threads["nodes"]:
+                if not node["isResolved"]:
+                    open_ids.update(c["databaseId"] for c in node["comments"]["nodes"])
+            if not threads["pageInfo"]["hasNextPage"]:
+                return open_ids
+            variables["after"] = threads["pageInfo"]["endCursor"]
+    except (CiReviewError, KeyError, TypeError, ValueError):
+        pass
+    return set()
+
+
 def _comment_keys(  # ruff: ignore[complex-structure] -- provider-specific current-line coordinates
-    provider: str, context: CiReviewContext, history: dict
-) -> set:
-    keys = set()
+    provider: str, context: CiReviewContext, history: dict, open_ids: set
+) -> list[tuple]:
+    """Existing comments as (path, line, side, body); line None = open outdated."""
+    keys = []
     if provider == "github":
         for comment in history["comments"]:
-            # A null line denotes an outdated comment; never use original_line.
-            if comment.get("line") is not None:
-                keys.add((
+            line = comment.get("line")
+            # Outdated (null line) comments only count while their thread is open.
+            if line is not None or comment.get("id") in open_ids:
+                keys.append((
                     comment.get("path"),
-                    comment["line"],
+                    line,
                     comment.get("side"),
-                    " ".join(comment.get("body", "").split()),
+                    comment.get("body", ""),
                 ))
     else:
         for discussion in history["discussions"]:
             for note in discussion.get("notes", []):
                 position = note.get("position") or {}
-                if position.get("head_sha") != context.source_sha:
+                current = position.get("head_sha") == context.source_sha
+                if not current and note.get("resolved", True):
                     continue
                 side = "RIGHT" if position.get("new_line") is not None else "LEFT"
-                keys.add((
+                keys.append((
                     position.get("new_path" if side == "RIGHT" else "old_path"),
-                    position.get("new_line" if side == "RIGHT" else "old_line"),
+                    position.get("new_line" if side == "RIGHT" else "old_line")
+                    if current
+                    else None,
                     side,
-                    " ".join(note.get("body", "").split()),
+                    note.get("body", ""),
                 ))
     return keys
 
@@ -242,7 +294,11 @@ def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revis
         }
     if not matches:
         raise CiReviewError("remote review revisions differ from the reviewed checkout")
-    existing = _comment_keys(provider, context, read_review_comments(provider, env))
+    history = read_review_comments(provider, env)
+    open_ids = (
+        _open_github_threads(target, token, env) if provider == "github" else set()
+    )
+    existing = _comment_keys(provider, context, history, open_ids)
     posted = 0
     for finding in findings:
         old_path, new_path = _locations(context.diff)[
@@ -253,13 +309,12 @@ def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revis
             if provider == "github"
             else finding["path"]
         )
-        key = (
-            path,
-            finding["line"],
-            finding["side"],
-            " ".join(finding["body"].split()),
-        )
-        if key in existing:
+        if any(
+            (e_path, e_side) == (path, finding["side"])
+            and (e_line is None or e_line == finding["line"])
+            and _similar(e_body, finding["body"])
+            for e_path, e_line, e_side, e_body in existing
+        ):
             continue
         if provider == "github":
             _request(
@@ -280,6 +335,6 @@ def post_review_comments(  # ruff: ignore[too-many-statements] -- validate revis
                     "position": _gitlab_position(context, finding, refs),
                 },
             )
-        existing.add(key)
+        existing.append((path, finding["line"], finding["side"], finding["body"]))
         posted += 1
     return posted

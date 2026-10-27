@@ -37,8 +37,27 @@ def api(request, tmp_path):
 def fake_api(provider, context, history):  # ruff: ignore[complex-structure] -- paginated provider API test seam
     posted = []
     reads = []
+    graphql = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False},
+                        "nodes": [
+                            {
+                                "isResolved": False,
+                                "comments": {"nodes": [{"databaseId": 1}]},
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    }
 
-    def request(url, token, payload=None):  # ruff: ignore[too-many-return-statements] -- provider API test seam
+    def request(url, token, payload=None):  # ruff: ignore[complex-structure, too-many-return-statements] -- provider API test seam
+        if payload is not None and "query" in payload:
+            return graphql
         if payload is not None:
             posted.append(payload)
             return {}
@@ -173,8 +192,7 @@ def test_unreadable_history_prevents_review_and_posting(api, checkout, tmp_path)
     assert "comments" in json.loads(result.json_path.read_text())["failure_reason"]
 
 
-def test_outdated_location_does_not_suppress_current_finding(api):
-    provider, env = api
+def outdated_case(provider, resolved):
     context = CiReviewContext(
         "head",
         "feature",
@@ -185,11 +203,66 @@ def test_outdated_location_does_not_suppress_current_finding(api):
     )
     stale = existing(provider, sha="previous")
     if provider == "github":
-        stale.update(line=None, original_line=1)
+        stale.update(line=None, original_line=7)
+    else:
+        stale["notes"][0].update(resolved=resolved)
     request, posted, _ = fake_api(provider, context, [stale])
+    return context, request, posted
+
+
+@pytest.mark.parametrize("resolved", [False, True])
+def test_outdated_comment_suppresses_finding_only_while_open(api, resolved):
+    provider, env = api
+    context, request, posted = outdated_case(provider, resolved)
     finding = {"path": "file.txt", "line": 1, "side": "RIGHT", "body": "Bug here"}
+    if provider == "github" and resolved:
+        original = request
+
+        def request(url, token, payload=None):
+            if payload and "query" in payload:
+                return {
+                    "data": {
+                        "repository": {
+                            "pullRequest": {
+                                "reviewThreads": {
+                                    "pageInfo": {"hasNextPage": False},
+                                    "nodes": [
+                                        {
+                                            "isResolved": True,
+                                            "comments": {"nodes": [{"databaseId": 1}]},
+                                        }
+                                    ],
+                                }
+                            }
+                        }
+                    }
+                }
+            return original(url, token, payload)
+
     with patch("meow.integrations.ci_comments._request", request):
-        assert post_review_comments(provider, context, reply([finding]), env) == 1
+        count = post_review_comments(provider, context, reply([finding]), env)
+    assert count == (1 if resolved else 0)
+    assert len(posted) == count
+
+
+def test_reworded_finding_on_same_line_is_duplicate(api):
+    provider, env = api
+    context = CiReviewContext(
+        "head",
+        "feature",
+        "dev",
+        "target",
+        "base",
+        "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+    )
+    request, posted, _ = fake_api(provider, context, [existing(provider)])
+    reworded = {"path": "file.txt", "line": 1, "side": "RIGHT", "body": "Bug here!"}
+    different = reworded | {"body": "Completely unrelated null dereference"}
+    with patch("meow.integrations.ci_comments._request", request):
+        count = post_review_comments(
+            provider, context, reply([reworded, different]), env
+        )
+    assert count == 1
     assert len(posted) == 1
 
 
@@ -209,7 +282,7 @@ def test_partial_publish_retry_skips_successfully_posted_notes(api):
     second = first | {"body": "Another bug"}
 
     def partial(url, token, payload=None):
-        if payload is not None:
+        if payload is not None and "query" not in payload:
             if history:
                 raise CiReviewError("publish interrupted")
             history.append(existing(provider))
