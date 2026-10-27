@@ -425,18 +425,28 @@ def _resolve_thread(  # ruff: ignore[too-many-arguments, too-many-positional-arg
     thread: dict,
     reason: str,
 ) -> None:
-    reply = {"body": f"Resolved: {reason}"}
+    """Resolve the thread, or mark it solved with a check mark if that is refused."""
+    base = f"{target}/discussions/{quote(str(thread['id']), safe='')}"
+    try:
+        if provider == "github":
+            result = _request(
+                _graphql_url(env),
+                token,
+                {"query": RESOLVE_MUTATION, "variables": {"id": thread["id"]}},
+            )
+            # GraphQL reports permission failures as HTTP 200 with "errors".
+            if not isinstance(result, dict) or result.get("errors"):
+                raise CiReviewError("thread could not be resolved")
+        else:
+            _request(base, token, {"resolved": True}, method="PUT")
+        label = "Resolved"
+    except CiReviewError:
+        label = "✅ Solved"
+    reply = {"body": f"{label}: {reason}"}
     if provider == "github":
         _request(f"{target}/comments/{thread['root_id']}/replies", token, reply)
-        _request(
-            _graphql_url(env),
-            token,
-            {"query": RESOLVE_MUTATION, "variables": {"id": thread["id"]}},
-        )
-        return
-    base = f"{target}/discussions/{quote(str(thread['id']), safe='')}"
-    _request(base + "/notes", token, reply)
-    _request(base, token, {"resolved": True}, method="PUT")
+    else:
+        _request(base + "/notes", token, reply)
 
 
 def resolve_review_comments(

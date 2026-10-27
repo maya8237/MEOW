@@ -474,6 +474,7 @@ def ci_review_prompt(  # ruff: ignore[too-many-arguments] -- immutable revisions
             "threads whose first comment contains <!-- meow-review -->, using that "
             "first comment's id (GitHub: the comment without in_reply_to_id) or the "
             "discussion id (GitLab). Omit threads that are merely moved, unclear, or "
-            "still reproducible. The CLI replies and resolves them."
+            "still reproducible, or already answered with a ✅ Solved reply. The CLI "
+            "resolves them, or replies ✅ Solved when resolving is not permitted."
         )
     return prompt

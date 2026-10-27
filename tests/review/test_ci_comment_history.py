@@ -343,9 +343,28 @@ def test_github_resolves_only_open_meow_threads(api):
     items = [{"id": 1, "reason": "Fixed"}, {"id": 99, "reason": "Unknown"}]
     with patch("meow.integrations.ci_comments._request", request):
         assert resolve_review_comments("github", items, env) == 1
-    assert calls[1][0].endswith("/pulls/7/comments/1/replies")
-    assert calls[1][1] == {"body": "Resolved: Fixed"}
-    assert calls[2][1]["variables"] == {"id": "T1"}
+    assert calls[1][1]["variables"] == {"id": "T1"}
+    assert calls[2][0].endswith("/pulls/7/comments/1/replies")
+    assert calls[2][1] == {"body": "Resolved: Fixed"}
+
+
+def test_github_marks_solved_when_resolve_is_refused(api):
+    provider, env = api
+    if provider != "github":
+        pytest.skip("GitHub thread API")
+    calls = []
+
+    def request(url, token, payload=None, method=None):
+        calls.append((url, payload))
+        query = payload.get("query", "")
+        if "reviewThreads" in query:
+            return threads_response()
+        return {"errors": [{"message": "forbidden"}]} if "mutation" in query else {}
+
+    with patch("meow.integrations.ci_comments._request", request):
+        items = [{"id": 1, "reason": "Fixed"}]
+        assert resolve_review_comments("github", items, env) == 1
+    assert calls[-1][1] == {"body": "✅ Solved: Fixed"}
 
 
 @pytest.mark.parametrize(
@@ -380,6 +399,27 @@ def test_gitlab_replies_then_resolves_meow_thread(api):
     with patch("meow.integrations.ci_comments._request", request):
         items = [{"id": "abc", "reason": "Fixed"}]
         assert resolve_review_comments("gitlab", items, env) == 1
-    assert calls[-2][0].endswith("/discussions/abc/notes")
-    assert calls[-1][0].endswith("/discussions/abc")
-    assert calls[-1][1:] == ({"resolved": True}, "PUT")
+    assert calls[-2][0].endswith("/discussions/abc")
+    assert calls[-2][1:] == ({"resolved": True}, "PUT")
+    assert calls[-1][0].endswith("/discussions/abc/notes")
+    assert calls[-1][1] == {"body": "Resolved: Fixed"}
+
+
+def test_gitlab_marks_solved_when_resolve_is_refused(api):
+    provider, env = api
+    if provider != "gitlab":
+        pytest.skip("GitLab discussion API")
+    calls = []
+
+    def request(url, token, payload=None, method=None):
+        calls.append((url, payload, method))
+        if "?" in url:
+            return [gitlab_thread()]
+        if method == "PUT":
+            raise CiReviewError("review API failed (HTTP 403)")
+        return {}
+
+    with patch("meow.integrations.ci_comments._request", request):
+        items = [{"id": "abc", "reason": "Fixed"}]
+        assert resolve_review_comments("gitlab", items, env) == 1
+    assert calls[-1][1] == {"body": "✅ Solved: Fixed"}

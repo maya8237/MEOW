@@ -185,7 +185,7 @@ Posting mode requires an MR event and validates added/deleted-line locations
 and remote revisions. Existing comments inform the review; matching inline notes
 (including reworded ones and open threads whose line moved) are skipped on reruns.
 Open threads meow started (marked `<!-- meow-review -->`) that the reviewer finds fixed
-get a "Resolved: reason" reply and are resolved; GitHub resolution uses GraphQL.
+are resolved with a "Resolved: reason" reply (GitHub uses GraphQL); if resolving is refused they get a "✅ Solved: reason" reply instead.
 Unreadable history or publishing failures exit 2 with
 artifacts. Notes use the token's identity; partial publishes can leave notes posted.
 
