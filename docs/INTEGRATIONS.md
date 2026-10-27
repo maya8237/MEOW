@@ -1,9 +1,9 @@
 # Configuration and integrations
 
-First config-dependent use creates base project configuration; `/meow:onboard`
-configures optional features. Use [the template](../templates/meow-config.toml.example)
-for fields, [custom sources](CUSTOM.md) for discovery, and
-[worktree setup](WORKTREE_SETUP.md) for dependency installation.
+Base configuration is automatic. Configure optional features with `/meow:onboard`
+or [flag-based onboarding](ONBOARDING.md). See
+[the template](../templates/meow-config.toml.example) for fields, [custom sources](CUSTOM.md)
+for discovery, and [worktree setup](WORKTREE_SETUP.md) for dependency installation.
 
 ## Monorepo lint and tester
 

@@ -427,14 +427,20 @@ def main() -> int:  # ruff: ignore[complex-structure, too-many-branches, too-man
             return 0
         failures = 0
         for project in projects:
+            print(f"Un-onboarding {project}...", flush=True)
             try:
                 un_onboard(project)
             except (OSError, ValueError) as exc:
                 failures += 1
                 print(f"Could not un-onboard {project}: {exc}", file=sys.stderr)
+        if scheduled:
+            print("Cancelling scheduled MEOW runs...", flush=True)
         cancel_scheduled(scheduled)
         if bun:
+            print("Reverting ~/.bunfig.toml...", flush=True)
             revert_bunfig(home / ".bunfig.toml")
+        print("Unregistering the plugin and PATH entry...", flush=True)
+        print("Deleting ~/.meow files (can take a while on Windows)...", flush=True)
         uninstall(home, purge=purge)
     except (EOFError, KeyboardInterrupt):
         print("\nCancelled.")

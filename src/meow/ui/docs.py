@@ -10,6 +10,7 @@ from meow.project.custom import frontmatter
 GUIDES = (
     "README.md",
     "docs/INSTALL.md",
+    "docs/ONBOARDING.md",
     "docs/CLI.md",
     "docs/RUNS.md",
     "docs/PIPELINE.md",

@@ -148,6 +148,10 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         return
     working_dir = Path(args.working_dir).resolve()
     log_working_directory(working_dir)
+    if args.command == "onboard":
+        from meow.cli.onboard_cli import onboard_command
+
+        raise SystemExit(onboard_command(args, working_dir))
     if args.command == "cleanup":
         cleanup_command(working_dir, args.run_id)
         return

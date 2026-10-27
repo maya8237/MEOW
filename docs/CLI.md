@@ -1,8 +1,7 @@
 # CLI guide
 
-Use `meow COMMAND --help` for flag syntax. Read the relevant reference only:
-[runs and recovery](RUNS.md), [orchestration](ORCHESTRATION.md),
-[UI](UI.md), [configuration](INTEGRATIONS.md), or [workflow definitions](WORKFLOWS.md).
+Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](ORCHESTRATION.md),
+[UI](UI.md), [configuration](INTEGRATIONS.md), [workflows](WORKFLOWS.md).
 
 ## User commands
 
@@ -22,20 +21,20 @@ Use `meow COMMAND --help` for flag syntax. Read the relevant reference only:
 | `meow skills sync [--scope S] [--check]` | Register custom skills with Claude Code; `--check` only reports |
 | `meow ui` | Read-only catalog, session history, and docs |
 | `meow schedule` | Add, list, edit, or cancel a one-shot trigger |
+| `meow onboard` | [Configure a project without prompts](ONBOARDING.md); optional integration/feature flags |
 | `meow ipython` | Interactive command session |
 
 `mw` aliases `meow`. Shortcuts: `r` run, `p` plan,
 `rv` review, `l` lint (`run --lint-fix`), `s` status, `x` cancel,
 `c` resume, `q` queue, `w` worktree, `i` ipython.
 
-Bare `meow` opens IPython. Commands such as `status` work directly there;
-use `meow run` to preserve IPython's `%run`. `%meow` and `!meow` also work.
+Bare `meow` opens IPython. Use `meow run` to preserve IPython's `%run`;
+other commands work directly or through `%meow`/`!meow`.
 
 ## Common options
 
 All public commands accept `--work-dir PATH` (`-d`); native helpers also accept
 `--working-dir`. Artifacts default to `.meow/plans/` unless `docs_dir` is set.
-Project documentation stays in `docs/`.
 
 `meow --update` (`-u`) installs the latest published stable release, never
 a branch tip; it cannot accompany a project command. It installs that version's

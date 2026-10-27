@@ -132,7 +132,7 @@ claude-agent-sdk==0.2.168 \
     --hash=sha256:80388054a09c137d76fc29caa6e46bc90d2ae2ef09fac5ee1c38fc36d2762fda \
     --hash=sha256:be197be92549909ec62a2cee04c27f4b0a38c80f723735538a3efc352507f81d \
     --hash=sha256:ed1814b0dd1c113bdaf3e51e6a67aa5b96b8f5c5839a43aeb6ae1e6ed23a5b35
-    # via meow (pyproject.toml)
+    # via meow-harness (pyproject.toml)
 click==8.5.0 ; sys_platform != 'emscripten' \
     --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360 \
     --hash=sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34
@@ -233,7 +233,7 @@ idna==3.20 \
 ipython==9.17.1 \
     --hash=sha256:6d1645743cfd1a07eb695d85aa2b5fa66721f8cbae9431d4049f7084bbf06509 \
     --hash=sha256:8919be8c27f20a6f4423145028063f6637b42a03ce57665bb12015ee1f073529
-    # via meow (pyproject.toml)
+    # via meow-harness (pyproject.toml)
 ipython-pygments-lexers==1.1.1 \
     --hash=sha256:09c0138009e56b6854f9535736f4171d855c8c08a563a0dcd8022f78355c7e81 \
     --hash=sha256:a9462224a505ade19a605f71f8fa63c2048833ce50abc86768a0d81d876dc81c
@@ -497,7 +497,7 @@ pywin32==312 ; sys_platform == 'win32' \
     --hash=sha256:dab4f65ac9c4e48400a2a0530c46c3c579cd5905ecd11b80692373915269208b \
     --hash=sha256:dc90147579a905b8635e1b0ec6514967dcb07e6e0d9c42f1477feef14cac23bb
     # via
-    #   meow (pyproject.toml)
+    #   meow-harness (pyproject.toml)
     #   mcp
 referencing==0.37.0 \
     --hash=sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231 \
@@ -658,7 +658,11 @@ starlette==1.8.0 \
 structlog==26.1.0 \
     --hash=sha256:e081a26d6c373e6d201eca24eede26d8ffab07f88f477822e679183428d3d91e \
     --hash=sha256:f63a716cbd1b1291cf7661de7794b455acfa4c43c5bcf1630e6ad5ddc1adb3b7
-    # via meow (pyproject.toml)
+    # via meow-harness (pyproject.toml)
+tomlkit==0.15.2 \
+    --hash=sha256:05562412163a3037b94497385fb7f9204c637bc605af7a48199e41cf2272f437 \
+    --hash=sha256:83e32755ba1d20d9340bd069ee97e9f6232ba2346b63ffcba425de01f7e327a6
+    # via meow-harness (pyproject.toml)
 traitlets==5.16.1 \
     --hash=sha256:ed900c2b631aa3a112811139fa97b8d2c3bad5e989656bba4b7e52c7852c18c1 \
     --hash=sha256:f775618166caa0396c8e337099240f2bd3e5e917d203b2e6fbe21a58d3cb1f6b

@@ -66,7 +66,11 @@ def _load_jira_config(config: dict) -> dict:
     return {
         "project_key": project_key,
         "branch_prefix": jira.get("branch_prefix", DEFAULT_BRANCH_PREFIX),
-        "mcp": {"command": mcp["command"], "args": mcp.get("args", [])},
+        "mcp": {
+            "command": mcp["command"],
+            "args": mcp.get("args", []),
+            **({"env": mcp["env"]} if "env" in mcp else {}),
+        },
     }
 
 

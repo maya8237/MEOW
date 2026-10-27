@@ -2,6 +2,18 @@
 # curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 set -eu
 
+non_interactive=false
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --non-interactive) non_interactive=true ;;
+        -h|--help)
+            printf '%s\n' 'Usage: sh install.sh [--non-interactive]' 'Skip optional Bun and project setup prompts with --non-interactive.'
+            exit 0 ;;
+        *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
 cat <<'MEOW'
 
        /\_/\
@@ -25,6 +37,7 @@ trap 'rm -rf "$temporary"' 0
 trap 'exit 130' HUP INT TERM
 
 # Newest Python 3.12+ on PATH (or MEOW_PYTHON); venvs resolve to their base.
+printf '%s\n' 'Locating Python 3.12+...'
 probe='import os,sys;v=sys.version_info;print(v[0]*10000+v[1]*100+v[2],os.path.realpath(sys._base_executable))'
 {
     if [ -n "${MEOW_PYTHON:-}" ]; then
@@ -53,6 +66,7 @@ if [ -z "$python" ]; then
     exit 1
 fi
 
+printf 'Using %s\nFetching the latest release...\n' "$python"
 # Only the publishing workflow advances this manifest, after the wheel is on the index.
 manifest_url=${MEOW_RELEASE_MANIFEST_URL:-https://raw.githubusercontent.com/maya8237/MEOW/release-channel/latest.json}
 manifest=$(curl -fsSL --retry 3 "$manifest_url")
@@ -74,7 +88,7 @@ fi
 destination="$root/versions/$tag"
 bundle="$temporary/bundle"
 mkdir "$bundle"
-printf 'Installing MEOW %s with %s...\n' "$tag" "$python"
+printf 'Creating environment and installing MEOW %s (pip output follows)...\n' "$tag"
 printf 'meow-harness==%s --hash=sha256:%s\n' "$tag" "$digest" >"$temporary/wheel.txt"
 # Use uv only if it is already installed; any uv failure falls back to pip.
 if command -v uv >/dev/null 2>&1 \
@@ -92,9 +106,12 @@ else
         --no-deps --require-hashes --only-binary :all: -r "$temporary/wheel.txt"
 fi
 purelib=$("$bundle/runtime/bin/python3" -c "import sysconfig;print(sysconfig.get_path('purelib'))")
+printf '%s\n' 'Installing pinned dependencies and launcher (this can take minutes)...'
 PYTHONPATH=$purelib "$python" -m meow.installer.releases --finish "$destination" --bundle "$bundle"
 
-if [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
+if [ "$non_interactive" = true ]; then
+    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination"
+elif [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
     "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup </dev/tty
 else
     "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup </dev/null

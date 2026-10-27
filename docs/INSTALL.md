@@ -22,6 +22,25 @@ its skills in Claude Code. It uses `uv` for the virtual environment and package
 installs when `uv` is already installed, and pip otherwise or if `uv` fails.
 Open a new terminal or restart Claude Code.
 
+For unattended installation, skip all optional Bun/project setup prompts:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh -s -- --non-interactive
+# Or, from a checkout:
+sh scripts/install.sh --non-interactive
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1))) -non-interactive
+# Or, from a checkout:
+./scripts/install.ps1 -non-interactive
+```
+
+The switch works even with a terminal attached. Installation still registers
+the Claude Code plugin and launcher. Configure projects separately with
+`meow onboard --non-interactive --work-dir PATH`; see
+[flag-based onboarding](ONBOARDING.md) for optional integration and feature flags.
+
 Open your project in Claude Code and run `/meow:onboard` to configure
 integrations and optional features. Basic setup also happens on first use.
 Installer project setup also refreshes remembered repositories, creates missing
