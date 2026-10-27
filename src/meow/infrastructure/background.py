@@ -213,7 +213,10 @@ def _spawn_worker(store: RunStore, repo: Path, run_id: str, argv: list[str]) -> 
 
 
 def detach_command(
-    working_dir: Path, argv: list[str], log: str | None = None
+    working_dir: Path,
+    argv: list[str],
+    log: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> dict[str, object]:
     """Start `argv` in its own session/process group so nothing kills it.
 
@@ -242,6 +245,7 @@ def detach_command(
         process = subprocess.Popen(
             argv,
             cwd=working_dir,
+            env=env,
             stdin=subprocess.DEVNULL,
             stdout=stream,
             stderr=subprocess.STDOUT,

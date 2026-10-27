@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from meow.execution.orchestration import children as children_module
 from meow.execution.orchestration import tick as tick_module
 from meow.execution.orchestration.integration import MergeOutcome
 from meow.execution.orchestration.model import OrchestratorTask
@@ -20,6 +21,7 @@ from meow.execution.orchestration.tick import (
     record_conflict_resolved,
     tick,
 )
+from meow.execution.run_state import RunStore
 from tests.orchestration.fakes import (
     ScriptedLauncher,
     create_orchestrator,
@@ -549,3 +551,111 @@ def test_real_launch_error_is_reported_as_launch_failed(tmp_path):
     assert result.failures[0].task_id == "api"
     assert result.failures[0].cause == "launch-failed"
     assert launcher.launches == []
+
+
+class FakeResumeSpawner:
+    """Stands in for the detached `meow resume RUN --continue` spawn."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[Path, str]] = []
+
+    def __call__(self, repo, store, run_id):
+        self.calls.append((repo, run_id))
+        # A process that is already gone, so the next poll sees it settled.
+        store.update_background(run_id, pid=1, start_identity="gone", state="running")
+
+
+def park_child(repo, run_id):
+    RunStore(repo).park(run_id, "WinError 1450", "resource", "resource")
+
+
+def test_tick_resumes_parked_child_before_triage(tmp_path, monkeypatch):
+    repo, store, oid, config = real_orchestrator(
+        tmp_path, [OrchestratorTask("api", "Build the api")]
+    )
+    spawner = FakeResumeSpawner()
+    monkeypatch.setattr(children_module, "_spawn_resume", spawner)
+    launcher = ScriptedLauncher()
+    asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+    run_id = launcher.run_ids("api")[0]
+    before = store.load(oid).task("api")
+    park_child(repo, run_id)
+
+    result = asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+
+    task = store.load(oid).task("api")
+    assert result.state == "waiting"
+    assert result.failures == ()
+    assert spawner.calls == [(repo, run_id)]
+    assert task.status == "running"
+    assert (task.run_ids, task.branch, task.worktree) == (
+        [run_id],
+        before.branch,
+        before.worktree,
+    )
+    resumed = [e for e in task.history if e["action"] == "child_resumed"]
+    assert len(resumed) == 1
+    assert resumed[0]["run_id"] == run_id
+    assert not any(e.get("cause") == "worker-died" for e in task.history)
+
+
+def test_tick_triages_after_child_budget(tmp_path, monkeypatch):
+    repo, store, oid, config = real_orchestrator(
+        tmp_path, [OrchestratorTask("api", "Build the api")]
+    )
+    config = {**config, "run": {**config["run"], "managed_resumes": 1}}
+    spawner = FakeResumeSpawner()
+    monkeypatch.setattr(children_module, "_spawn_resume", spawner)
+    launcher = ScriptedLauncher()
+    asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+    run_id = launcher.run_ids("api")[0]
+    park_child(repo, run_id)
+    asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+    park_child(repo, run_id)  # the resume parked again
+
+    result = asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+
+    task = store.load(oid).task("api")
+    assert len(spawner.calls) == 1
+    assert result.state == "failures"
+    assert result.failures[0].cause == "worker-died"
+    assert task.status == "failed"
+    skipped = [e for e in task.history if e["action"] == "child_resume_skipped"]
+    assert skipped[-1]["rationale"] == "managed_resumes reached"
+
+
+def test_tick_triages_blocking_child_failure_without_resume(tmp_path, monkeypatch):
+    repo, store, oid, config = real_orchestrator(
+        tmp_path, [OrchestratorTask("api", "Build the api")]
+    )
+    spawner = FakeResumeSpawner()
+    monkeypatch.setattr(children_module, "_spawn_resume", spawner)
+    launcher = ScriptedLauncher()
+    asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+    fail_child(repo, launcher.run_ids("api")[0], "invalid config")
+
+    result = asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+
+    assert spawner.calls == []
+    assert result.failures[0].cause == "child-failed"
+
+
+def test_tick_triages_when_resume_cannot_start(tmp_path, monkeypatch):
+    repo, store, oid, config = real_orchestrator(
+        tmp_path, [OrchestratorTask("api", "Build the api")]
+    )
+
+    def broken(repo, store, run_id):
+        raise OSError("no handles left")
+
+    monkeypatch.setattr(children_module, "_spawn_resume", broken)
+    launcher = ScriptedLauncher()
+    asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+    park_child(repo, launcher.run_ids("api")[0])
+
+    result = asyncio.run(tick(repo, store, oid, config, launcher=launcher))
+
+    task = store.load(oid).task("api")
+    assert result.failures[0].cause == "worker-died"
+    failed = [e for e in task.history if e["action"] == "child_resume_failed"]
+    assert "no handles left" in failed[0]["rationale"]

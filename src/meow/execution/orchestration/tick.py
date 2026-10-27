@@ -20,16 +20,20 @@ from meow.execution.orchestration.children import (
     cancel_children,
     failure_evidence,
     finalize_passed,
+    journal_resume,
     launch_attempt,
     poll_task,
+    resume_attempt,
+    resume_refusal,
 )
 from meow.execution.orchestration.integration import begin_merge, finish_merge
 from meow.execution.orchestration.model import OrchestratorRecord
 from meow.execution.orchestration.scheduler import tasks_to_launch
 from meow.execution.orchestration.store import OrchestratorStore
 from meow.execution.orchestration.triage import FAILURE_CAUSES, record_failure
-from meow.execution.run_state import RunStore
+from meow.execution.run_state import PARKED_PHASE, RunStore
 from meow.infrastructure.background import launch_background
+from meow.project.config import run_config
 
 TICK_PHASES = frozenset({"running", "blocked", "cancelled"})
 GIT_MERGE_FAILED = "git merge failed"
@@ -227,16 +231,28 @@ class _Supervisor:
                 self._fail_child(task)
 
     def _fail_child(self, task) -> None:
-        interrupted = run_phase(self.repo, task.run_ids[-1]) in {
-            "interrupted_mutation",
-            "parked",
-        }
+        phase = run_phase(self.repo, task.run_ids[-1])
+        if phase == PARKED_PHASE and self._resumed(task):
+            return
+        interrupted = phase in {"interrupted_mutation", PARKED_PHASE}
         failure = FailureInfo(
             task.id,
             "worker-died" if interrupted else "child-failed",
             tuple(failure_evidence(self.repo, task)),
         )
         record_task_failure(self.store, self.orch_id, failure, self.max_cycles)
+
+    def _resumed(self, task) -> bool:
+        """Resume a parked child within budget before it reaches triage;
+        otherwise journal why not and let triage decide."""
+        run = self.config.get("run") or run_config(self.repo)
+        reason = resume_refusal(self.repo, task, run)
+        if reason is None:
+            return bool(resume_attempt(self.repo, self.store, self.orch_id, task.id))
+        journal_resume(
+            self.store, self.orch_id, task.id, "child_resume_skipped", reason
+        )
+        return False
 
     def _pending_conflict(self) -> ConflictInfo | None:
         record = self._load()

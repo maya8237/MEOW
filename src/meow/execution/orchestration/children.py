@@ -1,9 +1,12 @@
-"""Launch, poll, cancel, and gather evidence for child task runs."""
+"""Launch, poll, resume, cancel, and gather evidence for child task runs."""
 
+import os
+import secrets
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from meow.common.process import process_identity
 from meow.execution.delivery import commit_worktree
 from meow.execution.orchestration.model import (
     OrchestratorRecord,
@@ -13,6 +16,7 @@ from meow.execution.orchestration.model import (
 )
 from meow.execution.orchestration.scheduler import Launcher
 from meow.execution.orchestration.store import OrchestratorStore
+from meow.execution.run_failures import next_command
 from meow.execution.run_state import (
     PARKED_PHASE,
     TERMINAL_PHASES,
@@ -20,12 +24,15 @@ from meow.execution.run_state import (
     RunStore,
 )
 from meow.infrastructure.background import (
+    BackgroundError,
     RunSeed,
+    detach_command,
     inspect_worker,
     launch_background,
     reconcile_worker,
 )
 from meow.infrastructure.cancellation import request_cancel
+from meow.infrastructure.supervisor import SUPERVISOR_ENV, _meow
 from meow.infrastructure.worktree import _ensure_branch_worktree
 from meow.project.plan_files import plan_test_file
 
@@ -163,6 +170,86 @@ def poll_task(
     ):
         return "failed"  # settled without passing; triage decides what next
     return "running"
+
+
+def journal_resume(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- one journal entry
+    store: OrchestratorStore, orch_id: str, task_id: str, action: str, why: str
+) -> None:
+    """Journal a resume decision (`child_resumed`, `child_resume_skipped`,
+    `child_resume_failed`) for the task's latest run."""
+
+    def mutate(record: OrchestratorRecord) -> None:
+        task = record.task(task_id)
+        task.history.append({
+            "at": datetime.now(UTC).isoformat(),
+            "action": action,
+            "cause": "",
+            "rationale": why,
+            "evidence": [],
+            "run_id": task.run_ids[-1],
+        })
+
+    store.update(orch_id, mutate)
+
+
+def resume_refusal(repo: Path, task: OrchestratorTask, run: dict) -> str | None:
+    """Why the task's latest child run must go to triage instead of being
+    resumed, or None to resume it. `run` is the `[run]` config table; the
+    child budget is `managed_resumes` counted per task."""
+    try:
+        record = RunStore(repo).load(task.run_ids[-1])
+    except RunStateError as exc:
+        return f"run record unreadable: {exc}"
+    park = record.park if isinstance(record.park, dict) else {}
+    resumed = sum(1 for e in task.history if e.get("action") == "child_resumed")
+    checks = (
+        (record.phase != PARKED_PHASE, f"run is {record.phase}, not parked"),
+        (park.get("kind") == "blocking", f"blocking failure: {park.get('cause')}"),
+        (next_command(record) is None, f"{record.source} runs are not resumable"),
+        (
+            int(park.get("total_resumes", 0)) >= run["max_total_resumes"],
+            "max_total_resumes reached",
+        ),
+        (resumed >= run["managed_resumes"], "managed_resumes reached"),
+    )
+    return next((reason for hit, reason in checks if hit), None)
+
+
+def _spawn_resume(repo: Path, runs: RunStore, run_id: str) -> None:
+    """Start a detached `meow resume RUN --continue` and register it as the
+    run's worker, so polls see it running and `resume` accepts it."""
+    nonce = secrets.token_hex(16)
+    log = runs.directory / f"{run_id}.log"
+    runs.update_background(run_id, nonce=nonce, log=str(log))
+    env = {**os.environ, "PYTHONUNBUFFERED": "1", SUPERVISOR_ENV: nonce}
+    argv = _meow("resume", run_id, "--continue", "--work-dir", str(repo))
+    info = detach_command(repo, argv, str(log), env=env)
+    pid = int(info["pid"])
+    runs.update_background(
+        run_id,
+        pid=pid,
+        start_identity=process_identity(pid),
+        state="running",
+        resumed_by="orchestrator",
+    )
+
+
+def resume_attempt(
+    repo: Path, store: OrchestratorStore, orch_id: str, task_id: str
+) -> str:
+    """Relaunch the task's own parked child run through `meow resume RUN
+    --continue` as a detached worker (same branch and worktree); return its
+    run id, or "" when the worker could not start."""
+    run_id = store.load(orch_id).task(task_id).run_ids[-1]
+    try:
+        _spawn_resume(repo, RunStore(repo), run_id)
+    except (OSError, BackgroundError, RunStateError) as exc:
+        why = str(exc) or type(exc).__name__
+        journal_resume(store, orch_id, task_id, "child_resume_failed", why)
+        return ""
+    why = f"meow resume {run_id} --continue"
+    journal_resume(store, orch_id, task_id, "child_resumed", why)
+    return run_id
 
 
 def finalize_passed(repo: Path, task: OrchestratorTask) -> str:
