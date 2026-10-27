@@ -5,8 +5,12 @@ import re
 import shutil
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 from meow.infrastructure.checks import run_captured
+from meow.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
 
 _SENSITIVE = re.compile(
     r"(^|[._-])(env|secrets?|credentials?|tokens?|keys?)([._-]|$)", re.I
@@ -122,14 +126,49 @@ def _no_symlinks(root: Path, relative: Path) -> Path:
     return current
 
 
-def _already_copied(source: Path, destination: Path) -> bool:
-    """True when `destination` is a regular file with exactly `source`'s bytes."""
-    if not destination.is_file() or destination.is_symlink():
-        return False
+def _tracked(worktree: Path, destination: Path) -> bool:
     try:
-        return source.read_bytes() == destination.read_bytes()
-    except OSError:
+        exit_code, _output, timed_out = run_captured(
+            [
+                "git",
+                "ls-files",
+                "--error-unmatch",
+                "--",
+                destination.relative_to(worktree).as_posix(),
+            ],
+            worktree,
+            dict(os.environ),
+            _COMMAND_TIMEOUT,
+        )
+    except (OSError, ValueError):
         return False
+    return exit_code == 0 and not timed_out
+
+
+def copy_setup_file(
+    source: Path, destination: Path, worktree: Path
+) -> Literal["copied", "identical", "kept", "replaced", "skipped"]:
+    """Copy `source` to `destination` without failing on an occupied destination."""
+    if not source.is_file():
+        logger.warning("setup_copy_source_missing", source=str(source))
+        return "skipped"
+    if destination.is_dir() and not destination.is_symlink():
+        raise WorktreeSetupError(
+            f"setup copy destination is a directory: {destination}"
+        )
+    result: Literal["copied", "replaced"] = "copied"
+    if destination.exists():
+        if destination.read_bytes() == source.read_bytes():
+            return "identical"
+        if _tracked(worktree, destination):
+            return "kept"  # the branch wins; install reconciles lockfiles
+        backup = worktree / ".meow" / "setup-backup" / destination.relative_to(worktree)
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(destination, backup, follow_symlinks=False)
+        result = "replaced"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination, follow_symlinks=False)
+    return result
 
 
 def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-arguments, too-many-branches]
@@ -150,18 +189,9 @@ def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-
         relative = _relative(relative_text)
         source = _no_symlinks(repo, relative)
         destination = _no_symlinks(worktree, relative)
-        if source.is_file() and _already_copied(source, destination):
-            pass  # an earlier attempt copied it; resume re-applies setup
-        elif not source.is_file() or destination.exists():
-            raise WorktreeSetupError(
-                "setup copy requires a regular source and vacant destination: "
-                f"{relative}"
-            )
-        else:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, destination, follow_symlinks=False)
+        status = copy_setup_file(source, destination, worktree)
         if record_action:
-            record_action({"kind": "copy", "path": relative_text, "status": "passed"})
+            record_action({"kind": "copy", "path": relative_text, "status": status})
     for argv in manifest["commands"]:
         decision = command_decision(argv) if command_decision else None
         if decision in {"deny", "ask"}:
