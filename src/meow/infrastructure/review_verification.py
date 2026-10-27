@@ -150,7 +150,9 @@ def _status(root: Path, config: dict, signature: dict, state: dict) -> dict:  # 
     status.update(
         blocking=list(evidence.blocking),
         informational=list(evidence.informational),
-        timed_out=[r for r in results if r.required and r.timed_out],
+        timed_out=[
+            f"{r.kind} `{r.command}`" for r in results if r.required and r.timed_out
+        ],
     )
     if record.get("error"):
         status["blocking"].append(record["error"])
@@ -286,7 +288,12 @@ async def review_evidence(
         await _execute(root, config, job)
     status = review_check_status(root, config)
     if status.get("timed_out"):
-        _park_if_timed_out(status["timed_out"])
+        from meow.execution.run_failures import TransientRunError
+
+        raise TransientRunError(
+            "required check timed out twice: " + ", ".join(status["timed_out"]),
+            cause="check_timeout",
+        )
     return _evidence(status)
 
 

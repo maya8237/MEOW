@@ -85,6 +85,22 @@ def test_launch_creates_checkpoint_and_worker_log(tmp_path, monkeypatch):
     assert spawned[0][1]["stdin"] == background.subprocess.DEVNULL
 
 
+def test_unreadable_launcher_identity_is_logged(tmp_path, monkeypatch):
+    warnings = []
+    monkeypatch.setattr(
+        background.subprocess, "Popen", lambda *a, **k: SimpleNamespace(pid=123)
+    )
+    monkeypatch.setattr(background, "_process_identity", lambda _pid: None)
+    monkeypatch.setattr(
+        background.logger, "warning", lambda event, **kw: warnings.append(event)
+    )
+    run_id = background.launch_background(
+        tmp_path, ["run", "feature", "--name", "x", "--background"]
+    )
+    assert warnings == ["launcher_identity_unreadable"]
+    assert RunStore(tmp_path).load(run_id).background["launcher_identity"] is None
+
+
 @pytest.mark.parametrize(
     "flag,delivery",
     [

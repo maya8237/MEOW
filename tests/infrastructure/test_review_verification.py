@@ -208,3 +208,26 @@ def test_review_evidence_parks_on_a_timed_out_required_check(tmp_path, monkeypat
     with pytest.raises(TransientRunError) as caught:
         asyncio.run(api.review_evidence(tmp_path, config))
     assert caught.value.cause == "check_timeout"
+
+
+def test_status_with_a_timed_out_check_survives_json(tmp_path, monkeypatch):
+    from meow.execution.run_failures import TransientRunError
+    from meow.execution.run_state import CheckResult
+    from meow.native.native_review import bind_review_checks, review_checks
+
+    api = _api()
+    config = _config("build", "pass")
+    timed_out = CheckResult("build", "x", True, None, 1.0, "", "r", "f", True)
+    monkeypatch.setattr(api, "run_final_checks", AsyncMock(return_value=[timed_out]))
+    monkeypatch.setattr("meow.native.native_review.load_config", lambda _root: config)
+    with pytest.raises(TransientRunError):
+        asyncio.run(api.review_evidence(tmp_path, config))
+    status = api.review_check_status(tmp_path, config)
+    assert status["timed_out"]
+    json.dumps(status)
+    json.dumps(review_checks(tmp_path, tmp_path, status=True))
+    report = tmp_path / "r-review.md"
+    json.dumps(bind_review_checks(report, tmp_path, tmp_path))
+    with pytest.raises(TransientRunError):
+        review_checks(tmp_path, tmp_path)
+    json.dumps(review_checks(tmp_path, tmp_path, status=True))

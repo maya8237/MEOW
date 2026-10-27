@@ -25,8 +25,11 @@ from meow.execution.run_state import (
     run_owner_alive,
     startup_grace,
 )
+from meow.infrastructure.logging import get_logger
 from meow.project.config import _merge_config, config_paths
 from meow.project.config_env import _expand_config_environment
+
+logger = get_logger(__name__)
 
 # Phases no worker drives any more; a parked run waits for `meow resume`.
 _SETTLED = TERMINAL_PHASES | {PARKED_PHASE}
@@ -205,10 +208,13 @@ def _spawn_worker(store: RunStore, repo: Path, run_id: str, argv: list[str]) -> 
                 creationflags=creationflags,
                 close_fds=True,
             )
+        identity = _process_identity(process.pid)
+        if identity is None:
+            logger.warning("launcher_identity_unreadable", pid=process.pid)
         store.update_background(
             run_id,
             launcher_pid=process.pid,
-            launcher_identity=_process_identity(process.pid),
+            launcher_identity=identity,
             state="starting",
         )
     except (OSError, BackgroundError) as exc:
