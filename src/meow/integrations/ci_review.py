@@ -22,6 +22,10 @@ class CiReviewError(RuntimeError):
     """CI context or review infrastructure could not be verified."""
 
 
+class OutputTooLarge(CiReviewError):
+    """Git output exceeded the review size limit."""
+
+
 @dataclass(frozen=True)
 class CiReviewContext:
     source_sha: str
@@ -35,6 +39,7 @@ class CiReviewContext:
     mr_description_truncated: bool = False
     post_comments: bool = False
     existing_comments: str = ""
+    omitted_files: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -55,8 +60,30 @@ def _git_bytes(repo: Path, *args: str) -> bytes:
         # Git stderr can contain remote URLs or credentials; report the operation only.
         raise CiReviewError(f"git {args[0]} failed (exit {result.returncode})")
     if len(result.stdout) > MAX_DIFF:
-        raise CiReviewError(f"git {args[0]} output exceeds {MAX_DIFF} characters")
+        raise OutputTooLarge(f"git {args[0]} output exceeds {MAX_DIFF} characters")
     return result.stdout
+
+
+def _bounded_diff(repo: Path, base: str, head: str) -> tuple[str, tuple[str, ...]]:
+    """Whole files of the local diff that fit the budget, plus the omitted paths."""
+    names = _git_bytes(
+        repo, "diff", "--no-ext-diff", "--no-renames", "--name-only", "-z", base, head
+    )
+    parts, omitted, size = [], [], 0
+    for raw in filter(None, names.split(b"\0")):
+        name = os.fsdecode(raw)
+        try:
+            patch = _git(
+                repo, "diff", "--no-ext-diff", "--no-renames", base, head, "--", name
+            )
+        except OutputTooLarge:
+            patch = ""
+        if not patch or size + len(patch) > MAX_DIFF:
+            omitted.append(name)
+            continue
+        parts.append(patch)
+        size += len(patch)
+    return "\n".join(parts), tuple(omitted)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -98,7 +125,11 @@ def prepare_ci_review(  # ruff: ignore[complex-structure, too-many-statements, t
         base = _git(repo, "merge-base", target_sha, head)
     except CiReviewError as exc:
         raise CiReviewError("target comparison history unavailable") from exc
-    diff = _git(repo, "diff", "--no-ext-diff", base, head, "--")
+    omitted: tuple[str, ...] = ()
+    try:
+        diff = _git(repo, "diff", "--no-ext-diff", base, head, "--")
+    except OutputTooLarge:
+        diff, omitted = _bounded_diff(repo, base, head)
     mr_env = env if source == "merge_request_event" else {}
     return CiReviewContext(
         head,
@@ -111,6 +142,7 @@ def prepare_ci_review(  # ruff: ignore[complex-structure, too-many-statements, t
         mr_description_truncated=(
             mr_env.get("CI_MERGE_REQUEST_DESCRIPTION_IS_TRUNCATED") == "true"
         ),
+        omitted_files=omitted,
     )
 
 
@@ -275,6 +307,7 @@ def run_ci_review(  # ruff: ignore[complex-structure, too-many-arguments, too-ma
         "comments_posted": comments_posted,
         "comments_resolved": comments_resolved,
         "comments_error": comments_error,
+        "omitted_files": list(context.omitted_files) if context else [],
     }
     report = (
         "# CI review\n\n"

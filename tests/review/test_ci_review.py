@@ -327,3 +327,17 @@ def test_rewriting_dirty_index_without_worktree_change_invalidates_pass(checkout
     assert git(repo, "show", ":file.txt") == "staged during review"
     assert result.verdict == "UNVERIFIED"
     assert "checkout HEAD or files changed" in result.report_path.read_text()
+
+
+def test_oversized_diff_keeps_fitting_files_and_lists_the_rest(checkout):
+    repo, base, _, _ = checkout
+    (repo / "huge.txt").write_text("x\n" * 150_000)
+    (repo / "small.txt").write_text("small\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "big")
+    env = {**checkout[3], "CI_COMMIT_SHA": git(repo, "rev-parse", "HEAD")}
+    context = prepare_ci_review(repo, env, base, target_branch="dev")
+    assert context.omitted_files == ("huge.txt",)
+    assert "small.txt" in context.diff
+    assert "file.txt" in context.diff
+    assert "huge.txt" not in context.diff
