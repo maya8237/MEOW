@@ -145,10 +145,16 @@ class QueueStore:
     def parked(self) -> list[QueueItem]:
         return [item for item in self._load_all() if item.status == "parked"]
 
-    def requeue_parked(self) -> list[QueueItem]:
-        """Return every parked item to `pending` for the next queue worker."""
+    def requeue_parked(self, max_attempts: int | None = None) -> list[QueueItem]:
+        """Return parked items to `pending` for the next queue worker.
+
+        Items already run `max_attempts` times stay parked: requeueing them
+        again would only repeat the same failure.
+        """
         return [
-            self.update(item.id, status="pending", error=None) for item in self.parked()
+            self.update(item.id, status="pending", error=None)
+            for item in self.parked()
+            if max_attempts is None or item.attempts < max_attempts
         ]
 
     def recover_orphans(self) -> list[QueueItem]:

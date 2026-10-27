@@ -19,7 +19,13 @@ from meow.execution.orchestration.report import render_status
 from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
 from meow.execution.queue_state import QueueStateError, QueueStore
 from meow.execution.run_failures import next_command
-from meow.execution.run_state import PARKED_PHASE, RunRecord, RunStateError, RunStore
+from meow.execution.run_state import (
+    PARKED_PHASE,
+    RunRecord,
+    RunStateError,
+    RunStore,
+    driver_alive,
+)
 from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.background import inspect_worker
 from meow.infrastructure.cancellation import clear_cancel
@@ -216,22 +222,30 @@ def _resume_at(record: RunRecord) -> str:
     return "review" if review_first else "generate"
 
 
+def _driven_elsewhere(record: RunRecord) -> bool:
+    """True while another live process still drives the run."""
+    driver = record.driver if isinstance(record.driver, dict) else {}
+    return driver.get("pid") != os.getpid() and bool(driver_alive(record))
+
+
 def _launched_by_supervisor(record: RunRecord) -> bool:
     """True inside the relaunch the run's own live supervisor started."""
     nonce = os.environ.get(SUPERVISOR_ENV)
     return bool(nonce) and nonce == record.background.get("nonce")
 
 
+_SUPERVISED = "its supervisor is still running"
+
+
 def _resume_budget_left(record: RunRecord, config: dict) -> str | None:
     """Why `resume --parked` must skip this record, or None to resume it."""
     park = record.park if isinstance(record.park, dict) else {}
     checks = (
-        (record.phase != PARKED_PHASE, f"phase {record.phase}"),
         (next_command(record) is None, f"{record.source} runs are rerun, not resumed"),
         (
             inspect_worker(record, include_terminal=True).state
             in {"running", "starting"},
-            "its supervisor is still running",
+            _SUPERVISED,
         ),
         (
             int(park.get("total_resumes", 0)) >= config["max_total_resumes"],
@@ -245,16 +259,17 @@ def _resume_budget_left(record: RunRecord, config: dict) -> str | None:
     return next((reason for hit, reason in checks if hit), None)
 
 
-def _parked_records(store: RunStore) -> list[RunRecord]:
+def _parked_run_ids(store: RunStore) -> list[str]:
     """Parked runs, oldest update first; unreadable records are skipped."""
     records = []
     for path in store.record_paths():
         with suppress(RunStateError):
             records.append(store.load(path.stem))
-    return sorted(
-        (record for record in records if record.phase == PARKED_PHASE),
-        key=lambda item: item.updated_at,
-    )
+    return [
+        record.id
+        for record in sorted(records, key=lambda item: item.updated_at)
+        if record.phase == PARKED_PHASE
+    ]
 
 
 async def _resume_one(working_dir: Path, store: RunStore, record: RunRecord) -> dict:
@@ -276,33 +291,74 @@ async def _resume_one(working_dir: Path, store: RunStore, record: RunRecord) -> 
 
 
 def _parked_exit_code(summary: dict[str, list]) -> int:
+    """1 a resumed run is blocked; 75 work is still pending (a run left parked,
+    a live supervisor, a requeued item); else 0. Runs past their budget are
+    reported but never keep a sweep returning 75 forever."""
     phases = [entry["phase"] for entry in summary["resumed"]]
     if any(phase not in {"complete", "delivered", PARKED_PHASE} for phase in phases):
         return EXIT_BLOCKED
-    if PARKED_PHASE in phases or summary["skipped"]:
+    if (
+        PARKED_PHASE in phases
+        or summary["requeued"]
+        or any(entry["retryable"] for entry in summary["skipped"])
+    ):
         return EXIT_TEMPFAIL
     return 0
+
+
+def _requeue_parked_items(working_dir: Path, store: RunStore, config: dict) -> dict:
+    """Requeue parked queue items within budget and settle their old runs.
+
+    A requeued item reruns from scratch, so its parked run record is settled
+    (`cancelled`) instead of being reported by every later sweep.
+    """
+    queue = QueueStore(working_dir)
+    try:
+        requeued = queue.requeue_parked(config["managed_resumes"])
+        left = queue.parked()
+    except QueueStateError:
+        return {"requeued": [], "not_requeued": []}
+    for item in requeued:
+        with suppress(RunStateError):
+            if item.run_id and store.load(item.run_id).phase == PARKED_PHASE:
+                store.transition(
+                    item.run_id,
+                    "cancelled",
+                    last_failure=f"Superseded: queue item {item.id} requeued",
+                )
+    return {
+        "requeued": [item.id for item in requeued],
+        "not_requeued": [item.id for item in left],
+    }
 
 
 async def resume_parked(working_dir: Path) -> int:
     """Continue every parked run within budget, then print a JSON summary.
 
-    Parked queue items are requeued for the next `meow queue` worker. Each
-    run's own output goes to stderr so stdout stays one JSON document.
-    Exit: 0 all settled successfully, 75 something is still parked, 1 a run
-    is blocked.
+    Parked queue items are requeued first (within `managed_resumes` attempts)
+    for the next `meow queue` worker. Each record is reloaded just before it
+    is resumed, since earlier resumes can take hours. Each run's own output
+    goes to stderr so stdout stays one JSON document.
     """
     store = RunStore(working_dir)
     config = run_config(working_dir)
-    summary: dict[str, list] = {"resumed": [], "skipped": [], "requeued": []}
-    for record in _parked_records(store):
+    summary: dict[str, list] = {"resumed": [], "skipped": []}
+    summary.update(_requeue_parked_items(working_dir, store, config))
+    for run_id in _parked_run_ids(store):
+        try:
+            record = store.load(run_id)
+        except RunStateError:
+            continue
+        if record.phase != PARKED_PHASE:
+            continue  # settled or resumed elsewhere meanwhile
         if reason := _resume_budget_left(record, config):
-            summary["skipped"].append({"run_id": record.id, "reason": reason})
+            summary["skipped"].append({
+                "run_id": run_id,
+                "reason": reason,
+                "retryable": reason == _SUPERVISED,
+            })
         else:
             summary["resumed"].append(await _resume_one(working_dir, store, record))
-    with suppress(QueueStateError):
-        requeued = QueueStore(working_dir).requeue_parked()
-        summary["requeued"] = [item.id for item in requeued]
     print(json.dumps(summary))
     return _parked_exit_code(summary)
 
@@ -347,11 +403,13 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
             "--request applies only to a blocked orchestration task.", file=sys.stderr
         )
         return 1
-    if (
-        (continue_run or repair)
-        and not _launched_by_supervisor(record)
-        and inspect_worker(record, include_terminal=True).state
-        in {"running", "starting"}
+    if (continue_run or repair) and (
+        (
+            not _launched_by_supervisor(record)
+            and inspect_worker(record, include_terminal=True).state
+            in {"running", "starting"}
+        )
+        or _driven_elsewhere(record)
     ):
         print(
             "Cannot resume or repair while the background worker is running or "

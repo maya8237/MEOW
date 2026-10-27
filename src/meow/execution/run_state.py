@@ -536,9 +536,24 @@ def run_owner_alive(record: RunRecord) -> bool | None:
                 and time.time() - started > startup_grace(Path(record.repo))
             )
         owners.append(alive)
-    if isinstance(record.driver, dict) and record.driver:
-        owners.append(bool(_owner_alive(record.driver)))
+    if (driver := driver_alive(record)) is not None:
+        owners.append(driver)
     return any(owners) if owners else None
+
+
+def driver_alive(record: RunRecord) -> bool | None:
+    """Whether the recorded driver still runs; None when none was recorded.
+
+    A driver whose birth identity could not be read counts as alive: unknown
+    must never park (or be resumed over) a run that may still be driven.
+    """
+    driver = record.driver if isinstance(record.driver, dict) else {}
+    if not driver:
+        return None
+    alive = _owner_alive(driver)
+    if alive is None:
+        return isinstance(driver.get("pid"), int)
+    return alive
 
 
 def error_log_tail(store: RunStore, run_id: str) -> str:

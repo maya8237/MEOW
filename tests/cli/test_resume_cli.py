@@ -376,11 +376,12 @@ def test_resume_parked_continues_each_run_and_prints_json(tmp_path, capsys):
         first.id: "complete",
         second.id: "failed",
     }
-    assert summary["skipped"] == [
-        {"run_id": queue_run.id, "reason": "queue runs are rerun, not resumed"}
-    ]
+    # The requeued item reruns from scratch: its parked record is settled, so
+    # later sweeps no longer report it.
+    assert summary["skipped"] == []
     assert summary["requeued"] == [item.id]
     assert queue.pending()[0].id == item.id
+    assert store.load(queue_run.id).phase == "cancelled"
     assert store.load(first.id).park["manager_resumes"] == 1
 
 
@@ -409,6 +410,81 @@ def test_resume_parked_skips_supervised_and_exhausted_runs(tmp_path, capsys):
         supervised.id: "its supervisor is still running",
         spent.id: "managed_resumes reached",
     }
+
+
+def _parked_prompt_run(store, tmp_path, request="y"):
+    record = store.create(
+        source="prompt", request=request, repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    store.park(record.id, "boom", "transient", "error")
+    return record
+
+
+def test_resume_parked_reloads_runs_settled_meanwhile(tmp_path, capsys):
+    store, first = _record(tmp_path)
+    store.park(first.id, "boom", "transient", "error")
+    second = _parked_prompt_run(store, tmp_path)
+
+    async def run_sprint(*_args, **kwargs):  # ruff: ignore[unused-async]
+        # While the first run resumes (hours, really), another process
+        # continues the second one.
+        store.transition(kwargs["run_id"], "complete")
+        store.transition(second.id, "resuming")
+
+    with patch("meow.cli.resume_cli.run_sprint", side_effect=run_sprint) as run:
+        assert asyncio.run(resume_parked(tmp_path)) == 0
+    assert run.await_count == 1
+    summary = json.loads(capsys.readouterr().out)
+    assert [entry["run_id"] for entry in summary["resumed"]] == [first.id]
+    assert summary["skipped"] == []
+    assert store.load(second.id).park["manager_resumes"] == 0  # not counted
+
+
+def test_resume_parked_budget_exhausted_is_reported_not_retried(tmp_path, capsys):
+    store, spent = _record(tmp_path)
+    store.park(spent.id, "boom", "transient", "error")
+    current = store.load(spent.id)
+    store.transition(spent.id, "parked", park={**current.park, "manager_resumes": 6})
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        # Not 75: a later sweep could not do anything more for this run.
+        assert asyncio.run(resume_parked(tmp_path)) == 0
+    run.assert_not_awaited()
+    assert json.loads(capsys.readouterr().out)["skipped"] == [
+        {"run_id": spent.id, "reason": "managed_resumes reached", "retryable": False}
+    ]
+
+
+def test_resume_parked_requeue_counts_and_respects_item_budget(tmp_path, capsys):
+    queue = QueueStore(tmp_path)
+    fresh = queue.enqueue("fresh")
+    worn = queue.enqueue("worn")
+    queue.update(fresh.id, status="parked", attempts=1)
+    queue.update(worn.id, status="parked", attempts=6)  # managed_resumes = 6
+
+    assert asyncio.run(resume_parked(tmp_path)) == EXIT_TEMPFAIL  # work queued
+
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["requeued"] == [fresh.id]
+    assert summary["not_requeued"] == [worn.id]
+    statuses = {item.id: item.status for item in queue.list()}
+    assert statuses == {fresh.id: "pending", worn.id: "parked"}
+
+
+def test_resume_refuses_while_another_live_process_drives(tmp_path, monkeypatch):
+    store, record = _record(tmp_path)
+    store.park(record.id, "boom", "transient", "error")
+    current = store.load(record.id)
+    current.driver = {
+        "pid": os.getppid(),
+        "start_identity": _process_identity(os.getppid()),
+    }
+    store._write(current)
+    store.update_background(record.id, nonce="n")
+    monkeypatch.setenv("MEOW_SUPERVISOR_NONCE", "n")  # bypasses the worker only
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
+    run.assert_not_awaited()
+    assert store.load(record.id).phase == "parked"
 
 
 def test_resume_parked_rejects_a_run_id(tmp_path):

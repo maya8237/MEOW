@@ -774,3 +774,13 @@ def test_run_supervised_checkpoints_a_background_style_record(tmp_path, monkeypa
         "nonce": True,
         "pid": os.getpid(),
     }
+
+
+def test_driver_without_start_identity_counts_as_alive(tmp_path):
+    store = RunStore(tmp_path)
+    record = _driven_record(store, tmp_path)
+    current = store.load(record.id)
+    current.driver = {"pid": 999_999_999, "start_identity": None}
+    store._write(current)
+    assert reconcile_stale_runs(store) == []
+    assert store.load(record.id).phase == "generator_started"
