@@ -81,7 +81,6 @@ def _blocking_cause(exc: BaseException) -> str | None:
     from claude_agent_sdk import CLINotFoundError
 
     from meow.infrastructure.worktree_setup import WorktreeSetupError
-    from meow.integrations.issue_solver import IssueUnresolvedError
 
     own = getattr(exc, "cause", None)
     text = str(exc)
@@ -99,7 +98,6 @@ def _blocking_cause(exc: BaseException) -> str | None:
             isinstance(exc, WorktreeSetupError) and own == "policy_denied",
             "policy_denied",
         ),
-        (isinstance(exc, IssueUnresolvedError), "invalid_input"),
         (_is_git_missing(exc), "git_missing"),
         (bool(_POLICY_DENIED.search(text)), "policy_denied"),
         (bool(_NOT_A_REPO.search(text)), "invalid_input"),
@@ -124,7 +122,15 @@ def _is_resource(exc: BaseException) -> bool:
 
 
 def classify_failure(exc: BaseException) -> tuple[FailureKind, str]:
-    """Return `(kind, cause)`: blocking only for the known-permanent cases."""
+    """Return `(kind, cause)`: blocking only for the known-permanent cases.
+
+    A wrapper that only reports "the issue was not solved" is classified by
+    the failure it wraps, so a 429 parks and an auth error still blocks.
+    """
+    from meow.integrations.issue_solver import IssueUnresolvedError
+
+    if isinstance(exc, IssueUnresolvedError) and exc.__cause__ is not None:
+        return classify_failure(exc.__cause__)
     if blocking := _blocking_cause(exc):
         return "blocking", blocking
     own = getattr(exc, "cause", None)

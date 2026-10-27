@@ -343,10 +343,29 @@ def test_park_reads_auto_retries_from_config(tmp_path):
     assert current.park["cause"] == "no_progress"
 
 
-def test_unresolved_issue_is_blocking_invalid_input():
+def _unresolved(cause: BaseException) -> BaseException:
     from meow.integrations.issue_solver import IssueUnresolvedError
 
-    assert classify_failure(IssueUnresolvedError("no such issue")) == (
-        "blocking",
-        "invalid_input",
-    )
+    try:
+        raise IssueUnresolvedError(str(cause)) from cause
+    except IssueUnresolvedError as exc:
+        return exc
+
+
+@pytest.mark.parametrize(
+    "cause,expected",
+    [
+        (TransientRunError("429", cause="rate_limit"), ("transient", "rate_limit")),
+        (ConnectionResetError("reset"), ("transient", "error")),
+        (CLINotFoundError("no claude"), ("blocking", "cli_not_found")),
+        (_ApiFailure("blocking", "auth"), ("blocking", "auth")),
+    ],
+)
+def test_unresolved_issue_classifies_by_its_cause(cause, expected):
+    assert classify_failure(_unresolved(cause)) == expected
+
+
+def test_unresolved_issue_after_resource_exhaustion_parks_as_resource():
+    error = OSError("[WinError 1450] Insufficient system resources")
+    error.winerror = 1450
+    assert classify_failure(_unresolved(error))[0] == "resource"
