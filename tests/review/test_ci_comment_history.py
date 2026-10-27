@@ -423,3 +423,43 @@ def test_gitlab_marks_solved_when_resolve_is_refused(api):
         items = [{"id": "abc", "reason": "Fixed"}]
         assert resolve_review_comments("gitlab", items, env) == 1
     assert calls[-1][1] == {"body": "✅ Solved: Fixed"}
+
+
+def test_long_reworded_finding_is_still_a_duplicate(api):
+    provider, env = api
+    context = CiReviewContext(
+        "head",
+        "feature",
+        "dev",
+        "target",
+        "base",
+        "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+    )
+    long_body = "The retry loop never resets the backoff counter after success. " * 5
+    request, _, _ = fake_api(provider, context, [existing(provider, body=long_body)])
+    finding = {
+        "path": "file.txt",
+        "line": 1,
+        "side": "RIGHT",
+        "body": long_body.replace("never resets", "does not reset"),
+    }
+    with patch("meow.integrations.ci_comments._request", request):
+        assert post_review_comments(provider, context, reply([finding]), env) == 0
+
+
+def test_gitlab_skips_thread_already_marked_solved(api):
+    provider, env = api
+    if provider != "gitlab":
+        pytest.skip("GitLab discussion API")
+    thread = gitlab_thread()
+    thread["notes"].append({"id": 2, "body": "✅ Solved: Fixed"})
+    calls = []
+
+    def request(url, token, payload=None, method=None):
+        calls.append(payload)
+        return [thread] if "?" in url else {}
+
+    with patch("meow.integrations.ci_comments._request", request):
+        items = [{"id": "abc", "reason": "Fixed"}]
+        assert resolve_review_comments("gitlab", items, env) == 0
+    assert all(payload is None for payload in calls)

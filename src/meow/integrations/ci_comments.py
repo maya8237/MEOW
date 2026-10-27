@@ -16,6 +16,7 @@ from meow.integrations.ci_review import MAX_DIFF, CiReviewContext, CiReviewError
 PAGE_SIZE = 100
 SIMILARITY = 0.9
 MARKER = "<!-- meow-review -->"
+SOLVED = "✅ Solved"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -201,7 +202,7 @@ THREADS_QUERY = (
     "query($owner:String!,$name:String!,$number:Int!,$after:String){"
     "repository(owner:$owner,name:$name){pullRequest(number:$number){"
     "reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor}"
-    "nodes{id isResolved comments(first:1){nodes{databaseId body}}}}}}}"
+    "nodes{id isResolved comments(first:100){nodes{databaseId body}}}}}}}"
 )
 RESOLVE_MUTATION = (
     "mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}"
@@ -215,7 +216,10 @@ def _normalize(body: str) -> str:
 
 def _similar(left: str, right: str) -> bool:
     left, right = _normalize(left), _normalize(right)
-    return left == right or SequenceMatcher(None, left, right).ratio() >= SIMILARITY
+    return (
+        left == right
+        or SequenceMatcher(None, left, right, autojunk=False).ratio() >= SIMILARITY
+    )
 
 
 def _graphql_url(env: Mapping[str, str]) -> str:
@@ -241,8 +245,9 @@ def _github_threads(target: str, token: str, env: Mapping[str, str]) -> list[dic
             )
             page = data["data"]["repository"]["pullRequest"]["reviewThreads"]
             for node in page["nodes"]:
-                root = node["comments"]["nodes"][0]
+                root, *replies = node["comments"]["nodes"]
                 threads.append({
+                    "solved": any(r["body"].startswith(SOLVED) for r in replies),
                     "id": node["id"],
                     "resolved": node["isResolved"],
                     "root_id": root["databaseId"],
@@ -403,13 +408,14 @@ def _open_meow_threads(
         return {
             str(t["root_id"]): t
             for t in _github_threads(target, token, env)
-            if not t["resolved"] and MARKER in t["body"]
+            if not t["resolved"] and not t["solved"] and MARKER in t["body"]
         }
     threads = {}
     for discussion in read_review_comments(provider, env)["discussions"]:
-        first = (discussion.get("notes") or [{}])[0]
+        first, *replies = discussion.get("notes") or [{}]
         if (
             MARKER in first.get("body", "")
+            and not any(r.get("body", "").startswith(SOLVED) for r in replies)
             and first.get("resolvable")
             and not first.get("resolved")
         ):
@@ -441,7 +447,7 @@ def _resolve_thread(  # ruff: ignore[too-many-arguments, too-many-positional-arg
             _request(base, token, {"resolved": True}, method="PUT")
         label = "Resolved"
     except CiReviewError:
-        label = "✅ Solved"
+        label = SOLVED
     reply = {"body": f"{label}: {reason}"}
     if provider == "github":
         _request(f"{target}/comments/{thread['root_id']}/replies", token, reply)

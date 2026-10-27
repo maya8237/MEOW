@@ -400,3 +400,30 @@ def test_merge_leaves_malformed_blocks_for_publishing_to_reject():
     merged = merge_shard_responses([broken, "```meow-comments\n[]\n```"])
     expected_blocks = 2
     assert merged.count("```meow-comments") == expected_blocks
+
+
+def test_special_character_file_names_are_matched_literally(checkout):
+    repo, base, _, _ = checkout
+    head = commit_files(repo, {"[id].txt": "one\n", "i.txt": "two\n"})
+    (shard,), omitted = _sharded_diff(repo, base, head)
+    assert not omitted
+    assert shard.files == ("[id].txt", "file.txt", "i.txt")
+    assert shard.diff.count("diff --git") == len(shard.files)
+
+
+def test_omitted_files_go_to_the_first_shard_only(checkout):
+    repo, base, source, _ = checkout
+    shards = (CiShard(("a.py",), "diff a"), CiShard(("b.py",), "diff b"))
+    context = CiReviewContext(
+        source, "feature/x", "dev", base, base, "d", shards=shards, omitted_files=("z",)
+    )
+    seen = {}
+
+    async def review(self, ctx):
+        await asyncio.sleep(0)
+        seen[ctx.diff] = ctx.omitted_files
+        return "PASS", "ok"
+
+    with patch("meow.integrations.ci_review.ReviewerAgent.review_ci_branch", review):
+        asyncio.run(_review(repo, {}, context))
+    assert seen == {"diff a": ("z",), "diff b": ()}

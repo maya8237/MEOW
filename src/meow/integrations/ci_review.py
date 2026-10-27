@@ -79,13 +79,20 @@ def _file_patch(repo: Path, base: str, head: str, name: str) -> str:
     """One file's diff, or "" when it alone exceeds the review size limit."""
     try:
         return _git(
-            repo, "diff", "--no-ext-diff", "--no-renames", base, head, "--", name
+            repo,
+            "diff",
+            "--no-ext-diff",
+            "--no-renames",
+            base,
+            head,
+            "--",
+            f":(literal){name}",
         )
     except OutputTooLarge:
         return ""
 
 
-def _sharded_diff(
+def _sharded_diff(  # ruff: ignore[too-many-statements] -- one pass packs files into shards
     repo: Path, base: str, head: str
 ) -> tuple[tuple[CiShard, ...], tuple[str, ...]]:
     """Group changed files by path into reviewer shards; return unreviewable paths.
@@ -100,11 +107,14 @@ def _sharded_diff(
     shards: list[tuple[list[str], list[str]]] = [([], [])]
     omitted, size = [], 0
     for name in sorted(os.fsdecode(raw) for raw in names.split(b"\0") if raw):
+        files, patches = shards[-1]
+        if len(shards) == MAX_SHARDS and len(files) >= FILES_PER_SHARD:
+            omitted.append(name)  # shards are full; skip fetching its patch
+            continue
         patch = _file_patch(repo, base, head, name)
         if not patch:
             omitted.append(name)
             continue
-        files, patches = shards[-1]
         if files and (len(files) >= FILES_PER_SHARD or size + len(patch) > MAX_DIFF):
             if len(shards) == MAX_SHARDS:
                 omitted.append(name)
@@ -257,6 +267,8 @@ async def _review(
             context,
             diff=shard.diff,
             shards=(),
+            # Omitted files go to the first shard only, to avoid duplicate reviews.
+            omitted_files=context.omitted_files if number == 1 else (),
             other_files=tuple(n for n in everything if n not in shard.files),
             shard_label=f"{number} of {len(context.shards)}",
         )
@@ -289,9 +301,8 @@ def _publish_comments(
     # A failed multi-note publish may have created some notes remotely.
     posted = resolved = None
     try:
-        resolutions = parse_resolutions(text)
         posted = post_review_comments(provider, context, text, env)
-        resolved = resolve_review_comments(provider, resolutions, env)
+        resolved = resolve_review_comments(provider, parse_resolutions(text), env)
     except Exception as exc:
         return posted, resolved, _safe_text(str(exc), env)[:1000]
     return posted, resolved, None

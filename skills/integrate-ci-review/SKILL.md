@@ -173,9 +173,10 @@ the user opts into uv; do not add an install-spec variable or ask the user to ch
 Findings become inline discussions on added/deleted lines. Existing comments and
 replies inform the review; already reported concerns stay in the report rather
 than becoming new notes. The CLI checks locations and remote revisions, then
-re-fetches comments to skip matching bodies at the same current diff location.
-Missing tokens, unreadable/oversized history, malformed findings, or publishing
-failures exit 2 and retain artifacts. Partial publishes may leave notes posted;
+skips matching or reworded bodies (open outdated threads too). Fixed threads meow
+started are resolved, or answered "✅ Solved" if refused. Missing tokens or
+unreadable history exit 2; publishing failures keep the PASS/FAIL exit code and set
+`comments_error` in `verdict.json`. Partial publishes may leave notes posted;
 concurrent jobs can still race, so serialize comment-posting jobs per PR/MR.
 
 1. Make the smallest edit that fits the existing CI layout. Preserve comments,
