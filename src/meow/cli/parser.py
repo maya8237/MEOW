@@ -5,6 +5,7 @@ import sys
 from importlib.metadata import version
 
 from meow.cli.catalog_cli import add_catalog_parsers
+from meow.cli.onboard_cli import add_onboard_parser
 from meow.cli.schedule_cli import add_schedule_parser
 from meow.cli.skills_cli import add_skills_parser
 from meow.native.native_cli import add_native_parser
@@ -25,6 +26,7 @@ _VISIBLE_COMMANDS = (
     "skills",
     "ui",
     "schedule",
+    "onboard",
 )
 
 
@@ -239,6 +241,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     )
 
     _add_run_parser(subparsers)
+    add_onboard_parser(subparsers)
     add_schedule_parser(subparsers)
     scheduled = _add_hidden_parser(subparsers, "_scheduled")
     scheduled.add_argument("schedule_id")

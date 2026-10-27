@@ -1,4 +1,7 @@
 # irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
+[CmdletBinding()]
+param([switch]${non-interactive})
+
 & {
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
@@ -107,7 +110,9 @@
         } finally {
             $env:PYTHONPATH = $previousPath
         }
-        & (Join-Path $destination 'runtime\Scripts\python.exe') -m meow.installer.releases --activate $destination --setup
+        $setupArgs = @('--activate', $destination)
+        if (-not ${non-interactive}) { $setupArgs += '--setup' }
+        & (Join-Path $destination 'runtime\Scripts\python.exe') -m meow.installer.releases @setupArgs
         if ($LASTEXITCODE -eq 130) { return }
         Invoke-Checked 'MEOW setup failed. Rerun the installer to retry.'
         $bin = Join-Path $root 'bin'

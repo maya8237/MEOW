@@ -287,10 +287,13 @@ def _verify_jira(user_config: dict) -> dict:
             "status": "not_configured",
             "mcp": _not_configured(),
         }
+    mcp_config = jira.get("mcp")
+    mcp_env = mcp_config.get("env", {}) if isinstance(mcp_config, dict) else {}
     mcp = _verify_mcp(
         "jira",
-        jira.get("mcp"),
+        mcp_config,
         required_env=("JIRA_URL",),
+        config_env=mcp_env,
     )
     project_key_configured = bool(jira.get("project_key"))
     mcp["project_key_configured"] = project_key_configured

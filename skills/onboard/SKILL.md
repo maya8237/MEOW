@@ -5,7 +5,11 @@ description: Use when setting up MEOW in a repository, refreshing an already onb
 
 # Onboard a repository
 
-Use for new projects or the current `.meow/` layout. Work in the target repository and follow its agent instructions.
+Use for new or current projects; follow repository instructions. For explicit
+flag-based setup, run `meow onboard --non-interactive --work-dir PATH` with the
+supplied options (`meow onboard --help`; [flags](../../docs/ONBOARDING.md)).
+This configures only requested options locally, never prompts or starts agents,
+and reports skipped features; do not continue into interactive steps afterward.
 Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## 0. Check the onboarding state first

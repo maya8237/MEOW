@@ -41,13 +41,17 @@ class ReleaseServer(http.server.SimpleHTTPRequestHandler):
 
 
 def snapshot(destination: Path, version: str) -> None:
-    """Copy the tracked checkout to DESTINATION, stamped with an unpublished VERSION.
+    """Copy the checkout to DESTINATION, stamped with an unpublished VERSION.
 
     Once a release is on PyPI, pip prefers its same-numbered wheel over the
     freshly built one and fails the hash check, so the smoke wheel needs its own.
     """
     names = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.split("\0")
     for name in filter(None, names):
         if (ROOT / name).is_file():
@@ -107,12 +111,19 @@ def bootstrap(env: dict) -> None:
             "powershell",
             "-NoProfile",
             "-Command",
-            f"Invoke-Expression ([IO.File]::ReadAllText('{script}')); "
+            f"& ([scriptblock]::Create([IO.File]::ReadAllText('{script}'))) "
+            "-non-interactive; "
             "exit $LASTEXITCODE",
         ]
-        run(argv, env, input="n\nn\n")
+        output = run(argv, env, input="")
     else:
-        run(["sh"], env, input=(ROOT / "scripts/install.sh").read_text())
+        output = run(
+            ["sh", "-s", "--", "--non-interactive"],
+            env,
+            input=(ROOT / "scripts/install.sh").read_text(),
+        )
+    assert "Enable Bun's shared dependency store" not in output
+    assert "Refresh registered MEOW projects" not in output
 
 
 def check_install(home: Path, env: dict, version: str) -> None:

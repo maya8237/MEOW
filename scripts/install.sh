@@ -2,6 +2,18 @@
 # curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh
 set -eu
 
+non_interactive=false
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --non-interactive) non_interactive=true ;;
+        -h|--help)
+            printf '%s\n' 'Usage: sh install.sh [--non-interactive]' 'Skip optional Bun and project setup prompts with --non-interactive.'
+            exit 0 ;;
+        *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
 cat <<'MEOW'
 
        /\_/\
@@ -97,7 +109,9 @@ purelib=$("$bundle/runtime/bin/python3" -c "import sysconfig;print(sysconfig.get
 printf '%s\n' 'Installing pinned dependencies and launcher (this can take minutes)...'
 PYTHONPATH=$purelib "$python" -m meow.installer.releases --finish "$destination" --bundle "$bundle"
 
-if [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
+if [ "$non_interactive" = true ]; then
+    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination"
+elif [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
     "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup </dev/tty
 else
     "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup </dev/null
