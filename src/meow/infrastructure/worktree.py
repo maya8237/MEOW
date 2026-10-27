@@ -488,6 +488,10 @@ def _release_claim(worktree_dir: Path, release: bool) -> None:
 _GIT_TIMEOUT = 600
 
 
+class GitTimeoutError(RuntimeError):
+    """A git command was killed at its timeout (network or a stuck hook)."""
+
+
 def _run_git(
     argv: list[str], *, cwd: Path, timeout: float | None = None
 ) -> subprocess.CompletedProcess:
@@ -516,7 +520,7 @@ def _run_git(
         except subprocess.TimeoutExpired:
             kill_process_tree(process)
             process.communicate(timeout=5)
-            raise RuntimeError(
+            raise GitTimeoutError(
                 f"{' '.join(argv)} timed out after {timeout}s in {cwd}"
             ) from None
         except BaseException:

@@ -331,7 +331,9 @@ def _flaky_push(monkeypatch):
 
     def flaky_git(directory, *args, check=True):
         if args[:1] == ("push",):
-            raise RuntimeError("git push failed: Connection reset by peer")
+            raise delivery.GitCommandError(
+                "push -u origin dev", "fatal: Connection reset by peer"
+            )
         return real_git(directory, *args, check=check)
 
     monkeypatch.setattr(delivery, "_git", flaky_git)

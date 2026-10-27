@@ -475,14 +475,16 @@ def test_push_fix_refuses_a_switched_branch(tmp_path):
 def _failing_push(monkeypatch, message):
     from meow.execution import delivery
 
-    real_git = delivery._git
+    real_run_git = delivery._run_git
 
-    def git_with_push_error(directory, *args, check=True):
-        if args[:1] == ("push",):
-            raise RuntimeError(f"git push failed: {message}")
-        return real_git(directory, *args, check=check)
+    def run_git_with_push_error(argv, *, cwd, timeout=None):
+        if argv[1:2] == ["push"]:
+            if isinstance(message, Exception):
+                raise message
+            return subprocess.CompletedProcess(argv, 128, "", message)
+        return real_run_git(argv, cwd=cwd, timeout=timeout)
 
-    monkeypatch.setattr(delivery, "_git", git_with_push_error)
+    monkeypatch.setattr(delivery, "_run_git", run_git_with_push_error)
 
 
 @pytest.mark.parametrize(
@@ -535,3 +537,39 @@ def test_transient_push_failure_parks(tmp_path, monkeypatch, message):
     record = store.load(run_id)
     assert record.phase == "parked"
     assert record.park["kind"] == "transient"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "fatal: unable to access 'https://h/webhooks.git/': Could not resolve host: h",
+        "error: RPC failed; curl 56 Connection reset by peer\n"
+        "To https://h/declined-offers.git",
+        "fatal: Unable to create '/r/.git/index.lock': File exists.",
+    ],
+)
+def test_network_push_failure_parks_despite_hooky_names(tmp_path, monkeypatch, message):
+    repo, _ = repository(tmp_path)
+    git(repo, "switch", "-qc", "feature/add-pre-commit-hook")
+    (repo / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, repo)
+    _failing_push(monkeypatch, message)
+    with pytest.raises(RuntimeError, match="add-pre-commit-hook"):
+        deliver_verified_run(store, run_id, commit=True)
+    assert store.load(run_id).phase == "parked"
+
+
+def test_push_timeout_parks_before_any_text_rule(tmp_path, monkeypatch):
+    from meow.infrastructure.worktree import GitTimeoutError
+
+    repo, _ = repository(tmp_path)
+    git(repo, "switch", "-qc", "hook-declined-protected-branch")
+    (repo / "file.txt").write_text("after", encoding="utf-8")
+    store, run_id = record_for(repo, repo)
+    _failing_push(
+        monkeypatch,
+        GitTimeoutError("git push -u origin hook-declined-protected-branch timed out"),
+    )
+    with pytest.raises(RuntimeError):
+        deliver_verified_run(store, run_id, commit=True)
+    assert store.load(run_id).phase == "parked"

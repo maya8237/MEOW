@@ -234,3 +234,16 @@ def test_finalize_that_parks_its_run_exits_75_with_next_command(tmp_path):
     assert payload["retryable"] is True
     assert payload["next_command"] == store.load(run_id).results["next_command"]
     assert "--repair" in payload["next_command"]
+
+
+def test_already_parked_run_failing_deterministically_exits_1(tmp_path):
+    repo = _repo(tmp_path)
+    run_id = checkpoint(repo, repo, "generator_started", request="x")["run_id"]
+    RunStore(repo).park(run_id, "earlier crash", "transient", "error")
+    code, _out, err = run_native(
+        "checkpoint", "complete", "--run-id", run_id, "--work-dir", str(repo)
+    )
+    assert code == 1, err
+    payload = _error(err)
+    assert payload["retryable"] is False
+    assert payload["next_command"] is None

@@ -13,11 +13,11 @@ and [WORKFLOWS.md](../../docs/WORKFLOWS.md); load relevant sections as needed.
 ## The `meow native` helper
 
 Helpers start no agents and print JSON on stdout; errors print one JSON line
-on stderr. Exit 75 (`"retryable": true`): wait `retry_after` and rerun the same
-command, at most `[run] auto_retries` (default 3) consecutive 75s without
-progress. Exit 1, or retries spent: report the error and stop dependent work.
-If `meow` is missing,
-point to the README installer; do not guess a venv path. Use `COMMAND --help`
+on stderr. Exit 75 (`"retryable": true`): wait `retry_after`, then run its
+`next_command` if set, else rerun the same command; at most `[run] auto_retries`
+(default 3) consecutive 75s without progress. Exit 1, or retries spent: report
+the error and stop dependent work. If `meow` is missing, point to the README
+installer; do not guess a venv path. Use `COMMAND --help`
 for flags. Pass `--work-dir PATH` (also `--working-dir`/`-d`) for the project
 root and `--active-dir PATH` where applicable for the prepared worktree. Keep
 these directories consistent across calls.

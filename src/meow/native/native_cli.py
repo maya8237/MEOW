@@ -565,10 +565,18 @@ def _classify(exc: BaseException) -> tuple[bool, str]:
     return False, UNRECOGNISED_CAUSE
 
 
-def _parked_run(working_dir: Path, run_id: object) -> dict | None:
-    """The run's own retry decision when the failed call parked it."""
+def _phase(working_dir: Path, run_id: object) -> str | None:
     if not isinstance(run_id, str):
         return None
+    with suppress(Exception):
+        return RunStore(working_dir).load(run_id).phase
+    return None
+
+
+def _parked_by_call(working_dir: Path, run_id: object, before: str | None) -> dict:
+    """The run's own retry decision when this call moved it into `parked`."""
+    if before in {None, PARKED_PHASE}:
+        return {}
     with suppress(Exception):
         record = RunStore(working_dir).load(run_id)
         command = record.results.get("next_command")
@@ -580,7 +588,7 @@ def _parked_run(working_dir: Path, run_id: object) -> dict | None:
                 "retry_after": park.get("retry_after") or RETRY_AFTER,
                 "next_command": command,
             }
-    return None
+    return {}
 
 
 def run_native(args, argv: list[str] | None = None) -> None:
@@ -593,6 +601,7 @@ def run_native(args, argv: list[str] | None = None) -> None:
     active_dir = _resolve(args.active_dir, working_dir) or working_dir
     run_id = getattr(args, "run_id", None)
     reconcile_quietly(working_dir, skip=run_id if isinstance(run_id, str) else None)
+    before = _phase(working_dir, run_id)
     try:
         result = _HANDLERS[args.native_command](args, working_dir, active_dir)
     except KeyboardInterrupt:
@@ -607,9 +616,9 @@ def run_native(args, argv: list[str] | None = None) -> None:
             "command": ["meow", *(argv if argv is not None else sys.argv[1:])],
             "next_command": None,
         }
-        # A run the call parked (e.g. a transient push in finalize) is
+        # A run this call parked (e.g. a transient push in finalize) is
         # retryable through its record, whatever the raw exception says.
-        payload.update(_parked_run(working_dir, run_id) or {})
+        payload.update(_parked_by_call(working_dir, run_id, before))
         print(json.dumps(payload), file=sys.stderr, flush=True)
         raise SystemExit(EXIT_TEMPFAIL if payload["retryable"] else 1) from exc
     print(json.dumps(result))

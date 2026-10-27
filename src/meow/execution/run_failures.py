@@ -16,7 +16,11 @@ from meow.execution.run_state import (
     TERMINAL_PHASES,
     RunStateError,
 )
-from meow.infrastructure.worktree import DirtyWorkingTreeError, StartPointError
+from meow.infrastructure.worktree import (
+    DirtyWorkingTreeError,
+    GitTimeoutError,
+    StartPointError,
+)
 
 if TYPE_CHECKING:
     from meow.execution.run_state import RunRecord
@@ -168,7 +172,7 @@ def _transient_leaf(exc: BaseException) -> bool:
 
     if isinstance(exc, (TransientRunError, ProcessError, CLIConnectionError)):
         return True
-    if isinstance(exc, (TimeoutError, subprocess.TimeoutExpired)):
+    if isinstance(exc, (TimeoutError, subprocess.TimeoutExpired, GitTimeoutError)):
         return True
     # ApiFailure (agents/api_errors.py), duck-typed: rate limit, overload, ...
     if getattr(exc, "kind", None) in {"transient", "resource"} and isinstance(
