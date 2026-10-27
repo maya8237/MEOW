@@ -55,6 +55,7 @@ temporary=''
 trap '[ -z "$temporary" ] || rm -f "$temporary"' 0
 trap 'exit 130' HUP INT TERM
 if [ -z "$script" ] || [ ! -f "$script" ]; then
+    printf '%s\n' 'Downloading the uninstaller...'
     temporary=$(mktemp)
     curl -fsSL --retry 3 https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.py -o "$temporary"
     script=$temporary

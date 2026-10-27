@@ -40,10 +40,12 @@
         return $best.Path
     }
     try {
+        Write-Host 'Locating Python 3.12+...'
         $python = Find-Python
         $script = $null
         if ($PSScriptRoot) { $script = Join-Path $PSScriptRoot 'uninstall.py' }
         if (-not $script -or -not (Test-Path -LiteralPath $script)) {
+            Write-Host 'Downloading the uninstaller...'
             $temporary = [IO.Path]::GetTempFileName()
             Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.py' -OutFile $temporary
             $script = $temporary
