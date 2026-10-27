@@ -183,13 +183,12 @@ access), or `--post-comments github` with `MEOW_GITHUB_TOKEN` (Pull requests wri
 [the integration skill](../skills/integrate-ci-review/SKILL.md) for CI variables.
 Posting mode requires an MR event and validates added/deleted-line locations
 and remote revisions. Existing comments inform the review; matching inline notes
-(including reworded ones and open threads whose line moved) are skipped on reruns.
-Open threads meow started (marked `<!-- meow-review -->`) that the reviewer finds fixed
-are resolved with a "Resolved: reason" reply (GitHub uses GraphQL); if resolving is refused they get a "✅ Solved: reason" reply instead.
-Unreadable history before the review exits 2 with artifacts. Publishing failures
-after it do not change the PASS/FAIL exit code; they are recorded as `comments_error`
-in `verdict.json` and the report. Notes use the token's identity; partial publishes
-can leave notes posted.
+(reworded, or open with a moved line) are skipped on reruns. Open threads meow
+started (marked `<!-- meow-review -->`) that the reviewer finds fixed are resolved
+with a "Resolved: reason" reply, or "✅ Solved: reason" if resolving is refused.
+Unreadable history exits 2 with artifacts. Publishing failures do not change the
+PASS/FAIL exit code; see `comments_error` in `verdict.json`. Notes use the
+token's identity; partial publishes can leave notes posted.
 
 ## Maintainer and internal commands
 
