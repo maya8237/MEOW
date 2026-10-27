@@ -10,6 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from meow.common.atomic import replace_with_retry
+from meow.common.process import process_identity
 
 MAX_OUTPUT = 8000
 _DEFAULT_AUTO_RETRIES = 3
@@ -355,6 +356,17 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
         if record.sessions.get(role) == session_id:
             return record
         record.sessions[role] = session_id
+        record.updated_at = _now()
+        return self._write(record)
+
+    def set_driver(self, run_id: str) -> RunRecord:
+        """Record the process now driving the run (read by liveness checks)."""
+        record = self.load(run_id)
+        record.driver = {
+            "pid": os.getpid(),
+            "start_identity": process_identity(os.getpid()),
+            "host": "claude-code" if os.environ.get("CLAUDECODE") else "cli",
+        }
         record.updated_at = _now()
         return self._write(record)
 

@@ -79,7 +79,7 @@ def test_launch_creates_checkpoint_and_worker_log(tmp_path, monkeypatch):
     assert record.background["launcher_pid"] == worker_pid
     assert record.background["state"] == "starting"
     assert (RunStore(tmp_path).directory / f"{run_id}.log").is_file()
-    assert spawned[0][0][:2] == [sys.executable, "-c"]
+    assert spawned[0][0][:3] == [sys.executable, "-u", "-c"]
     assert spawned[0][1]["stdin"] == background.subprocess.DEVNULL
 
 
@@ -306,7 +306,7 @@ def test_orchestrator_task_launch_uses_seed(tmp_path, monkeypatch):
     assert record.worktree == str((tmp_path / "wt").resolve())
     assert record.background["argv"] == argv
     assert record.background["launcher_pid"] == worker_pid
-    assert spawned[0][3:5] == ["_worker", run_id]
+    assert spawned[0][4:6] == ["_worker", run_id]
 
 
 def test_orchestrator_task_launch_without_seed_is_rejected(tmp_path):
@@ -452,3 +452,19 @@ def test_windows_detach_hides_the_console_without_detaching_it(tmp_path, monkeyp
 
     assert seen["creationflags"] & 0x08000000
     assert not seen["creationflags"] & 0x8
+
+
+def test_worker_spawned_unbuffered(tmp_path, monkeypatch):
+    spawned = []
+
+    def fake_popen(argv, **kwargs):
+        spawned.append((argv, kwargs))
+        return SimpleNamespace(pid=1)
+
+    monkeypatch.setattr(background.subprocess, "Popen", fake_popen)
+    background.launch_background(
+        tmp_path, ["run", "feature", "--name", "x", "--background"]
+    )
+    argv, kwargs = spawned[0]
+    assert argv[:3] == [sys.executable, "-u", "-c"]
+    assert kwargs["env"]["PYTHONUNBUFFERED"] == "1"

@@ -31,7 +31,7 @@ from meow.infrastructure.checks import (
     config_fingerprint,
 )
 from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
-from meow.infrastructure.logging import get_logger
+from meow.infrastructure.logging import configure_error_log, get_logger
 from meow.infrastructure.node_dependencies import ensure_node_dependencies
 from meow.infrastructure.worktree import (
     _is_linked_worktree,
@@ -190,6 +190,8 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, c
         record = store.load(run_id)
         store.transition(run_id, record.phase, delivery={**record.delivery, **delivery})
     try:
+        configure_error_log(store.directory / f"{run_id}.error.log")
+        store.set_driver(run_id)
         base = store.load(run_id).delivery.get("base", "none (not selected)")
         print(f"[run] MR target: {base} (saved for resume).", flush=True)
         await _drive_sprint(

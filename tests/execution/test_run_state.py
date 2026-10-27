@@ -1,6 +1,7 @@
 """Durable run journal contract."""
 
 import json
+import os
 
 import pytest
 
@@ -253,3 +254,24 @@ def test_replace_does_not_retry_other_errors(tmp_path, monkeypatch):
         replace_with_retry(tmp_path / "missing", tmp_path / "target")
     assert calls["n"] == 1
     assert sleeps == []
+
+
+@pytest.mark.parametrize(("claudecode", "host"), [("1", "claude-code"), (None, "cli")])
+def test_run_records_driver(tmp_path, monkeypatch, claudecode, host):
+    from meow.common.process import process_identity
+
+    if claudecode is None:
+        monkeypatch.delenv("CLAUDECODE", raising=False)
+    else:
+        monkeypatch.setenv("CLAUDECODE", claudecode)
+    store = RunStore(tmp_path)
+    run = store.create(
+        source="prompt", request="r", repo=tmp_path, worktree=tmp_path, branch="b"
+    )
+    driver = store.set_driver(run.id).driver
+    assert driver == {
+        "pid": os.getpid(),
+        "start_identity": process_identity(os.getpid()),
+        "host": host,
+    }
+    assert store.load(run.id).driver == driver

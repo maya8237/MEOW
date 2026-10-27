@@ -182,6 +182,7 @@ def _spawn_worker(store: RunStore, repo: Path, run_id: str, argv: list[str]) -> 
         )
     command = [
         sys.executable,
+        "-u",
         "-c",
         "from meow.cli.cli import cli_main; cli_main()",
         "_worker",
@@ -197,6 +198,7 @@ def _spawn_worker(store: RunStore, repo: Path, run_id: str, argv: list[str]) -> 
             process = subprocess.Popen(
                 command,
                 cwd=repo,
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
