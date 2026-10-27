@@ -4,7 +4,11 @@ import subprocess
 
 import pytest
 
-from meow.infrastructure.worktree import _ensure_branch_worktree
+from meow.infrastructure.worktree import (
+    _ensure_branch_worktree,
+    _ensure_feature_worktree,
+    resolve_start_point,
+)
 from tests.worktrees.test_worktree import git, make_repo
 
 
@@ -59,7 +63,9 @@ def test_existing_branch_ignores_start_point(tmp_path):
 def test_unknown_start_point_fails_without_creating_the_branch(tmp_path):
     repo = repo_with_base_branch_ahead(tmp_path)
 
-    with pytest.raises(RuntimeError, match="Could not create worktree"):
+    with pytest.raises(
+        RuntimeError, match=r"refs/heads/no-such-ref.*refs/remotes/origin/no-such-ref"
+    ):
         _ensure_branch_worktree(repo, "w", "feature", start_point="no-such-ref")
 
     assert not (repo / ".worktrees" / "w").exists()
@@ -77,3 +83,61 @@ def test_option_like_start_point_is_rejected(tmp_path):
 
     with pytest.raises(RuntimeError, match="Invalid start point"):
         _ensure_branch_worktree(repo, "w", "feature", start_point="--detach")
+
+
+def origin_clone(tmp_path):
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    main = tmp_path / "main"
+    main.mkdir()
+    repo = make_repo(str(main))
+    git(repo, "remote", "add", "origin", str(origin))
+    return repo
+
+
+def test_start_point_from_linked_worktree(tmp_path):
+    repo = origin_clone(tmp_path)
+    integ = _ensure_branch_worktree(repo, "integ", "orchestrator/abc")
+    (integ / "t.txt").write_text("t\n", encoding="utf-8")
+    git(integ, "add", "t.txt")
+    git(integ, "commit", "-q", "-m", "integ")
+
+    path = _ensure_branch_worktree(
+        integ, "t1", "orchestrator/abc-t1", start_point="orchestrator/abc"
+    )
+
+    assert rev(path, "HEAD") == rev(repo, "orchestrator/abc")
+
+
+def test_start_point_fetches_missing_remote_branch(tmp_path):
+    repo = origin_clone(tmp_path)
+    git(repo, "switch", "-q", "-c", "foundation")
+    git(repo, "push", "-q", "origin", "foundation")
+    sha = rev(repo, "foundation")
+    git(repo, "switch", "-q", "-")
+    git(repo, "branch", "-q", "-D", "foundation")
+    git(repo, "update-ref", "-d", "refs/remotes/origin/foundation")
+
+    assert resolve_start_point(repo, "foundation") == sha
+
+
+def test_start_point_unknown_ref_lists_tried(tmp_path):
+    repo = origin_clone(tmp_path)
+
+    with pytest.raises(
+        RuntimeError, match=r"refs/heads/nope.*refs/remotes/origin/nope"
+    ):
+        resolve_start_point(repo, "nope")
+
+
+def test_detached_worktree_uses_resolved_source(tmp_path):
+    repo = origin_clone(tmp_path)
+    git(repo, "switch", "-q", "-c", "foundation")
+    git(repo, "push", "-q", "origin", "foundation")
+    sha = rev(repo, "foundation")
+    git(repo, "switch", "-q", "-")
+    git(repo, "branch", "-q", "-D", "foundation")
+
+    path = _ensure_feature_worktree(repo, "f", source_branch="foundation")
+
+    assert rev(path, "HEAD") == sha

@@ -236,7 +236,9 @@ class FreshFeatureWorktreeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
 
-            with self.assertRaisesRegex(RuntimeError, "Failed to create worktree"):
+            with self.assertRaisesRegex(
+                RuntimeError, "refs/heads/no-such-branch.*refs/remotes/origin"
+            ):
                 _ensure_feature_worktree(
                     root, "feat", source_branch="no-such-branch", fresh=True
                 )
@@ -311,7 +313,9 @@ def test_invalid_base_does_not_reuse_existing_worktree(tmp_path, source_branch):
     first = _ensure_feature_worktree(root, "feat")
     (first / "README.md").write_text("unfinished work", encoding="utf-8")
 
-    with pytest.raises(RuntimeError, match="Failed to create worktree"):
+    with pytest.raises(
+        RuntimeError, match=r"Invalid start point|refs/heads/missing-branch"
+    ):
         _ensure_feature_worktree(root, "feat", source_branch=source_branch)
 
     assert (first / "README.md").read_text(encoding="utf-8") == "unfinished work"
