@@ -334,3 +334,60 @@ def test_status_pipeline_verified_and_absent(tmp_path, capsys):
     assert status(tmp_path, plain.id) == 0
     out = capsys.readouterr().out
     assert "Pipeline: verified\n" in out and "Merge request" not in out
+
+
+def _orchestrator_json(tmp_path, capsys, phase, **fields):
+    import json
+
+    from meow.cli.status_cli import _orchestration_status
+
+    orchestrator = make_orchestrator(tmp_path, phase, merged=0, total=1)
+    if fields:
+        OrchestratorStore(tmp_path).update(
+            orchestrator.id, lambda r: [setattr(r, k, v) for k, v in fields.items()]
+        )
+    assert _orchestration_status(tmp_path, orchestrator.id, as_json=True) == 0
+    return orchestrator, json.loads(capsys.readouterr().out)
+
+
+def test_blocked_orchestrator_is_settled_without_a_next_command(tmp_path, capsys):
+    """Only a person can unblock it (`--task`/`--request`): never a retry."""
+    _, payload = _orchestrator_json(tmp_path, capsys, "blocked")
+    assert payload["settled"] is True
+    assert payload["retryable"] is False
+    assert payload["next_command"] is None
+
+
+def test_failed_orchestrator_with_a_transient_error_stays_retryable(tmp_path, capsys):
+    error = {"phase": "running", "message": "reset", "kind": "transient", "cause": "x"}
+    orchestrator, payload = _orchestrator_json(tmp_path, capsys, "failed", error=error)
+    assert payload["settled"] is True
+    assert payload["retryable"] is True
+    assert payload["next_command"] == f"meow resume {orchestrator.id} --continue"
+    assert payload["cause"] == "x"
+
+
+def test_failed_orchestrator_with_a_blocking_error_is_terminal(tmp_path, capsys):
+    error = {"phase": "running", "message": "no", "kind": "blocking", "cause": "auth"}
+    _, payload = _orchestrator_json(tmp_path, capsys, "failed", error=error)
+    assert payload["retryable"] is False
+    assert payload["next_command"] is None
+    assert payload["cause"] == "auth"
+
+
+def test_failed_orchestrator_stops_retrying_past_its_budget(tmp_path, capsys):
+    error = {"phase": "running", "message": "reset", "kind": "transient", "cause": "x"}
+    options = {"test": False, "pr": True, "failed_resumes": 99}
+    _, payload = _orchestrator_json(
+        tmp_path, capsys, "failed", error=error, options=options
+    )
+    assert payload["retryable"] is False
+    assert payload["next_command"] is None
+    assert payload["not_resumed_reason"] == "managed_resumes reached"
+
+
+def test_failed_orchestrator_without_a_classified_error_is_terminal(tmp_path, capsys):
+    error = {"phase": "running", "message": "old record"}
+    _, payload = _orchestrator_json(tmp_path, capsys, "failed", error=error)
+    assert payload["retryable"] is False
+    assert payload["next_command"] is None

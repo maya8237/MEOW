@@ -151,6 +151,10 @@ def prepare_resume(
     elif record.phase == "failed":
         record.phase = (record.error or {}).get("phase", "running")
         record.error = None
+        # Spent by resumes of a failed record, bounded by `managed_resumes`.
+        record.options["failed_resumes"] = (
+            int(record.options.get("failed_resumes", 0)) + 1
+        )
 
 
 class _Driver:
@@ -185,7 +189,11 @@ class _Driver:
         return exit_code(record)
 
     def _fail(self, exc: BaseException) -> None:
-        """Mark the orchestrator `failed`, remembering where it stopped."""
+        """Mark the orchestrator `failed`, remembering where it stopped and
+        whether a resume could help (`kind`/`cause`, as for runs)."""
+        from meow.execution.run_failures import classify_failure
+
+        kind, cause = classify_failure(exc)
 
         def mutate(record: OrchestratorRecord) -> None:
             if record.phase in TERMINAL_PHASES:
@@ -193,6 +201,8 @@ class _Driver:
             record.error = {
                 "phase": record.phase,
                 "message": str(exc) or type(exc).__name__,
+                "kind": kind,
+                "cause": cause,
             }
             record.phase = "failed"
 

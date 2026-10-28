@@ -66,7 +66,12 @@ def test_jira_fetch_failure_fails_before_worktree(tmp_path, monkeypatch):
     record = world.record(oid)
     assert code == EXIT_FAILED
     assert record.phase == "failed"
-    assert record.error == {"phase": "decomposing", "message": "No Jira issues matched"}
+    assert record.error == {
+        "phase": "decomposing",
+        "message": "No Jira issues matched",
+        "kind": "transient",
+        "cause": "error",
+    }
     assert not (world.repo / ".worktrees").exists()
     assert world.sim.launcher.launches == []
 
@@ -387,6 +392,41 @@ def test_no_pr_option_exits_0_without_pr(tmp_path, monkeypatch):
     assert git(world.remote, "show", f"orchestrator/{oid}:api.py") == "x = 1"
 
 
+def test_blocking_driver_exception_is_recorded_as_blocking(tmp_path, monkeypatch):
+    from meow.execution.run_failures import BlockingRunError
+
+    world = one_task_world(tmp_path, monkeypatch, [("hang",)])
+
+    async def explode(seconds):  # ruff: ignore[unused-async]
+        raise BlockingRunError("no auth", cause="auth")
+
+    world.sim.sleep = explode
+    with pytest.raises(BlockingRunError):
+        world.start()
+
+    error = world.store.latest().error
+    assert (error["kind"], error["cause"]) == ("blocking", "auth")
+
+
+def test_resume_of_a_failed_orchestrator_spends_the_retry_budget(tmp_path, monkeypatch):
+    from meow.execution.orchestration.runner import prepare_resume
+
+    world = one_task_world(tmp_path, monkeypatch, [("hang",)])
+    record = world.store.create(
+        objective="x",
+        source="objective",
+        base_branch="main",
+        mode="cli",
+        max_parallel=1,
+        options={"test": False, "pr": True},
+    )
+    record.phase = "failed"
+    record.error = {"phase": "running", "message": "m", "kind": "transient"}
+    prepare_resume(record, None, None)
+    assert (record.phase, record.error) == ("running", None)
+    assert record.options["failed_resumes"] == 1
+
+
 def test_driver_exception_marks_failed_and_reraises(tmp_path, monkeypatch):
     world = one_task_world(tmp_path, monkeypatch, [("hang",)])
 
@@ -399,7 +439,12 @@ def test_driver_exception_marks_failed_and_reraises(tmp_path, monkeypatch):
 
     record = world.store.latest()
     assert record.phase == "failed"
-    assert record.error == {"phase": "running", "message": "boom"}
+    assert record.error == {
+        "phase": "running",
+        "message": "boom",
+        "kind": "transient",
+        "cause": "error",
+    }
     assert (world.store.dir_for(record.id) / "report.md").is_file()
 
 
@@ -477,7 +522,12 @@ def test_resume_after_a_failed_decomposition_decomposes_again(tmp_path, monkeypa
 
     failed = world.record(oid)
     assert code == EXIT_FAILED
-    assert failed.error == {"phase": "decomposing", "message": "model unavailable"}
+    assert failed.error == {
+        "phase": "decomposing",
+        "message": "model unavailable",
+        "kind": "transient",
+        "cause": "error",
+    }
     world.script.decomposer_error = None
 
     assert world.resume(oid) == 0

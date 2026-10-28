@@ -10,6 +10,7 @@ from meow.execution.orchestration.model import (
     TERMINAL_PHASES as ORCHESTRATOR_TERMINAL_PHASES,
 )
 from meow.execution.orchestration.model import (
+    OrchestratorRecord,
     is_orchestrator_id,
 )
 from meow.execution.orchestration.report import render_status, rollup_line
@@ -25,6 +26,7 @@ from meow.execution.run_state import (
 from meow.infrastructure.background import inspect_worker, reconcile_worker
 from meow.infrastructure.quality import Concern, QualityStoreError, concerns_for_run
 from meow.infrastructure.usage import usage_totals
+from meow.project.config import run_config
 
 
 def recovery_command(record: RunRecord) -> str:
@@ -294,23 +296,49 @@ def _print_run(record: RunRecord, verbose: bool, rollups: list[str]) -> None:
         print("\n".join(rollups))
 
 
+def orchestration_payload(record: OrchestratorRecord, config: dict) -> dict:
+    """`status --json` for an orchestrator.
+
+    `blocked` waits for a person (`--task`/`--request`): settled, no command.
+    `failed` is retryable, within `managed_resumes`, unless its error is a
+    blocking cause or predates classification.
+    """
+    error = record.error if isinstance(record.error, dict) else {}
+    used = int(record.options.get("failed_resumes", 0))
+    reason = None
+    if record.phase == "blocked":
+        reason = "blocked: needs a person"
+    elif record.phase == "failed":
+        if error.get("kind") in {"transient", "resource"}:
+            if used >= config["managed_resumes"]:
+                reason = "managed_resumes reached"
+        else:
+            reason = f"blocking: {error.get('cause') or 'failed'}"
+    retryable = record.phase in {"running", "reviewing", "delivering"} or (
+        record.phase == "failed" and reason is None
+    )
+    settled = record.phase in {*ORCHESTRATOR_TERMINAL_PHASES, "blocked"}
+    payload = {
+        "id": record.id,
+        "phase": record.phase,
+        "settled": settled,
+        "retryable": retryable and settled,
+        "orchestrator": True,
+        "cause": error.get("cause"),
+        "next_command": f"meow resume {record.id} --continue" if retryable else None,
+    }
+    if reason is not None and settled:
+        payload["not_resumed_reason"] = reason
+    return payload
+
+
 def _orchestration_status(
     working_dir: Path, run_id: str, *, as_json: bool = False
 ) -> int:
     try:
         record = OrchestratorStore(working_dir).load(run_id)
         if as_json:
-            print(
-                json.dumps({
-                    "id": record.id,
-                    "phase": record.phase,
-                    "settled": record.phase in ORCHESTRATOR_TERMINAL_PHASES,
-                    "orchestrator": True,
-                    "next_command": None
-                    if record.phase in ORCHESTRATOR_TERMINAL_PHASES
-                    else f"meow resume {record.id} --continue",
-                })
-            )
+            print(json.dumps(orchestration_payload(record, run_config(working_dir))))
             return 0
         print(render_status(record))
     except (OrchestratorStateError, OSError) as exc:
