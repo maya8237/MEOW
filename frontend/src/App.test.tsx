@@ -48,6 +48,22 @@ const catalog = {
     },
   ],
   skills: [],
+  hooks: [
+    {
+      name: "guard",
+      description: "Block edits to generated files.",
+      scope: "project",
+      repo: "/repo",
+      file: "/repo/.meow/hooks/guard.toml",
+      text: "event = 'PreToolUse'",
+      event: "PreToolUse",
+      matcher: "Write|Edit",
+      command: "python guard.py",
+      timeout: 30,
+      roles: [],
+      synced: true,
+    },
+  ],
 };
 
 beforeEach(() => {
@@ -309,4 +325,15 @@ test("Docs shows an Online docs link without fetching the hosted site", async ()
   expect(
     fetchMock.mock.calls.some(([input]) => String(input).startsWith("http")),
   ).toBe(false);
+});
+
+test("Hooks lists each definition with its event and sync state", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "quick" });
+  await user.click(screen.getByRole("button", { name: /Hooks/ }));
+  await screen.findByRole("heading", { name: "guard" });
+  expect(screen.getAllByText("PreToolUse").length).toBeGreaterThan(0);
+  expect(screen.getByText("Synced by meow sync")).toBeTruthy();
+  expect(screen.getByText("Every role")).toBeTruthy();
 });

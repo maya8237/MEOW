@@ -1,6 +1,6 @@
 # irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
 [CmdletBinding()]
-param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$bun, [string]$mcp = '')
+param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$bun, [switch]${install-missing}, [string]$mcp = '')
 
 & {
     $ErrorActionPreference = 'Stop'
@@ -114,6 +114,7 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
         $interactive = -not ${non-interactive} -and -not ${no-setup} -and -not [Console]::IsInputRedirected
         if (($setup -or $interactive) -and -not ${non-interactive}) { $setupArgs += '--setup' }
         if ($bun) { $setupArgs += '--bun' }
+        if (${install-missing}) { $setupArgs += '--install-missing' }
         if ($mcp) { $setupArgs += @('--mcp', $mcp) }
         & (Join-Path $destination 'runtime\Scripts\python.exe') -m meow.installer.releases @setupArgs
         if ($LASTEXITCODE -eq 130) { return }

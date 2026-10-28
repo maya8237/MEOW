@@ -36,7 +36,30 @@ def project(tmp_path):
     (tmp_path / ".meow" / "config.toml").write_text(
         '[custom]\nskills = ["tools/skills"]\n', encoding="utf-8"
     )
+    hooks = tmp_path / ".meow" / "hooks"
+    hooks.mkdir(parents=True)
+    (hooks / "guard.toml").write_text(
+        'description = "Guard edits"\nevent = "PreToolUse"\n'
+        'matcher = "Write|Edit"\ncommand = "true"\n',
+        encoding="utf-8",
+    )
+    (hooks / "mine.toml").write_text(
+        'description = "Only generators"\nevent = "Stop"\n'
+        'command = "true"\nroles = ["generator"]\n',
+        encoding="utf-8",
+    )
     return tmp_path
+
+
+def test_catalog_lists_hooks_with_their_sync_state(project):
+    hooks = {item["name"]: item for item in build_catalog(project)["hooks"]}
+
+    assert hooks["guard"]["event"] == "PreToolUse"
+    assert hooks["guard"]["matcher"] == "Write|Edit"
+    assert hooks["guard"]["scope"] == "project"
+    assert hooks["guard"]["synced"] is True
+    assert hooks["mine"]["roles"] == ["generator"]
+    assert hooks["mine"]["synced"] is False
 
 
 def test_catalog_lists_custom_and_builtin_definitions(project):

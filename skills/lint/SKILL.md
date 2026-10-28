@@ -1,6 +1,12 @@
 ---
 name: lint
 description: Use when finding and fixing the project's configured lint findings in the current session, without a separate MEOW fixer agent.
+hooks:
+  PostToolUse:
+    - matcher: "Write|Edit"
+      hooks:
+        - type: command
+          command: "meow native lint --from-hook"
 ---
 
 # lint
@@ -31,8 +37,9 @@ otherwise tell the user and stop (point at `docs/INTEGRATIONS.md` for the
      <active_dir> --work-dir "<project-path>"` and follow its returned `system_prompt`, just as the CLI
      lint-fixer role follows `lint_fixer_prompt`. Fix each finding yourself
      with the smallest edit that resolves it, without unrelated refactoring;
-     run `meow native lint --file <path> --active-dir <active_dir>` after each
-     edit. Do not launch another agent.
+     the skill's PostToolUse hook lints each edited file and reports leftovers;
+     if your host ignores skill hooks, run `meow native lint --file <path>
+     --active-dir <active_dir>` after each edit. Do not launch another agent.
 4. Re-check with `meow native lint --all-blocking --work-dir "<project-path>"`; call
    `meow native round <docs_dir>/lint-fix.md --work-dir "<project-path>"` before each further fix attempt
    and stop if it says `exhausted`.

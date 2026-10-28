@@ -438,7 +438,8 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
             try:
                 os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
                 return
-            except FileExistsError:
+            except (FileExistsError, PermissionError):
+                # Windows reports a lock that is being deleted as EACCES.
                 with suppress(OSError):
                     if time.time() - lock.stat().st_mtime > _CLAIM_STALE:
                         lock.unlink()

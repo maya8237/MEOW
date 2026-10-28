@@ -5,9 +5,11 @@ import sys
 from importlib.metadata import version
 
 from meow.cli.catalog_cli import add_catalog_parsers
+from meow.cli.hooks_cli import add_hooks_parser
 from meow.cli.onboard_cli import add_onboard_parser
 from meow.cli.schedule_cli import add_schedule_parser
 from meow.cli.skills_cli import add_skills_parser
+from meow.cli.sync_cli import add_sync_parser
 from meow.native.native_cli import add_native_parser
 from meow.ui import DEFAULT_PORT
 
@@ -24,6 +26,8 @@ _VISIBLE_COMMANDS = (
     "workflows",
     "agents",
     "skills",
+    "hooks",
+    "sync",
     "ui",
     "schedule",
     "onboard",
@@ -87,7 +91,11 @@ class _MeowParser(argparse.ArgumentParser):
             print(f"\ncat shortcuts:\n  {_format_shortcuts(_FUN_SHORTCUTS)}")
             self.exit()
         parsed, rest = super().parse_known_args(expand_shortcuts(argv), namespace)
-        if (parsed.update or parsed.check_update) and parsed.command:
+        if parsed.latest_pypi and not parsed.update:
+            self.error("--latest-pypi requires --update")
+        if (
+            parsed.update or parsed.check_update or parsed.latest_pypi
+        ) and parsed.command:
             self.error("update options cannot be combined with a command")
         if not (parsed.update or parsed.check_update or parsed.command):
             self.error("a command or --update is required")
@@ -233,6 +241,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
         action="store_true",
         help="Only check for a newer version and print an update warning.",
     )
+    parser.add_argument(
+        "--latest-pypi",
+        action="store_true",
+        help=(
+            "With --update, use the newest stable PyPI release instead of "
+            "the release channel."
+        ),
+    )
     subparsers = parser.add_subparsers(
         parser_class=argparse.ArgumentParser,
         dest="command",
@@ -248,6 +264,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     _add_common_args(scheduled)
     add_catalog_parsers(subparsers)
     add_skills_parser(subparsers)
+    add_hooks_parser(subparsers)
+    add_sync_parser(subparsers)
     ui_parser = subparsers.add_parser(
         "ui", help="Browse workflows, agents, and skills in a local page."
     )

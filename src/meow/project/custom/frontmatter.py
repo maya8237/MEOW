@@ -1,7 +1,8 @@
 """A small reader for the YAML frontmatter Claude Code skill and agent files use.
 
 Supports what those files need: `key: value` scalars (optionally quoted),
-inline lists (`[a, b]`), block lists (`- a`), and `|` / `>` block scalars.
+inline lists (`[a, b]`), block lists (`- a`), and `|` / `>` block scalars. A
+nested mapping (such as a skill's `hooks:`) is kept as its raw indented text.
 """
 
 import json
@@ -54,6 +55,15 @@ def _list(lines: list[str], start: int) -> tuple[list[str], int]:
     return items, index
 
 
+def _nested(lines: list[str], start: int) -> bool:
+    """Whether the lines after a bare `key:` open a mapping, not a `- ` list."""
+    return (
+        start < len(lines)
+        and _indented(lines[start])
+        and not lines[start].strip().startswith("- ")
+    )
+
+
 def _split(path: Path) -> tuple[list[str], str]:
     lines = path.read_text(encoding="utf-8-sig").splitlines()
     if not lines or lines[0].strip() != _FENCE:
@@ -63,6 +73,16 @@ def _split(path: Path) -> tuple[list[str], str]:
     except StopIteration:
         raise ValueError(f"{path}: frontmatter block is not closed by '---'") from None
     return lines[1:end], "\n".join(lines[end + 1 :]).strip()
+
+
+def _value(header: list[str], index: int, value: str) -> tuple[object, int]:
+    if value in {"|", ">", "|-", ">-"}:
+        return _block(header, index, value[0])
+    if value:
+        return _inline(value), index
+    if _nested(header, index):
+        return _block(header, index, "|")
+    return _list(header, index)
 
 
 def parse(path: Path) -> tuple[dict[str, object], str]:
@@ -78,10 +98,5 @@ def parse(path: Path) -> tuple[dict[str, object], str]:
         if _indented(line) or ":" not in line:
             raise ValueError(f"{path}: cannot read frontmatter line {line!r}")
         key, value = (part.strip() for part in line.split(":", 1))
-        if value in {"|", ">", "|-", ">-"}:
-            data[key], index = _block(header, index, value[0])
-        elif not value:
-            data[key], index = _list(header, index)
-        else:
-            data[key] = _inline(value)
+        data[key], index = _value(header, index, value)
     return data, body

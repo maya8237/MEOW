@@ -41,17 +41,27 @@ MCP servers belong to each user, not the project. Register them once:
 ```bash
 export JIRA_URL=https://acme.atlassian.net JIRA_USERNAME=me@example.com
 export JIRA_API_TOKEN=...            # or JIRA_PERSONAL_TOKEN (Server/Data Center)
+export CONFLUENCE_URL=https://acme.atlassian.net/wiki   # optional, same server
+export CONFLUENCE_USERNAME=me@example.com CONFLUENCE_API_TOKEN=...
+                                     # or CONFLUENCE_PERSONAL_TOKEN (Server/Data Center)
 export GITLAB_PERSONAL_ACCESS_TOKEN=... GITLAB_API_URL=https://gitlab.example.com/api/v4
 meow onboard --mcp jira,gitlab   # or the installer's --mcp flag
 ```
 
 The installer asks the same when run in a terminal; `--no-setup` and
 `--non-interactive` never ask.
-Servers: Jira `uvx mcp-atlassian`, GitLab `npx -y @zereight/mcp-gitlab`;
+Confluence rides on the Atlassian server; Jira and Confluence are each optional
+(either alone is enough). Any `CONFLUENCE_*` variable set above is forwarded to it (a `[confluence] url` in project config prefills `CONFLUENCE_URL`).
+Setup skips an already registered server, so to add Confluence to one, run
+`claude mcp remove atlassian --scope user` and rerun setup.
+Servers: Jira `mcp-atlassian` (pip), GitLab `npx -y @zereight/mcp-gitlab`;
 variables keep the servers' own names. For other servers, register your own
 with `claude mcp add --scope user` and MEOW uses it. MEOW registers at
-Claude's user scope with `claude mcp add`, skips providers already registered,
-and never installs `uvx`, `npx`, or `claude`: a missing launcher is reported.
+Claude's user scope with `claude mcp add` and skips providers already registered.
+If `mcp-atlassian` is missing, MEOW asks (terminal) or needs `--install-missing`
+before running `pip install mcp-atlassian` into its own `~/.meow/tools`
+environment with the Python running MEOW, then registers that path. It never
+installs `npx` or `claude`: a missing one is reported.
 Tokens are stored by Claude in plain text in `~/.claude.json`; MEOW never prints
 or copies them.
 
@@ -82,6 +92,6 @@ MYTOOL_HOST = "https://tool.example.com"   # fixed, non-secret settings only
 ```
 
 Keys: `command`, `args`, `server` (name in Claude), `label`, `auth`, `env`,
-`warmup`. Secrets always come from the `auth` variables in the environment, never
+`optional` (variables forwarded when set), `warmup`. Secrets always come from the `auth` variables in the environment, never
 the file. This changes registration only; to change how a project launches a
 server at run time use `[provider.mcp]`.

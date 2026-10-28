@@ -8,6 +8,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Search,
+  Webhook,
   Workflow,
   X,
 } from "lucide-react";
@@ -30,7 +31,12 @@ import OnlineDocsLink from "@/components/OnlineDocsLink";
 import SessionsView from "@/components/SessionsView";
 
 const DocsView = lazy(() => import("@/components/DocsView"));
-const icons = { workflows: Workflow, agents: Bot, skills: BookOpen };
+const icons = {
+  workflows: Workflow,
+  agents: Bot,
+  skills: BookOpen,
+  hooks: Webhook,
+};
 
 export default function App() {
   const [data, setData] = useState<Catalog | null>(null);
@@ -103,7 +109,7 @@ export default function App() {
     (item) =>
       (!scope || item.scope === scope) &&
       (!needle ||
-        `${item.name} ${item.description} ${item.qualified_name || ""}`
+        `${item.name} ${item.description} ${item.qualified_name || ""} ${item.event || ""}`
           .toLowerCase()
           .includes(needle)),
   );
@@ -302,7 +308,7 @@ export default function App() {
                 <h2>Make MEOW fit this project</h2>
                 <p>
                   Describe a change in Claude Code. MEOW helps shape the right
-                  workflow, agent, or skill.
+                  workflow, agent, skill, or hook.
                 </p>
               </div>
               <code>/meow:customize</code>
@@ -354,7 +360,7 @@ export default function App() {
                     <p>
                       {error
                         ? "Check the server connection and retry."
-                        : "Reading workflows, agents, and skills."}
+                        : "Reading workflows, agents, skills, and hooks."}
                     </p>
                   </div>
                 ) : items.length ? (
@@ -389,6 +395,7 @@ export default function App() {
                             {kind === "workflows" && (
                               <span>{item.steps?.length || 0} steps</span>
                             )}
+                            {kind === "hooks" && <span>{item.event}</span>}
                           </div>
                         </button>
                       </li>

@@ -1,5 +1,8 @@
 """Venv-aware setup timeouts, repair and retry."""
 
+import sys
+from pathlib import Path
+
 import pytest
 
 from meow.execution.run_failures import classify_failure, recognised_transient
@@ -112,14 +115,19 @@ def test_second_setup_timeout_parks_run(tmp_path, monkeypatch):
     assert (tmp_path / ".meow" / "worktree-setup.pending").exists()
 
 
-def test_venv_without_pyvenv_cfg_is_broken_and_healthy_one_is_kept(tmp_path):
+def test_venv_without_pyvenv_cfg_is_broken_and_healthy_one_is_kept(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        "meow.infrastructure.python_env._interpreter",
+        lambda path: Path(sys.executable),
+    )
     bad = tmp_path / "venv"
     bad.mkdir()
     assert venv_broken(bad)
     good = tmp_path / ".venv"
-    (good / "bin").mkdir(parents=True)
+    good.mkdir()
     (good / "pyvenv.cfg").write_text("home = x", encoding="utf-8")
-    (good / "bin" / "python").symlink_to(__import__("sys").executable)
     assert not venv_broken(good)
     assert repair_venvs(tmp_path) == [bad]
     assert good.exists() and not bad.exists()

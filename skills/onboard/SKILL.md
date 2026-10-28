@@ -146,7 +146,8 @@ Register Jira and GitLab MCPs once per user, not per project:
 `meow onboard --mcp jira,gitlab`. It uses the servers' own variables (Jira
 `JIRA_URL` with `JIRA_USERNAME`/`JIRA_API_TOKEN` or `JIRA_PERSONAL_TOKEN`; GitLab
 `GITLAB_PERSONAL_ACCESS_TOKEN` and `GITLAB_API_URL`), skips providers already
-registered, never installs `uvx` or `npx`, and never prints tokens. Interactive: show the
+registered, pip-installs the Jira server only when you agree (or pass
+`--install-missing`), never installs `npx`, and never prints tokens. Interactive: show the
 command, then let the user export the variables or type them at the hidden
 prompt. Automatic: run it only for providers the user named with the variables
 already set; otherwise list "no MCP: run `meow onboard --mcp NAME`". Projects

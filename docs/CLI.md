@@ -18,7 +18,7 @@ Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](OR
 | `meow detach [--log FILE] -- CMD...` | Detach a command; returns PID and log JSON |
 | `meow queue ["request"]` | Add a request, or process pending requests serially |
 | `meow workflows` / `meow agents` | Inspect, eject, validate, or diff definitions |
-| `meow skills sync [--scope S] [--check]` | Register custom skills with Claude Code; `--check` only reports |
+| `meow skills sync`, `hooks sync`, `sync` `[--scope S] [--check]` | Register custom skills, [hooks](HOOKS.md), or both with Claude Code; `--check` only reports |
 | `meow ui` | Read-only catalog, session history, and docs |
 | `meow schedule` | Add, list, edit, or cancel a one-shot trigger |
 | `meow onboard` | [Configure a project without prompts](ONBOARDING.md); optional integration/feature flags |
@@ -48,7 +48,7 @@ version, read from the new release, and suggests `/meow:onboard` in each project
 It checks no project, so options already configured are still listed. Listing is
 best-effort and skipped for checkout installs. In a terminal it then offers Bun's
 shared dependency store once and migrates registered repos in the background.
-
+Use `meow --update --latest-pypi` to opt into the newest stable PyPI release instead of the pinned `release-channel` version; the default remains channel-first.
 Public commands warn on stderr about newer versions, silently ignoring network
 failures; `--check-update` checks only. Internal workers skip this check.
 Runs execute automatically; `-m` adds a plan approval pause. `-u` means update.

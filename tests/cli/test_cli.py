@@ -31,6 +31,13 @@ from meow.project.prompts import (
 class CliCommandTests(  # ruff: ignore[too-many-public-methods]
     unittest.TestCase
 ):
+    def setUp(self):
+        # The run error log stays open for the process; Windows cannot then
+        # delete the temporary project a test ran in.
+        patcher = patch("meow.execution.sprint_runner.configure_error_log")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_top_level_help_shows_only_primary_user_commands(self):
         parser = cli._build_arg_parser()
         output = io.StringIO()
@@ -40,7 +47,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
         help_text = output.getvalue()
         self.assertIn(
-            "{run,review,plan,status,cancel,worktree,cleanup,resume,ipython,workflows,agents,skills,ui,schedule,onboard}",
+            "{run,review,plan,status,cancel,worktree,cleanup,resume,ipython,workflows,agents,skills,hooks,sync,ui,schedule,onboard}",
             help_text,
         )
         self.assertNotIn("_worker", help_text)

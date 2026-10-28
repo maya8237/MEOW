@@ -1,6 +1,7 @@
 """User-scope MCP setup never installs launchers or exposes credentials."""
 
 import json
+import os
 import subprocess
 from types import SimpleNamespace
 
@@ -43,14 +44,17 @@ def write_user_servers(home, servers):
 def test_jira_uses_mcp_atlassian_and_its_own_variable_names(tmp_path):
     run = Recorder()
     result = setup_provider(
-        SPECS["jira"], JIRA_ENV, home=tmp_path, run=run, which=found("claude", "uvx")
+        SPECS["jira"],
+        JIRA_ENV,
+        home=tmp_path,
+        run=run,
+        which=found("claude", "mcp-atlassian"),
     )
     assert result.status == "registered"
-    add, warm = run.calls
+    [add] = run.calls
     assert add[:6] == ["claude", "mcp", "add", "--scope", "user", "atlassian"]
-    assert add[-3:] == ["--", "uvx", "mcp-atlassian"]
+    assert add[-2:] == ["--", "mcp-atlassian"]
     assert f"JIRA_API_TOKEN={SECRET}" in add
-    assert warm == ["uvx", "mcp-atlassian", "--help"]
     assert SECRET not in json.dumps(result.to_dict())
 
 
@@ -58,10 +62,52 @@ def test_server_datacenter_token_is_an_alternative(tmp_path):
     environ = {"JIRA_URL": "https://jira.example.com", "JIRA_PERSONAL_TOKEN": SECRET}
     run = Recorder()
     result = setup_provider(
-        SPECS["jira"], environ, home=tmp_path, run=run, which=found("claude", "uvx")
+        SPECS["jira"],
+        environ,
+        home=tmp_path,
+        run=run,
+        which=found("claude", "mcp-atlassian"),
     )
     assert result.status == "registered"
     assert "JIRA_USERNAME" not in " ".join(run.calls[0])
+
+
+def test_confluence_variables_are_forwarded_only_when_set(tmp_path):
+    confluence = {
+        "CONFLUENCE_URL": "https://acme.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "me@example.com",
+        "CONFLUENCE_API_TOKEN": SECRET,
+    }
+    with_run, without_run = Recorder(), Recorder()
+    which = found("claude", "mcp-atlassian")
+    setup_provider(
+        SPECS["jira"],
+        {**JIRA_ENV, **confluence},
+        home=tmp_path,
+        run=with_run,
+        which=which,
+    )
+    setup_provider(SPECS["jira"], JIRA_ENV, home=tmp_path, run=without_run, which=which)
+    for name, value in confluence.items():
+        assert f"{name}={value}" in with_run.calls[0]
+    assert "CONFLUENCE" not in " ".join(without_run.calls[0])
+
+
+def test_confluence_alone_is_enough(tmp_path):
+    environ = {
+        "CONFLUENCE_URL": "https://acme.atlassian.net/wiki",
+        "CONFLUENCE_PERSONAL_TOKEN": SECRET,
+    }
+    run = Recorder()
+    result = setup_provider(
+        SPECS["jira"],
+        environ,
+        home=tmp_path,
+        run=run,
+        which=found("claude", "mcp-atlassian"),
+    )
+    assert result.status == "registered"
+    assert "JIRA_URL" not in " ".join(run.calls[0])
 
 
 def test_github_has_no_setup_yet(tmp_path):
@@ -76,7 +122,11 @@ def test_existing_user_scope_server_is_left_alone(tmp_path):
     )
     run = Recorder()
     result = setup_provider(
-        SPECS["jira"], JIRA_ENV, home=tmp_path, run=run, which=found("claude", "uvx")
+        SPECS["jira"],
+        JIRA_ENV,
+        home=tmp_path,
+        run=run,
+        which=found("claude", "mcp-atlassian"),
     )
     assert result.status == "already_registered"
     assert run.calls == []
@@ -103,7 +153,7 @@ def test_missing_credentials_name_variables_not_values(tmp_path):
         {"JIRA_URL": "https://acme.atlassian.net"},
         home=tmp_path,
         run=run,
-        which=found("claude", "uvx"),
+        which=found("claude", "mcp-atlassian"),
     )
     assert result.status == "no_credentials"
     assert "JIRA_API_TOKEN" in result.detail
@@ -126,7 +176,7 @@ def test_prompt_supplies_missing_values_and_hides_secrets(tmp_path):
         prompt=prompt,
         home=tmp_path,
         run=run,
-        which=found("claude", "uvx"),
+        which=found("claude", "mcp-atlassian"),
     )
     assert result.status == "registered"
     assert ("JIRA_API_TOKEN", True) in asked
@@ -139,7 +189,7 @@ def test_failed_add_withholds_command_output(tmp_path):
         JIRA_ENV,
         home=tmp_path,
         run=Recorder(returncode=2),
-        which=found("claude", "uvx"),
+        which=found("claude", "mcp-atlassian"),
     )
     assert result.status == "failed"
     assert SECRET not in result.detail
@@ -150,7 +200,11 @@ def test_add_that_cannot_run_is_a_failed_result(tmp_path):
         raise subprocess.TimeoutExpired("claude", 60)
 
     result = setup_provider(
-        SPECS["jira"], JIRA_ENV, home=tmp_path, run=broken, which=found("claude", "uvx")
+        SPECS["jira"],
+        JIRA_ENV,
+        home=tmp_path,
+        run=broken,
+        which=found("claude", "mcp-atlassian"),
     )
     assert result.status == "failed"
 
@@ -338,3 +392,81 @@ def test_gap_report_marks_a_user_scope_server_detected(tmp_path, monkeypatch):
     gaps = feature_gaps(repo)
     assert gaps["jira"]["detected"] is True
     assert gaps["github"]["detected"] is False
+
+
+class PipRecorder(Recorder):
+    """Pretends pip creates the server's launcher in MEOW's tools environment."""
+
+    def __init__(self, home, returncode=0):
+        super().__init__(returncode)
+        self.launcher = home / ".meow" / "tools" / "bin" / "mcp-atlassian"
+
+    def __call__(self, argv, **kwargs):
+        if "pip" in argv and not self.returncode:
+            self.launcher.parent.mkdir(parents=True, exist_ok=True)
+            self.launcher.write_text("")
+        return super().__call__(argv, **kwargs)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX tools layout")
+def test_missing_jira_server_is_pip_installed_when_allowed(tmp_path):
+    run = PipRecorder(tmp_path)
+    asked = []
+    result = setup_provider(
+        SPECS["jira"],
+        JIRA_ENV,
+        home=tmp_path,
+        run=run,
+        which=found("claude"),
+        allow_install=lambda package: asked.append(package) or True,
+    )
+    assert result.status == "registered"
+    assert asked == ["mcp-atlassian"]
+    venv, pip, add = run.calls
+    assert venv[1:3] == ["-m", "venv"]
+    assert pip[-2:] == ["install", "mcp-atlassian"]
+    assert add[-2:] == ["--", str(run.launcher)]
+    assert SECRET not in json.dumps(result.to_dict())
+
+
+def test_missing_jira_server_not_installed_unless_allowed(tmp_path):
+    run = PipRecorder(tmp_path)
+    for allow in (None, lambda _package: False):
+        result = setup_provider(
+            SPECS["jira"],
+            JIRA_ENV,
+            home=tmp_path,
+            run=run,
+            which=found("claude"),
+            allow_install=allow,
+        )
+        assert result.status == "no_launcher"
+        assert "--install-missing" in result.detail
+    assert run.calls == []
+
+
+def test_failed_pip_install_is_reported_without_registering(tmp_path):
+    run = PipRecorder(tmp_path, returncode=1)
+    result = setup_provider(
+        SPECS["jira"],
+        JIRA_ENV,
+        home=tmp_path,
+        run=run,
+        which=found("claude"),
+        allow_install=lambda _package: True,
+    )
+    assert result.status == "no_launcher"
+    assert "pip install mcp-atlassian" in result.detail
+    assert all("mcp" not in call[:2] for call in run.calls)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX tools layout")
+def test_an_earlier_tools_install_is_reused_without_asking(tmp_path):
+    run = PipRecorder(tmp_path)
+    run.launcher.parent.mkdir(parents=True)
+    run.launcher.write_text("")
+    result = setup_provider(
+        SPECS["jira"], JIRA_ENV, home=tmp_path, run=run, which=found("claude")
+    )
+    assert result.status == "registered"
+    assert [call[0] for call in run.calls] == ["claude"]
