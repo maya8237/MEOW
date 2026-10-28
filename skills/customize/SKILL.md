@@ -128,9 +128,10 @@ JSON, `meow native prompt ROLE` for resolved role instructions, and
 For project scope, confirm files are committable with `git status`.
 
 Report paths, scope, overrides, selection/config changes, and verification.
-After adding or changing a skill, run `meow skills sync` (registers it with
+After adding or changing a skill or hook, run `meow sync` (registers both with
 Claude Code at every scope; `--check` reports only), then tell the user to
 restart Claude Code so it loads. Skills appear as `/meow-<scope>:<name>`.
+Role-limited and `sprint_*` hooks stay in MEOW's SDK agents and need no sync.
 Commit only when the user requests it. Remove a file to remove a definition;
 remove a configured directory entry to unregister its contents. Follow the
 chosen scope's path rules when moving definitions.
