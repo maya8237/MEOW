@@ -64,6 +64,40 @@ def test_server_datacenter_token_is_an_alternative(tmp_path):
     assert "JIRA_USERNAME" not in " ".join(run.calls[0])
 
 
+def test_confluence_variables_are_forwarded_only_when_set(tmp_path):
+    confluence = {
+        "CONFLUENCE_URL": "https://acme.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "me@example.com",
+        "CONFLUENCE_API_TOKEN": SECRET,
+    }
+    with_run, without_run = Recorder(), Recorder()
+    which = found("claude", "uvx")
+    setup_provider(
+        SPECS["jira"],
+        {**JIRA_ENV, **confluence},
+        home=tmp_path,
+        run=with_run,
+        which=which,
+    )
+    setup_provider(SPECS["jira"], JIRA_ENV, home=tmp_path, run=without_run, which=which)
+    for name, value in confluence.items():
+        assert f"{name}={value}" in with_run.calls[0]
+    assert "CONFLUENCE" not in " ".join(without_run.calls[0])
+
+
+def test_confluence_alone_is_enough(tmp_path):
+    environ = {
+        "CONFLUENCE_URL": "https://acme.atlassian.net/wiki",
+        "CONFLUENCE_PERSONAL_TOKEN": SECRET,
+    }
+    run = Recorder()
+    result = setup_provider(
+        SPECS["jira"], environ, home=tmp_path, run=run, which=found("claude", "uvx")
+    )
+    assert result.status == "registered"
+    assert "JIRA_URL" not in " ".join(run.calls[0])
+
+
 def test_github_has_no_setup_yet(tmp_path):
     [result] = setup_providers(["github"], {}, home=tmp_path, which=found("claude"))
     assert result.status == "unsupported"
