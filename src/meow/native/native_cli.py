@@ -162,6 +162,7 @@ def _add_hook(sub) -> None:
     )
     _add_dirs(parser)
     parser.add_argument("event", choices=SDK_EVENTS, help="Claude Code hook event.")
+    parser.add_argument("--name", default=None, help="Run only this hook definition.")
     parser.add_argument(
         "--role",
         default=None,
@@ -545,7 +546,9 @@ _HANDLERS = {
         _resolve(args.review_file, active)
     ),
     "lint": _lint,
-    "hook": lambda args, wd, active: native.hook(wd, active, args.event, args.role),
+    "hook": lambda args, wd, active: native.hook(
+        wd, active, native.HookOptions(args.event, args.role, args.name)
+    ),
     "round": _round,
     "checkpoint": _checkpoint,
     "finalize": lambda args, wd, active: asyncio.run(

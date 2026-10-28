@@ -32,7 +32,7 @@ from claude_agent_sdk import (
 
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
-from meow.infrastructure.user_hooks import merge_hooks, sdk_hooks
+from meow.infrastructure.user_hooks import SDK_AGENT_ENV, merge_hooks, sdk_hooks
 from meow.project.config_models import LintCommand
 from meow.project.custom import CustomAgent, Customizations, skill_plugin_dir
 from meow.project.custom.rendering import builtin_agent, render_agent
@@ -530,6 +530,7 @@ class Agent:
         env = dict(extra_options.pop("env", None) or {})
         for name, value in _BASH_TIMEOUT_ENV.items():
             env.setdefault(name, os.environ.get(name, value))
+        env.setdefault(SDK_AGENT_ENV, "1")
         options = ClaudeAgentOptions(
             env=env,
             system_prompt=system_prompt,

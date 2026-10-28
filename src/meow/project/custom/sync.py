@@ -71,6 +71,11 @@ def _registered(scope: str, project_dir: Path, user_dir: Path, linked: bool) -> 
     return marketplace_registered(settings, plugin_name(scope, linked=linked))
 
 
+def scope_plugin_registered(scope: str, project_dir: Path, user_dir: Path) -> bool:
+    """Whether Claude Code is set to load the scope's own plugin."""
+    return _registered(scope, project_dir, user_dir, False)
+
+
 def linked_skills(
     skills: tuple[CustomSkill, ...], scope: str, project_dir: Path, user_dir: Path
 ) -> list[CustomSkill]:

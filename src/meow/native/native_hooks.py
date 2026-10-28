@@ -7,11 +7,14 @@ definitions work in any Claude session, not only inside MEOW's SDK agents.
 
 import asyncio
 import json
+import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from meow.infrastructure.user_hooks import (
     BLOCK_EXIT_CODE,
+    SDK_AGENT_ENV,
     blocking_message,
     matching,
     run_hook,
@@ -31,13 +34,30 @@ async def _run(hooks, payload: dict, active_dir: Path, role: str | None) -> list
     return [await run_hook(hook, payload, active_dir, role) for hook in hooks]
 
 
-def hook(working_dir: Path, active_dir: Path, event: str, role: str | None) -> dict:
-    """Run the event's hooks; exit 2 with their stderr when one blocks."""
+@dataclass(frozen=True)
+class HookOptions:
+    """Which hooks `hook` runs beyond the event itself."""
+
+    event: str
+    role: str | None = None
+    name: str | None = None  # just this definition (a synced plugin entry)
+
+
+def hook(working_dir: Path, active_dir: Path, options: HookOptions) -> dict:
+    """Run the event's hooks; exit 2 with their stderr when one blocks.
+
+    Inside a MEOW SDK agent (`MEOW_SDK_AGENT`) this is a no-op: the agent
+    already runs them.
+    """
+    event, role, name = options.event, options.role, options.name
+    if os.environ.get(SDK_AGENT_ENV):
+        return {}
     custom = load_config(config_root(working_dir, active_dir))["customizations"]
     chosen = [
         item
         for item in custom.hooks_for(event, role)
-        if role or not (item.roles or item.source.roles)
+        if (name is None or item.name == name)
+        and (role or not (item.roles or item.source.roles))
     ]
     payload = _payload()
     results = asyncio.run(_run(matching(chosen, payload), payload, active_dir, role))

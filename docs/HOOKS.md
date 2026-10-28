@@ -41,15 +41,25 @@ and `[permissions]` stay code-owned.
 
 ## Any Claude Code session
 
-SDK agents load these automatically. For a plain Claude Code or native session,
-call the dispatcher from a plugin `hooks.json`, `settings.json`, or a skill's
-`hooks:` frontmatter; it reads the payload on stdin:
+Like custom skills, hooks are registered with Claude Code so they run as
+regular hooks in every session, not only inside MEOW's SDK agents:
 
-```json
-{"hooks": {"PreToolUse": [{"matcher": "Write|Edit", "hooks": [
-  {"type": "command", "command": "meow native hook PreToolUse"}]}]}}
+```bash
+meow skills sync          # writes <scope>/plugin/hooks/hooks.json, enables the plugin
+meow skills sync --check  # report what is missing; changes nothing
 ```
 
-Without `--role`, only hooks with no `roles` restriction run. Pass
-`--role generator` to include role-limited ones. `meow native lint --from-hook`
-does the same for the lint plan: the `lint` skill uses it as a `PostToolUse` hook.
+Restart Claude Code afterward. Each definition becomes one plugin hook with
+its `matcher` and `timeout` that calls `meow native hook EVENT --name NAME`.
+Re-run the sync after adding, editing, or removing a definition. Only the
+winning scope's definition is written.
+
+Not synced (SDK agents only): hooks with `roles`, and `sprint_*` events. MEOW's
+SDK agents set `MEOW_SDK_AGENT`, which turns the plugin entries into no-ops, so
+nothing runs twice.
+
+To call the dispatcher yourself (a `settings.json` hook or skill `hooks:`
+frontmatter), run `meow native hook EVENT` with the payload on stdin; without
+`--role` only unrestricted hooks run, `--role generator` adds role-limited ones.
+`meow native lint --from-hook` does the same for the lint plan: the `lint`
+skill uses it as a `PostToolUse` hook.

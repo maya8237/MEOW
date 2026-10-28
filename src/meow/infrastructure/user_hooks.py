@@ -26,6 +26,8 @@ from meow.project.custom.hook_files import SDK_EVENTS, TOOL_EVENTS
 
 logger = get_logger(__name__)
 BLOCK_EXIT_CODE = 2
+# Set in every MEOW SDK agent so synced plugin hooks do not run a second time.
+SDK_AGENT_ENV = "MEOW_SDK_AGENT"
 _STDERR_LIMIT = 4000
 
 

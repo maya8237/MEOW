@@ -13,7 +13,7 @@ from pathlib import Path
 
 from meow.infrastructure.worktree import _push_branch
 from meow.native.native_custom import custom, workflow
-from meow.native.native_hooks import hook
+from meow.native.native_hooks import HookOptions, hook
 from meow.native.native_lint import LintOptions, lint
 from meow.native.native_prepare import (
     PrepareOptions,
@@ -39,6 +39,7 @@ from meow.project.onboarding import boundary_ok, feature_gaps, is_onboarded
 
 __all__ = [
     "PROMPT_ROLES",
+    "HookOptions",
     "LintOptions",
     "PrepareOptions",
     "checkpoint",

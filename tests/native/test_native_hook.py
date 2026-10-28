@@ -86,3 +86,23 @@ def test_lint_from_hook_ignores_payload_without_file(project, monkeypatch):
     code, out, _ = run_native("lint", "--from-hook", "-d", str(project))
 
     assert (code, json.loads(out)) == (0, {})
+
+
+def test_name_selects_one_definition(project, monkeypatch):
+    add_hook(project, "a", "import sys; sys.exit(2)")
+    add_hook(project, "b", "pass")
+    feed(monkeypatch, {})
+
+    code = run_native("hook", "PreToolUse", "--name", "b", "-d", str(project))
+
+    assert code[0] == 0
+
+
+def test_sdk_agents_skip_the_dispatcher(project, monkeypatch):
+    add_hook(project, "guard", "import sys; sys.exit(2)")
+    monkeypatch.setenv("MEOW_SDK_AGENT", "1")
+    feed(monkeypatch, {})
+
+    code, out, _ = run_native("hook", "PreToolUse", "-d", str(project))
+
+    assert (code, json.loads(out)) == (0, {})
