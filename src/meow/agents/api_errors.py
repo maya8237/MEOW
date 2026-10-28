@@ -52,6 +52,7 @@ _RETRY_AFTER = re.compile(
     r"\s*(ms|milliseconds?|s\b|sec\w*)?",
     re.I,
 )
+_BUDGET_TYPE = re.compile(r"[\"']type[\"']\s*:\s*[\"']budget_exceeded[\"']")
 _KEY = re.compile(r"(?i)\bkey\W{0,6}(sk-[\w-]+|[0-9a-f]{32,64})")
 _TOO_MANY, _BAD_REQUEST, _TOO_LARGE, _SERVER = 429, 400, 413, 500
 _REDACTED = "[redacted-key]"
@@ -169,6 +170,12 @@ def classify_api_error(  # ruff: ignore[complex-structure, too-many-return-state
         or _CONTEXT.search(text)
     ):
         return make("overflow", "context")
+    # A specific LiteLLM class (or error type) outranks the generic status it
+    # travels under: a budget error arrives as a 400, a policy block as a 400.
+    if "BudgetExceededError" in classes or _BUDGET_TYPE.search(text):
+        return make("park", "budget")
+    if "ContentPolicyViolationError" in classes:
+        return make("restart", "content_policy")
     if code in _BY_STATUS:
         return make(*_BY_STATUS[code])
     if code is not None and _SERVER <= code < _SERVER + 100:
