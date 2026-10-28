@@ -95,3 +95,30 @@ def test_only_the_winning_scope_is_synced(project, home):
 
     assert (project / ".meow/local/plugin/hooks/hooks.json").is_file()
     assert not (project / ".meow/plugin/hooks/hooks.json").exists()
+
+
+def test_hooks_and_sync_commands(project, home, capsys):
+    from meow.cli.hooks_cli import hooks_command
+    from meow.cli.parser import _build_arg_parser
+    from meow.cli.sync_cli import sync_command
+
+    write(project / ".meow/hooks/guard.toml", HOOK)
+    write(
+        project / ".meow/local/plugin/skills/mine/SKILL.md",
+        "---\nname: mine\ndescription: Does mine.\n---\n\nBody.\n",
+    )
+    parse = _build_arg_parser().parse_args
+
+    with pytest.raises(ValueError, match="meow hooks sync"):
+        hooks_command(parse(["hooks", "sync", "--check"]), project)
+    with pytest.raises(ValueError, match="meow sync"):
+        sync_command(parse(["sync", "--check"]), project)
+
+    sync_command(parse(["sync"]), project)
+    assert "restart Claude Code" in capsys.readouterr().out
+    assert (project / ".meow/plugin/hooks/hooks.json").is_file()
+    assert (project / ".meow/local/plugin/skills/mine").is_dir()
+
+    hooks_command(parse(["hooks", "sync", "--check"]), project)
+    sync_command(parse(["sync", "--check"]), project)
+    assert "are registered" in capsys.readouterr().out

@@ -13,12 +13,14 @@ from claude_agent_sdk import ProcessError
 from meow.cli.catalog_cli import catalog_command
 from meow.cli.cleanup_cli import cleanup_command
 from meow.cli.dispatch import _dispatch
+from meow.cli.hooks_cli import hooks_command
 from meow.cli.ipython_cli import start_ipython
 from meow.cli.orchestration_cli import run_orchestration
 from meow.cli.parser import _build_arg_parser, expand_shortcuts
 from meow.cli.resume_cli import resume
 from meow.cli.skills_cli import skills_command
 from meow.cli.status_cli import status
+from meow.cli.sync_cli import sync_command
 from meow.cli.validation import (
     _resolve_input_path,
     _validate_ci_flags,
@@ -174,9 +176,14 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from exc
         return
-    if args.command == "skills":
+    registrars = {
+        "skills": skills_command,
+        "hooks": hooks_command,
+        "sync": sync_command,
+    }
+    if args.command in registrars:
         try:
-            skills_command(args, working_dir)
+            registrars[args.command](args, working_dir)
         except (OSError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from exc
