@@ -22,7 +22,7 @@ Use **CLI mode** (bottom) only if the user explicitly asks for it. Dependency or
    `name`, `plan_file` and `active_dir` it returns, not your own name. Add `--no-worktree` if the user
    wants the main repo (name then optional). `--from <branch>` requires a new worktree.
    Report failures verbatim and stop.
-3. Create a `preparing` checkpoint with `--request "<feature request>"`,
+3. Create a `preparing` checkpoint with `--intent plan`, `--request "<feature request>"`,
    `--work-dir "<project-path>"`, and `--active-dir "<active_dir>"`; retain its
    `run_id`. Record `planning --run-id <run_id>` before planning with the same
    directory flags.
@@ -43,3 +43,12 @@ meow plan "<feature request>" --name "<generated-feature-name>" --work-dir "<pro
 ```
 
 Add `--no-worktree` to use the main repo instead of an isolated worktree. Report the plan file's path.
+
+## Continuation
+
+On entry, inspect saved run IDs with `meow status ID --json` (detach any `meow
+resume --parked`); never resume a `--intent plan` run. A native helper exiting `75`
+(or printing `MEOW_RETRY`): wait `retry_after`, then run its `next_command` detached
+(host background execution) or rerun the helper, up to `managed_resumes`. Exit 1 /
+`MEOW_BLOCKED`: stop and report. Full rules: [native
+protocol](../_shared/native-mode.md#the-meow-native-helper).

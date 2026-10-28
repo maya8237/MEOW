@@ -114,7 +114,7 @@ review kept failing) and `failed` stop the run with nothing pushed. Run
 `evidence`, `needed`) and `error`. Tell the user in plain words which task or
 step, the cause, the evidence file paths, and what is needed. Then run
 `meow native run release <id>` and give the resume command,
-`meow resume <id> --continue`. To change a
+`meow resume <id> --continue` (detached). To change a
 blocked task's request, resume with `--task <task> --request "<new text>"`.
 Worktrees and branches stay until `meow worktree clean <id>`.
 

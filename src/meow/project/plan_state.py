@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from meow.common.atomic import replace_with_retry
+
 _STALE_LOCK_SECONDS = 30
 STATES = ("draft", "in-progress", "complete")
 
@@ -163,7 +165,7 @@ class PlanStore:
                 json.dump(asdict(current), stream, indent=2)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temp, path)
+            replace_with_retry(temp, path)
         finally:
             if temp:
                 temp.unlink(missing_ok=True)

@@ -10,6 +10,20 @@ from ctypes import wintypes
 from pathlib import Path
 
 _WINDOWS_WAIT_TIMEOUT = 0x102
+WINDOWS_QUERY_TIMEOUT = 15.0
+
+
+def run_windows_tool(
+    argv: list[str], *, timeout: float = WINDOWS_QUERY_TIMEOUT
+) -> subprocess.CompletedProcess[bytes] | None:
+    """Best-effort `taskkill`-style call; None when it timed out or cannot start.
+
+    A wedged Windows service must degrade to "unknown", never raise or hang.
+    """
+    try:
+        return subprocess.run(argv, capture_output=True, check=False, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
 
 
 def process_identity(  # ruff: ignore[too-many-return-statements, complex-structure, too-many-branches, too-many-statements]

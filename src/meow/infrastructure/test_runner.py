@@ -15,6 +15,7 @@ from contextlib import ExitStack, asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+from meow.common.process import WINDOWS_QUERY_TIMEOUT
 from meow.infrastructure.python_dependencies import python_environment
 from meow.project.command_policy import split_command
 from meow.project.config_models import (
@@ -351,7 +352,13 @@ async def _terminate(  # ruff: ignore[too-many-branches, complex-structure, too-
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            await killer.wait()
+            try:
+                await asyncio.wait_for(killer.wait(), timeout=WINDOWS_QUERY_TIMEOUT)
+            except TimeoutError:
+                # A wedged taskkill degrades to killing the direct child.
+                with suppress(ProcessLookupError, OSError):
+                    killer.kill()
+                process.kill()
         else:
             process.kill()
     else:

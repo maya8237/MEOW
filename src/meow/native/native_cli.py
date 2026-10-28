@@ -1,15 +1,26 @@
 """The `meow native ...` command group: argparse wiring and JSON output for the
 deterministic helpers in `native.native`. Every subcommand prints exactly one
-JSON document on stdout and exits 0; any failure prints its message on
-stderr and exits 1 (logs also go to stderr, so stdout stays parseable).
+JSON document on stdout and exits 0. A failure prints one JSON line on stderr,
+`{"error", "retryable", "cause", "retry_after", "command"}`: exit 75 for a
+recognised transient failure (retry the same command), 1 otherwise (logs also
+go to stderr, so stdout stays parseable).
 """
 
 import argparse
 import asyncio
 import json
 import sys
+from contextlib import suppress
 from pathlib import Path
 
+from meow.execution.run_failures import (
+    DRIVER_BUSY,
+    DRIVER_BUSY_RETRY_AFTER,
+    classify_failure,
+    is_driver_busy,
+    recognised_transient,
+)
+from meow.execution.run_state import PARKED_PHASE, RunStore, reconcile_quietly
 from meow.native import native
 from meow.project.config import config_root, load_config
 from meow.project.custom import SKILL_ROLES
@@ -156,6 +167,15 @@ def _add_checkpoint(sub) -> None:
     _add_dirs(parser)
     parser.add_argument("phase")
     parser.add_argument("--run-id")
+    parser.add_argument(
+        "--intent",
+        choices=("run", "plan"),
+        help="run: a full native run (resumed if its session is lost); "
+        "plan: stops at planned on purpose, never auto-resumed.",
+    )
+    parser.add_argument(
+        "--failure", help="With phase parked: the crash the native driver saw."
+    )
     parser.add_argument("--request", default="")
     parser.add_argument("--plan")
     parser.add_argument("--review")
@@ -415,6 +435,8 @@ def _checkpoint(args, working_dir: Path, active: Path) -> dict:
         reviewer=args.reviewer,
         tester=args.tester,
         target_branch=args.target_branch,
+        intent=args.intent,
+        failure=args.failure,
     )
 
 
@@ -530,13 +552,86 @@ _HANDLERS = {
 }
 
 
-def run_native(args) -> None:
-    """Dispatch one `meow native` subcommand, printing its JSON result."""
+EXIT_TEMPFAIL = 75
+RETRY_AFTER = 30
+UNRECOGNISED_CAUSE = "unrecognised_failure"
+
+
+def _classify(exc: BaseException) -> tuple[bool, str]:
+    """(retryable, cause). Only a recognised transient class is retried: a
+    helper has no run budget to stop a blind retry loop. A helper's own
+    ValueError is bad input or a failed gate."""
+    kind, cause = classify_failure(exc)
+    if kind == "blocking":
+        return False, cause
+    if recognised_transient(exc):  # before ValueError: WindowsQueryTimeout is both
+        return True, cause
+    if isinstance(exc, (ValueError, FileNotFoundError)):
+        return False, "invalid_input"
+    return False, UNRECOGNISED_CAUSE
+
+
+def _phase(working_dir: Path, run_id: object) -> str | None:
+    if not isinstance(run_id, str):
+        return None
+    with suppress(Exception):
+        return RunStore(working_dir).load(run_id).phase
+    return None
+
+
+def _parked_by_call(working_dir: Path, run_id: object, before: str | None) -> dict:
+    """The run's own retry decision when this call moved it into `parked`."""
+    if before in {None, PARKED_PHASE}:
+        return {}
+    with suppress(Exception):
+        record = RunStore(working_dir).load(run_id)
+        command = record.results.get("next_command")
+        if record.phase == PARKED_PHASE and command:
+            park = record.park if isinstance(record.park, dict) else {}
+            return {
+                "retryable": True,
+                "cause": park.get("cause"),
+                "retry_after": park.get("retry_after") or RETRY_AFTER,
+                "next_command": command,
+            }
+    return {}
+
+
+def run_native(args, argv: list[str] | None = None) -> None:
+    """Dispatch one `meow native` subcommand, printing its JSON result.
+
+    Run-ID helpers (`checkpoint`, `finalize`) stamp the heartbeat in their own
+    record write; reconcile never parks the run this call drives.
+    """
     working_dir = Path(args.working_dir).resolve()
     active_dir = _resolve(args.active_dir, working_dir) or working_dir
+    run_id = getattr(args, "run_id", None)
+    reconcile_quietly(working_dir, skip=run_id if isinstance(run_id, str) else None)
+    before = _phase(working_dir, run_id)
     try:
         result = _HANDLERS[args.native_command](args, working_dir, active_dir)
-    except (OSError, ValueError, RuntimeError) as exc:
-        print(f"meow native {args.native_command}: {exc}", file=sys.stderr)
-        raise SystemExit(1) from exc
+    except KeyboardInterrupt:
+        raise SystemExit(130) from None
+    except Exception as exc:  # every failure reaches the managing session
+        busy = is_driver_busy(exc)  # a live driver owns it: not a failure
+        retryable, cause = (True, DRIVER_BUSY) if busy else _classify(exc)
+        payload = {
+            "error": f"meow native {args.native_command}: {exc}",
+            "retryable": retryable,
+            "cause": cause,
+            "retry_after": (
+                DRIVER_BUSY_RETRY_AFTER
+                if cause == DRIVER_BUSY
+                else RETRY_AFTER
+                if retryable
+                else None
+            ),
+            "command": ["meow", *(argv if argv is not None else sys.argv[1:])],
+            "next_command": None,
+        }
+        # A run this call parked (e.g. a transient push in finalize) is
+        # retryable through its record, whatever the raw exception says.
+        payload.update(_parked_by_call(working_dir, run_id, before))
+        print(json.dumps(payload), file=sys.stderr, flush=True)
+        raise SystemExit(EXIT_TEMPFAIL if payload["retryable"] else 1) from exc
     print(json.dumps(result))

@@ -4,7 +4,7 @@ import re
 import shutil
 import subprocess
 import time
-from contextlib import suppress
+from contextlib import aclosing, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -363,20 +363,22 @@ class ReviewerAgent(Agent):
             prompt += f"\n\nReview plan:\n{context.plan_text}"
         parts = []
         completed = False
-        async for message in query(prompt=prompt, options=options):
-            log_stream_message("reviewer", message, options=options)
-            if isinstance(message, AssistantMessage):
-                parts.extend(
-                    block.text
-                    for block in message.content
-                    if isinstance(block, TextBlock)
-                )
-            elif isinstance(message, ResultMessage):
-                if message.subtype != "success":
-                    raise RuntimeError(f"CI reviewer failed: {message.subtype}")
-                completed = True
-                if message.result:
-                    parts = [message.result]
+        stream = query(prompt=prompt, options=options)
+        async with aclosing(stream):
+            async for message in stream:
+                log_stream_message("reviewer", message, options=options)
+                if isinstance(message, AssistantMessage):
+                    parts.extend(
+                        block.text
+                        for block in message.content
+                        if isinstance(block, TextBlock)
+                    )
+                elif isinstance(message, ResultMessage):
+                    if message.subtype != "success":
+                        raise RuntimeError(f"CI reviewer failed: {message.subtype}")
+                    completed = True
+                    if message.result:
+                        parts = [message.result]
         if not completed:
             raise RuntimeError("CI reviewer returned no completion result")
         response = "\n".join(parts)

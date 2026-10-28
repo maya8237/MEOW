@@ -197,3 +197,115 @@ class SessionCloseTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(ValueError, "the real problem"):
                 async with agent:
                     raise ValueError("the real problem")
+
+
+_SEQUENCE_400 = (
+    "API Error: 400 litellm.BadRequestError: unexpected role 'user' after role 'tool'"
+)
+
+
+class InvalidSequenceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_litellm_sequence_error_rebuilds_session(self):
+        first = _client([_text(_SEQUENCE_400), _result(error=_SEQUENCE_400)])
+        second = _client([_text("done"), _result(10)])
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", side_effect=[first, second]):
+            agent.open(MagicMock(resume="old", continue_conversation=True))
+            async with agent:
+                self.assertEqual(await agent.send("go"), "done")
+        self.assertIsNone(agent._session_options.resume)
+        sent = second.query.await_args.args[0]
+        self.assertIn("invalid message history", sent)
+        self.assertTrue(sent.endswith("go"))
+        first.__aexit__.assert_awaited()
+
+    async def test_sequence_error_in_assistant_text_alone_rebuilds(self):
+        first = _client([_text(_SEQUENCE_400), _result(error="API Error: 400")])
+        second = _client([_text("done"), _result(10)])
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", side_effect=[first, second]):
+            agent.open(MagicMock())
+            async with agent:
+                self.assertEqual(await agent.send("go"), "done")
+
+    async def test_sequence_error_parks_after_rebuilds(self):
+        from meow.execution.run_failures import TransientRunError
+
+        clients = [_client([_result(error=_SEQUENCE_400)]) for _ in range(3)]
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", side_effect=clients):
+            agent.open(MagicMock())
+            async with agent:
+                with self.assertRaises(TransientRunError) as caught:
+                    await agent.send("go")
+        self.assertEqual(caught.exception.cause, "invalid_sequence")
+
+    async def test_aclose_race_is_not_fatal(self):
+        client = _client()
+        client.__aexit__ = AsyncMock(
+            side_effect=RuntimeError(
+                "aclose(): asynchronous generator is already running"
+            )
+        )
+        agent = _agent()
+        with (
+            patch("meow.agents.base.ClaudeSDKClient", side_effect=[client]),
+            patch.object(base, "logger") as log,
+        ):
+            agent.open(MagicMock())
+            with self.assertRaisesRegex(ValueError, "the real problem"):
+                async with agent:
+                    raise ValueError("the real problem")
+        events = [call.args[0] for call in log.warning.call_args_list]
+        self.assertIn("session_close_race", events)
+
+    async def test_restart_survives_the_aclose_race(self):
+        first = _client([_text("one"), _result(base._SESSION_TOKEN_LIMIT + 1)])
+        first.__aexit__ = AsyncMock(
+            side_effect=RuntimeError("asynchronous generator is already running")
+        )
+        second = _client([_text("two"), _result(10)])
+        agent = _agent()
+        with (
+            patch("meow.agents.base.ClaudeSDKClient", side_effect=[first, second]),
+            patch.object(base, "logger") as log,
+        ):
+            agent.open(MagicMock())
+            async with agent:
+                await agent.send("a")
+                self.assertEqual(await agent.send("b"), "two")
+        events = [call.args[0] for call in log.warning.call_args_list]
+        self.assertIn("session_close_race", events)
+
+    async def test_receive_iterator_closed_before_restart(self):
+        order = []
+
+        async def failing():  # ruff: ignore[unused-async] -- SDK async stream
+            try:
+                yield _text("x")
+                yield _result(error=_SEQUENCE_400)
+            finally:
+                order.append("iterator closed")
+
+        first = _client()
+        first.receive_response = failing
+        first.__aexit__ = AsyncMock(
+            side_effect=lambda *a: order.append("client closed")
+        )
+        second = _client([_text("done"), _result(10)])
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", side_effect=[first, second]):
+            agent.open(MagicMock())
+            async with agent:
+                await agent.send("go")
+        self.assertEqual(order[:2], ["iterator closed", "client closed"])
+
+    async def test_prose_mentioning_the_phrase_is_not_a_sequence_error(self):
+        prose = "I fixed the bug where roles must alternate in the chat builder."
+        first = _client([_text(prose), _result(error="Invalid API key")])
+        agent = _agent()
+        with patch("meow.agents.base.ClaudeSDKClient", side_effect=[first]):
+            agent.open(MagicMock())
+            async with agent:
+                with self.assertRaisesRegex(RuntimeError, "Invalid API key"):
+                    await agent.send("go")

@@ -71,6 +71,44 @@ Status shows received SDK turns, tokens, and USD cost; verbose lists results
 by role, with missing metrics marked `unavailable`. Claude owns transcripts;
 MEOW stores only role/session references.
 
+### Managed runs
+
+`run` and `resume --continue` exit 0 when settled, 75 when parked or retryable
+(stderr `MEOW_RETRY {"run_id", "next_command", "retry_after"}`), 1 when blocked
+or out of budget (`MEOW_BLOCKED {"run_id", "cause", "message", "stop"}`), 3 when
+pushed but the MR failed, and 130 when interrupted. `meow status ID --json`
+reports `phase`, `settled`, `retryable`, `cause`, `next_command`, `attempts`,
+`budget_left`, `worker`, `intent` and `heartbeat_age`, plus `not_resumed_reason`
+when no resume will be tried. A parked run whose supervisor is alive reports
+`settled: false`, `supervised: true` and no `next_command`: it resumes itself.
+A failure before any run record exists exits 75 only for a recognised transient
+class (timeout, SDK process, OS I/O or resource); anything else exits 1. A
+manager retries at most `[run] auto_retries` consecutive 75s that show no
+progress, then reports the failure. Native
+helpers follow the same rule and print `{"error", "retryable", "cause",
+"retry_after", "command", "next_command"}` on stderr; on 75 run `next_command`
+when set, else rerun the same command. A network push failure (timeout, DNS,
+reset, 5xx, stale lock) parks the run; auth, rejected or hook-declined pushes
+and unrecognised git errors end `delivery_failed`.
+`native checkpoint parked --failure TEXT` records a crash the session saw;
+`--intent run|plan` marks plan-only runs, which are never parked or resumed.
+Every helper with a run ID refreshes its heartbeat. A `--intent run` silent past
+`[run] stale_after` (2 h) is parked as a lost session; once `meow resume` drives it,
+native helpers for that run refuse with `driver_busy`, so the session stops editing.
+
+A managing session starts runs with `--background` and polls `meow status ID --json`
+(cron `*/7 * * * *`), acting only when `settled` is true: with `retryable: true`
+and `budget_left > 0` it runs `next_command` detached; with `retryable: false`
+(or `not_resumed_reason` set) it reports `cause`, `last_failure` and evidence, and
+stops. On exit 75 it waits `retry_after`, up to `managed_resumes`, stopping on no
+progress (`attempts`, `no_progress`). A `driver_busy` retry means a live driver owns
+the run: keep watching, do not count it. Orchestrator status JSON adds
+`retryable`: `blocked` waits for a person, and `failed` retries only after a
+non-blocking error. `meow resume --parked` does the same unattended and inline;
+run it detached or hourly via OS scheduling
+([skills](../skills/schedule/SKILL.md)). Exit 75 includes bare transient
+OS errors, so the retry cap lives in the managing session, not the exit code.
+
 Cancellation is cooperative between phases and during agents/checks. It stops
 owned tasks, records `cancelled`, and preserves output/worktree/resume identity;
 it does not signal unrelated PIDs. Explicit continuation validates state and
@@ -90,7 +128,9 @@ Notification failures are recorded separately from verification.
 
 `meow queue "request"` adds work even while another run is active.
 Bare `meow queue` processes FIFO under a repository worker lock; failed tasks
-pause the queue for inspection/retry.
+pause the queue for inspection/retry. It exits 75 while items stay parked;
+`resume --parked` requeues them, starts a detached `meow queue` when no worker
+runs, and prints it as `next_command`.
 
 ## Worktree setup and cleanup
 

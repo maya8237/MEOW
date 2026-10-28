@@ -19,6 +19,7 @@ from meow.execution.orchestration.model import OrchestratorRecord
 from meow.execution.orchestration.report import task_label
 from meow.execution.orchestration.store import OrchestratorStore
 from meow.execution.orchestration.tick import block_task
+from meow.execution.run_failures import park_on_check_timeout
 from meow.infrastructure.checks import run_final_checks
 from meow.infrastructure.test_runner import VerificationSetupError, prepared_test_stage
 from meow.project.plan_files import stage_file
@@ -108,6 +109,7 @@ class _ObjectiveReview:
         binding = review_evidence.capture(
             self.store.repo, self.worktree, self.config, results
         )
+        park_on_check_timeout(results)
         failed = [r for r in results if r.required and not r.passed]
         reviewer = self.agents.reviewer(self.context)
         status, verdict = await reviewer.review_branch(

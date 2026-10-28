@@ -28,6 +28,7 @@ from meow.cli.validation import (
     _validate_feature_name_requirement,
     _validate_run_flags,
 )
+from meow.common.atomic import replace_with_retry
 from meow.common.process import process_identity
 from meow.execution.run_policy import uses_orchestration
 
@@ -722,7 +723,7 @@ def _atomic_json(path: Path, value: dict) -> None:
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(name, path)
+        replace_with_retry(Path(name), path)
     finally:
         Path(name).unlink(missing_ok=True)
 

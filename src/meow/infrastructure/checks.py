@@ -1,11 +1,12 @@
 """Current, independently recorded lint/test/build gate evidence."""
 
 import asyncio
+import concurrent.futures
 import hashlib
 import os
-import shutil
 import signal
 import subprocess
+import tempfile
 import threading
 import time
 from contextlib import suppress
@@ -13,6 +14,7 @@ from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 
+from meow.common.process import run_windows_tool
 from meow.execution.run_state import MAX_OUTPUT, CheckResult, RunStore
 from meow.infrastructure.python_dependencies import python_environment
 from meow.infrastructure.test_runner import capture_windows_command, prepared_test_stage
@@ -269,11 +271,7 @@ def configured_checks(config: dict) -> list[Check]:
 def kill_process_tree(process: subprocess.Popen) -> None:
     """Kill the command and everything it spawned, not just the direct child."""
     if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-            capture_output=True,
-            check=False,
-        )
+        run_windows_tool(["taskkill", "/PID", str(process.pid), "/T", "/F"])
     else:
         with suppress(ProcessLookupError, PermissionError):
             os.killpg(process.pid, signal.SIGKILL)
@@ -281,21 +279,67 @@ def kill_process_tree(process: subprocess.Popen) -> None:
         process.kill()
 
 
-def _communicate(
+def _wait(
     process: subprocess.Popen, timeout: float, cancelled: threading.Event | None
-):
+) -> None:
+    """Wait for the leader only; raises TimeoutExpired or InterruptedError."""
     if cancelled is None:
-        return process.communicate(timeout=timeout)
+        process.wait(timeout=timeout)
+        return
     deadline = time.monotonic() + timeout
     while not cancelled.is_set():
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise subprocess.TimeoutExpired(process.args, timeout)
         try:
-            return process.communicate(timeout=min(remaining, 0.1))
+            process.wait(timeout=min(remaining, 0.1))
+            return
         except subprocess.TimeoutExpired:
             continue
     raise InterruptedError("Verification cancelled")
+
+
+def _read_output(output) -> str:
+    output.seek(0)
+    return output.read().decode("utf-8", errors="replace")
+
+
+def _run_captured_windows(
+    capture, cancelled: threading.Event | None
+) -> tuple[int | None, str, bool]:
+    """Job-owned, file-backed, conhost-free capture, safe from loop threads."""
+    ready: concurrent.futures.Future = concurrent.futures.Future()
+
+    async def main():
+        task = asyncio.ensure_future(capture())
+        ready.set_result((asyncio.get_running_loop(), task))
+        return await task
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, main())
+        try:
+            return _poll(future, cancelled)
+        except BaseException:
+            _cancel_capture(ready)
+            with suppress(BaseException):
+                future.result()
+            raise
+
+
+def _poll(future: concurrent.futures.Future, cancelled: threading.Event | None):
+    while True:
+        try:
+            return future.result(timeout=0.1)
+        except concurrent.futures.TimeoutError:
+            if cancelled is not None and cancelled.is_set():
+                raise InterruptedError("Verification cancelled") from None
+
+
+def _cancel_capture(ready: concurrent.futures.Future) -> None:
+    if ready.done() and not ready.exception():
+        loop, task = ready.result()
+        with suppress(RuntimeError):
+            loop.call_soon_threadsafe(task.cancel)
 
 
 def run_captured(  # ruff: ignore[too-many-arguments] -- cancellation belongs to the owned subprocess
@@ -307,30 +351,34 @@ def run_captured(  # ruff: ignore[too-many-arguments] -- cancellation belongs to
     cancel_event: threading.Event | None = None,
 ) -> tuple[int | None, str, bool]:
     """Run to completion; (exit code, output, timed out). A timeout kills the
-    whole process tree so nothing keeps editing the checkout afterwards."""
-    shell = os.name == "nt" and argv[:2] == ["cmd", "/c"]
-    if os.name == "nt" and not shell and argv:
-        argv = [shutil.which(argv[0], path=env.get("PATH")) or argv[0], *argv[1:]]
-    with subprocess.Popen(
-        argv[2] if shell else argv,
-        shell=shell,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        start_new_session=os.name != "nt",
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
-    ) as process:
+    whole process tree so nothing keeps editing the checkout afterwards.
+
+    Output goes to a file and stdin is closed, so a grandchild that outlives
+    the command can neither hold a pipe open nor wait on inherited input."""
+    if os.name == "nt":
+        return _run_captured_windows(
+            partial(capture_windows_command, argv, cwd, env, timeout), cancel_event
+        )
+    with (
+        tempfile.TemporaryFile() as output,
+        subprocess.Popen(
+            argv,
+            cwd=cwd,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        ) as process,
+    ):
         try:
-            data, _ = _communicate(process, timeout, cancel_event)
-            return process.returncode, data.decode("utf-8", errors="replace"), False
+            _wait(process, timeout, cancel_event)
+            return process.returncode, _read_output(output), False
         except subprocess.TimeoutExpired:
             kill_process_tree(process)
-            try:
-                data, _ = process.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                data = b""
-            return None, data.decode("utf-8", errors="replace"), True
+            with suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=5)
+            return None, _read_output(output), True
         except BaseException:
             kill_process_tree(process)
             raise
@@ -378,12 +426,15 @@ async def _run_check(
         argv = [*split_command(check.command), *check.args]
         if not argv:
             raise ValueError("empty command")
-        exit_code, output, timed_out = await run_captured_async(
-            argv,
-            resolve_command_cwd(repo, check.cwd),
-            python_environment(repo, check.env),
-            check.timeout,
-        )
+        for _attempt in range(2 if check.required else 1):
+            exit_code, output, timed_out = await run_captured_async(
+                argv,
+                resolve_command_cwd(repo, check.cwd),
+                python_environment(repo, check.env),
+                check.timeout,
+            )
+            if not timed_out:
+                break
     except (OSError, ValueError) as exc:  # unlaunchable: a failed gate, not a crash
         output, exit_code, timed_out = str(exc), None, False
     return CheckResult(

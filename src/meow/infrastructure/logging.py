@@ -13,9 +13,13 @@ get logs back from a run with no attached console, such as a Windows
 Scheduled Task. See docs/INTEGRATIONS.md's "Running on a schedule" section.
 """
 
+import contextlib
+import faulthandler
 import logging
 import os
 import sys
+from pathlib import Path
+from typing import TextIO
 
 import structlog
 
@@ -26,6 +30,63 @@ LOG_FILE_ENV_VAR = "MEOW_LOG_FILE"
 # at INFO/DEBUG too; left alone they'd interleave unstructured lines with
 # meow's own key=value output. Keep them quiet unless something goes wrong.
 _QUIET_LOGGERS = ["asyncio"]
+
+
+class _FlushingFileHandler(logging.FileHandler):
+    """Flush after every record so a killed process loses nothing buffered."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        super().emit(record)
+        self.flush()
+
+
+class FsyncHandler(_FlushingFileHandler):
+    """Flush and fsync every record: the line is on disk before `emit` returns."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        super().emit(record)
+        if self.stream is not None:
+            with contextlib.suppress(OSError):  # no fsync support: flush already ran
+                os.fsync(self.stream.fileno())
+
+
+# faulthandler writes to the raw fd at crash time, so the file object must stay
+# referenced (and open) for the life of the process.
+_fault_file: TextIO | None = None
+
+
+def configure_error_log(path: Path) -> None:
+    """Send WARNING+ records and fatal-signal tracebacks to `path`, fsync'd.
+
+    Idempotent: repeat calls replace the previous handler and fault file.
+    """
+    global _fault_file
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    root = logging.getLogger()
+    for handler in [h for h in root.handlers if isinstance(h, FsyncHandler)]:
+        root.removeHandler(handler)
+        handler.close()
+    handler = FsyncHandler(path, encoding="utf-8")
+    handler.setLevel(logging.WARNING)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    root.addHandler(handler)
+    previous, _fault_file = _fault_file, path.open("a", encoding="utf-8")
+    faulthandler.enable(file=_fault_file, all_threads=True)
+    if previous is not None:
+        previous.close()
+
+
+def _reset_error_log_for_tests() -> None:
+    global _fault_file
+    root = logging.getLogger()
+    for handler in [h for h in root.handlers if isinstance(h, FsyncHandler)]:
+        root.removeHandler(handler)
+        handler.close()
+    faulthandler.disable()
+    if _fault_file is not None:
+        _fault_file.close()
+        _fault_file = None
 
 
 def configure_logging() -> None:
@@ -53,7 +114,7 @@ def configure_logging() -> None:
     if log_file:
         # Appends, so repeated scheduled runs build one persistent history
         # instead of each run erasing the last one's log.
-        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+        handlers.append(_FlushingFileHandler(log_file, encoding="utf-8"))
 
     logging.basicConfig(
         format="%(message)s", level=level, handlers=handlers, force=True

@@ -9,7 +9,12 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TypeVar
 
-from meow.execution.run_state import TERMINAL_PHASES, RunRecord, RunStore
+from meow.execution.run_state import (
+    PARKED_PHASE,
+    TERMINAL_PHASES,
+    RunRecord,
+    RunStore,
+)
 
 T = TypeVar("T")
 
@@ -87,6 +92,10 @@ def request_cancel(store: RunStore, run_id: str) -> RunRecord:
         record = store.load(run_id)
         if record.phase in TERMINAL_PHASES:
             raise ValueError(f"Run {run_id} is already {record.phase}.")
+        if record.phase == PARKED_PHASE:  # no driver would see a marker
+            return store.transition(
+                run_id, "cancelled", last_failure="Cancellation requested"
+            )
         marker = _marker(store, run_id)
         try:
             descriptor = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

@@ -1,5 +1,6 @@
 """Read-only rendering of saved run checkpoints."""
 
+import json
 import sys
 from collections import Counter
 from datetime import UTC, datetime
@@ -9,11 +10,14 @@ from meow.execution.orchestration.model import (
     TERMINAL_PHASES as ORCHESTRATOR_TERMINAL_PHASES,
 )
 from meow.execution.orchestration.model import (
+    OrchestratorRecord,
     is_orchestrator_id,
 )
 from meow.execution.orchestration.report import render_status, rollup_line
 from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
+from meow.execution.run_failures import RESUMABLE_SOURCES, next_command
 from meow.execution.run_state import (
+    PARKED_PHASE,
     TERMINAL_PHASES,
     RunRecord,
     RunStateError,
@@ -22,14 +26,14 @@ from meow.execution.run_state import (
 from meow.infrastructure.background import inspect_worker, reconcile_worker
 from meow.infrastructure.quality import Concern, QualityStoreError, concerns_for_run
 from meow.infrastructure.usage import usage_totals
-
-# Sources `meow resume --continue` can drive; others are rerun from scratch.
-RESUMABLE_SOURCES = frozenset({"prompt", "jira", "native", "orchestrator"})
+from meow.project.config import run_config
 
 
 def recovery_command(record: RunRecord) -> str:
     if record.phase == "complete":
         return "Run complete"
+    if record.phase == PARKED_PHASE and (command := next_command(record)):
+        return command
     if record.source not in RESUMABLE_SOURCES:
         return f"Rerun the original meow {record.source} command"
     command = f"meow resume {record.id}"
@@ -241,10 +245,16 @@ def saved_run_id(working_dir: Path, run_id: str | None) -> str | None:
     return max(candidates, key=lambda record: record.updated_at).id
 
 
-def status(working_dir: Path, run_id: str | None = None, verbose: bool = False) -> int:
+def status(
+    working_dir: Path,
+    run_id: str | None = None,
+    verbose: bool = False,
+    *,
+    as_json: bool = False,
+) -> int:
     run_id = saved_run_id(working_dir, run_id)
     if run_id is not None and is_orchestrator_id(run_id):
-        return _orchestration_status(working_dir, run_id)
+        return _orchestration_status(working_dir, run_id, as_json=as_json)
     store = RunStore(working_dir)
     rollups = active_orchestrator_lines(working_dir)
     try:
@@ -253,8 +263,25 @@ def status(working_dir: Path, run_id: str | None = None, verbose: bool = False) 
             reconcile_worker(store, record.id)
             record = store.load(record.id)
     except RunStateError as exc:
+        if as_json:
+            print(json.dumps({"error": str(exc)}))
         print(str(exc), file=sys.stderr)
         return 1
+    if as_json:
+        # Imported here: run_contract builds on resume_cli, which imports us.
+        from meow.cli.run_contract import status_payload
+
+        supervised = record.phase == PARKED_PHASE and inspect_worker(
+            record, include_terminal=True
+        ).state in {"running", "starting"}
+        worker = inspect_worker(record).state
+        print(json.dumps(status_payload(record, worker, supervised=supervised)))
+        return 0
+    _print_run(record, verbose, rollups)
+    return 0
+
+
+def _print_run(record: RunRecord, verbose: bool, rollups: list[str]) -> None:
     try:
         concerns = tuple(
             concerns_for_run(
@@ -267,12 +294,53 @@ def status(working_dir: Path, run_id: str | None = None, verbose: bool = False) 
     print(render(record, verbose=verbose, concerns=concerns))
     if rollups:
         print("\n".join(rollups))
-    return 0
 
 
-def _orchestration_status(working_dir: Path, run_id: str) -> int:
+def orchestration_payload(record: OrchestratorRecord, config: dict) -> dict:
+    """`status --json` for an orchestrator.
+
+    `blocked` waits for a person (`--task`/`--request`): settled, no command.
+    `failed` is retryable, within `managed_resumes`, unless its error is a
+    blocking cause or predates classification.
+    """
+    error = record.error if isinstance(record.error, dict) else {}
+    used = int(record.options.get("failed_resumes", 0))
+    reason = None
+    if record.phase == "blocked":
+        reason = "blocked: needs a person"
+    elif record.phase == "failed":
+        if error.get("kind") in {"transient", "resource"}:
+            if used >= config["managed_resumes"]:
+                reason = "managed_resumes reached"
+        else:
+            reason = f"blocking: {error.get('cause') or 'failed'}"
+    retryable = record.phase in {"running", "reviewing", "delivering"} or (
+        record.phase == "failed" and reason is None
+    )
+    settled = record.phase in {*ORCHESTRATOR_TERMINAL_PHASES, "blocked"}
+    payload = {
+        "id": record.id,
+        "phase": record.phase,
+        "settled": settled,
+        "retryable": retryable and settled,
+        "orchestrator": True,
+        "cause": error.get("cause"),
+        "next_command": f"meow resume {record.id} --continue" if retryable else None,
+    }
+    if reason is not None and settled:
+        payload["not_resumed_reason"] = reason
+    return payload
+
+
+def _orchestration_status(
+    working_dir: Path, run_id: str, *, as_json: bool = False
+) -> int:
     try:
-        print(render_status(OrchestratorStore(working_dir).load(run_id)))
+        record = OrchestratorStore(working_dir).load(run_id)
+        if as_json:
+            print(json.dumps(orchestration_payload(record, run_config(working_dir))))
+            return 0
+        print(render_status(record))
     except (OrchestratorStateError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

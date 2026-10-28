@@ -63,8 +63,11 @@ integration tip when each attempt starts. Passed tasks are committed and
 merged with `--no-ff`.
 
 An integrator may edit only conflicted files. Lint/checks run after each merge;
-failing merges roll back to triage. Triage chooses retry, resume, rescope,
-reintegrate, or blocked. A task and any split lineage share at most
+failing merges roll back to triage. A parked child (crash, transient error)
+is first resumed in place with `meow resume RUN --continue`, up to
+`[run] managed_resumes` per run and `max_total_resumes` per task; blocking
+failures and exhausted budgets go to triage, which chooses retry, resume,
+rescope, reintegrate, or blocked. A task and any split lineage share at most
 `max_recovery_cycles` (default 3).
 
 Once all tasks merge, objective review checks `base...orchestrator/ID`,

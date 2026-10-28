@@ -173,6 +173,33 @@ def test_cli_lock_blocks_second_driver_and_reclaims_dead_pid(tmp_path, monkeypat
     assert DriverLock(directory, mode="cli").acquire() is True
 
 
+def test_cli_lock_held_by_a_reused_pid_is_reclaimed(tmp_path, monkeypatch):
+    """The recorded PID is alive, but it is another process now."""
+    directory = tmp_path / "orch"
+    assert DriverLock(directory, mode="cli").acquire() is True
+    assert DriverLock(directory, mode="cli").holder()["start_identity"]
+    monkeypatch.setattr(store_module, "process_identity", lambda _pid: "other")
+    assert DriverLock(directory, mode="cli").acquire() is True
+
+
+def test_cli_lock_without_a_recorded_identity_still_checks_the_pid(tmp_path):
+    directory = tmp_path / "orch"
+    lock = DriverLock(directory, mode="cli")
+    assert lock.acquire() is True
+    holder = lock.holder()
+    holder.pop("start_identity")
+    lock.path.write_text(json.dumps(holder), encoding="utf-8")
+    assert DriverLock(directory, mode="cli").acquire() is False
+
+
+def test_cli_lock_stays_held_when_identity_cannot_be_read(tmp_path, monkeypatch):
+    """An unreadable start time for a live PID is not a dead holder."""
+    directory = tmp_path / "orch"
+    assert DriverLock(directory, mode="cli").acquire() is True
+    monkeypatch.setattr(store_module, "process_identity", lambda _pid: None)
+    assert DriverLock(directory, mode="cli").acquire() is False
+
+
 def test_release_frees_the_lock(tmp_path):
     directory = tmp_path / "orch"
     with DriverLock(directory, mode="cli"):

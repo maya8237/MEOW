@@ -15,7 +15,7 @@ from contextlib import nullcontext, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
-from meow.common.process import process_identity
+from meow.common.process import process_identity, run_windows_tool
 from meow.ui.sessions import (
     Attempt,
     Recipe,
@@ -426,12 +426,14 @@ def _signal_owned_tree(pid: int, identity: str, *, force: bool = True) -> bool:
     if process_identity(pid) != identity:
         return False
     if sys.platform == "win32":
-        result = subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F" if force else "/T"],
-            capture_output=True,
-            check=False,
-        )
-        return result.returncode == 0
+        result = run_windows_tool([
+            "taskkill",
+            "/PID",
+            str(pid),
+            "/T",
+            "/F" if force else "/T",
+        ])
+        return result is not None and result.returncode == 0
     try:
         os.killpg(pid, signal.SIGKILL if force else signal.SIGTERM)
     except ProcessLookupError:

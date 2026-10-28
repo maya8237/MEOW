@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import traceback
 from dataclasses import asdict
 from pathlib import Path
 
@@ -16,9 +17,10 @@ from meow.cli.dispatch import _dispatch
 from meow.cli.ipython_cli import start_ipython
 from meow.cli.orchestration_cli import run_orchestration
 from meow.cli.parser import _build_arg_parser, expand_shortcuts
-from meow.cli.resume_cli import resume
+from meow.cli.resume_cli import resume, resume_parked
+from meow.cli.run_contract import EXIT_INTERRUPTED, finished_exit, outcome_exit
 from meow.cli.skills_cli import skills_command
-from meow.cli.status_cli import status
+from meow.cli.status_cli import saved_run_id, status
 from meow.cli.validation import (
     _resolve_input_path,
     _validate_ci_flags,
@@ -26,26 +28,30 @@ from meow.cli.validation import (
     _validate_run_flags,
     validate_workflow_args,
 )
+from meow.common.safe_platform import install_safe_platform
 from meow.evaluation import evaluate_run
 from meow.execution.orchestration.cleanup import clean_orchestrator
 from meow.execution.orchestration.model import is_orchestrator_id
 from meow.execution.orchestration.runner import cancel_orchestrator
 from meow.execution.orchestration.store import OrchestratorStateError
 from meow.execution.orchestrator import log_working_directory
+from meow.execution.run_failures import run_id_of
 from meow.execution.run_policy import (
     _creates_a_worktree,
     _should_use_worktree,
     check_clean_tree,
     uses_orchestration,
 )
-from meow.execution.run_state import RunStateError, RunStore
+from meow.execution.run_state import RunStateError, RunStore, reconcile_quietly
 from meow.infrastructure.background import (
     BackgroundError,
+    drive_main,
     launch_background,
     worker_main,
 )
 from meow.infrastructure.cancellation import request_cancel
 from meow.infrastructure.logging import configure_logging, get_logger
+from meow.infrastructure.supervisor import run_supervised, should_supervise
 from meow.infrastructure.worktree import (
     DirtyWorkingTreeError,
     _boot_repo,
@@ -67,6 +73,20 @@ from meow.project.onboarding import onboard_if_needed
 from meow.ui import serve_ui
 
 logger = get_logger(__name__)
+
+# Commands that read or drive saved runs: each first parks runs whose driver
+# died without settling them (a killed foreground run, a crashed worker).
+_RECONCILE_COMMANDS = frozenset({
+    "status",
+    "resume",
+    "run",
+    "queue",
+    "cancel",
+    "plan",
+    "review",
+    "worktree",
+    "cleanup",
+})
 
 
 # Anything a run can raise on a misbehaving environment: I/O, timeouts (also an
@@ -95,6 +115,31 @@ def _describe_failure(exc: BaseException) -> str:
     return str(exc) or type(exc).__name__
 
 
+def _report_failure(exc: BaseException) -> None:
+    """Expected failures print one message; anything else its traceback."""
+    if isinstance(exc, _EXPECTED_FAILURES):
+        print(f"\n{_describe_failure(exc)}", file=sys.stderr)
+    else:
+        traceback.print_exception(exc, file=sys.stderr)
+
+
+def _run_failed(
+    working_dir: Path, run_id: str | None, exc: Exception, argv: list[str]
+) -> SystemExit:
+    """The contract exit (75 retry / 1 blocked) for a failed run command."""
+    _report_failure(exc)
+    return SystemExit(outcome_exit(working_dir, run_id_of(exc) or run_id, exc, argv))
+
+
+def _resume_target(working_dir: Path, run_id: str | None) -> str | None:
+    """The plain run `meow resume` drives (None for an orchestrator)."""
+    try:
+        target = saved_run_id(working_dir, run_id) or RunStore(working_dir).latest().id
+    except RunStateError:
+        return None
+    return None if is_orchestrator_id(target) else target
+
+
 def _check_clean_tree(args, working_dir: Path) -> None:
     try:
         check_clean_tree(args, working_dir)
@@ -104,10 +149,12 @@ def _check_clean_tree(args, working_dir: Path) -> None:
 
 
 def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-statements, too-many-locals] -- command dispatch
+    install_safe_platform()
     configure_logging()
     from meow.installer.maintenance import check_for_updates
 
     effective_argv = expand_shortcuts(list(sys.argv[1:] if argv is None else argv))
+    command_argv = list(sys.argv[1:] if argv is None else argv)
     first = effective_argv[0] if effective_argv else "ipython"
     if first not in {
         "-u",
@@ -144,7 +191,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         start_ipython()
         return
     if args.command == "native":
-        run_native(args)
+        run_native(args, command_argv)
         return
     working_dir = Path(args.working_dir).resolve()
     log_working_directory(working_dir)
@@ -152,6 +199,8 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         from meow.cli.onboard_cli import onboard_command
 
         raise SystemExit(onboard_command(args, working_dir))
+    if args.command in _RECONCILE_COMMANDS:
+        reconcile_quietly(working_dir)
     if args.command == "cleanup":
         cleanup_command(working_dir, args.run_id)
         return
@@ -201,8 +250,19 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         return
     if args.command == "_worker":
         raise SystemExit(worker_main(working_dir, args.run_id, args.nonce))
+    if args.command == "_drive":
+        try:
+            raise SystemExit(drive_main(working_dir, args.run_id, args.nonce))
+        except KeyboardInterrupt:
+            raise SystemExit(130) from None
+        except (*_EXPECTED_FAILURES, BackgroundError) as exc:
+            # Already settled in the run record; the supervisor reconciles.
+            print(f"\n{_describe_failure(exc)}", file=sys.stderr)
+            raise SystemExit(1) from exc
     if args.command == "status":
-        raise SystemExit(status(working_dir, args.run_id, args.verbose))
+        raise SystemExit(
+            status(working_dir, args.run_id, args.verbose, as_json=args.as_json)
+        )
     if args.command == "cancel":
         try:
             if is_orchestrator_id(args.run_id):
@@ -256,7 +316,15 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
             raise SystemExit(2) from exc
         print(report.render(args.verbose))
         return
+    if args.command == "resume" and args.parked:
+        if args.run_id or args.continue_run or args.task_id or args.request:
+            parser.error("--parked takes no run ID, --continue, --task or --request")
+        try:
+            raise SystemExit(asyncio.run(resume_parked(working_dir)))
+        except KeyboardInterrupt:
+            raise SystemExit(130) from None
     if args.command == "resume":
+        target = _resume_target(working_dir, args.run_id) if args.continue_run else None
         try:
             code = asyncio.run(
                 resume(
@@ -268,9 +336,12 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
                     **({"task_id": args.task_id} if args.task_id is not None else {}),
                 )
             )
-        except _EXPECTED_FAILURES as exc:
-            print(f"\n{_describe_failure(exc)}", file=sys.stderr)
-            raise SystemExit(1) from exc
+        except KeyboardInterrupt:
+            raise SystemExit(EXIT_INTERRUPTED) from None
+        except Exception as exc:
+            raise _run_failed(working_dir, target, exc, command_argv) from exc
+        if code == 0 and target is not None:
+            code = finished_exit(working_dir, target)
         raise SystemExit(code)
     if uses_orchestration(args):
         _validate_run_flags(parser, args)
@@ -350,6 +421,36 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
             raise SystemExit(1) from exc
         print(f"Background run: {run_id}")
         print(f"Inspect: meow status {run_id}")
+        return
+    if (
+        args.command == "run"
+        and not args.lint_fix
+        and not args.manually_approve_plan
+        and args.jira is None  # keeps _dispatch_jira_build's handling
+        and should_supervise(working_dir)
+    ):
+        created: list[str] = []
+        try:
+            code = run_supervised(working_dir, command_argv, on_created=created.append)
+        except KeyboardInterrupt:
+            raise SystemExit(EXIT_INTERRUPTED) from None
+        except Exception as exc:
+            raise _run_failed(
+                working_dir, created[0] if created else None, exc, command_argv
+            ) from exc
+        # The supervisor settled the run; its record decides the exit.
+        if created:
+            code = outcome_exit(working_dir, created[0], None, command_argv)
+        raise SystemExit(code)
+    if args.command == "run" and not args.lint_fix:
+        try:
+            run_id = _dispatch(args, working_dir, use_worktree=use_worktree)
+        except KeyboardInterrupt:
+            raise SystemExit(EXIT_INTERRUPTED) from None
+        except Exception as exc:
+            raise _run_failed(working_dir, None, exc, command_argv) from exc
+        if code := (finished_exit(working_dir, run_id) if run_id else 0):
+            raise SystemExit(code)
         return
     try:
         _dispatch(args, working_dir, use_worktree=use_worktree)
