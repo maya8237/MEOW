@@ -62,6 +62,38 @@ def test_platform_calls_do_not_reach_wmi(hung_wmi):
     assert hung_wmi == []
 
 
+def test_repro_with_windows_uname_path(hung_wmi, monkeypatch):
+    # Real Windows has no os.uname, so uname() would use win32_ver/_wmi_query.
+    monkeypatch.delattr(os, "uname", raising=False)
+    install_safe_platform()
+    for query in (platform.uname, platform.platform, platform.processor):
+        assert _timed(query) < _FAST
+    assert hung_wmi == []
+
+
+def test_private_platform_attributes_exist_on_this_python():
+    for name in safe_platform._PRIVATE_NAMES:
+        assert hasattr(platform, name), name
+
+
+@pytest.mark.parametrize("missing", safe_platform._PRIVATE_NAMES)
+def test_install_degrades_when_a_private_name_is_gone(hung_wmi, monkeypatch, missing):
+    monkeypatch.delattr(platform, missing)
+    install_safe_platform()  # must not raise
+    assert platform.win32_ver()[1] != "hang"
+
+
+def test_force_flag_is_ignored_outside_pytest(monkeypatch):
+    for name in _PATCHED:
+        monkeypatch.setattr(platform, name, getattr(platform, name))
+    monkeypatch.delattr(platform, safe_platform._MARKER, raising=False)
+    monkeypatch.setenv(safe_platform.FORCE_WIN32_ENV, "1")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST")
+    original = platform._wmi_query
+    install_safe_platform()
+    assert platform._wmi_query is original
+
+
 def test_install_is_idempotent_and_noop_off_windows(monkeypatch):
     for name in _PATCHED:
         monkeypatch.setattr(platform, name, getattr(platform, name))
