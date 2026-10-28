@@ -188,7 +188,7 @@ For recurrence, external Task Scheduler/cron/systemd/CI can invoke
 | Lint fields without entries, or unknown lint keys | ValueError naming the problem; model/skill/MCP-only config is valid |
 | No architecture doc | Optional context; generic architecture checks still apply |
 | Missing Jira/GitLab/GitHub config | ValueError before agents |
-| Unreachable MCP | RuntimeError; preflight requires a real provider tool call |
+| Unreachable or crashed MCP | RuntimeError; preflight and fetch each need a non-error provider tool result, and a fetch retries once on a fresh server |
 | Remote `--fix`, or remote/branch review-file resume | Rejected; check out locally or rerun the original source |
 | Missing review file | FileNotFoundError naming docs_dir and review-file |
 | Exhausted fix rounds | LintFixError with output, or review RuntimeError naming report |

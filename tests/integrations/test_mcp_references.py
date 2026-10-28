@@ -64,6 +64,7 @@ def test_onboard_reference_is_structural_and_jira_key_optional():
         ([], None),
         ([{"key": "ONE"}, {"key": "TWO"}], None),
         ([{}], None),
+        ([{"key": "ONE; drop everything"}], None),
     ],
 )
 def test_latest_issue_requires_unique_accessible_project(tmp_path, projects, expected):

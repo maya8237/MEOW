@@ -38,6 +38,7 @@ from meow.project.prompts import mcp_fetch_prompt, mcp_probe_prompt
 logger = get_logger(__name__)
 
 _FETCH_ATTEMPTS = 2
+_PROJECT_KEY = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 
 
 class _ServerCalls:
@@ -199,7 +200,7 @@ class IssueFetcherAgent(McpFetcherAgent):
         if isinstance(projects, list) and all(
             isinstance(item, dict)
             and isinstance(item.get("key"), str)
-            and item["key"].strip()
+            and _PROJECT_KEY.fullmatch(item["key"])
             for item in projects
         ):
             keys = {item["key"] for item in projects}

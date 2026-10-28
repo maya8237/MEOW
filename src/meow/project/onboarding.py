@@ -153,9 +153,12 @@ def detect_lint(root: Path) -> tuple[str, str] | None:
     entries = detect_commands(Path(root)).defaults.get("lint", [])
     if not entries:
         return None
-    entry = entries[0]
-    command = entry["command"].replace("npx --no-install eslint", "npx eslint")
-    return command, entry.get("fix_flag", "")
+    return _lint_label(entries[0]), entries[0].get("fix_flag", "")
+
+
+def _lint_label(entry: dict) -> str:
+    command = " ".join([entry["command"], *entry.get("args", [])])
+    return command.replace("npx --no-install eslint", "npx eslint")
 
 
 def is_onboarded(root: Path) -> bool:
@@ -282,7 +285,7 @@ def onboard_project(root: Path, *, write_config: bool = True) -> OnboardingRepor
         explicit = _merge_config(explicit, table)
     detected = setup_defaults(root, explicit)
     lint_entries = detected.defaults.get("lint", [])
-    lint = lint_entries[0]["command"] if lint_entries else None
+    lint = _lint_label(lint_entries[0]) if lint_entries else None
     files: list[str] = []
     try:
         error = _apply(root, None, files, write_config=write_config)
@@ -333,16 +336,25 @@ def _bind_providers(root: Path, defaults: dict, files: list[str]) -> None:
         files.append(LOCAL_CONFIG_RELPATH)
 
 
-def bind_provider_references(root: Path) -> None:
-    """Bind before provider intake without creating tracked setup files."""
+def bind_provider_references(root: Path, providers: tuple[str, ...]) -> None:
+    """Bind `providers` before their intake without creating tracked setup files.
+
+    Best effort: when binding fails, the caller's config load reports the
+    provider as not configured.
+    """
+    try:
+        _bind_requested(Path(root), providers)
+    except (OSError, ValueError):
+        return
+
+
+def _bind_requested(root: Path, providers: tuple[str, ...]) -> None:
     explicit: dict = {}
     for table in reversed(_config_tables(root)):
         explicit = _merge_config(explicit, table)
     detected = setup_defaults(root, explicit)
     references = {
-        key: value
-        for key, value in detected.defaults.items()
-        if key in {"jira", "gitlab", "github"}
+        key: value for key, value in detected.defaults.items() if key in providers
     }
     if not references:
         return

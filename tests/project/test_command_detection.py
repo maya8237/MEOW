@@ -1,10 +1,17 @@
 """Manifest fallbacks refresh without becoming explicit configuration."""
 
 import json
+import subprocess
+import tomllib
 
 import pytest
 
 from meow.project.config import load_config
+from meow.project.onboarding import (
+    bind_provider_references,
+    detect_lint,
+    onboard_project,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -250,3 +257,52 @@ def test_bound_providers_do_not_warn_about_registry_ambiguity(tmp_path, monkeypa
         },
     )
     assert feature_gaps(tmp_path)["jira"]["ambiguous"] == []
+
+
+def test_npm_init_placeholder_test_script_is_not_detected(tmp_path):
+    (tmp_path / "package.json").write_text(
+        json.dumps({
+            "scripts": {
+                "test": 'echo "Error: no test specified" && exit 1',
+                "build": "tsc",
+            }
+        })
+    )
+    config = load_config(tmp_path)
+    assert config["tester"]["tests"] == []
+    assert config["build"][0].args == ("run", "build")
+
+
+def test_node_lint_script_is_reported_with_its_arguments(tmp_path):
+    (tmp_path / "package.json").write_text('{"scripts":{"lint":"eslint ."}}')
+    assert detect_lint(tmp_path) == ("npm run lint", "")
+    assert onboard_project(tmp_path).lint == "npm run lint"
+
+
+def test_runtime_binding_covers_only_the_requested_provider(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (home / ".claude.json").write_text(
+        json.dumps({
+            "mcpServers": {
+                "atlassian": {"command": "uvx", "args": ["mcp-atlassian"]},
+                "github": {"command": "npx", "args": ["github-mcp"]},
+            }
+        })
+    )
+    bind_provider_references(repo, ("jira",))
+    config = tomllib.loads((repo / ".meow/config.local.toml").read_text())
+    assert config["jira"]["mcp"] == {"from": "atlassian"}
+    assert "github" not in config
+
+
+def test_runtime_binding_failure_is_not_fatal(tmp_path, monkeypatch):
+    def unreadable(*_args, **_kwargs):
+        raise OSError("read-only")
+
+    monkeypatch.setattr("meow.project.onboarding._bind_requested", unreadable)
+    bind_provider_references(tmp_path, ("jira",))

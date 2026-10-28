@@ -57,6 +57,15 @@ def _manager(root: Path, package: dict) -> str | None:
     return next(iter(managers), "npm") if len(managers) <= 1 else None
 
 
+def _usable_script(script: object) -> bool:
+    """A nonempty script that is not `npm init`'s "no test specified" stub."""
+    return (
+        isinstance(script, str)
+        and bool(script.strip())
+        and "no test specified" not in script.lower()
+    )
+
+
 def _node_checks(root: Path, candidates: dict) -> tuple[str, ...]:
     package = _package(root)
     manager = _manager(root, package)
@@ -66,7 +75,7 @@ def _node_checks(root: Path, candidates: dict) -> tuple[str, ...]:
     if manager is None:
         return ("package.json: package manager",)
     for script, kind in (("lint", "lint"), ("test", "tests"), ("build", "build")):
-        if not isinstance(scripts.get(script), str) or not scripts[script].strip():
+        if not _usable_script(scripts.get(script)):
             continue
         command = {"command": manager, "args": ["run", script]}
         if kind == "lint":

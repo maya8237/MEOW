@@ -518,3 +518,12 @@ def test_parallel_worker_prepares_python_environment(tmp_path, monkeypatch, inst
         runner.run_parallel_plan(sprint, graph, tmp_path / "plan.md", store, record.id)
     )
     assert installer
+
+
+def test_malformed_optional_dependencies_do_not_crash_planning(tmp_path):
+    manifest = {"project": {"name": "x", "optional-dependencies": 5}}
+    assert python._commands(tmp_path, manifest)[0][:3] == [
+        sys.executable,
+        "-m",
+        "venv",
+    ]

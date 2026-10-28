@@ -24,7 +24,7 @@ def _dispatch_lint_fix(args, working_dir: Path) -> None:
 
 
 def _dispatch_jira_build(args, working_dir: Path) -> None:
-    bind_provider_references(working_dir)
+    bind_provider_references(working_dir, ("jira",))
     approve_plan = _prompt_plan_approval if args.manually_approve_plan else None
     try:
         result = asyncio.run(

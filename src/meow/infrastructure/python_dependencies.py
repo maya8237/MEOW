@@ -79,7 +79,8 @@ def _group_requirements(
 
 def _commands(root: Path, manifest: dict) -> list[list[str]]:
     project = manifest.get("project", {})
-    extra = "dev" in project.get("optional-dependencies", {})
+    optional = project.get("optional-dependencies", {})
+    extra = isinstance(optional, dict) and "dev" in optional
     uv = shutil.which("uv")
     if (root / "uv.lock").is_file() and manifest and uv:
         return [[uv, "sync", "--locked", *(["--extra", "dev"] if extra else [])]]

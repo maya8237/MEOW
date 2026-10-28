@@ -51,7 +51,7 @@ def _jira_problem(args: argparse.Namespace, working_dir: Path) -> str | None:
     if args.jira is None and args.jql is None:
         return None
     try:
-        bind_provider_references(working_dir)
+        bind_provider_references(working_dir, ("jira",))
         _load_jira_config(load_config(working_dir))
     except (OSError, ValueError) as exc:
         return (
