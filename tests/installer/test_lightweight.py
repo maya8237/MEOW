@@ -67,7 +67,7 @@ def test_powershell_activation_arguments(setup, non_interactive):
         capture_output=True,
         text=True,
         check=True,
-        timeout=15,
+        timeout=60,  # cold PowerShell start can take long on a loaded runner
     )
     assert result.stdout.splitlines() == [
         "--activate",
