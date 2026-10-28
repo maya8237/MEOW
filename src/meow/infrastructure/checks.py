@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import os
+import shutil
 import signal
 import subprocess
 import threading
@@ -13,6 +14,7 @@ from functools import partial
 from pathlib import Path
 
 from meow.execution.run_state import MAX_OUTPUT, CheckResult, RunStore
+from meow.infrastructure.python_dependencies import python_environment
 from meow.infrastructure.test_runner import capture_windows_command, prepared_test_stage
 from meow.project.command_policy import split_command
 from meow.project.config import config_paths
@@ -307,6 +309,8 @@ def run_captured(  # ruff: ignore[too-many-arguments] -- cancellation belongs to
     """Run to completion; (exit code, output, timed out). A timeout kills the
     whole process tree so nothing keeps editing the checkout afterwards."""
     shell = os.name == "nt" and argv[:2] == ["cmd", "/c"]
+    if os.name == "nt" and not shell and argv:
+        argv = [shutil.which(argv[0], path=env.get("PATH")) or argv[0], *argv[1:]]
     with subprocess.Popen(
         argv[2] if shell else argv,
         shell=shell,
@@ -377,7 +381,7 @@ async def _run_check(
         exit_code, output, timed_out = await run_captured_async(
             argv,
             resolve_command_cwd(repo, check.cwd),
-            {**os.environ, **(check.env or {})},
+            python_environment(repo, check.env),
             check.timeout,
         )
     except (OSError, ValueError) as exc:  # unlaunchable: a failed gate, not a crash

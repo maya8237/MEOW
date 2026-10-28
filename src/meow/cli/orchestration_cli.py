@@ -26,6 +26,7 @@ from meow.infrastructure.worktree import (
 )
 from meow.integrations.issue_solver import _load_jira_config
 from meow.project.config import load_config
+from meow.project.onboarding import bind_provider_references
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
@@ -50,6 +51,7 @@ def _jira_problem(args: argparse.Namespace, working_dir: Path) -> str | None:
     if args.jira is None and args.jql is None:
         return None
     try:
+        bind_provider_references(working_dir, ("jira",))
         _load_jira_config(load_config(working_dir))
     except (OSError, ValueError) as exc:
         return (
@@ -77,16 +79,16 @@ def _refusal(
     """An exit code when this start must be refused, else None."""
     if tasks_file is not None and not tasks_file.is_file():
         return _usage_error("--tasks must name an existing file")
-    problem = _jira_problem(args, working_dir)
-    if problem:
-        print(problem, file=sys.stderr)
-        return EXIT_FAILED
     try:
         _require_source_worktree(working_dir, args.source_branch)
         if not args.source_branch:
             _ensure_clean_tree(working_dir)
     except DirtyWorkingTreeError as exc:
         print(f"\nWARNING: {exc}", file=sys.stderr)
+        return EXIT_FAILED
+    problem = _jira_problem(args, working_dir)
+    if problem:
+        print(problem, file=sys.stderr)
         return EXIT_FAILED
     return None
 

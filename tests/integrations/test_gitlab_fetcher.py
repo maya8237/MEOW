@@ -8,11 +8,14 @@ from claude_agent_sdk import (
     AssistantMessage,
     ResultMessage,
     TextBlock,
+    ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
 )
 
 from meow.agents.mcp_fetcher import GitlabFetcherAgent
 from meow.project.config_models import LintCommand
+from tests.integrations.mcp_fakes import server_call
 
 
 class FakeProjectContext:
@@ -61,6 +64,7 @@ class GitlabFetcherCheckActiveTests(unittest.IsolatedAsyncioTestCase):
                 ],
                 model="model",
             )
+            yield UserMessage(content=[ToolResultBlock(tool_use_id="1", content="ok")])
             yield _result("success")
 
         with patch("meow.agents.mcp_fetcher.query", fake_query):
@@ -110,6 +114,8 @@ class GitlabFetcherFetchTests(unittest.IsolatedAsyncioTestCase):
 
             async def fake_query(*, prompt, options):
                 await asyncio.sleep(0)
+                for message in server_call("gitlab"):
+                    yield message
                 yield _result("success")
 
             with (

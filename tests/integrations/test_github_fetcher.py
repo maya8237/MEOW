@@ -10,11 +10,14 @@ from claude_agent_sdk import (
     PermissionResultDeny,
     ResultMessage,
     TextBlock,
+    ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
 )
 
 from meow.agents.mcp_fetcher import GithubFetcherAgent
 from meow.project.config_models import LintCommand
+from tests.integrations.mcp_fakes import server_call
 
 
 class FakeProjectContext:
@@ -63,6 +66,7 @@ class GithubFetcherCheckActiveTests(unittest.IsolatedAsyncioTestCase):
                 ],
                 model="model",
             )
+            yield UserMessage(content=[ToolResultBlock(tool_use_id="1", content="ok")])
             yield _result("success")
 
         with patch("meow.agents.mcp_fetcher.query", fake_query):
@@ -110,6 +114,8 @@ class GithubFetcherFetchTests(unittest.IsolatedAsyncioTestCase):
 
             async def fake_query(*, prompt, options):
                 await asyncio.sleep(0)
+                for message in server_call("github"):
+                    yield message
                 yield _result("success")
 
             with (
@@ -131,6 +137,8 @@ class GithubFetcherFetchTests(unittest.IsolatedAsyncioTestCase):
                 captured["options"] = options
                 output_file.write_text("{}", encoding="utf-8")
                 await asyncio.sleep(0)
+                for message in server_call("github"):
+                    yield message
                 yield _result("success")
 
             with patch("meow.agents.base.query", fake_query):

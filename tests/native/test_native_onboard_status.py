@@ -37,6 +37,33 @@ def test_onboard_status_reports_onboarded(repo):
     assert data["boundary_ok"] is True
 
 
+def test_status_marks_runtime_checks_detected_not_verified(repo):
+    (repo / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    onboard_project(repo)
+    code, out, _ = run_native("onboard-status", "--working-dir", str(repo))
+    assert code == 0
+    gap = json.loads(out)["gaps"]["tester_tests"]
+    assert gap["configured"] and gap["detected"] and not gap["verified"]
+
+
+def test_native_preparation_reloads_new_local_reference(repo, monkeypatch):
+    from meow.native.native_prepare import PrepareOptions, _onboard
+    from meow.project.config import load_config
+
+    onboard_project(repo)
+    config = load_config(repo)
+    monkeypatch.setattr(
+        "meow.project.mcp_registry.discover_provider_references",
+        lambda root: {
+            "references": {"jira": {"from": "work-jira"}},
+            "hints": {},
+        },
+    )
+    report, fresh = _onboard(repo, repo, PrepareOptions(), config)
+    assert ".meow/config.local.toml" in report["files"]
+    assert fresh["jira"]["mcp"] == {"from": "work-jira"}
+
+
 def test_onboard_status_exposes_available_features_without_writing(repo):
     onboard_project(repo)
     shared = repo / ".meow" / "config.toml"

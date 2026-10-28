@@ -16,8 +16,10 @@ Plan and review permit pending changes. Manual plan approval (`-m`) displays
 the plan before generation; declining starts no generator. Plan-only rejects it.
 
 First config-dependent use repairs the ignore boundary and creates a minimal
-shared config with detected ruff/eslint lint, without prompting or overwriting
-config. Onboarding failures do not fail the command. Changes stay in the
+shared config without prompting or overwriting explicit settings. Missing
+established checks and compatible Claude MCP references are detected locally;
+changed manifests refresh inferred commands. Onboarding failures do not fail the
+command. Changes stay in the
 original checkout, outside feature/task branches; editable-install
 `*.egg-info/` is locally ignored via Git's `info/exclude`.
 Use `/meow:onboard` for add-ons.

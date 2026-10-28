@@ -1,5 +1,25 @@
 # Worktree setup and dependencies
 
+Dependency preparation happens when a task prepares its worktree. Installing
+MEOW or detecting project settings does not install project packages.
+
+## Python dependencies
+
+Recognized Python projects receive an isolated `.venv` in each task worktree.
+Locked uv projects use `uv sync --locked` when uv is available; other recognized
+projects use a local venv and their project/requirements files. Established dev
+dependency declarations are included. Child checks and agents use that environment
+without changing the parent shell. Setup permissions apply; failures remain
+retryable and unchanged completed environments skip installation.
+Local requirements/constraints includes participate in refresh detection. Inputs
+that cannot be tracked locally force preparation again rather than reusing stale
+evidence. Fallback pip installs use the worktree prefix and disable inherited pip
+configuration files/destination overrides; provide private index credentials via
+environment variables such as `PIP_INDEX_URL`.
+Automatic Python preparation does not install into the original project checkout.
+Custom setup commands remain explicit; MEOW does not infer arbitrary `make setup`
+targets or provision services during onboarding.
+
 ## Explicit setup
 
 `[worktree_setup]` applies before agents in SDK/native feature, issue,

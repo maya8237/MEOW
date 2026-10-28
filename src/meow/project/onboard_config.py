@@ -9,7 +9,7 @@ from pathlib import Path
 
 import tomlkit
 
-from meow.project.config import load_config
+from meow.project.config import _replace_mcp, load_config
 from meow.project.onboarding import LOCAL_CONFIG_RELPATH, feature_gaps, onboard_project
 from meow.project.repos import remember
 
@@ -31,9 +31,20 @@ def parse_setting(raw: str) -> tuple[str, object]:
 def _merge(document, values):
     for key, value in values.items():
         if isinstance(value, dict) and isinstance(document.get(key), MutableMapping):
-            _merge(document[key], value)
+            if _replace_mcp(key, dict(document[key]), value):
+                document[key] = value
+            else:
+                _merge(document[key], value)
         else:
             document[key] = value
+
+
+def _switch_connection(document, parts):
+    if parts[-2:] == ["mcp", "from"]:
+        for superseded in ("command", "args", "env"):
+            document.pop(superseded, None)
+    elif parts[-2:] == ["mcp", "command"]:
+        document.pop("from", None)
 
 
 def _set(document, key, value):
@@ -44,6 +55,7 @@ def _set(document, key, value):
         document = document[part]
         if not isinstance(document, MutableMapping):
             raise ValueError("Setting path conflicts with an existing value")
+    _switch_connection(document, parts)
     document[parts[-1]] = value
 
 
@@ -58,22 +70,36 @@ def _atomic_write(path: Path, content: bytes):
         Path(temporary).unlink(missing_ok=True)
 
 
+def _validate_reference(mcp):
+    if (
+        set(mcp) != {"from"}
+        or not isinstance(mcp["from"], str)
+        or not mcp["from"].strip()
+    ):
+        raise ValueError("MCP reference requires only a nonempty from name")
+
+
+def _validate_inline_mcp(mcp, provider):
+    if not isinstance(mcp.get("command"), str) or not mcp["command"].strip():
+        raise ValueError(f"{provider} requires an MCP command")
+    args = mcp.get("args", [])
+    if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
+        raise ValueError("MCP args must be strings")
+    env = mcp.get("env", {})
+    if not isinstance(env, dict) or not all(isinstance(v, str) for v in env.values()):
+        raise ValueError("MCP environment values must be strings")
+
+
 def _validate_integrations(config, requested):
     for provider in requested & {"jira", "gitlab", "github"}:
         integration = config.get(provider, {})
         mcp = integration.get("mcp", {})
-        if not isinstance(mcp.get("command"), str) or not mcp["command"].strip():
-            raise ValueError(f"{provider} requires an MCP command")
-        args = mcp.get("args", [])
-        if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
-            raise ValueError("MCP args must be strings")
-        env = mcp.get("env", {})
-        if not isinstance(env, dict) or not all(
-            isinstance(v, str) for v in env.values()
-        ):
-            raise ValueError("MCP environment values must be strings")
-        if provider == "jira" and not integration.get("project_key"):
-            raise ValueError("Jira requires a project key")
+        if "mcp" in integration and mcp == {}:
+            continue
+        if isinstance(mcp, dict) and "from" in mcp:
+            _validate_reference(mcp)
+            continue
+        _validate_inline_mcp(mcp, provider)
 
 
 def _save_settings(root, document, original, requested):
@@ -110,13 +136,14 @@ def configure_project(root, settings, *, config_file=None):
     root = Path(root)
     path = root / LOCAL_CONFIG_RELPATH
     original = path.read_bytes() if path.exists() else None
-    document, requested = _requested_document(original, settings, config_file)
+    settings = tuple(settings)
+    _requested_document(original, settings, config_file)
     report = onboard_project(root)
     if report.error:
         raise ValueError(report.error)
-    original = path.read_bytes() if original is None else original
-    if not requested:
-        document = tomlkit.parse(original.decode("utf-8"))
+    refreshed = path.read_bytes()
+    original = refreshed if original is None else original
+    document, requested = _requested_document(refreshed, settings, config_file)
     changed = _save_settings(root, document, original, requested)
     remember(root)
     gaps = feature_gaps(root)

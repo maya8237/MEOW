@@ -24,6 +24,7 @@ LINT_ENTRY_KEYS = frozenset({
 
 
 TESTER_KEYS = frozenset({
+    "auto_test",
     "tests",
     "dev_server",
     "mcp",
@@ -314,6 +315,7 @@ def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[too-man
             browser["env"] = _env_value(browser, "[tester.browser]", 1)
     return {
         "tests": tests,
+        "auto_test": _typed_bool(raw, "auto_test", bool(tests), "[tester]", 1),
         "dev_server": servers,
         "mcp": mcp,
         "test_dirs": test_dirs,
