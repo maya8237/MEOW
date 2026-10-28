@@ -30,7 +30,9 @@ def hung_wmi(monkeypatch):
         raise OSError("released")
 
     for name in _PATCHED:
-        monkeypatch.setattr(platform, name, getattr(platform, name))
+        monkeypatch.setattr(
+            platform, name, getattr(platform, name, None), raising=False
+        )
     monkeypatch.delattr(platform, safe_platform._MARKER, raising=False)
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(platform, "_wmi_query", hang)
@@ -73,19 +75,23 @@ def test_repro_with_windows_uname_path(hung_wmi, monkeypatch):
 
 def test_private_platform_attributes_exist_on_this_python():
     for name in safe_platform._PRIVATE_NAMES:
+        if name == "_wmi" and sys.platform != "win32":
+            continue  # only imported on Windows
         assert hasattr(platform, name), name
 
 
 @pytest.mark.parametrize("missing", safe_platform._PRIVATE_NAMES)
 def test_install_degrades_when_a_private_name_is_gone(hung_wmi, monkeypatch, missing):
-    monkeypatch.delattr(platform, missing)
+    monkeypatch.delattr(platform, missing, raising=False)
     install_safe_platform()  # must not raise
     assert platform.win32_ver()[1] != "hang"
 
 
 def test_force_flag_is_ignored_outside_pytest(monkeypatch):
     for name in _PATCHED:
-        monkeypatch.setattr(platform, name, getattr(platform, name))
+        monkeypatch.setattr(
+            platform, name, getattr(platform, name, None), raising=False
+        )
     monkeypatch.delattr(platform, safe_platform._MARKER, raising=False)
     monkeypatch.setenv(safe_platform.FORCE_WIN32_ENV, "1")
     monkeypatch.delenv("PYTEST_CURRENT_TEST")
@@ -96,7 +102,9 @@ def test_force_flag_is_ignored_outside_pytest(monkeypatch):
 
 def test_install_is_idempotent_and_noop_off_windows(monkeypatch):
     for name in _PATCHED:
-        monkeypatch.setattr(platform, name, getattr(platform, name))
+        monkeypatch.setattr(
+            platform, name, getattr(platform, name, None), raising=False
+        )
     monkeypatch.delattr(platform, safe_platform._MARKER, raising=False)
     monkeypatch.delenv(safe_platform.FORCE_WIN32_ENV, raising=False)
     original = platform._wmi_query
