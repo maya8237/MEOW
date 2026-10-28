@@ -63,12 +63,21 @@ def register_scope_plugin(
 
 
 def _registered(scope: str, project_dir: Path, user_dir: Path, linked: bool) -> bool:
-    settings = _settings_path(scope, project_dir)
+    """Whether Claude Code would load the plugin, by any form it honors.
+
+    Project and local settings are both read for the project, so either file
+    counts; the user file accepts a plugin directory or an enabled marketplace.
+    """
+    name = plugin_name(scope, linked=linked)
     if scope == "user":
+        settings = _settings_path(scope, project_dir)
         return plugin_dir_registered(
             settings, _root(scope, project_dir, user_dir, linked)
-        )
-    return marketplace_registered(settings, plugin_name(scope, linked=linked))
+        ) or marketplace_registered(settings, name)
+    return any(
+        marketplace_registered(_settings_path(file, project_dir), name)
+        for file in (scope, *(other for other in _SETTINGS if other != scope))
+    )
 
 
 def linked_skills(
@@ -98,7 +107,11 @@ def _tree(directory: Path, skill: CustomSkill | None = None) -> dict[str, bytes]
 
 def _linked_current(root: Path, skills: list[CustomSkill]) -> bool:
     folder = root / "skills"
-    present = {path.name for path in folder.iterdir()} if folder.is_dir() else set()
+    present = (
+        {path.name for path in folder.iterdir() if not path.name.startswith(".")}
+        if folder.is_dir()
+        else set()
+    )
     if present != {skill.name for skill in skills}:
         return False
     return all(

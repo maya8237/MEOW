@@ -230,3 +230,47 @@ def test_skills_sync_command_registers_and_check_flags_drift(project, home, caps
 
     skills_command(parser.parse_args(["skills", "sync", "--check"]), project)
     assert "are registered" in capsys.readouterr().out
+
+
+def test_user_plugin_enabled_through_marketplace_counts_as_registered(project, home):
+    skill(home / ".meow" / "plugin" / "skills", "everywhere")
+    path = home / ".claude" / "settings.json"
+    path.parent.mkdir()
+    path.write_text(
+        json.dumps({
+            "extraKnownMarketplaces": {"meow-user": {}},
+            "enabledPlugins": {"meow-user@meow-user": True},
+        }),
+        encoding="utf-8",
+    )
+
+    assert check(project, home) == []
+
+
+def test_project_plugin_enabled_in_local_settings_counts_as_registered(project, home):
+    skill(project / ".meow" / "plugin" / "skills", "team")
+    path = project / ".claude" / "settings.local.json"
+    path.parent.mkdir()
+    path.write_text(
+        json.dumps({
+            "extraKnownMarketplaces": {"meow-project": {}},
+            "enabledPlugins": {"meow-project@meow-project": True},
+        }),
+        encoding="utf-8",
+    )
+
+    assert check(project, home) == []
+
+
+def test_hidden_files_do_not_make_linked_copies_stale(project, home):
+    skill(project / "shared", "linked-one")
+    (project / ".meow" / "config.toml").write_text(
+        '[custom]\nskills = ["shared"]\n', encoding="utf-8"
+    )
+    sync(project, home)
+    assert check(project, home) == []
+
+    linked = project / ".meow" / "linked" / "plugin" / "skills"
+    (linked / ".DS_Store").write_bytes(b"x")
+
+    assert check(project, home) == []
