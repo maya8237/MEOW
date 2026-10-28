@@ -47,6 +47,18 @@ def _disabled(source: dict) -> set[str]:
     return names
 
 
+def _user_path(home: Path | None) -> Path:
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") if home is None else None
+    if config_dir:
+        return Path(config_dir) / ".claude.json"
+    return (home or Path.home()) / ".claude.json"
+
+
+def user_scope_servers(*, home: Path | None = None) -> dict:
+    """Servers registered at Claude's user scope; may contain credentials."""
+    return _servers(_read(_user_path(home)))
+
+
 def _servers(source: dict) -> dict:
     servers = source.get("mcpServers", {})
     return servers if isinstance(servers, dict) else {}
@@ -74,12 +86,7 @@ def discover_registry(root: Path, *, home: Path | None = None) -> dict:
     """
     root = Path(root).resolve()
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR") if home is None else None
-    user_path = (
-        Path(config_dir) / ".claude.json"
-        if config_dir
-        else (home or Path.home()) / ".claude.json"
-    )
-    user = _read(user_path)
+    user = _read(_user_path(home))
     scoped = _project_scope(user, root)
     project = dict(_servers(_read(root / ".mcp.json")))
     claude_dir = Path(config_dir) if config_dir else (home or Path.home()) / ".claude"
@@ -155,19 +162,40 @@ def resolve_mcp(mcp: object, root: Path) -> dict:
     return _stdio(mcp)
 
 
+def _user_scope_fallback(provider: str, hint: str) -> dict:
+    """The one user-scope server for `provider`; project config names none."""
+    servers = user_scope_servers()
+    names = _provider_matches(servers)[provider]
+    if len(names) > 1:
+        raise ValueError(
+            f"Several user-scope MCP servers match {provider} ({', '.join(names)}). "
+            f'Set [{provider}.mcp] from = "NAME" in .meow/config.local.toml.'
+        )
+    if not names:
+        raise ValueError(f"No {provider} MCP server is registered. {hint}")
+    try:
+        return _stdio(servers[names[0]])
+    except ValueError as exc:
+        raise ValueError(f"User-scope MCP server '{names[0]}': {exc}. {hint}") from None
+
+
 def provider_mcp_config(config: dict, provider: str) -> dict:
-    """Resolve only the requested provider; loaded config remembers launch root."""
+    """Resolve only the requested provider; loaded config remembers launch root.
+
+    Without an `[x.mcp]` table the user's single matching user-scope server is
+    used, so shared project config need not describe how any one user runs it.
+    """
     hint = (
-        f'Configure [{provider}.mcp] from = "registered-name" using an existing '
-        "Claude MCP registration; select one explicitly if matches are ambiguous. "
+        f"Run `meow onboard --mcp {provider}` to register one for your user, or "
+        f'set [{provider}.mcp] from = "NAME" to use an existing registration. '
         "An inline stdio command is also supported."
     )
     section = config.get(provider)
-    if not isinstance(section, dict):
-        raise ValueError(f"No [{provider}] table found in .meow/config.toml. {hint}")
+    if not isinstance(section, dict) or "mcp" not in section:
+        return _user_scope_fallback(provider, hint)
     try:
         return resolve_mcp(
-            section.get("mcp"), Path(config.get("_project_root", Path.cwd()))
+            section["mcp"], Path(config.get("_project_root", Path.cwd()))
         )
     except ValueError as exc:
         raise ValueError(f"[{provider}.mcp]: {exc}. {hint}") from None

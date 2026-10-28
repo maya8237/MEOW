@@ -33,3 +33,27 @@ Explicit command-based configurations remain supported for compatibility.
 Inspect setup with `meow native onboard-status --work-dir PATH`.
 Override a choice with `meow onboard --work-dir PATH --set 'jira.mcp.from="NAME"'`.
 `meow native verify` checks readiness; only a real tool call verifies connection.
+
+## Set up your own servers
+
+MCP servers belong to each user, not the project. Register them once:
+
+```bash
+export JIRA_URL=https://acme.atlassian.net JIRA_USERNAME=me@example.com
+export JIRA_API_TOKEN=...            # or JIRA_PERSONAL_TOKEN (Server/Data Center)
+export GITHUB_PERSONAL_ACCESS_TOKEN=...
+meow onboard --mcp jira,github       # or the installer's --mcp flag
+```
+
+The installer asks the same under `--setup`; `--non-interactive` never asks.
+Servers: Jira `uvx mcp-atlassian`, GitHub `docker run` of the official
+`github-mcp-server`; variables keep the servers' own names. MEOW registers at
+Claude's user scope with `claude mcp add`, skips providers already registered,
+and never installs `uvx`, `docker`, or `claude`: a missing launcher is reported.
+Tokens are stored by Claude in plain text in `~/.claude.json`; MEOW never prints
+or copies them. GitLab is not supported yet.
+
+Shared project config keeps only project facts (`[jira] project_key`, a site
+`url` that is not secret). Without `[provider.mcp]`, MEOW uses your single
+user-scope server for that provider; several matches need `from` in local config,
+and none fails with the command to run. Scheduled runs need the same user.

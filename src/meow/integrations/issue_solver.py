@@ -35,7 +35,7 @@ def _load_jira_config(config: dict) -> dict:
     from meow.project.mcp_registry import provider_mcp_config
 
     mcp = provider_mcp_config(config, "jira")
-    jira = config["jira"]
+    jira = config.get("jira") if isinstance(config.get("jira"), dict) else {}
     return {
         "project_key": jira.get("project_key"),
         "branch_prefix": jira.get("branch_prefix", DEFAULT_BRANCH_PREFIX),

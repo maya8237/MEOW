@@ -16,6 +16,14 @@ from meow.installer.bun import (
     start_bun_migration,
 )
 from meow.project.claude_settings import path_key, register_checkout_plugin
+from meow.project.mcp_setup import (
+    SPECS,
+    describe,
+    hidden_prompt,
+    parse_providers,
+    setup_provider,
+    setup_providers,
+)
 from meow.project.onboarding import feature_gaps, onboard_project
 from meow.project.repos import _saved, remember
 
@@ -162,6 +170,15 @@ def _parser() -> argparse.ArgumentParser:
         "--non-interactive",
         action="store_true",
         help="Skip all optional setup prompts.",
+    )
+    parser.add_argument(
+        "--mcp",
+        metavar="PROVIDERS",
+        help=(
+            "Register user-scope MCP servers (jira,github or all) without "
+            "prompting; credentials come from the servers' own environment "
+            "variables, e.g. JIRA_URL and JIRA_API_TOKEN."
+        ),
     )
     return parser
 
@@ -338,10 +355,29 @@ def _migrate_registered(onboarded: Sequence[Path] = ()) -> None:
     )
 
 
+def _offer_mcp(ask: Callable[[str], str], output: Callable[[str], None]) -> None:
+    """Offer each supported MCP server at user scope; never installs launchers."""
+    if not _yes(ask("Set up Jira/GitHub MCP servers for Claude (user scope)? [y/N] ")):
+        return
+    for spec in SPECS.values():
+        if _yes(ask(f"  Set up {spec.label}? [y/N] ")):
+            result = setup_provider(spec, os.environ, prompt=hidden_prompt)
+            output(f"  {describe(result)}")
+
+
+def _install_mcp(providers: str, output: Callable[[str], None]) -> int:
+    """The non-interactive `--mcp` path: nonzero when a request was not met."""
+    results = setup_providers(parse_providers(providers), os.environ)
+    for result in results:
+        output(describe(result))
+    return int(any(result.failed for result in results))
+
+
 def _setup_projects() -> int:
     """Run the project prompts; Ctrl+C cancels the whole installer."""
     onboarded: list[Path] = []
     try:
+        _offer_mcp(input, print)
         shared_bun = _setup_bun(input, print)
         _onboard_projects(input, print, path_prompt(), onboarded)
         if shared_bun:
@@ -372,6 +408,13 @@ def _bun_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _optional_setup(args: argparse.Namespace) -> int:
+    status = _install_mcp(args.mcp, print) if args.mcp else 0
+    if args.setup and not args.non_interactive:
+        status = _setup_projects() or status
+    return status
+
+
 def main(argv: Sequence[str] | None = None) -> int:  # ruff: ignore[too-many-return-statements]
     """Register the plugin, running optional setup only when explicitly requested."""
     parser = _parser()
@@ -389,4 +432,4 @@ def main(argv: Sequence[str] | None = None) -> int:  # ruff: ignore[too-many-ret
         return 2
     if not _register_plugin(repo_dir, print):
         return 1
-    return _setup_projects() if args.setup and not args.non_interactive else 0
+    return _optional_setup(args)

@@ -142,28 +142,24 @@ approval.
 Offer `[tester] write_tests` (default false) only if the user wants the tester
 to add new tests to the repository.
 
-For Jira, GitLab, and GitHub, prefer `[provider.mcp] from = "registered-name"`.
-Reuse Claude's registrations; never ask users to duplicate existing tokens.
-One clear provider match is automatic; multiple matches need a selection.
-References support stdio servers; hosted OAuth connectors need a supported
-registration for CLI use. Jira project_key is optional for explicit issue keys.
+Register Jira and GitHub MCPs once per user, not per project:
+`meow onboard --mcp jira,github`. It uses the servers' own variables (Jira
+`JIRA_URL` with `JIRA_USERNAME`/`JIRA_API_TOKEN` or `JIRA_PERSONAL_TOKEN`; GitHub
+`GITHUB_PERSONAL_ACCESS_TOKEN`), skips providers already registered, never
+installs `uvx` or `docker`, and never prints tokens. Interactive: show the
+command, then let the user export the variables or type them at the hidden
+prompt. Automatic: run it only for providers the user named with the variables
+already set; otherwise list "no MCP: run `meow onboard --mcp NAME`". Projects
+then need no `[provider.mcp]`; with several matches set `from` in local config.
+GitLab has no setup yet: reuse a registered server with `from`. Hosted OAuth
+connectors are not usable by the CLI. See [MCP](../../docs/MCP.md).
 
-For every accepted feature that needs an MCP (Jira, GitLab, GitHub, Tester
-mode), check first whether the session has its tools and whether the CLI
-launcher (for example `uvx`) exists. If not, warn the user that the MCP is not
-installed and must be installed before the feature works, in this order:
-
-1. Install the missing MCP through `/plugin` or its documented installer.
-2. Register it for Claude at local or user scope with `claude mcp add`;
-   show the command first. Keep tokens in its private environment, never shared
-   config or output. See [MCP references](../../docs/MCP.md).
-3. Confirm connection with `/mcp` or `claude mcp list`, then save a `from` reference.
-
-If `/plugin`, `/mcp` or `claude mcp` is unavailable or fails, do not retry or
-stall: show the error, give the user the exact command or UI step to run
-themselves, mark that feature unverified, and continue the other setup. Hand a
-command to the user in interactive mode; in automatic mode skip it and list it
-in the summary.
+For Tester MCPs, check whether the session has the tools and the launcher exists.
+If not, warn that the MCP is missing, give the exact install step, mark the
+feature unverified, and continue other setup. If `/mcp` or `claude mcp` is
+unavailable or fails, do not retry or stall: show the error and hand the user
+the command in interactive mode; in automatic mode skip it and list it in the
+summary.
 
 Leave the feature unverified and unscheduled until a real tool call succeeds.
 

@@ -49,7 +49,7 @@ def test_installer_accepting_bun_migrates_entered_project(tmp_path, monkeypatch)
         "start_bun_migration",
         lambda projects, _output: calls.extend(projects),
     )
-    answers = iter(("", "y", str(project), ""))
+    answers = iter(("n", "", "y", str(project), ""))
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     assert _runtime.main(["--repo-dir", str(tmp_path), "--setup"]) == 0
     assert calls == [project]
@@ -95,7 +95,7 @@ def test_accepting_bun_migrates_registered_repos_without_new_onboarding(
     monkeypatch.setattr(
         _runtime, "start_bun_migration", lambda projects, _out: calls.extend(projects)
     )
-    answers = iter(("", "n"))
+    answers = iter(("n", "", "n"))
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     assert _runtime.main(["--repo-dir", str(tmp_path), "--setup"]) == 0
     assert calls == [project]

@@ -5,7 +5,7 @@ from meow.integrations import github_reviewer
 
 class LoadGithubConfigTests(unittest.TestCase):
     def test_raises_when_github_table_is_missing(self):
-        with self.assertRaisesRegex(ValueError, r"No \[github\] table"):
+        with self.assertRaisesRegex(ValueError, r"No github MCP server"):
             github_reviewer._load_github_config({})
 
     def test_raises_when_mcp_table_or_command_is_missing(self):

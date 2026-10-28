@@ -8,7 +8,7 @@ from meow.integrations import issue_solver
 
 class LoadJiraConfigTests(unittest.TestCase):
     def test_raises_when_jira_table_is_missing(self):
-        with self.assertRaisesRegex(ValueError, r"No \[jira\] table"):
+        with self.assertRaisesRegex(ValueError, r"No jira MCP server"):
             issue_solver._load_jira_config({})
 
     def test_project_key_is_optional(self):
@@ -192,7 +192,7 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
             patch(
                 "meow.integrations.issue_solver._fetch_issue", new=AsyncMock()
             ) as mock_fetch,
-            self.assertRaisesRegex(ValueError, r"No \[jira\] table"),
+            self.assertRaisesRegex(ValueError, r"No jira MCP server"),
         ):
             await issue_solver.run_issue_solver(Path("/project"))
 

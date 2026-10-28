@@ -41,6 +41,8 @@ sh scripts/install.sh --non-interactive
 For optional project/Bun setup prompts, pass `--setup` to the Bash installer
 or `-setup` to PowerShell. The non-interactive switch takes precedence and
 skips those prompts even when setup was requested.
+`--mcp jira,github` registers user-scope MCP servers without prompting, reading
+the servers' own credential variables; see [MCP](MCP.md).
 
 The switch works even with a terminal attached. Installation still registers
 the Claude Code plugin and launcher. Configure projects separately with

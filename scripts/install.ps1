@@ -1,6 +1,6 @@
 # irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
 [CmdletBinding()]
-param([switch]${non-interactive}, [switch]$setup)
+param([switch]${non-interactive}, [switch]$setup, [string]$mcp = '')
 
 & {
     $ErrorActionPreference = 'Stop'
@@ -112,6 +112,7 @@ param([switch]${non-interactive}, [switch]$setup)
         }
         $setupArgs = @('--activate', $destination)
         if ($setup -and -not ${non-interactive}) { $setupArgs += '--setup' }
+        if ($mcp) { $setupArgs += @('--mcp', $mcp) }
         & (Join-Path $destination 'runtime\Scripts\python.exe') -m meow.installer.releases @setupArgs
         if ($LASTEXITCODE -eq 130) { return }
         Invoke-Checked 'MEOW setup failed. Rerun the installer to retry.'

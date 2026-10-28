@@ -4,12 +4,17 @@ set -eu
 
 non_interactive=false
 setup=false
+mcp=
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --non-interactive) non_interactive=true ;;
         --setup) setup=true ;;
+        --mcp)
+            [ "$#" -ge 2 ] || { printf 'Missing value for --mcp\n' >&2; exit 2; }
+            mcp=$2; shift ;;
+        --mcp=*) mcp=${1#--mcp=} ;;
         -h|--help)
-            printf '%s\n' 'Usage: sh install.sh [--setup] [--non-interactive]' 'Install and register only by default. --setup offers optional Bun and project setup.' 'With --non-interactive, optional setup is always skipped.'
+            printf '%s\n' 'Usage: sh install.sh [--setup] [--non-interactive] [--mcp jira,github]' 'Install and register only by default. --setup offers optional Bun and project setup.' '--mcp registers user-scope MCP servers from their credential environment variables.' 'With --non-interactive, optional setup is always skipped.'
             exit 0 ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
@@ -112,11 +117,11 @@ printf '%s\n' 'Installing pinned dependencies and launcher (this can take minute
 PYTHONPATH=$purelib "$python" -m meow.installer.releases --finish "$destination" --bundle "$bundle"
 
 if [ "$setup" = false ] || [ "$non_interactive" = true ]; then
-    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination"
+    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" ${mcp:+--mcp "$mcp"}
 elif [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
-    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup </dev/tty
+    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup ${mcp:+--mcp "$mcp"} </dev/tty
 else
-    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup </dev/null
+    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup ${mcp:+--mcp "$mcp"} </dev/null
 fi
 printf '\nMEOW is ready. Open a new terminal, or run:\n  export PATH="$HOME/.meow/bin:$PATH"\n'
 printf '%s\n' 'Restart Claude Code to load /meow:* skills. Update later with meow -u.'

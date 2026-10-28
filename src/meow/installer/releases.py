@@ -400,6 +400,7 @@ def main() -> int:
     parser.add_argument("--finish", type=Path, help="destination for --bundle")
     parser.add_argument("--bundle", type=Path)
     parser.add_argument("--setup", action="store_true")
+    parser.add_argument("--mcp", help="providers to register at Claude user scope")
     args = parser.parse_args()
     if args.finish:
         if not args.bundle:
@@ -411,11 +412,14 @@ def main() -> int:
     _validate_release(args.activate, args.activate.name)
     activate(args.activate)
     print(f"Installed MEOW {args.activate.name} in {args.activate.parent.parent}")
-    if args.setup:
-        from meow.installer._runtime import _setup_projects
+    return _optional_setup(args)
 
-        return _setup_projects()
-    return 0
+
+def _optional_setup(args: argparse.Namespace) -> int:
+    from meow.installer._runtime import _install_mcp, _setup_projects
+
+    status = _install_mcp(args.mcp, print) if args.mcp else 0
+    return (_setup_projects() or status) if args.setup else status
 
 
 if __name__ == "__main__":
