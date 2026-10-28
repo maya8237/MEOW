@@ -98,11 +98,10 @@ and `budget_left > 0` it runs `next_command` detached; with `retryable: false`
 (or `not_resumed_reason` set) it reports `cause`, `last_failure` and evidence, and
 stops. On exit 75 it waits `retry_after`, up to `managed_resumes`, stopping on no
 progress (`attempts`, `no_progress`). A `driver_busy` retry means a live driver owns
-the run: keep watching, do not count it. Orchestrator status JSON has only `phase`,
-`settled`, `retryable` and `next_command`: `blocked` waits for a person, and
-`failed` retries only after a non-blocking error. `meow resume --parked` does the same unattended
-and inline; run it detached or hourly via OS scheduling
-([skills](../skills/schedule/SKILL.md)). Exit 75 includes bare transient
+the run: keep watching, do not count it. Orchestrator status JSON adds
+`retryable`: `blocked` waits for a person, and `failed` retries only after a
+non-blocking error. `meow resume --parked` does the same unattended and inline;
+run it detached or hourly via OS scheduling ([skills](../skills/schedule/SKILL.md)). Exit 75 includes bare transient
 OS errors, so the retry cap lives in the managing session, not the exit code.
 
 Cancellation is cooperative between phases and during agents/checks. It stops

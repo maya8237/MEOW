@@ -124,9 +124,9 @@ minutes (`*/7 * * * *`). Each tick: run `meow status ID --json` and act only whe
 false`: report `cause`, `last_failure`, `not_resumed_reason` and the evidence paths,
 then stop the cron. Not settled: keep watching and report only meaningful changes.
 Stop only on `complete`/`delivered`/`exhausted`/`cancelled` or settled `retryable:
-false`, with no stop on `failed` alone. Orchestrator IDs return only `phase`,
-`settled` and `next_command`: stop on settled; if the phase is unchanged across
-ticks, run `next_command` detached. A `driver_busy` retry (`MEOW_RETRY` or helper
+false`, with no stop on `failed` alone. Orchestrator IDs report the
+same fields: settled and retryable, run `next_command` detached; otherwise report
+`not_resumed_reason` (a `blocked` one needs a person) and stop. A `driver_busy` retry (`MEOW_RETRY` or helper
 error) means a live driver owns the run: keep watching, report that reason, and do
 not count it against `managed_resumes`. Scheduled runs still register through
 `/meow:schedule` and never sleep or poll in the session.

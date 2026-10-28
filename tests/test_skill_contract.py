@@ -112,3 +112,12 @@ def test_exit_75_paragraph_runs_next_command_detached(path):
     text = _flat(path)
     start = text.index("exiting `75`")
     assert "detached" in text[start : start + 400]
+
+
+@pytest.mark.parametrize(
+    "path", ["skills/run/SKILL.md", "skills/_shared/native-mode.md"]
+)
+def test_orchestrator_status_guidance_matches_the_json(path):
+    text = " ".join((ROOT / path).read_text(encoding="utf-8").split())
+    assert "Orchestrator IDs report the same fields" in text
+    assert "only `phase`" not in text
