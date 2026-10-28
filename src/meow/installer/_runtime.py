@@ -17,6 +17,8 @@ from meow.installer.bun import (
 )
 from meow.project.claude_settings import path_key, register_checkout_plugin
 from meow.project.mcp_setup import (
+    always_install,
+    ask_to_install,
     describe,
     hidden_prompt,
     parse_providers,
@@ -173,6 +175,11 @@ def _parser() -> argparse.ArgumentParser:
         "--non-interactive",
         action="store_true",
         help="Skip all optional setup prompts.",
+    )
+    parser.add_argument(
+        "--install-missing",
+        action="store_true",
+        help="With --mcp, pip-install a missing server (Jira's mcp-atlassian).",
     )
     parser.add_argument(
         "--bun",
@@ -384,11 +391,15 @@ def _offer_mcp(ask: Callable[[str], str], output: Callable[[str], None]) -> None
         return
     for spec in specs.values():
         if _yes(ask(f"  Set up {spec.label}? [y/N] ")):
-            result = setup_provider(spec, os.environ, prompt=hidden_prompt)
+            result = setup_provider(
+                spec, os.environ, prompt=hidden_prompt, allow_install=ask_to_install
+            )
             output(f"  {describe(result)}")
 
 
-def _install_mcp(providers: str, output: Callable[[str], None]) -> int:
+def _install_mcp(
+    providers: str, output: Callable[[str], None], install_missing: bool = False
+) -> int:
     """The non-interactive `--mcp` path: nonzero when a request was not met."""
     try:
         specs, _notes = load_specs()
@@ -396,7 +407,10 @@ def _install_mcp(providers: str, output: Callable[[str], None]) -> int:
         output(f"MCP setup: {exc}")
         return 1
     results = setup_providers(
-        parse_providers(providers, specs), os.environ, specs=specs
+        parse_providers(providers, specs),
+        os.environ,
+        specs=specs,
+        allow_install=always_install if install_missing else None,
     )
     for result in results:
         output(describe(result))
@@ -439,7 +453,8 @@ def _bun_command(args: argparse.Namespace) -> int:
 
 
 def _optional_setup(args: argparse.Namespace) -> int:
-    status = _install_mcp(args.mcp, print) if args.mcp else 0
+    install = getattr(args, "install_missing", False)
+    status = _install_mcp(args.mcp, print, install) if args.mcp else 0
     if getattr(args, "bun", False) and _enable_bun(print):
         _migrate_registered()
     if args.setup and not getattr(args, "non_interactive", False):

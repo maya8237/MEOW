@@ -402,6 +402,7 @@ def main() -> int:
     parser.add_argument("--setup", action="store_true")
     parser.add_argument("--mcp", help="providers to register at Claude user scope")
     parser.add_argument("--bun", action="store_true")
+    parser.add_argument("--install-missing", action="store_true")
     args = parser.parse_args()
     if args.finish:
         if not args.bundle:

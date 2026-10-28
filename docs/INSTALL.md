@@ -42,7 +42,7 @@ sh scripts/install.sh --non-interactive
 `--no-setup` (`-no-setup` in PowerShell) skips the questions but still honors
 `--mcp` and `--bun`. `--non-interactive` skips the questions too.
 `--mcp jira,gitlab` registers user-scope MCP servers without prompting, reading
-the servers' own credential variables; see [MCP](MCP.md). `--bun` enables the
+the servers' own credential variables; see [MCP](MCP.md). `--install-missing` lets `--mcp` pip-install Jira's server. `--bun` enables the
 Bun shared store and migrates registered repos. Projects are set up with
 `meow onboard --non-interactive --work-dir PATH`.
 

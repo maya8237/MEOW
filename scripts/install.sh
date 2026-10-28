@@ -5,6 +5,7 @@ set -eu
 non_interactive=false
 setup=true
 bun=false
+install_missing=false
 mcp=
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -12,12 +13,13 @@ while [ "$#" -gt 0 ]; do
         --setup) setup=true ;;
         --no-setup) setup=false ;;
         --bun) bun=true ;;
+        --install-missing) install_missing=true ;;
         --mcp)
             [ "$#" -ge 2 ] || { printf 'Missing value for --mcp\n' >&2; exit 2; }
             mcp=$2; shift ;;
         --mcp=*) mcp=${1#--mcp=} ;;
         -h|--help)
-            printf '%s\n' 'Usage: sh install.sh [--non-interactive] [--no-setup] [--mcp jira,gitlab] [--bun]' 'With a terminal, asks about MCP servers, the Bun shared store, and projects after installing.' '--no-setup or --non-interactive skips those questions; so does having no terminal.' '--mcp registers user-scope MCP servers from their credential environment variables.' '--bun configures the Bun shared dependency store and migrates registered repos.'
+            printf '%s\n' 'Usage: sh install.sh [--non-interactive] [--no-setup] [--mcp jira,gitlab] [--install-missing] [--bun]' 'With a terminal, asks about MCP servers, the Bun shared store, and projects after installing.' '--no-setup or --non-interactive skips those questions; so does having no terminal.' '--mcp registers user-scope MCP servers from their credential environment variables.' '--install-missing pip-installs a missing Jira server (mcp-atlassian) for --mcp.' '--bun configures the Bun shared dependency store and migrates registered repos.'
             exit 0 ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
@@ -122,6 +124,7 @@ PYTHONPATH=$purelib "$python" -m meow.installer.releases --finish "$destination"
 extra=
 [ -z "$mcp" ] || extra="--mcp $mcp"
 [ "$bun" = false ] || extra="$extra --bun"
+[ "$install_missing" = false ] || extra="$extra --install-missing"
 if [ "$setup" = false ] || [ "$non_interactive" = true ]; then
     "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" $extra
 elif [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then

@@ -8,6 +8,8 @@ from pathlib import Path
 from meow.project.config import load_config
 from meow.project.mcp_setup import (
     FAILURES,
+    always_install,
+    ask_to_install,
     hidden_prompt,
     parse_providers,
     setup_providers,
@@ -47,6 +49,11 @@ def add_onboard_parser(subparsers):
             "come from the servers' own environment variables, e.g. JIRA_URL and "
             "JIRA_API_TOKEN, never from flags."
         ),
+    )
+    parser.add_argument(
+        "--install-missing",
+        action="store_true",
+        help="With --mcp, pip-install a missing server (Jira's mcp-atlassian).",
     )
     _add_settings(parser)
     _add_integrations(parser)
@@ -150,11 +157,16 @@ def _mcp_results(args, root: Path) -> tuple[list[dict], list[str]]:
     except ValueError as exc:
         return [{"provider": "mcp_setup", "status": "failed", "detail": str(exc)}], []
     prompt = None if args.non_interactive else hidden_prompt
+    if args.install_missing:
+        allow = always_install
+    else:
+        allow = None if args.non_interactive else ask_to_install
     results = setup_providers(
         parse_providers(args.mcp, specs),
         _setup_environment(root),
         specs=specs,
         prompt=prompt,
+        allow_install=allow,
     )
     return [result.to_dict() for result in results], notes
 

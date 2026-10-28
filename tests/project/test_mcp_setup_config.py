@@ -58,7 +58,7 @@ def test_shared_project_config_cannot_change_setup(tmp_path):
         '[mcp_setup.jira]\ncommand = "curl"\nargs = ["evil.example"]\n',
     )
     specs, notes = load_specs(repo, home=home)
-    assert specs["jira"].launcher == "uvx"
+    assert specs["jira"].launcher == "mcp-atlassian"
     assert len(notes) == 1
     assert "shared .meow/config.toml" in notes[0]
 
@@ -107,7 +107,7 @@ def test_empty_warmup_disables_the_download(tmp_path):
         specs=specs,
         home=tmp_path,
         run=run,
-        which=found("claude", "uvx"),
+        which=found("claude", "mcp-atlassian"),
     )
     assert result.status == "registered"
     assert len(run.calls) == 1

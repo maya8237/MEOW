@@ -6,10 +6,12 @@ prompt) and appear nowhere in results, logs, or MEOW config.
 """
 
 import getpass
+import os
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from meow.project.mcp_registry import _provider_matches, user_scope_servers
@@ -22,6 +24,7 @@ ALREADY = "already_registered"
 FAILURES = ("no_claude", "no_launcher", "no_credentials", "failed", "unsupported")
 
 Prompt = Callable[[str, bool], str]
+Permission = Callable[[str], bool]  # may MEOW pip-install this package?
 
 
 @dataclass(frozen=True)
@@ -35,6 +38,7 @@ class McpSpec:
     warmup: tuple[str, ...] = ()  # fetch the package once, before Claude's timeout
     env: tuple[tuple[str, str], ...] = ()  # fixed, non-secret server settings
     custom: bool = False  # any field came from [mcp_setup] config
+    package: str = ""  # PyPI package providing `launcher`, if pip can install it
 
 
 SPECS = {
@@ -42,13 +46,13 @@ SPECS = {
         "jira",
         "Jira",
         "atlassian",
-        "uvx",
-        ("mcp-atlassian",),
+        "mcp-atlassian",
+        (),
         auth=(
             ("JIRA_URL", "JIRA_USERNAME", "JIRA_API_TOKEN"),
             ("JIRA_URL", "JIRA_PERSONAL_TOKEN"),
         ),
-        warmup=("uvx", "mcp-atlassian", "--help"),
+        package="mcp-atlassian",
     ),
     "gitlab": McpSpec(
         "gitlab",
@@ -161,10 +165,73 @@ def _blocked(
         return SetupResult(spec.provider, ALREADY, detail)
     if which("claude") is None:
         return SetupResult(spec.provider, "no_claude", "`claude` CLI is not installed")
-    if which(spec.launcher) is None:
-        detail = f"`{spec.launcher}` is not installed; MEOW does not install it"
-        return SetupResult(spec.provider, "no_launcher", detail)
     return None
+
+
+def _tools_dir(home: Path | None) -> Path:
+    """MEOW's own environment for pip-installed servers; stable across updates."""
+    return (home or Path.home()) / ".meow" / "tools"
+
+
+def _tools_launcher(spec: McpSpec, home: Path | None) -> Path:
+    scripts, suffix = ("Scripts", ".exe") if os.name == "nt" else ("bin", "")
+    return _tools_dir(home) / scripts / f"{spec.launcher}{suffix}"
+
+
+def _pip_install(spec: McpSpec, home: Path | None, run: Callable) -> str | None:
+    """Install the package into the tools environment; a problem, or None."""
+    environment = _tools_dir(home)
+    steps = (
+        []
+        if environment.is_dir()
+        else [[sys.executable, "-m", "venv", str(environment)]]
+    )
+    python = _tools_launcher(replace(spec, launcher="python"), home)
+    steps.append([str(python), "-m", "pip", "install", spec.package])
+    for argv in steps:
+        try:
+            done = run(
+                argv,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=600,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return f"`pip install {spec.package}` could not run"
+        if done.returncode:
+            return f"`pip install {spec.package}` failed (exit {done.returncode})"
+    return None
+
+
+def _missing(spec: McpSpec) -> SetupResult:
+    detail = f"`{spec.launcher}` is not installed; MEOW does not install it"
+    if spec.package:
+        detail += (
+            f" unless asked (`python -m pip install {spec.package}`, "
+            "or rerun with --install-missing)"
+        )
+    return SetupResult(spec.provider, "no_launcher", detail)
+
+
+def _resolve(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+    spec: McpSpec,
+    home: Path | None,
+    which: Callable[[str], str | None],
+    allow: Permission | None,
+    run: Callable,
+) -> tuple[McpSpec, SetupResult | None]:
+    """The spec pointing at an installed launcher, or why there is none."""
+    if which(spec.launcher):
+        return spec, None
+    ours = _tools_launcher(spec, home)
+    if spec.package and not ours.exists() and allow and allow(spec.package):
+        problem = _pip_install(spec, home, run)
+        if problem:
+            return spec, SetupResult(spec.provider, "no_launcher", problem)
+    if spec.package and ours.exists():
+        return replace(spec, launcher=str(ours)), None
+    return spec, _missing(spec)
 
 
 def _add(spec: McpSpec, values: Mapping[str, str], run: Callable) -> SetupResult | None:
@@ -191,12 +258,15 @@ def setup_provider(  # ruff: ignore[too-many-arguments]
     environ: Mapping[str, str],
     *,
     prompt: Prompt | None = None,
+    allow_install: Permission | None = None,
     home: Path | None = None,
     run: Callable = subprocess.run,
     which: Callable[[str], str | None] = shutil.which,
 ) -> SetupResult:
     """Register one provider at user scope unless it is already registered."""
     blocked = _blocked(spec, home, which)
+    if not blocked:
+        spec, blocked = _resolve(spec, home, which, allow_install, run)
     if blocked:
         return blocked
     values = _collect(spec, environ, prompt)
@@ -217,6 +287,7 @@ def setup_providers(  # ruff: ignore[too-many-arguments]
     *,
     specs: Mapping[str, McpSpec] = SPECS,
     prompt: Prompt | None = None,
+    allow_install: Permission | None = None,
     home: Path | None = None,
     run: Callable = subprocess.run,
     which: Callable[[str], str | None] = shutil.which,
@@ -230,7 +301,13 @@ def setup_providers(  # ruff: ignore[too-many-arguments]
             continue
         results.append(
             setup_provider(
-                spec, environ, prompt=prompt, home=home, run=run, which=which
+                spec,
+                environ,
+                prompt=prompt,
+                allow_install=allow_install,
+                home=home,
+                run=run,
+                which=which,
             )
         )
     return results
@@ -253,3 +330,13 @@ def hidden_prompt(label: str, secret: bool) -> str:
     example = f" (e.g. {_EXAMPLES[label]})" if label in _EXAMPLES else ""
     question = f"{label}{example}: "
     return getpass.getpass(question) if secret else input(question)
+
+
+def ask_to_install(package: str) -> bool:
+    """Interactive permission to pip-install a server; the default is no."""
+    answer = input(f"Install {package} with pip into ~/.meow/tools? [y/N] ")
+    return answer.strip().lower() in {"y", "yes"}
+
+
+def always_install(package: str) -> bool:
+    return True

@@ -47,11 +47,14 @@ meow onboard --mcp jira,gitlab   # or the installer's --mcp flag
 
 The installer asks the same when run in a terminal; `--no-setup` and
 `--non-interactive` never ask.
-Servers: Jira `uvx mcp-atlassian`, GitLab `npx -y @zereight/mcp-gitlab`;
+Servers: Jira `mcp-atlassian` (pip), GitLab `npx -y @zereight/mcp-gitlab`;
 variables keep the servers' own names. For other servers, register your own
 with `claude mcp add --scope user` and MEOW uses it. MEOW registers at
-Claude's user scope with `claude mcp add`, skips providers already registered,
-and never installs `uvx`, `npx`, or `claude`: a missing launcher is reported.
+Claude's user scope with `claude mcp add` and skips providers already registered.
+If `mcp-atlassian` is missing, MEOW asks (terminal) or needs `--install-missing`
+before running `pip install mcp-atlassian` into its own `~/.meow/tools`
+environment with the Python running MEOW, then registers that path. It never
+installs `npx` or `claude`: a missing one is reported.
 Tokens are stored by Claude in plain text in `~/.claude.json`; MEOW never prints
 or copies them.
 
