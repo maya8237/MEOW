@@ -7,6 +7,7 @@ from meow.execution.run_failures import classify_failure
 from meow.execution.run_state import PARKED_PHASE, RunStateError, RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.infrastructure.supervisor import EXIT_TEMPFAIL
+from meow.project.config import run_config
 
 
 def _report_orphans(store: QueueStore) -> None:
@@ -76,7 +77,9 @@ async def run_queue(working_dir: Path) -> int:
             item = store.claim(pending[0].id)
             if not await _run_item(working_dir, store, item):
                 return 1
-        # Parked items wait for `meow resume --parked`: pending work, not done.
-        return EXIT_TEMPFAIL if store.parked() else 0
+        # Parked items with attempts left wait for `meow resume --parked`:
+        # pending work. Spent ones are the sweep's `no_progress` to report.
+        limit = run_config(working_dir)["managed_resumes"]
+        return EXIT_TEMPFAIL if any(i.attempts < limit for i in store.parked()) else 0
     finally:
         lock.release()

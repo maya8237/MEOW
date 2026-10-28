@@ -19,6 +19,13 @@ from meow.infrastructure.supervisor import EXIT_BLOCKED, EXIT_TEMPFAIL
 from meow.project.config import run_config
 
 
+@pytest.fixture(autouse=True)
+def _no_real_queue_worker():
+    """A sweep that requeues items must not spawn a real `meow queue`."""
+    with patch("meow.cli.resume_cli.detach_command"):
+        yield
+
+
 def _record(tmp_path):
     subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
     (tmp_path / ".meow").mkdir()
@@ -758,6 +765,30 @@ def test_sweep_that_requeues_items_names_the_queue_command(tmp_path, capsys):
     assert asyncio.run(resume_parked(tmp_path)) == EXIT_TEMPFAIL
     summary = json.loads(capsys.readouterr().out)
     assert summary["next_command"] == f"meow queue --work-dir {tmp_path}"
+
+
+def test_sweep_starts_a_detached_queue_worker_when_none_runs(tmp_path, capsys):
+    queue = QueueStore(tmp_path)
+    queue.update(queue.enqueue("q").id, status="parked")
+    with patch("meow.cli.resume_cli.detach_command") as detach:
+        asyncio.run(resume_parked(tmp_path))
+    detach.assert_called_once()
+    argv = detach.call_args.args[1]
+    assert argv[-3:] == ["queue", "--work-dir", str(tmp_path)]
+    assert "next_command" in json.loads(capsys.readouterr().out)
+
+
+def test_sweep_does_not_start_a_second_queue_worker(tmp_path, capsys):
+    queue = QueueStore(tmp_path)
+    queue.update(queue.enqueue("q").id, status="parked")
+    lock = QueueWorkerLock(queue.directory)
+    assert lock.acquire()
+    try:
+        with patch("meow.cli.resume_cli.detach_command") as detach:
+            asyncio.run(resume_parked(tmp_path))
+    finally:
+        lock.release()
+    detach.assert_not_called()
 
 
 def test_sweep_without_requeued_items_has_no_queue_command(tmp_path, capsys):

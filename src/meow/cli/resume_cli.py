@@ -28,7 +28,12 @@ from meow.execution.run_state import (
     driver_alive,
 )
 from meow.execution.sprint_runner import run_sprint
-from meow.infrastructure.background import inspect_worker, redrive_saved_invocation
+from meow.infrastructure.background import (
+    BackgroundError,
+    detach_command,
+    inspect_worker,
+    redrive_saved_invocation,
+)
 from meow.infrastructure.cancellation import clear_cancel
 from meow.infrastructure.checks import config_fingerprint
 from meow.infrastructure.supervisor import (
@@ -397,6 +402,28 @@ def _requeue_parked_items(working_dir: Path, store: RunStore, config: dict) -> d
     }
 
 
+def _start_queue_worker(working_dir: Path) -> None:
+    """Run requeued items unattended: a detached `meow queue`, unless a worker
+    already holds the lock. Failure to start leaves `next_command` to the caller."""
+    lock = QueueWorkerLock(QueueStore(working_dir).directory)
+    if not lock.acquire():
+        return
+    lock.release()
+    with suppress(BackgroundError, OSError):
+        detach_command(
+            working_dir,
+            [
+                sys.executable,
+                "-u",
+                "-m",
+                "meow",
+                "queue",
+                "--work-dir",
+                str(working_dir),
+            ],
+        )
+
+
 async def resume_parked(working_dir: Path) -> int:
     """Continue every parked run within budget, then print a JSON summary.
 
@@ -428,6 +455,7 @@ async def resume_parked(working_dir: Path) -> int:
     code = _parked_exit_code(summary)
     if summary["requeued"]:  # items only run once a queue worker starts
         summary["next_command"] = f"meow queue --work-dir {shell_arg(str(working_dir))}"
+        _start_queue_worker(working_dir)
     print(json.dumps(summary))
     return code
 

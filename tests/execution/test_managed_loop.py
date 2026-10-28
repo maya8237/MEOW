@@ -567,8 +567,11 @@ def test_queue_worker_crash_is_requeued_and_rerun(make_world):
     [item] = queue.list()
     assert sweep.returncode == EXIT_RETRY
     assert json_line(sweep.stdout)["requeued"] == [item.id]
-    assert item.status == "pending"
-    assert meow(world, "queue", *work).returncode == 0
+    assert json_line(sweep.stdout)["next_command"].startswith("meow queue")
+    # The sweep itself started a detached worker for the requeued item.
+    deadline = time.monotonic() + COMMAND_SECONDS
+    while queue.list()[0].status != "completed" and time.monotonic() < deadline:
+        time.sleep(POLL_SECONDS)
     [item] = queue.list()
     assert (item.status, item.attempts) == ("completed", 2)
     final = meow(world, "resume", "--parked", *work)

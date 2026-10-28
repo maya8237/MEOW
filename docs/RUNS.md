@@ -101,7 +101,8 @@ progress (`attempts`, `no_progress`). A `driver_busy` retry means a live driver 
 the run: keep watching, do not count it. Orchestrator status JSON adds
 `retryable`: `blocked` waits for a person, and `failed` retries only after a
 non-blocking error. `meow resume --parked` does the same unattended and inline;
-run it detached or hourly via OS scheduling ([skills](../skills/schedule/SKILL.md)). Exit 75 includes bare transient
+run it detached or hourly via OS scheduling
+([skills](../skills/schedule/SKILL.md)). Exit 75 includes bare transient
 OS errors, so the retry cap lives in the managing session, not the exit code.
 
 Cancellation is cooperative between phases and during agents/checks. It stops
@@ -124,8 +125,8 @@ Notification failures are recorded separately from verification.
 `meow queue "request"` adds work even while another run is active.
 Bare `meow queue` processes FIFO under a repository worker lock; failed tasks
 pause the queue for inspection/retry. It exits 75 while items stay parked;
-`resume --parked` requeues them and prints `next_command` (`meow queue`) to run
-them.
+`resume --parked` requeues them, starts a detached `meow queue` when no worker
+runs, and prints it as `next_command`.
 
 ## Worktree setup and cleanup
 

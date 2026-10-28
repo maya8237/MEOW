@@ -147,3 +147,14 @@ def test_queue_pauses_when_the_run_record_failed(tmp_path, monkeypatch):
     records = {item.id: item for item in store.list()}
     assert records[first.id].status == "failed"
     assert records[later.id].status == "pending"
+
+
+def test_queue_exits_0_when_every_parked_item_is_out_of_attempts(tmp_path, monkeypatch):
+    from meow.project.config import run_config
+
+    store = QueueStore(tmp_path)
+    item = store.enqueue("spent")
+    store.update(
+        item.id, status="parked", attempts=run_config(tmp_path)["managed_resumes"]
+    )
+    assert asyncio.run(queue_runner.run_queue(tmp_path)) == 0
