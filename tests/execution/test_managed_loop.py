@@ -553,6 +553,14 @@ def test_supervised_run_budget_exhaustion_ends_exit_1_with_the_budget_reason(
     assert payload["not_resumed_reason"] == "max_total_resumes reached"
 
 
+def wait_for_item(queue):
+    """The queue's items once its only item completed (or time ran out)."""
+    deadline = time.monotonic() + COMMAND_SECONDS
+    while queue.list()[0].status != "completed" and time.monotonic() < deadline:
+        time.sleep(POLL_SECONDS)
+    return queue.list()
+
+
 def test_queue_worker_crash_is_requeued_and_rerun(make_world):
     plan = [step("generator_started", 1, "sigkill"), step("checking", 1, "complete")]
     world = make_world(plan, FAST_CONFIG)
@@ -569,10 +577,7 @@ def test_queue_worker_crash_is_requeued_and_rerun(make_world):
     assert json_line(sweep.stdout)["requeued"] == [item.id]
     assert json_line(sweep.stdout)["next_command"].startswith("meow queue")
     # The sweep itself started a detached worker for the requeued item.
-    deadline = time.monotonic() + COMMAND_SECONDS
-    while queue.list()[0].status != "completed" and time.monotonic() < deadline:
-        time.sleep(POLL_SECONDS)
-    [item] = queue.list()
+    [item] = wait_for_item(queue)
     assert (item.status, item.attempts) == ("completed", 2)
     final = meow(world, "resume", "--parked", *work)
     assert (final.returncode, json_line(final.stdout)["resumed"]) == (0, [])
