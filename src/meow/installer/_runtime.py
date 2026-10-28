@@ -164,12 +164,20 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--migrate-bun", nargs="+", help=argparse.SUPPRESS)
     parser.add_argument("--update-bun", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
-        "--setup", action="store_true", help="Offer optional Bun and project setup."
+        "--setup",
+        action="store_true",
+        help="Ask about MCP servers, Bun and projects (the scripts do this by default "
+        "in a terminal).",
     )
     parser.add_argument(
         "--non-interactive",
         action="store_true",
         help="Skip all optional setup prompts.",
+    )
+    parser.add_argument(
+        "--bun",
+        action="store_true",
+        help="Enable Bun's shared dependency store and migrate registered repos.",
     )
     parser.add_argument(
         "--mcp",
@@ -323,6 +331,10 @@ def _setup_bun(ask: Callable[[str], str], output: Callable[[str], None]) -> bool
         return False
     if answer.strip().lower() not in {"", "y", "yes"}:
         return False
+    return _enable_bun(output)
+
+
+def _enable_bun(output: Callable[[str], None]) -> bool:
     path = Path.home() / ".bunfig.toml"
     try:
         configure_bunfig(path)
@@ -357,7 +369,13 @@ def _migrate_registered(onboarded: Sequence[Path] = ()) -> None:
 
 def _offer_mcp(ask: Callable[[str], str], output: Callable[[str], None]) -> None:
     """Offer each supported MCP server at user scope; never installs launchers."""
-    if not _yes(ask("Set up Jira/GitLab MCP servers for Claude (user scope)? [y/N] ")):
+    try:
+        if not _yes(
+            ask("Set up Jira/GitLab MCP servers for Claude (user scope)? [y/N] ")
+        ):
+            return
+    except EOFError:
+        output("\nNo input available; skipped MCP setup.")
         return
     try:
         specs, _notes = load_specs()
@@ -422,7 +440,9 @@ def _bun_command(args: argparse.Namespace) -> int:
 
 def _optional_setup(args: argparse.Namespace) -> int:
     status = _install_mcp(args.mcp, print) if args.mcp else 0
-    if args.setup and not args.non_interactive:
+    if getattr(args, "bun", False) and _enable_bun(print):
+        _migrate_registered()
+    if args.setup and not getattr(args, "non_interactive", False):
         status = _setup_projects() or status
     return status
 

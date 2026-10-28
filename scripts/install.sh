@@ -3,18 +3,21 @@
 set -eu
 
 non_interactive=false
-setup=false
+setup=true
+bun=false
 mcp=
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --non-interactive) non_interactive=true ;;
         --setup) setup=true ;;
+        --no-setup) setup=false ;;
+        --bun) bun=true ;;
         --mcp)
             [ "$#" -ge 2 ] || { printf 'Missing value for --mcp\n' >&2; exit 2; }
             mcp=$2; shift ;;
         --mcp=*) mcp=${1#--mcp=} ;;
         -h|--help)
-            printf '%s\n' 'Usage: sh install.sh [--setup] [--non-interactive] [--mcp jira,gitlab]' 'Install and register only by default. --setup offers optional Bun and project setup.' '--mcp registers user-scope MCP servers from their credential environment variables.' 'With --non-interactive, optional setup is always skipped.'
+            printf '%s\n' 'Usage: sh install.sh [--non-interactive] [--no-setup] [--mcp jira,gitlab] [--bun]' 'With a terminal, asks about MCP servers, the Bun shared store, and projects after installing.' '--no-setup or --non-interactive skips those questions; so does having no terminal.' '--mcp registers user-scope MCP servers from their credential environment variables.' '--bun configures the Bun shared dependency store and migrates registered repos.'
             exit 0 ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
@@ -116,12 +119,16 @@ purelib=$("$bundle/runtime/bin/python3" -c "import sysconfig;print(sysconfig.get
 printf '%s\n' 'Installing pinned dependencies and launcher (this can take minutes)...'
 PYTHONPATH=$purelib "$python" -m meow.installer.releases --finish "$destination" --bundle "$bundle"
 
+extra=
+[ -z "$mcp" ] || extra="--mcp $mcp"
+[ "$bun" = false ] || extra="$extra --bun"
 if [ "$setup" = false ] || [ "$non_interactive" = true ]; then
-    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" ${mcp:+--mcp "$mcp"}
+    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" $extra
 elif [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
-    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup ${mcp:+--mcp "$mcp"} </dev/tty
+    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup $extra </dev/tty
 else
-    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" --setup ${mcp:+--mcp "$mcp"} </dev/null
+    "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" $extra
+    printf '%s\n' 'No terminal available; skipped optional setup. Run `claude /meow:onboard` in a project, or rerun the installer in a terminal.'
 fi
 printf '\nMEOW is ready. Open a new terminal, or run:\n  export PATH="$HOME/.meow/bin:$PATH"\n'
 printf '%s\n' 'Restart Claude Code to load /meow:* skills. Update later with meow -u.'

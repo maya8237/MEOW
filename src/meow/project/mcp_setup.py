@@ -241,6 +241,15 @@ def describe(result: SetupResult) -> str:
     return f"{spec.label if spec else result.provider}: {result.detail}"
 
 
+_EXAMPLES = {
+    "JIRA_URL": "https://yourcompany.atlassian.net",
+    "JIRA_USERNAME": "you@yourcompany.com",
+    "GITLAB_API_URL": "https://gitlab.com/api/v4",
+}
+
+
 def hidden_prompt(label: str, secret: bool) -> str:
     """Ask on the terminal; secrets are not echoed."""
-    return getpass.getpass(f"{label}: ") if secret else input(f"{label}: ")
+    example = f" (e.g. {_EXAMPLES[label]})" if label in _EXAMPLES else ""
+    question = f"{label}{example}: "
+    return getpass.getpass(question) if secret else input(question)

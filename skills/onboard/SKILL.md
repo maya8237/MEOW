@@ -151,7 +151,7 @@ command, then let the user export the variables or type them at the hidden
 prompt. Automatic: run it only for providers the user named with the variables
 already set; otherwise list "no MCP: run `meow onboard --mcp NAME`". Projects
 then need no `[provider.mcp]`; with several matches set `from` in local config.
-GitHub has no setup yet: use a server the user registered. Hosted OAuth
+For GitHub or other servers, use one the user registered. Hosted OAuth
 connectors are not usable by the CLI. See [MCP](../../docs/MCP.md).
 
 For Tester MCPs, check whether the session has the tools and the launcher exists.

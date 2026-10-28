@@ -95,3 +95,40 @@ def test_onboard_prefills_site_url_from_shared_config(tmp_path, monkeypatch):
     assert _setup_environment(tmp_path)["JIRA_URL"] == "https://mine.example"
     monkeypatch.delenv("JIRA_URL")
     assert _setup_environment(tmp_path)["JIRA_URL"] == "https://acme.atlassian.net"
+
+
+def test_prompts_show_examples_for_site_and_username(monkeypatch):
+    from meow.project import mcp_setup
+
+    asked = []
+    monkeypatch.setattr("builtins.input", lambda text: asked.append(text) or "x")
+    for name in ("JIRA_URL", "JIRA_USERNAME", "GITLAB_API_URL", "SOMETHING_ELSE"):
+        mcp_setup.hidden_prompt(name, False)
+    assert "e.g. https://yourcompany.atlassian.net" in asked[0]
+    assert "e.g. you@yourcompany.com" in asked[1]
+    assert "e.g. https://gitlab.com/api/v4" in asked[2]
+    assert asked[3] == "SOMETHING_ELSE: "
+
+
+def test_bun_flag_enables_store_and_migrates_without_asking(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(
+        _runtime, "_enable_bun", lambda output: calls.append("on") or True
+    )
+    monkeypatch.setattr(
+        _runtime, "_migrate_registered", lambda: calls.append("migrate")
+    )
+    monkeypatch.setattr("builtins.input", lambda *_: pytest.fail("asked"))
+    monkeypatch.setattr(_runtime, "register_checkout_plugin", lambda *a: None)
+    assert _runtime.main(["--repo-dir", str(tmp_path), "--bun"]) == 0
+    assert calls == ["on", "migrate"]
+
+
+def test_mcp_offer_survives_a_closed_input():
+    lines = []
+
+    def closed(_prompt):
+        raise EOFError
+
+    _runtime._offer_mcp(closed, lines.append)
+    assert any("skipped MCP setup" in line for line in lines)

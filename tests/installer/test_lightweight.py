@@ -1,4 +1,4 @@
-"""Default installation and update must never enter optional setup."""
+"""Unattended installation and every update must never enter optional setup."""
 
 import shutil
 import subprocess
@@ -14,7 +14,9 @@ from meow.installer import _runtime
     "flags", [[], ["--non-interactive"], ["--setup", "--non-interactive"]]
 )
 @pytest.mark.parametrize("interactive", [False, True])
-def test_registration_only_default(tmp_path, monkeypatch, flags, interactive):
+def test_registration_only_without_setup_request(
+    tmp_path, monkeypatch, flags, interactive
+):
     registered = []
     monkeypatch.setattr(sys.stdin, "isatty", lambda: interactive)
     monkeypatch.setattr(
@@ -39,10 +41,11 @@ def test_noninteractive_bun_helper_skips_optional_work(monkeypatch):
     assert _runtime.main(["--update-bun", "--non-interactive"]) == 0
 
 
-def test_powershell_setup_is_explicit():
+def test_powershell_setup_is_default_in_a_console():
     script = (Path(__file__).resolve().parents[2] / "scripts/install.ps1").read_text()
-    assert "[switch]$setup" in script
-    assert "if ($setup -and -not ${non-interactive})" in script
+    assert "[switch]${no-setup}" in script
+    assert "[Console]::IsInputRedirected" in script
+    assert "-and -not ${non-interactive}" in script
 
 
 @pytest.mark.parametrize("setup", [False, True])
@@ -60,7 +63,7 @@ def test_powershell_activation_arguments(setup, non_interactive):
             powershell,
             "-NoProfile",
             "-Command",
-            f"$setup = ${str(setup).lower()}; "
+            f"$setup = ${str(setup).lower()}; ${{no-setup}} = $false; $bun = $false; "
             f"${{non-interactive}} = ${str(non_interactive).lower()}; "
             "$destination = 'release'; " + script[start:end] + "; $setupArgs",
         ],
@@ -76,13 +79,13 @@ def test_powershell_activation_arguments(setup, non_interactive):
     ]
 
 
-def test_posix_default_branch_only_activates():
+def test_posix_skip_branch_only_activates():
     script = (Path(__file__).resolve().parents[2] / "scripts/install.sh").read_text()
-    assert "setup=false" in script
-    assert "--setup) setup=true ;;" in script
-    default = script.split(
+    assert "setup=true" in script
+    assert "--no-setup) setup=false ;;" in script
+    skip = script.split(
         'if [ "$setup" = false ] || [ "$non_interactive" = true ]; then', 1
     )[1]
-    default = default.split("elif", 1)[0]
-    assert '--activate "$destination"' in default
-    assert "--setup" not in default
+    skip = skip.split("elif", 1)[0]
+    assert '--activate "$destination"' in skip
+    assert "--setup" not in skip
