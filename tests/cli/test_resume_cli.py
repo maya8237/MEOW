@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from meow.cli.cli import cli_main
-from meow.cli.resume_cli import _validate, resume, resume_parked
+from meow.cli.resume_cli import _validate, resume, resume_parked, shell_arg
 from meow.common.process import process_identity as _process_identity
 from meow.execution.queue_state import QueueStore, QueueWorkerLock
 from meow.execution.run_state import RunStore
@@ -764,7 +764,9 @@ def test_sweep_that_requeues_items_names_the_queue_command(tmp_path, capsys):
     queue.update(item.id, status="parked")
     assert asyncio.run(resume_parked(tmp_path)) == EXIT_TEMPFAIL
     summary = json.loads(capsys.readouterr().out)
-    assert summary["next_command"] == f"meow queue --work-dir {tmp_path}"
+    assert summary["next_command"] == (
+        f"meow queue --work-dir {shell_arg(str(tmp_path))}"
+    )
 
 
 def test_sweep_starts_a_detached_queue_worker_when_none_runs(tmp_path, capsys):

@@ -734,6 +734,7 @@ def test_run_child_uses_its_own_process_group(tmp_path, monkeypatch):
         seen.update(kwargs)
         return SimpleNamespace(wait=lambda timeout=None: 0)
 
+    monkeypatch.setattr(supervisor.sys, "platform", "linux")
     monkeypatch.setattr(supervisor.subprocess, "Popen", popen)
     assert supervisor._run_child(tmp_path, ["x"], {}) == 0
     assert seen["start_new_session"] is True
@@ -796,8 +797,11 @@ def test_run_supervised_checkpoints_a_background_style_record(tmp_path, monkeypa
     }
 
 
-@pytest.mark.parametrize("pid,parked", [(os.getpid(), False), (999_999_999, True)])
-def test_driver_without_start_identity_falls_back_to_pid_check(tmp_path, pid, parked):
+@pytest.mark.parametrize("own_pid,parked", [(True, False), (False, True)])
+def test_driver_without_start_identity_falls_back_to_pid_check(
+    tmp_path, own_pid, parked
+):
+    pid = os.getpid() if own_pid else 999_999_999
     store = RunStore(tmp_path)
     record = _driven_record(store, tmp_path)
     current = store.load(record.id)

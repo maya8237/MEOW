@@ -115,7 +115,7 @@ def validate_setup(raw: object) -> dict[str, list]:
     commands = raw.get("commands", [])
     if not isinstance(copies, list) or not isinstance(commands, list):
         raise ValueError("[worktree_setup] copy and commands must be arrays")
-    normalized_copies = [str(_relative(item)) for item in copies]
+    normalized_copies = [_relative(item).as_posix() for item in copies]
     normalized_commands = []
     for command in commands:
         if (
