@@ -361,8 +361,8 @@ def _git() -> str:
 def main_repo(working_dir: Path) -> Path:
     """The main checkout owning `working_dir`, even from a linked worktree.
 
-    Assumes a normal non-bare repo: bare repos and submodule gitdirs have a
-    common dir that is not `<checkout>/.git`.
+    A common dir that is not named `.git` (a bare repo, or a submodule gitdir
+    under `.git/modules`) is returned as is: it has no checkout above it.
     """
     result = _run_git(
         [_git(), "rev-parse", "--path-format=absolute", "--git-common-dir"],
@@ -373,7 +373,8 @@ def main_repo(working_dir: Path) -> Path:
             result.stderr.strip()
             or f"Cannot find Git common directory of {working_dir}"
         )
-    return Path(result.stdout.strip()).parent
+    common = Path(result.stdout.strip())
+    return common.parent if common.name == ".git" else common
 
 
 class StartPointError(RuntimeError):

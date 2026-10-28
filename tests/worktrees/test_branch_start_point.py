@@ -301,3 +301,9 @@ def test_unrecognised_fetch_failure_is_transient(tmp_path, monkeypatch, stderr):
         resolve_start_point(repo, "nope")
 
     assert caught.value.transient is True
+
+
+def test_main_repo_of_a_bare_repo_is_the_bare_directory(tmp_path):
+    bare = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    assert main_repo(bare) == bare.resolve()
