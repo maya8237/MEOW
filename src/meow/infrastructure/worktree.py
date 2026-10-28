@@ -557,6 +557,15 @@ def current_branch(directory: Path, default: str = "detached") -> str:
     return result.stdout.strip() or default
 
 
+def strict_branch(directory: Path, default: str = "detached") -> str:
+    """Like `current_branch`, but a git that cannot run or answer raises
+    OSError, so it is never mistaken for a detached HEAD."""
+    result = _run_git(["git", "branch", "--show-current"], cwd=directory)
+    if result.returncode:
+        raise OSError(result.stderr.strip() or "git branch failed")
+    return result.stdout.strip() or default
+
+
 def default_target_branch(directory: Path) -> str:
     """Prefer an existing local or origin dev branch, otherwise master."""
     if not any(

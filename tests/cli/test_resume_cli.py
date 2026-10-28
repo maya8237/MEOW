@@ -763,3 +763,65 @@ def test_sweep_that_requeues_items_names_the_queue_command(tmp_path, capsys):
 def test_sweep_without_requeued_items_has_no_queue_command(tmp_path, capsys):
     asyncio.run(resume_parked(tmp_path))
     assert "next_command" not in json.loads(capsys.readouterr().out)
+
+
+@pytest.mark.parametrize(
+    "target,effect",
+    [
+        ("meow.cli.resume_cli.subprocess.run", OSError(1450, "no resources")),
+        ("meow.cli.resume_cli.strict_branch", OSError(11, "try again")),
+        ("meow.cli.resume_cli.config_fingerprint", PermissionError(5, "denied")),
+    ],
+)
+def test_os_error_refusals_are_transient_not_permanent(
+    tmp_path, capsys, target, effect
+):
+    """A busy disk or git must not settle the run `failed` forever."""
+    store, record = _parked(tmp_path)
+    store.transition(record.id, "parked", config_fingerprint="x")
+    with (
+        patch(target, side_effect=effect),
+        patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run,
+    ):
+        assert (
+            asyncio.run(resume(tmp_path, record.id, continue_run=True)) == EXIT_TEMPFAIL
+        )
+    run.assert_not_awaited()
+    assert store.load(record.id).phase == "parked"
+    err = capsys.readouterr().err
+    assert "MEOW_RETRY" in err
+    assert "MEOW_BLOCKED" not in err
+
+
+def test_validate_flags_only_deterministic_mismatches_permanent(tmp_path):
+    store, record = _record(tmp_path)
+    problem = _validate(store.load(record.id), tmp_path)
+    assert problem is None
+    store.transition(record.id, "interrupted_mutation", branch="other")
+    message, permanent = _validate(store.load(record.id), tmp_path)
+    assert "Branch mismatch" in message
+    assert permanent is True
+
+
+def test_strict_branch_distinguishes_failure_from_detached_head(tmp_path):
+    from meow.infrastructure.worktree import strict_branch
+
+    _record(tmp_path)
+    assert strict_branch(tmp_path) == "dev"
+    with pytest.raises(OSError):
+        strict_branch(tmp_path / "nowhere")
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "-q", "--allow-empty", "-m", "c"],
+        check=True,
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "a",
+            "GIT_AUTHOR_EMAIL": "a@b",
+            "GIT_COMMITTER_NAME": "a",
+            "GIT_COMMITTER_EMAIL": "a@b",
+        },
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "checkout", "-q", "--detach"], check=True
+    )
+    assert strict_branch(tmp_path) == "detached"

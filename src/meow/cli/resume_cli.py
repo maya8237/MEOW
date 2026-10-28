@@ -7,6 +7,7 @@ import subprocess
 import sys
 from contextlib import redirect_stdout, suppress
 from pathlib import Path
+from typing import NamedTuple
 
 from meow.cli.orchestration_cli import resume_orchestration
 from meow.cli.status_cli import (
@@ -35,7 +36,7 @@ from meow.infrastructure.supervisor import (
     EXIT_TEMPFAIL,
     SUPERVISOR_ENV,
 )
-from meow.infrastructure.worktree import current_branch
+from meow.infrastructure.worktree import GitTimeoutError, current_branch, strict_branch
 from meow.project.config import config_root, load_config, run_config
 from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
 
@@ -46,15 +47,29 @@ def _config_dir(record: RunRecord) -> Path:
     return config_root(Path(record.repo), Path(record.worktree))
 
 
+class _Problem(NamedTuple):
+    """Why a resume cannot start. `permanent` means no retry can fix it
+    (a deterministic mismatch); otherwise the OS or git failed this time."""
+
+    message: str
+    permanent: bool
+
+
+def _transient(message: str) -> _Problem:
+    return _Problem(message, False)
+
+
 def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, too-many-branches, too-many-statements]
     record: RunRecord, working_dir: Path
-) -> str | None:
+) -> _Problem | None:
     repo = Path(record.repo).resolve()
     worktree = Path(record.worktree).resolve()
     if repo != working_dir.resolve():
-        return f'Repository mismatch. Use --work-dir "{record.repo}".'
+        return _Problem(f'Repository mismatch. Use --work-dir "{record.repo}".', False)
     if not worktree.is_dir():
-        return f"Worktree missing: {worktree}. Restore it before continuing."
+        return _Problem(
+            f"Worktree missing: {worktree}. Restore it before continuing.", True
+        )
     common_dirs = []
     for directory in (repo, worktree):
         try:
@@ -66,45 +81,59 @@ def _validate(  # ruff: ignore[complex-structure, too-many-return-statements, to
                 check=False,
             )
         except OSError:
-            return "Git unavailable. Restore Git before continuing."
+            return _transient("Git unavailable. Restore Git before continuing.")
         if identity.returncode:
-            return f"Worktree identity unavailable: {directory}. Restore it."
+            return _transient(f"Worktree identity unavailable: {directory}.")
         common_dirs.append(Path(identity.stdout.strip()).resolve())
     if common_dirs[0] != common_dirs[1]:
-        return "Worktree belongs to another repository. Restore the saved worktree."
-    branch = current_branch(worktree)
+        return _Problem(
+            "Worktree belongs to another repository. Restore the saved worktree.", True
+        )
+    try:
+        branch = strict_branch(worktree)
+    except (OSError, GitTimeoutError):
+        return _transient(f"Branch unreadable in {worktree}; git did not answer.")
     if branch != record.branch:
-        return (
+        return _Problem(
             f"Branch mismatch: saved {record.branch}, found {branch}. "
-            "Restore the saved branch."
+            "Restore the saved branch.",
+            True,
         )
     if record.plan_file:
         plan = Path(record.plan_file)
         if not plan.is_file():
-            return f"Plan missing: {plan}. Restore the saved plan before continuing."
-        if (
-            record.plan_fingerprint
-            and hashlib.sha256(plan.read_bytes()).hexdigest() != record.plan_fingerprint
-        ):
-            return f"Plan changed: {plan}. Restore the saved plan before continuing."
+            return _Problem(
+                f"Plan missing: {plan}. Restore the saved plan before continuing.",
+                True,
+            )
+        if record.plan_fingerprint:
+            try:
+                digest = hashlib.sha256(plan.read_bytes()).hexdigest()
+            except OSError:
+                return _transient(f"Plan unreadable: {plan}.")
+            if digest != record.plan_fingerprint:
+                return _Problem(
+                    f"Plan changed: {plan}. Restore the saved plan before continuing.",
+                    True,
+                )
     if record.config_fingerprint:
         try:
             current = config_fingerprint(_config_dir(record))
         except OSError:
-            return (
-                "Configuration missing. Restore the repository MEOW config "
-                "before continuing."
-            )
+            return _transient("Configuration unreadable; the disk did not answer.")
         if current != record.config_fingerprint:
-            return (
+            return _Problem(
                 "Configuration changed. Restore the repository MEOW config "
-                "before continuing."
+                "before continuing.",
+                True,
             )
     if saved := record.results.get("workflow"):
         try:
             select_workflow(load_config(_config_dir(record)), saved=saved)
-        except (OSError, ValueError, KeyError) as exc:
-            return str(exc)
+        except OSError as exc:
+            return _transient(f"Workflow unreadable: {exc}")
+        except (ValueError, KeyError) as exc:
+            return _Problem(str(exc), True)
     return None
 
 
@@ -436,6 +465,14 @@ def _refuse(  # ruff: ignore[too-many-arguments]
     return 1
 
 
+def _retry_later(record: RunRecord, message: str) -> int:
+    """A refusal caused by the OS or git this time: exit 75, run untouched."""
+    from meow.cli.run_contract import _retry
+
+    print(message, file=sys.stderr)
+    return _retry(record.id, next_command(record), None, {"message": message})
+
+
 def _claim(store: RunStore, record: RunRecord) -> RunRecord | None:
     """Own the run before it looks active again, so a concurrent reconcile
     never mistakes this resume for the dead driver it replaces. A resume of a
@@ -559,13 +596,20 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
             stop="budget_exhausted" if reason in _EXHAUSTED else "not_resumable",
         )
     problem = _validate(record, working_dir)
+    if (
+        problem
+        and not problem.permanent
+        and not problem.message.startswith("Repository mismatch")
+    ):
+        return _retry_later(record, f"Cannot resume now: {problem.message}")
     if problem:
         return _refuse(
             store,
             record,
-            f"Cannot resume: {problem} Inspect with meow status {record.id}, "
-            f"or re-baseline with meow resume {record.id} --continue --repair.",
-            permanent=not problem.startswith("Repository mismatch"),
+            f"Cannot resume: {problem.message} Inspect with meow status "
+            f"{record.id}, or re-baseline with meow resume {record.id} "
+            "--continue --repair.",
+            permanent=problem.permanent,
         )
     saved_workflow = record.results.get("workflow")
     resume_at = _resume_at(record)
