@@ -18,7 +18,13 @@ from pathlib import Path
 
 from meow.common.process import process_identity
 from meow.execution.run_failures import RESUMABLE_SOURCES
-from meow.execution.run_state import PARKED_PHASE, RunRecord, RunStore, park_crashed
+from meow.execution.run_state import (
+    PARKED_PHASE,
+    RunRecord,
+    RunStore,
+    driver_alive,
+    park_crashed,
+)
 from meow.infrastructure.logging import get_logger
 from meow.project.config import run_config
 
@@ -52,8 +58,21 @@ def _interrupt(process: subprocess.Popen) -> None:
     try:
         process.wait(timeout=_INTERRUPT_GRACE_SECONDS)
     except subprocess.TimeoutExpired:
-        process.kill()
+        _kill_group(process)
         process.wait()
+
+
+def _kill_group(process: subprocess.Popen) -> None:
+    """Kill the driver and everything it started (agent CLIs, test commands)."""
+    if sys.platform == "win32":
+        from meow.common.process import run_windows_tool
+
+        run_windows_tool(["taskkill", "/F", "/T", "/PID", str(process.pid)])
+    else:
+        with suppress(OSError):
+            os.killpg(process.pid, signal.SIGKILL)
+    with suppress(OSError):
+        process.kill()
 
 
 def _run_child(repo: Path, command: list[str], env: dict[str, str]) -> int:
@@ -123,8 +142,10 @@ def supervise(repo: Path, run_id: str, nonce: str) -> int:
     last_park = None
     while True:
         code = _run_child(repo, command, env)
-        # The child exited: anything it left unsettled died with it.
-        record = park_crashed(store, run_id) or store.load(run_id)
+        # The child exited: anything it left unsettled died with it. This
+        # process is the run's worker, so only a live driver (a resume that
+        # took over meanwhile) keeps the run from being parked.
+        record = park_crashed(store, run_id, driver_alive) or store.load(run_id)
         logger.info(
             "supervisor_child_exited", run=run_id, code=code, phase=record.phase
         )

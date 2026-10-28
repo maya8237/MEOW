@@ -5,7 +5,8 @@ import os
 import re
 import tempfile
 import time
-from contextlib import contextmanager, suppress
+from collections.abc import Callable
+from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -63,6 +64,10 @@ _ID = re.compile(r"[0-9a-f]{32}\Z")
 
 class RunStateError(ValueError):
     """A run cannot be loaded safely; no agent should be started."""
+
+
+class ClaimBusyError(RunStateError):
+    """Another process holds the run's claim lock."""
 
 
 def _now() -> str:
@@ -439,7 +444,7 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
                         lock.unlink()
                         continue
                 if time.monotonic() > deadline:
-                    raise RunStateError(
+                    raise ClaimBusyError(
                         f"Run {run_id} is being claimed by another process."
                     ) from None
                 time.sleep(0.05)
@@ -698,11 +703,29 @@ def error_log_tail(store: RunStore, run_id: str) -> str:
     return "\n".join(lines) or "(error log empty)"
 
 
-def park_crashed(store: RunStore, run_id: str) -> RunRecord | None:
-    """Park a run whose driver died without settling it; None if settled."""
-    record = store.load(run_id)
-    if record.phase in _RECONCILE_SKIP:
-        return None
+def park_crashed(
+    store: RunStore,
+    run_id: str,
+    owner: Callable[[RunRecord], bool | None] = run_owner_alive,
+) -> RunRecord | None:
+    """Park a run whose driver died without settling it; None if settled.
+
+    Holds the claim lock and re-checks `owner` on the fresh record, so a
+    resume that claimed the run since the caller looked is never parked.
+    """
+    with ExitStack() as stack:
+        try:
+            stack.enter_context(store._claim_lock(run_id))
+        except ClaimBusyError:
+            return None  # another process is claiming it right now
+        record = store.load(run_id)
+        if record.phase in _RECONCILE_SKIP or owner(record) is True:
+            return None
+        return _park_dead(store, record)
+
+
+def _park_dead(store: RunStore, record: RunRecord) -> RunRecord:
+    run_id = record.id
     tail = error_log_tail(store, run_id)
     return store.park(
         run_id,

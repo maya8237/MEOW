@@ -971,3 +971,49 @@ def test_hung_launcher_past_the_ceiling_is_interrupted(tmp_path, monkeypatch):
     assert background.inspect_worker(store.load(record.id)).state == "interrupted"
     assert background.reconcile_worker(store, record.id).state == "interrupted"
     assert store.load(record.id).phase == "parked"
+
+
+def test_reconcile_never_parks_a_run_a_resume_claimed_meanwhile(tmp_path, monkeypatch):
+    from meow.execution import run_state
+
+    store = RunStore(tmp_path)
+    record = _driven_record(store, tmp_path)
+
+    def claimed_after_check(owner):
+        # Another `meow resume` claims the run after reconcile judged it dead.
+        store.claim_resume(record.id, phase="generator_started")
+        monkeypatch.setattr(run_state, "run_owner_alive", real_owner)
+        return real_owner(owner)
+
+    real_owner = run_state.run_owner_alive
+    monkeypatch.setattr(run_state, "run_owner_alive", claimed_after_check)
+
+    assert reconcile_stale_runs(store) == []
+    current = store.load(record.id)
+    assert current.phase == "resuming"
+    assert current.driver["pid"] == os.getpid()
+
+
+def test_park_crashed_skips_a_run_being_claimed(tmp_path, monkeypatch):
+    from meow.execution import run_state
+
+    store = RunStore(tmp_path)
+    record = _driven_record(store, tmp_path)
+    monkeypatch.setattr(run_state, "_CLAIM_WAIT", 0)
+    (store.directory / f"{record.id}.claim").touch()
+
+    assert run_state.park_crashed(store, record.id) is None
+    assert store.load(record.id).phase == "generator_started"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_supervisor_kills_the_driver_group_after_the_grace(monkeypatch):
+    killed = []
+    process = SimpleNamespace(
+        pid=4321, wait=lambda timeout=None: None, kill=lambda: killed.append("child")
+    )
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: killed.append((pid, sig)))
+
+    supervisor._kill_group(process)
+
+    assert killed == [(4321, supervisor.signal.SIGKILL), "child"]
