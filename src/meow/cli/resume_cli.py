@@ -17,7 +17,7 @@ from meow.cli.status_cli import (
 from meow.execution.orchestration.model import is_orchestrator_id
 from meow.execution.orchestration.report import render_status
 from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
-from meow.execution.queue_state import QueueStateError, QueueStore
+from meow.execution.queue_state import QueueStateError, QueueStore, QueueWorkerLock
 from meow.execution.run_failures import next_command
 from meow.execution.run_state import (
     PARKED_PHASE,
@@ -321,6 +321,23 @@ def _parked_exit_code(summary: dict) -> int:
     return 0
 
 
+def _park_orphaned_items(queue: QueueStore) -> None:
+    """Park items a dead queue worker left `running`.
+
+    Only `meow queue` used to notice them, so an unattended sweep reported
+    "nothing to do" while the item stayed stuck. A live worker holds the lock
+    and keeps its items.
+    """
+    if not queue.path.exists():
+        return
+    lock = QueueWorkerLock(queue.directory)
+    if lock.acquire():
+        try:
+            queue.recover_orphans()
+        finally:
+            lock.release()
+
+
 def _requeue_parked_items(working_dir: Path, store: RunStore, config: dict) -> dict:
     """Requeue parked queue items within budget and settle their old runs.
 
@@ -329,6 +346,7 @@ def _requeue_parked_items(working_dir: Path, store: RunStore, config: dict) -> d
     """
     queue = QueueStore(working_dir)
     try:
+        _park_orphaned_items(queue)
         requeued = queue.requeue_parked(config["managed_resumes"])
         left = queue.parked()
     except QueueStateError:

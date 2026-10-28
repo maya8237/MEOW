@@ -12,7 +12,7 @@ import pytest
 from meow.cli.cli import cli_main
 from meow.cli.resume_cli import _validate, resume, resume_parked
 from meow.common.process import process_identity as _process_identity
-from meow.execution.queue_state import QueueStore
+from meow.execution.queue_state import QueueStore, QueueWorkerLock
 from meow.execution.run_state import RunStore
 from meow.infrastructure.checks import config_fingerprint
 from meow.infrastructure.supervisor import EXIT_BLOCKED, EXIT_TEMPFAIL
@@ -530,3 +530,45 @@ def test_resume_parked_rejects_a_run_id(tmp_path):
     with pytest.raises(SystemExit) as exit_info:
         cli_main(["resume", "abc", "--parked", "--work-dir", str(tmp_path)])
     assert exit_info.value.code == 2  # ruff: ignore[magic-value-comparison]
+
+
+def _running_item(tmp_path):
+    """A queue item whose worker died: `running`, run record parked by reconcile."""
+    store = _record(tmp_path)[0]
+    run = store.create(
+        source="queue", request="q", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    store.park(run.id, "driver died", "crashed", "driver_died")
+    queue = QueueStore(tmp_path)
+    item = queue.enqueue("q")
+    queue.claim(item.id)
+    queue.update(item.id, run_id=run.id)
+    return store, queue, item, run
+
+
+def test_resume_parked_requeues_an_item_orphaned_by_a_dead_queue_worker(
+    tmp_path, capsys
+):
+    """The crash used to be found only by restarting `meow queue`: an unattended
+    sweep reported nothing to do while the item stayed `running` forever."""
+    store, queue, item, run = _running_item(tmp_path)
+    assert asyncio.run(resume_parked(tmp_path)) == EXIT_TEMPFAIL
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["requeued"] == [item.id]
+    assert [pending.id for pending in queue.pending()] == [item.id]
+    assert store.load(run.id).results["superseded_by"] == item.id
+    assert not (queue.directory / "worker.lock").exists()
+
+
+def test_resume_parked_leaves_a_live_queue_workers_item_alone(tmp_path, capsys):
+    store, queue, _item, run = _running_item(tmp_path)
+    lock = QueueWorkerLock(queue.directory)
+    assert lock.acquire()  # this process is the live worker
+    try:
+        asyncio.run(resume_parked(tmp_path))
+    finally:
+        lock.release()
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["requeued"] == []
+    assert [entry.status for entry in queue.list()] == ["running"]
+    assert store.load(run.id).phase == "parked"
