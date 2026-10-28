@@ -13,6 +13,7 @@ from pathlib import Path
 
 from meow.infrastructure.worktree import _push_branch
 from meow.native.native_custom import custom, workflow
+from meow.native.native_hooks import hook
 from meow.native.native_lint import LintOptions, lint
 from meow.native.native_prepare import (
     PrepareOptions,
@@ -43,6 +44,7 @@ __all__ = [
     "checkpoint",
     "custom",
     "finalize",
+    "hook",
     "latest_plan",
     "latest_review",
     "lint",

@@ -85,6 +85,10 @@ capped to its parent and exclude `Agent`. Agents registered through
 optional `roles`. Conventional definitions are used when explicitly named.
 Resolved tools remain subject to `[permissions]`; prompts never bypass policy.
 
+**Hook:** `<name>.toml` under `hooks/` with `description`, `event`, `command`
+(optional `matcher`, `timeout`, `roles`). Exit 2 denies or feeds back; hooks never
+grant permissions. Events and `meow native hook`: [HOOKS](../../docs/HOOKS.md).
+
 **Workflow:** `<name>.toml`, with `description` and a `steps` list. Choose from
 `uses = "builtin.name"`, `agent`, `gate`, `loop`, `parallel`, and `call`.
 

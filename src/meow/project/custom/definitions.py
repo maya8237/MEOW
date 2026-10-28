@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from meow.infrastructure.logging import get_logger
 from meow.project.custom import frontmatter
 from meow.project.custom.agent_files import read_agent_toml
+from meow.project.custom.hook_files import read_hook_toml
 from meow.project.custom.sources import (
     AGENT_ROLES,
     SCOPES,
@@ -70,6 +71,23 @@ class CustomAgent:
 
 
 @dataclass(frozen=True)
+class CustomHook:
+    name: str
+    description: str
+    event: str
+    command: str
+    file: Path
+    source: CustomSource
+    matcher: str | None = None
+    timeout: float = 30.0
+    roles: tuple[str, ...] = ()  # empty: the source's roles, else every role
+
+    def applies_to(self, role: str) -> bool:
+        allowed = self.roles or self.source.roles
+        return not allowed or role in allowed
+
+
+@dataclass(frozen=True)
 class Customizations:
     """Every skill and agent in effect, after scope precedence."""
 
@@ -86,6 +104,15 @@ class Customizations:
     # Every source read, for workflow discovery.
     sources: tuple[CustomSource, ...] = ()
     workflows: tuple["WorkflowFile", ...] = ()
+    hooks: tuple[CustomHook, ...] = ()
+
+    def hooks_for(self, event: str, role: str | None = None) -> list[CustomHook]:
+        """Hooks on `event`; with `role`, only those that apply to it."""
+        return [
+            hook
+            for hook in self.hooks
+            if hook.event == event and (role is None or hook.applies_to(role))
+        ]
 
     def skills_for(self, role: str) -> list[str]:
         return [s.qualified_name for s in self.skills if s.applies_to(role)]
@@ -153,6 +180,14 @@ def _load_toml_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
     )
 
 
+def load_hook(hook_file: Path, source: CustomSource) -> CustomHook:
+    validate_source_path(hook_file, source)
+    name = _name(hook_file.stem, hook_file)
+    return CustomHook(
+        name=name, file=hook_file, source=source, **read_hook_toml(hook_file)
+    )
+
+
 def load_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
     validate_source_path(agent_file, source)
     if agent_file.suffix == ".toml":
@@ -180,31 +215,35 @@ def load_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
 def _definitions(source: CustomSource) -> list:
     if source.missing:
         return []
-    if source.kind == "workflows":
-        from meow.project.custom.workflows import load_workflow
-
-        return [
-            load_workflow(validate_source_path(path, source), source)
-            for path in sorted(source.path.glob("*.toml"))
-            if path.is_file()
-        ]
     if source.kind == "skills":
         return [
             _load_skill(child, source)
             for child in sorted(source.path.iterdir())
             if (child / "SKILL.md").is_file()
         ]
-    files = sorted(
-        child
-        for child in source.path.iterdir()
-        if child.suffix in {".md", ".toml"} and child.is_file()
-    )
-    return [load_agent(child, source) for child in files]
+    if source.kind == "agents":
+        files = sorted(
+            child
+            for child in source.path.iterdir()
+            if child.suffix in {".md", ".toml"} and child.is_file()
+        )
+        return [load_agent(child, source) for child in files]
+    if source.kind == "workflows":
+        from meow.project.custom.workflows import load_workflow
+
+        load = load_workflow
+    else:
+        load = load_hook
+    return [
+        load(validate_source_path(path, source), source)
+        for path in sorted(source.path.glob("*.toml"))
+        if path.is_file()
+    ]
 
 
 def _merge(kind: str, sources: list[CustomSource]) -> tuple[list, list[str]]:
     """Apply precedence: higher scopes win; a repeat within one scope errors."""
-    chosen: dict[str, CustomSkill | CustomAgent] = {}
+    chosen: dict[str, CustomSkill | CustomAgent | CustomHook] = {}
     overrides = []
     label = kind.removesuffix("s")
     ordered = sorted(
@@ -267,6 +306,7 @@ def discover(sources: list[CustomSource]) -> Customizations:
     skills, skill_overrides = _merge("skills", sources)
     agents, agent_overrides = _merge("agents", sources)
     workflows, workflow_overrides = _merge("workflows", sources)
+    hooks, hook_overrides = _merge("hooks", sources)
     names = {skill.name for skill in skills}
     agents = [
         replace(
@@ -292,9 +332,10 @@ def discover(sources: list[CustomSource]) -> Customizations:
     return Customizations(
         tuple(skills),
         tuple(delegates),
-        tuple(skill_overrides + agent_overrides + workflow_overrides),
+        tuple(skill_overrides + agent_overrides + workflow_overrides + hook_overrides),
         _skipped(sources),
         tuple(agents),
         tuple(sources),
         tuple(workflows),
+        tuple(hooks),
     )

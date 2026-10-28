@@ -28,7 +28,7 @@ top-level alias or compatibility modules.
   branch, triage, the shared supervisor `tick()`, the whole-objective review,
   delivery, and the CLI driver (`runner.py`).
 - `evaluation/`: read-only evaluation reports over run journals.
-- `infrastructure/`: lint/test execution, checks, logging, cancellation,
+- `infrastructure/`: lint/test execution, user hook commands (`user_hooks.py`), checks, logging, cancellation,
   background workers, usage accounting, and worktree lifecycle/setup.
   `scheduling.py` owns durable one-shot schedules and execution claims;
   `scheduled_tasks.py` registers Windows Task Scheduler and Linux systemd triggers.

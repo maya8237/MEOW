@@ -32,6 +32,7 @@ from claude_agent_sdk import (
 
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
+from meow.infrastructure.user_hooks import merge_hooks, sdk_hooks
 from meow.project.config_models import LintCommand
 from meow.project.custom import CustomAgent, Customizations, skill_plugin_dir
 from meow.project.custom.rendering import builtin_agent, render_agent
@@ -377,6 +378,14 @@ class Agent:
                 {"type": "local", "path": str(plugin)},
             ]
 
+    def _apply_hooks(self, role: str, extra_options: dict) -> None:
+        """Add the role's user-defined hooks after the code-owned ones."""
+        user = sdk_hooks(
+            self.customizations().hooks, self.context.active_working_dir(), role.lower()
+        )
+        if user:
+            extra_options["hooks"] = merge_hooks(extra_options.get("hooks"), user)
+
     def customizations(self) -> Customizations:
         custom = getattr(self.context, "config", {}).get("customizations")
         return custom if isinstance(custom, Customizations) else Customizations()
@@ -497,6 +506,7 @@ class Agent:
             system_prompt = f"{system_prompt}\n\n{DEPENDENCY_GUIDANCE}"
         self._apply_skills(role, extra_options)
         allowed_tools = self._apply_policy(role, allowed_tools, extra_options)
+        self._apply_hooks(role, extra_options)
         journal = self.context.config.get("_run_journal")
         if journal is not None:
             store, run_id = journal

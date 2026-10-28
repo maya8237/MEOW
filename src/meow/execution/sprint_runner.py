@@ -27,6 +27,7 @@ from meow.infrastructure.checks import (
 from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.node_dependencies import ensure_node_dependencies
+from meow.infrastructure.user_hooks import run_lifecycle
 from meow.infrastructure.worktree import (
     _is_linked_worktree,
     current_branch,
@@ -169,6 +170,9 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -
     elif delivery:
         record = store.load(run_id)
         store.transition(run_id, record.phase, delivery={**record.delivery, **delivery})
+    hooks = config["customizations"].hooks
+    event = {"run_id": run_id, "request": request, "work_dir": str(working_dir)}
+    await run_lifecycle(hooks, "sprint_start", event, working_dir)
     try:
         base = store.load(run_id).delivery.get("base", "none (not selected)")
         print(f"[run] MR target: {base} (saved for resume).", flush=True)
@@ -185,6 +189,20 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -
     except BaseException as exc:
         _mark_failed(store, run_id, exc)
         raise
+    finally:
+        await run_lifecycle(
+            hooks,
+            "sprint_end",
+            {**event, "phase": _phase_of(store, run_id)},
+            working_dir,
+        )
+
+
+def _phase_of(store: RunStore, run_id: str) -> str | None:
+    try:
+        return store.load(run_id).phase
+    except (RunStateError, OSError):
+        return None
 
 
 def _mark_failed(store: RunStore, run_id: str, exc: BaseException) -> None:

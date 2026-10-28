@@ -25,6 +25,7 @@ Reduce words too; do not meet the line limit by minifying prose.
 - [CLI](docs/CLI.md): command index; `meow COMMAND --help` gives syntax.
 - [Integrations](docs/INTEGRATIONS.md): configuration and optional services.
 - [Workflows](docs/WORKFLOWS.md): definitions, scopes, templates, recovery.
+- [Hooks](docs/HOOKS.md): user hook definitions and `meow native hook`.
 - [Architecture](docs/ARCHITECTURE.md): package/module ownership.
 - [Native protocol](skills/_shared/native-mode.md): in-session helpers.
 
@@ -56,5 +57,5 @@ Keep native/CLI guidance aligned.
   never `orchestrator/<id>/<task>`, beside integration `orchestrator/<id>`.
 - `run_sprint` marks pre-terminal exceptions failed; inner steps record phases only.
 - Definitions replace whole files: local > project > user > builtin.
-  Gates/permissions remain code-owned.
+  Gates/permissions remain code-owned; user hooks may only deny or inform.
 - Claude owns transcripts; journals store role/session IDs, resumed only by `meow resume`.
