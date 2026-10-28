@@ -12,7 +12,12 @@ from pathlib import Path
 from meow.execution.cleanup import cleanup_completed
 from meow.execution.delivery import deliver_verified_run
 from meow.execution.run_failures import park_on_check_timeout
-from meow.execution.run_state import PARKED_PHASE, RunStateError, RunStore
+from meow.execution.run_state import (
+    PARKED_PHASE,
+    TERMINAL_PHASES,
+    RunStateError,
+    RunStore,
+)
 from meow.infrastructure.checks import (
     adopt_stage_artifacts,
     code_revision,
@@ -195,6 +200,10 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
     if intent is not None:
         results["intent"] = intent
     if phase == PARKED_PHASE:
+        if record.phase in TERMINAL_PHASES:  # a late crash report must not revive it
+            raise RunStateError(
+                f"Run {run_id} is {record.phase}; a finished run cannot be parked."
+            )
         if set(patch) == {"results"}:
             store.update_results(run_id, **results)
         else:

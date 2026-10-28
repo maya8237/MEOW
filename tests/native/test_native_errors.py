@@ -6,6 +6,8 @@ import subprocess
 import time
 from unittest.mock import patch
 
+import pytest
+
 from meow.execution.run_state import RunStore, reconcile_stale_runs
 from meow.native.native_cli import EXIT_TEMPFAIL, RETRY_AFTER
 from meow.native.native_state import checkpoint
@@ -262,3 +264,36 @@ def test_native_helper_driver_busy_is_retryable_and_named(tmp_path):
     assert payload["cause"] == DRIVER_BUSY
     assert payload["retry_after"] == DRIVER_BUSY_RETRY_AFTER
     assert "live" in payload["error"]
+
+
+@pytest.mark.parametrize("phase", ["failed", "complete", "cancelled"])
+def test_native_checkpoint_parked_cannot_revive_a_terminal_run(tmp_path, phase):
+    repo = _repo(tmp_path)
+    run_id = checkpoint(repo, repo, "generator_started", request="x")["run_id"]
+    RunStore(repo).transition(run_id, phase)
+    code, _out, err = run_native(
+        "checkpoint",
+        "parked",
+        "--run-id",
+        run_id,
+        "--failure",
+        "late crash report",
+        "--work-dir",
+        str(repo),
+    )
+    assert code == 1
+    assert _error(err)["retryable"] is False
+    current = RunStore(repo).load(run_id)
+    assert current.phase == phase
+    assert not current.park
+
+
+def test_store_park_refuses_terminal_runs(tmp_path):
+    from meow.execution.run_state import RunStateError
+
+    repo = _repo(tmp_path)
+    run_id = checkpoint(repo, repo, "generator_started", request="x")["run_id"]
+    store = RunStore(repo)
+    store.transition(run_id, "failed")
+    with pytest.raises(RunStateError, match="failed"):
+        store.park(run_id, "late", "transient", "error")

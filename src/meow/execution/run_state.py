@@ -496,6 +496,10 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
         from meow.project.config import run_config
 
         record = self.load(run_id)
+        if record.phase in TERMINAL_PHASES:
+            raise RunStateError(
+                f"Run {run_id} is {record.phase}; a finished run cannot be parked."
+            )
         message = (
             reason if isinstance(reason, str) else str(reason) or type(reason).__name__
         )
