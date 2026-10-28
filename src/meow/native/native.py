@@ -280,18 +280,19 @@ def _not_configured() -> dict:
 
 
 def _resolved_provider(config: dict, provider: str) -> dict:
-    """Resolve a requested reference without exposing its launch data."""
+    """Resolve a reference or user-scope server without exposing launch data."""
     from meow.project.mcp_registry import provider_mcp_config
 
     section = config.get(provider)
-    if not isinstance(section, dict):
-        return config
+    section = section if isinstance(section, dict) else {}
     mcp = section.get("mcp")
-    if not isinstance(mcp, dict) or "from" not in mcp:
+    if "mcp" in section and not (isinstance(mcp, dict) and "from" in mcp):
         return config
     try:
         resolved = provider_mcp_config(config, provider)
     except ValueError:
+        if "mcp" not in section:
+            return config  # nothing registered: still "not configured"
         resolved = {}
     return {**config, provider: {**section, "mcp": resolved, "_reference": True}}
 

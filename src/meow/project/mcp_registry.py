@@ -4,6 +4,11 @@ import json
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlparse
+
+from meow.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
 
 _VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 PROVIDERS = ("jira", "github", "gitlab")
@@ -179,7 +184,45 @@ def _user_scope_fallback(provider: str, hint: str) -> dict:
         raise ValueError(f"User-scope MCP server '{names[0]}': {exc}. {hint}") from None
 
 
+_SITE_VARIABLES = {
+    "jira": "JIRA_URL",
+    "gitlab": "GITLAB_API_URL",
+    "github": "GITHUB_HOST",
+}
+
+
+def configured_url(config: dict, provider: str) -> str | None:
+    """The project's non-secret `[provider].url`, if it set one."""
+    section = config.get(provider)
+    url = section.get("url") if isinstance(section, dict) else None
+    return url if isinstance(url, str) and url.strip() else None
+
+
+def _host(url: str) -> str:
+    return (urlparse(url if "://" in url else f"//{url}").hostname or "").lower()
+
+
+def _warn_site_mismatch(config: dict, provider: str, mcp: dict) -> None:
+    """Warn when the registered server targets another site than the project."""
+    project = configured_url(config, provider)
+    server = mcp.get("env", {}).get(_SITE_VARIABLES[provider])
+    if project and isinstance(server, str) and _host(project) != _host(server):
+        logger.warning(
+            "mcp_site_mismatch",
+            provider=provider,
+            project_host=_host(project),
+            server_host=_host(server),
+        )
+
+
 def provider_mcp_config(config: dict, provider: str) -> dict:
+    """Resolve the requested provider and warn about a site mismatch."""
+    mcp = _resolve_provider(config, provider)
+    _warn_site_mismatch(config, provider, mcp)
+    return mcp
+
+
+def _resolve_provider(config: dict, provider: str) -> dict:
     """Resolve only the requested provider; loaded config remembers launch root.
 
     Without an `[x.mcp]` table the user's single matching user-scope server is
@@ -207,12 +250,17 @@ def provider_environment(
     """Read inline API settings or a referenced provider's runtime environment."""
     section = config.get(provider)
     mcp = section.get("mcp") if isinstance(section, dict) else None
-    if not isinstance(mcp, dict):
+    if mcp is not None and not isinstance(mcp, dict):
         return {}
-    if "from" in mcp:
+    if mcp is None or "from" in mcp:
         if not resolve_reference:
             return {}
-        mcp = provider_mcp_config(config, provider)
+        try:
+            mcp = provider_mcp_config(config, provider)
+        except ValueError:
+            if mcp is None:
+                return {}
+            raise
     env = mcp.get("env", {})
     return env if isinstance(env, dict) else {}
 

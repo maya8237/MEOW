@@ -16,6 +16,7 @@ from meow.project.mcp_registry import _provider_matches, user_scope_servers
 
 _SECRET_MARKERS = ("TOKEN", "PASSWORD", "SECRET")
 _GITHUB_IMAGE = "ghcr.io/github/github-mcp-server"
+_GITLAB_PACKAGE = "@zereight/mcp-gitlab"
 
 REGISTERED = "registered"
 ALREADY = "already_registered"
@@ -62,6 +63,15 @@ SPECS = {
         warmup=("docker", "pull", _GITHUB_IMAGE),
     ),
 }
+SPECS["gitlab"] = McpSpec(
+    "gitlab",
+    "GitLab",
+    "gitlab",
+    "npx",
+    ("-y", _GITLAB_PACKAGE),
+    auth=(("GITLAB_PERSONAL_ACCESS_TOKEN", "GITLAB_API_URL"),),
+    warmup=("npx", "-y", _GITLAB_PACKAGE, "--help"),
+)
 SUPPORTED = tuple(SPECS)
 
 
@@ -140,7 +150,7 @@ def _warm_up(spec: McpSpec, run: Callable) -> None:
             list(spec.warmup),
             stdin=subprocess.DEVNULL,
             capture_output=True,
-            timeout=300,
+            timeout=120,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):

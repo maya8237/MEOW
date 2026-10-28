@@ -142,17 +142,17 @@ approval.
 Offer `[tester] write_tests` (default false) only if the user wants the tester
 to add new tests to the repository.
 
-Register Jira and GitHub MCPs once per user, not per project:
-`meow onboard --mcp jira,github`. It uses the servers' own variables (Jira
+Register Jira, GitHub and GitLab MCPs once per user, not per project:
+`meow onboard --mcp jira,github,gitlab`. It uses the servers' own variables (Jira
 `JIRA_URL` with `JIRA_USERNAME`/`JIRA_API_TOKEN` or `JIRA_PERSONAL_TOKEN`; GitHub
-`GITHUB_PERSONAL_ACCESS_TOKEN`), skips providers already registered, never
-installs `uvx` or `docker`, and never prints tokens. Interactive: show the
+`GITHUB_PERSONAL_ACCESS_TOKEN`; GitLab `GITLAB_PERSONAL_ACCESS_TOKEN` and
+`GITLAB_API_URL`), skips providers already registered, never
+installs `uvx`, `docker` or `npx`, and never prints tokens. Interactive: show the
 command, then let the user export the variables or type them at the hidden
 prompt. Automatic: run it only for providers the user named with the variables
 already set; otherwise list "no MCP: run `meow onboard --mcp NAME`". Projects
 then need no `[provider.mcp]`; with several matches set `from` in local config.
-GitLab has no setup yet: reuse a registered server with `from`. Hosted OAuth
-connectors are not usable by the CLI. See [MCP](../../docs/MCP.md).
+Hosted OAuth connectors are not usable by the CLI. See [MCP](../../docs/MCP.md).
 
 For Tester MCPs, check whether the session has the tools and the launcher exists.
 If not, warn that the MCP is missing, give the exact install step, mark the
@@ -168,7 +168,7 @@ When an optional feature is accepted, use the matching documented path:
 - Jira: configure the project key/server and approved MCP environment values,
   run `meow native verify --work-dir <project-root>`, then use
   `meow run --jira ISSUE-KEY`. Do not create a schedule until Jira works.
-- GitLab: reference its registered MCP, verify it, then use
+- GitLab: register its MCP as above, verify it, then use
   `meow review --gitlab <merge-request-url>`; CI setup is a separate add-on.
 - GitHub: configure the approved connection, verify checkout and artifact
   behavior, then use `meow review --github <pull-request-url>`.

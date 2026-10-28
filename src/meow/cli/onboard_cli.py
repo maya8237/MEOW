@@ -114,7 +114,18 @@ def _command_settings(args):
     return settings
 
 
-_SITE_URLS = {"jira": "JIRA_URL", "github": "GITHUB_HOST"}
+_SITE_URLS = {
+    "jira": "JIRA_URL",
+    "github": "GITHUB_HOST",
+    "gitlab": "GITLAB_API_URL",
+}
+
+
+def _site_value(provider: str, url: str) -> str:
+    """GitLab's server wants the API root; the others take the site as is."""
+    if provider != "gitlab" or url.rstrip("/").endswith("/api/v4"):
+        return url
+    return f"{url.rstrip('/')}/api/v4"
 
 
 def _setup_environment(root: Path) -> dict[str, str]:
@@ -128,7 +139,7 @@ def _setup_environment(root: Path) -> dict[str, str]:
         table = config.get(provider)
         url = table.get("url") if isinstance(table, dict) else None
         if isinstance(url, str) and url:
-            environ.setdefault(variable, url)
+            environ.setdefault(variable, _site_value(provider, url))
     return environ
 
 

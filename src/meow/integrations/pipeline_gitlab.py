@@ -100,13 +100,23 @@ def connect_gitlab(
     parsed: tuple[str, str], config: dict, env: Mapping[str, str]
 ) -> GitlabPipeline:
     host, project = parsed
-    from meow.project.mcp_registry import provider_environment
+    from meow.project.mcp_registry import configured_url, provider_environment
 
     token = env.get("MEOW_GITLAB_TOKEN")
     mcp_env = provider_environment(config, "gitlab", resolve_reference=not bool(token))
-    token = token or mcp_env.get("GITLAB_TOKEN") or ""
+    token = (
+        token
+        or mcp_env.get("GITLAB_PERSONAL_ACCESS_TOKEN")
+        or mcp_env.get("GITLAB_TOKEN")
+        or ""
+    )
     if not token:
         raise PipelineUnavailable("MEOW_GITLAB_TOKEN is not set")
-    base = str(mcp_env.get("GITLAB_URL") or f"https://{host}").rstrip("/")
+    site = (
+        configured_url(config, "gitlab")
+        or mcp_env.get("GITLAB_API_URL")
+        or mcp_env.get("GITLAB_URL")
+    )
+    base = str(site or f"https://{host}").rstrip("/")
     base = base.removesuffix("/api/v4").rstrip("/")
     return GitlabPipeline(f"{base}/api/v4", project, token)

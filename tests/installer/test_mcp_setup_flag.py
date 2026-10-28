@@ -47,7 +47,7 @@ def test_interactive_offer_declined_registers_nothing(monkeypatch):
 
 
 def test_interactive_offer_asks_per_provider(monkeypatch):
-    answers = iter(["y", "y", "n"])
+    answers = iter(["y", "y", "n", "n"])
     registered = []
 
     def fake(spec, environ, **_kwargs):

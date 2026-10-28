@@ -479,16 +479,18 @@ _GUIDE = "docs/INTEGRATIONS.md"
 _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
     "jira": (
         ("jira",),
-        f"Configure [jira] and [jira.mcp] ({_GUIDE}), run `meow native verify`, "
-        "then `meow run --jira ISSUE-KEY`.",
+        f"Run `meow onboard --mcp jira` once per user ({_GUIDE}), set [jira] "
+        "project_key, run `meow native verify`, then `meow run --jira ISSUE-KEY`.",
     ),
     "gitlab": (
         ("gitlab",),
-        f"Configure [gitlab.mcp] ({_GUIDE}), then `meow review --gitlab <url>`.",
+        f"Run `meow onboard --mcp gitlab` once per user ({_GUIDE}), "
+        "then `meow review --gitlab <url>`.",
     ),
     "github": (
         ("github",),
-        f"Configure [github.mcp] ({_GUIDE}), then `meow review --github <url>`.",
+        f"Run `meow onboard --mcp github` once per user ({_GUIDE}), "
+        "then `meow review --github <url>`.",
     ),
     "tester_tests": (
         ("tester", "tests"),
@@ -574,6 +576,14 @@ def _config_tables(root: Path) -> list[dict]:
     return tables
 
 
+def _user_scope_providers() -> set[str]:
+    """Providers with exactly one server registered at Claude's user scope."""
+    from meow.project.mcp_registry import _provider_matches, user_scope_servers
+
+    matches = _provider_matches(user_scope_servers())
+    return {provider for provider, names in matches.items() if len(names) == 1}
+
+
 def feature_gaps(root: Path) -> dict[str, dict]:
     """Report which optional capabilities the project has configured.
 
@@ -588,12 +598,14 @@ def feature_gaps(root: Path) -> dict[str, dict]:
     detected = setup_defaults(root, config)
     config = _merge_config(detected.defaults, config)
     references = _reference_origins(root, config)
+    user_scope = _user_scope_providers()
     gaps = {
         key: {
             "configured": _present(config, path),
             "enable": enable,
             "detected": ".".join(path) in detected.origins
             or key in references
+            or key in user_scope
             or f"{key}.mcp" in detected.origins,
             "verified": False,
             "ambiguous": [

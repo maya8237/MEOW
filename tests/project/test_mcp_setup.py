@@ -171,13 +171,13 @@ def test_add_that_cannot_run_is_a_failed_result(tmp_path):
 
 
 def test_unsupported_provider_is_reported(tmp_path):
-    [result] = setup_providers(["gitlab"], {}, home=tmp_path, which=found())
+    [result] = setup_providers(["bitbucket"], {}, home=tmp_path, which=found())
     assert result.status == "unsupported"
     assert "jira" in result.detail
 
 
 def test_parse_providers():
-    assert parse_providers("all") == ("jira", "github")
+    assert parse_providers("all") == ("jira", "github", "gitlab")
     assert parse_providers(" Jira, github,jira ") == ("jira", "github")
 
 
@@ -211,3 +211,137 @@ def test_runtime_fallback_ignores_project_mcp_json(tmp_path, monkeypatch):
     config = {"_project_root": str(tmp_path)}
     with pytest.raises(ValueError, match="meow onboard --mcp jira"):
         provider_mcp_config(config, "jira")
+
+
+def test_gitlab_uses_zereight_package_and_its_own_variable_names(tmp_path):
+    environ = {
+        "GITLAB_PERSONAL_ACCESS_TOKEN": SECRET,
+        "GITLAB_API_URL": "https://gitlab.example.com/api/v4",
+    }
+    run = Recorder()
+    result = setup_provider(
+        SPECS["gitlab"], environ, home=tmp_path, run=run, which=found("claude", "npx")
+    )
+    assert result.status == "registered"
+    add = run.calls[0]
+    assert add[-4:] == ["--", "npx", "-y", "@zereight/mcp-gitlab"]
+    assert f"GITLAB_PERSONAL_ACCESS_TOKEN={SECRET}" in add
+    assert "GITLAB_API_URL=https://gitlab.example.com/api/v4" in add
+    assert SECRET not in json.dumps(result.to_dict())
+
+
+def test_gitlab_without_npx_is_reported_not_installed(tmp_path):
+    result = setup_provider(
+        SPECS["gitlab"], {}, home=tmp_path, run=Recorder(), which=found("claude")
+    )
+    assert result.status == "no_launcher"
+
+
+def test_gitlab_site_url_prefills_the_api_root(tmp_path, monkeypatch):
+    from meow.cli.onboard_cli import _setup_environment
+
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow/config.toml").write_text(
+        '[gitlab]\nurl = "https://gitlab.example.com/"\n'
+    )
+    monkeypatch.delenv("GITLAB_API_URL", raising=False)
+    environ = _setup_environment(tmp_path)
+    assert environ["GITLAB_API_URL"] == "https://gitlab.example.com/api/v4"
+
+
+def test_runtime_environment_comes_from_the_user_scope_server(tmp_path, monkeypatch):
+    from meow.project.mcp_registry import provider_environment
+
+    write_user_servers(
+        tmp_path,
+        {"gitlab": {"command": "npx", "env": {"GITLAB_PERSONAL_ACCESS_TOKEN": "t"}}},
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config = {"_project_root": str(tmp_path)}
+    assert provider_environment(config, "gitlab") == {
+        "GITLAB_PERSONAL_ACCESS_TOKEN": "t"
+    }
+    assert provider_environment(config, "gitlab", resolve_reference=False) == {}
+    assert provider_environment(config, "jira") == {}
+
+
+def test_pipeline_accepts_the_servers_own_names_and_the_project_url(
+    tmp_path, monkeypatch
+):
+    from meow.integrations.pipeline_gitlab import connect_gitlab
+
+    write_user_servers(
+        tmp_path,
+        {
+            "gitlab": {
+                "command": "npx",
+                "env": {
+                    "GITLAB_PERSONAL_ACCESS_TOKEN": "tok",
+                    "GITLAB_API_URL": "https://other.example.com/api/v4",
+                },
+            }
+        },
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config = {"gitlab": {"url": "https://gitlab.example.com"}}
+    client = connect_gitlab(("gitlab.example.com", "group/repo"), config, {})
+    assert client.token == "tok"
+    assert client.api == "https://gitlab.example.com/api/v4"
+
+
+def test_project_url_identifies_a_self_hosted_gitlab_origin():
+    from meow.execution.orchestration.pull_request import detect_provider
+
+    config = {"gitlab": {"url": "https://code.example.com"}}
+    assert detect_provider("git@code.example.com:group/repo.git", config) == "gitlab"
+    assert detect_provider("git@code.example.com:group/repo.git", {}) is None
+
+
+def test_native_verify_sees_a_user_scope_server(tmp_path, monkeypatch):
+    from meow.native import native
+
+    write_user_servers(
+        tmp_path, {"atlassian": {"command": "uvx", "args": ["mcp-atlassian"]}}
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    result = native._verify_jira({"_project_root": str(tmp_path)})
+    assert result["configured"] is True
+    assert "uvx" not in json.dumps(result)
+    assert native._verify_github({})["configured"] is False
+
+
+def test_site_mismatch_is_logged_without_failing(tmp_path, monkeypatch):
+    from meow.project import mcp_registry
+
+    write_user_servers(
+        tmp_path,
+        {"atlassian": {"command": "uvx", "env": {"JIRA_URL": "https://old.example"}}},
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    warnings = []
+    monkeypatch.setattr(
+        mcp_registry.logger, "warning", lambda event, **fields: warnings.append(fields)
+    )
+    config = {"jira": {"url": "https://acme.atlassian.net"}}
+    assert provider_mcp_config(config, "jira")["command"] == "uvx"
+    assert warnings == [
+        {
+            "provider": "jira",
+            "project_host": "acme.atlassian.net",
+            "server_host": "old.example",
+        }
+    ]
+
+
+def test_gap_report_marks_a_user_scope_server_detected(tmp_path, monkeypatch):
+    from meow.project.onboarding import feature_gaps
+
+    write_user_servers(
+        tmp_path, {"atlassian": {"command": "uvx", "args": ["mcp-atlassian"]}}
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    gaps = feature_gaps(repo)
+    assert gaps["jira"]["detected"] is True
+    assert gaps["github"]["detected"] is False

@@ -135,7 +135,8 @@ optional `args = []` and `env = {}` configure their launchers.
 The URL is supplied per review; there is no provider project-key setting.
 Servers must expose title/description/unified-diff read tools.
 MCP env is passed to the server as configured: keep tokens private.
-Typical variables: GitLab `GITLAB_URL`/`GITLAB_TOKEN`, GitHub
+Variables use each server's names: GitLab `GITLAB_PERSONAL_ACCESS_TOKEN` and
+`GITLAB_API_URL` (older `GITLAB_TOKEN`/`GITLAB_URL` still read), GitHub
 `GITHUB_PERSONAL_ACCESS_TOKEN` (`GITHUB_HOST` for Enterprise).
 
 ## Orchestrator
