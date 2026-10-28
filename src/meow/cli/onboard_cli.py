@@ -12,6 +12,7 @@ from meow.project.mcp_setup import (
     parse_providers,
     setup_providers,
 )
+from meow.project.mcp_setup_config import load_specs
 from meow.project.onboard_config import configure_project, parse_setting
 
 _FIELDS = {
@@ -142,12 +143,20 @@ def _setup_environment(root: Path) -> dict[str, str]:
     return environ
 
 
-def _mcp_results(args, root: Path) -> list[dict]:
+def _mcp_results(args, root: Path) -> tuple[list[dict], list[str]]:
+    """Setup results and notes about config that was ignored."""
+    try:
+        specs, notes = load_specs(root)
+    except ValueError as exc:
+        return [{"provider": "mcp_setup", "status": "failed", "detail": str(exc)}], []
     prompt = None if args.non_interactive else hidden_prompt
     results = setup_providers(
-        parse_providers(args.mcp), _setup_environment(root), prompt=prompt
+        parse_providers(args.mcp, specs),
+        _setup_environment(root),
+        specs=specs,
+        prompt=prompt,
     )
-    return [result.to_dict() for result in results]
+    return [result.to_dict() for result in results], notes
 
 
 def onboard_command(args, root: Path) -> int:
@@ -165,7 +174,9 @@ def onboard_command(args, root: Path) -> int:
         return 1
     status = 0
     if args.mcp:
-        result["mcp"] = _mcp_results(args, root)
+        result["mcp"], notes = _mcp_results(args, root)
+        if notes:
+            result["mcp_notes"] = notes
         status = int(any(item["status"] in FAILURES for item in result["mcp"]))
     print(json.dumps(result, indent=2))
     return status

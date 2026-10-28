@@ -17,13 +17,13 @@ from meow.installer.bun import (
 )
 from meow.project.claude_settings import path_key, register_checkout_plugin
 from meow.project.mcp_setup import (
-    SPECS,
     describe,
     hidden_prompt,
     parse_providers,
     setup_provider,
     setup_providers,
 )
+from meow.project.mcp_setup_config import load_specs
 from meow.project.onboarding import feature_gaps, onboard_project
 from meow.project.repos import _saved, remember
 
@@ -359,7 +359,12 @@ def _offer_mcp(ask: Callable[[str], str], output: Callable[[str], None]) -> None
     """Offer each supported MCP server at user scope; never installs launchers."""
     if not _yes(ask("Set up Jira/GitLab MCP servers for Claude (user scope)? [y/N] ")):
         return
-    for spec in SPECS.values():
+    try:
+        specs, _notes = load_specs()
+    except ValueError as exc:
+        output(f"  MCP setup skipped: {exc}")
+        return
+    for spec in specs.values():
         if _yes(ask(f"  Set up {spec.label}? [y/N] ")):
             result = setup_provider(spec, os.environ, prompt=hidden_prompt)
             output(f"  {describe(result)}")
@@ -367,7 +372,14 @@ def _offer_mcp(ask: Callable[[str], str], output: Callable[[str], None]) -> None
 
 def _install_mcp(providers: str, output: Callable[[str], None]) -> int:
     """The non-interactive `--mcp` path: nonzero when a request was not met."""
-    results = setup_providers(parse_providers(providers), os.environ)
+    try:
+        specs, _notes = load_specs()
+    except ValueError as exc:
+        output(f"MCP setup: {exc}")
+        return 1
+    results = setup_providers(
+        parse_providers(providers, specs), os.environ, specs=specs
+    )
     for result in results:
         output(describe(result))
     return int(any(result.failed for result in results))

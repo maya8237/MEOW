@@ -60,3 +60,27 @@ prefills setup, identifies a self-hosted origin, and a registered server that
 targets another host logs a warning. Without `[provider.mcp]`, MEOW uses your single
 user-scope server for that provider; several matches need `from` in local config,
 and none fails with the command to run. Scheduled runs need the same user.
+
+## Override the setup commands
+
+Change how MEOW registers a server, or add one, in `~/.meow/config.toml` or the
+ignored `.meow/config.local.toml` (a committed `.meow/config.toml` is ignored,
+since setup writes into your own Claude config):
+
+```toml
+[mcp_setup.gitlab]                 # pin the version; other fields keep defaults
+args = ["-y", "@zereight/mcp-gitlab@2.1.45"]
+
+[mcp_setup.github]                 # a new provider needs a command
+command = "docker"
+args = ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "my/image"]
+auth = [["GITHUB_PERSONAL_ACCESS_TOKEN"]]   # alternatives of required variables
+warmup = ["docker", "pull", "my/image"]     # [] skips it
+[mcp_setup.github.env]
+GITHUB_HOST = "https://gh.example.com"      # fixed, non-secret settings only
+```
+
+Keys: `command`, `args`, `server` (name in Claude), `label`, `auth`, `env`,
+`warmup`. Secrets always come from the `auth` variables in the environment, never
+the file. This changes registration only; to change how a project launches a
+server at run time use `[provider.mcp]`.

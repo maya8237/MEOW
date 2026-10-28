@@ -33,6 +33,8 @@ class McpSpec:
     args: tuple[str, ...]
     auth: tuple[tuple[str, ...], ...]  # alternative sets of required variables
     warmup: tuple[str, ...] = ()  # fetch the package once, before Claude's timeout
+    env: tuple[tuple[str, str], ...] = ()  # fixed, non-secret server settings
+    custom: bool = False  # any field came from [mcp_setup] config
 
 
 SPECS = {
@@ -79,18 +81,21 @@ class SetupResult:
         return self.status in FAILURES
 
 
-def parse_providers(raw: str) -> tuple[str, ...]:
+def parse_providers(raw: str, known: Mapping[str, McpSpec] = SPECS) -> tuple[str, ...]:
     """`jira,gitlab` (or `all`) to provider names; unknown names are kept."""
     names = [part.strip().lower() for part in raw.split(",") if part.strip()]
-    return SUPPORTED if names == ["all"] else tuple(dict.fromkeys(names))
+    return tuple(known) if names == ["all"] else tuple(dict.fromkeys(names))
 
 
 def _is_secret(name: str) -> bool:
     return any(marker in name for marker in _SECRET_MARKERS)
 
 
-def _registered_server(provider: str, home: Path | None) -> str | None:
-    names = _provider_matches(user_scope_servers(home=home))[provider]
+def _registered_server(spec: McpSpec, home: Path | None) -> str | None:
+    servers = user_scope_servers(home=home)
+    if spec.server in servers:
+        return spec.server
+    names = _provider_matches(servers).get(spec.provider, [])
     return names[0] if names else None
 
 
@@ -120,7 +125,8 @@ def _collect(
 def build_command(spec: McpSpec, values: Mapping[str, str]) -> list[str]:
     """The `claude mcp add` argv; contains credentials, so never print it."""
     launch = [spec.launcher, *spec.args]
-    env = [arg for name, value in values.items() for arg in ("-e", f"{name}={value}")]
+    pairs = [*spec.env, *values.items()]
+    env = [arg for name, value in pairs for arg in ("-e", f"{name}={value}")]
     return ["claude", "mcp", "add", "--scope", "user", spec.server, *env, "--", *launch]
 
 
@@ -149,7 +155,7 @@ def _blocked(
     spec: McpSpec, home: Path | None, which: Callable[[str], str | None]
 ) -> SetupResult | None:
     """Why nothing should be registered, or None when setup may proceed."""
-    existing = _registered_server(spec.provider, home)
+    existing = _registered_server(spec, home)
     if existing:
         detail = f"user-scope server '{existing}' already registered; left unchanged"
         return SetupResult(spec.provider, ALREADY, detail)
@@ -200,7 +206,8 @@ def setup_provider(  # ruff: ignore[too-many-arguments]
     if failure:
         return failure
     _warm_up(spec, run)
-    detail = f"registered '{spec.server}' at user scope; run /mcp in Claude to check it"
+    source = " using the configured command" if spec.custom else ""
+    detail = f"registered '{spec.server}' at user scope{source}; run /mcp to check it"
     return SetupResult(spec.provider, REGISTERED, detail)
 
 
@@ -208,6 +215,7 @@ def setup_providers(  # ruff: ignore[too-many-arguments]
     providers: Sequence[str],
     environ: Mapping[str, str],
     *,
+    specs: Mapping[str, McpSpec] = SPECS,
     prompt: Prompt | None = None,
     home: Path | None = None,
     run: Callable = subprocess.run,
@@ -215,9 +223,9 @@ def setup_providers(  # ruff: ignore[too-many-arguments]
 ) -> list[SetupResult]:
     results = []
     for provider in providers:
-        spec = SPECS.get(provider)
+        spec = specs.get(provider)
         if spec is None:
-            detail = f"no supported MCP setup (supported: {', '.join(SUPPORTED)})"
+            detail = f"no supported MCP setup (supported: {', '.join(specs)})"
             results.append(SetupResult(provider, "unsupported", detail))
             continue
         results.append(
