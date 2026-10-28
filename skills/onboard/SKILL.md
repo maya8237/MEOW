@@ -142,17 +142,17 @@ approval.
 Offer `[tester] write_tests` (default false) only if the user wants the tester
 to add new tests to the repository.
 
-Register Jira, GitHub and GitLab MCPs once per user, not per project:
-`meow onboard --mcp jira,github,gitlab`. It uses the servers' own variables (Jira
-`JIRA_URL` with `JIRA_USERNAME`/`JIRA_API_TOKEN` or `JIRA_PERSONAL_TOKEN`; GitHub
-`GITHUB_PERSONAL_ACCESS_TOKEN`; GitLab `GITLAB_PERSONAL_ACCESS_TOKEN` and
-`GITLAB_API_URL`), skips providers already registered, never
-installs `uvx`, `docker` or `npx`, and never prints tokens. Interactive: show the
+Register Jira and GitLab MCPs once per user, not per project:
+`meow onboard --mcp jira,gitlab`. It uses the servers' own variables (Jira
+`JIRA_URL` with `JIRA_USERNAME`/`JIRA_API_TOKEN` or `JIRA_PERSONAL_TOKEN`; GitLab
+`GITLAB_PERSONAL_ACCESS_TOKEN` and `GITLAB_API_URL`), skips providers already
+registered, never installs `uvx` or `npx`, and never prints tokens. Interactive: show the
 command, then let the user export the variables or type them at the hidden
 prompt. Automatic: run it only for providers the user named with the variables
 already set; otherwise list "no MCP: run `meow onboard --mcp NAME`". Projects
 then need no `[provider.mcp]`; with several matches set `from` in local config.
-Hosted OAuth connectors are not usable by the CLI. See [MCP](../../docs/MCP.md).
+GitHub has no setup yet: use a server the user registered. Hosted OAuth
+connectors are not usable by the CLI. See [MCP](../../docs/MCP.md).
 
 For Tester MCPs, check whether the session has the tools and the launcher exists.
 If not, warn that the MCP is missing, give the exact install step, mark the

@@ -175,7 +175,7 @@ def _parser() -> argparse.ArgumentParser:
         "--mcp",
         metavar="PROVIDERS",
         help=(
-            "Register user-scope MCP servers (jira,github or all) without "
+            "Register user-scope MCP servers (jira,gitlab or all) without "
             "prompting; credentials come from the servers' own environment "
             "variables, e.g. JIRA_URL and JIRA_API_TOKEN."
         ),
@@ -357,7 +357,7 @@ def _migrate_registered(onboarded: Sequence[Path] = ()) -> None:
 
 def _offer_mcp(ask: Callable[[str], str], output: Callable[[str], None]) -> None:
     """Offer each supported MCP server at user scope; never installs launchers."""
-    if not _yes(ask("Set up Jira/GitHub MCP servers for Claude (user scope)? [y/N] ")):
+    if not _yes(ask("Set up Jira/GitLab MCP servers for Claude (user scope)? [y/N] ")):
         return
     for spec in SPECS.values():
         if _yes(ask(f"  Set up {spec.label}? [y/N] ")):

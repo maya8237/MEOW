@@ -86,9 +86,9 @@ def test_installer_switch_controls_setup_without_network(
 @pytest.mark.parametrize(
     "flags,expected",
     [
-        (["--mcp", "jira,github"], "--mcp jira,github"),
+        (["--mcp", "jira,gitlab"], "--mcp jira,gitlab"),
         (["--mcp=jira"], "--mcp jira"),
-        (["--setup", "--mcp", "github"], "--mcp github"),
+        (["--setup", "--mcp", "gitlab"], "--mcp gitlab"),
         ([], None),
     ],
 )

@@ -42,7 +42,7 @@ def add_onboard_parser(subparsers):
         "--mcp",
         metavar="PROVIDERS",
         help=(
-            "Register user-scope MCP servers (jira,github or all). Credentials "
+            "Register user-scope MCP servers (jira,gitlab or all). Credentials "
             "come from the servers' own environment variables, e.g. JIRA_URL and "
             "JIRA_API_TOKEN, never from flags."
         ),
@@ -116,7 +116,6 @@ def _command_settings(args):
 
 _SITE_URLS = {
     "jira": "JIRA_URL",
-    "github": "GITHUB_HOST",
     "gitlab": "GITLAB_API_URL",
 }
 

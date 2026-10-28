@@ -41,17 +41,16 @@ MCP servers belong to each user, not the project. Register them once:
 ```bash
 export JIRA_URL=https://acme.atlassian.net JIRA_USERNAME=me@example.com
 export JIRA_API_TOKEN=...            # or JIRA_PERSONAL_TOKEN (Server/Data Center)
-export GITHUB_PERSONAL_ACCESS_TOKEN=...
 export GITLAB_PERSONAL_ACCESS_TOKEN=... GITLAB_API_URL=https://gitlab.example.com/api/v4
-meow onboard --mcp jira,github,gitlab   # or the installer's --mcp flag
+meow onboard --mcp jira,gitlab   # or the installer's --mcp flag
 ```
 
 The installer asks the same under `--setup`; `--non-interactive` never asks.
-Servers: Jira `uvx mcp-atlassian`, GitHub `docker run` of the official
-`github-mcp-server`, GitLab `npx -y @zereight/mcp-gitlab`; variables keep the
-servers' own names. MEOW registers at
+Servers: Jira `uvx mcp-atlassian`, GitLab `npx -y @zereight/mcp-gitlab`;
+variables keep the servers' own names. GitHub has no setup yet: register your
+own with `claude mcp add --scope user` and MEOW uses it. MEOW registers at
 Claude's user scope with `claude mcp add`, skips providers already registered,
-and never installs `uvx`, `docker`, or `claude`: a missing launcher is reported.
+and never installs `uvx`, `npx`, or `claude`: a missing launcher is reported.
 Tokens are stored by Claude in plain text in `~/.claude.json`; MEOW never prints
 or copies them.
 

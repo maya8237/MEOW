@@ -489,7 +489,7 @@ _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
     ),
     "github": (
         ("github",),
-        f"Run `meow onboard --mcp github` once per user ({_GUIDE}), "
+        f"Register a GitHub MCP server for your user in Claude ({_GUIDE}), "
         "then `meow review --github <url>`.",
     ),
     "tester_tests": (

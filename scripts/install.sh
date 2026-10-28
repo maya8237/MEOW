@@ -14,7 +14,7 @@ while [ "$#" -gt 0 ]; do
             mcp=$2; shift ;;
         --mcp=*) mcp=${1#--mcp=} ;;
         -h|--help)
-            printf '%s\n' 'Usage: sh install.sh [--setup] [--non-interactive] [--mcp jira,github]' 'Install and register only by default. --setup offers optional Bun and project setup.' '--mcp registers user-scope MCP servers from their credential environment variables.' 'With --non-interactive, optional setup is always skipped.'
+            printf '%s\n' 'Usage: sh install.sh [--setup] [--non-interactive] [--mcp jira,gitlab]' 'Install and register only by default. --setup offers optional Bun and project setup.' '--mcp registers user-scope MCP servers from their credential environment variables.' 'With --non-interactive, optional setup is always skipped.'
             exit 0 ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac

@@ -9,7 +9,6 @@ import pytest
 from meow.project.mcp_registry import provider_mcp_config
 from meow.project.mcp_setup import (
     SPECS,
-    build_command,
     parse_providers,
     setup_provider,
     setup_providers,
@@ -65,24 +64,10 @@ def test_server_datacenter_token_is_an_alternative(tmp_path):
     assert "JIRA_USERNAME" not in " ".join(run.calls[0])
 
 
-def test_github_passes_variables_through_docker_without_values():
-    argv = build_command(
-        SPECS["github"],
-        {"GITHUB_PERSONAL_ACCESS_TOKEN": SECRET, "GITHUB_HOST": "https://gh.example"},
-    )
-    launch = argv[argv.index("--") + 1 :]
-    assert launch == [
-        "docker",
-        "run",
-        "-i",
-        "--rm",
-        "-e",
-        "GITHUB_PERSONAL_ACCESS_TOKEN",
-        "-e",
-        "GITHUB_HOST",
-        "ghcr.io/github/github-mcp-server",
-    ]
-    assert SECRET not in launch
+def test_github_has_no_setup_yet(tmp_path):
+    [result] = setup_providers(["github"], {}, home=tmp_path, which=found("claude"))
+    assert result.status == "unsupported"
+    assert result.failed
 
 
 def test_existing_user_scope_server_is_left_alone(tmp_path):
@@ -177,8 +162,8 @@ def test_unsupported_provider_is_reported(tmp_path):
 
 
 def test_parse_providers():
-    assert parse_providers("all") == ("jira", "github", "gitlab")
-    assert parse_providers(" Jira, github,jira ") == ("jira", "github")
+    assert parse_providers("all") == ("jira", "gitlab")
+    assert parse_providers(" Jira, gitlab,jira ") == ("jira", "gitlab")
 
 
 def test_runtime_uses_the_single_user_scope_server(tmp_path, monkeypatch):

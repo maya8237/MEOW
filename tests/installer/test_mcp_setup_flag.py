@@ -34,8 +34,8 @@ def test_installer_flag_registers_without_prompting(
         _runtime, "_setup_projects", lambda: pytest.fail("project setup ran")
     )
     calls = stub_setup(monkeypatch, _runtime, status)
-    assert _runtime.main(["--repo-dir", str(tmp_path), "--mcp", "jira,github"]) == code
-    assert calls == [["jira", "github"]]
+    assert _runtime.main(["--repo-dir", str(tmp_path), "--mcp", "jira,gitlab"]) == code
+    assert calls == [["jira", "gitlab"]]
     assert "Jira: detail" in capsys.readouterr().out
 
 
@@ -47,7 +47,7 @@ def test_interactive_offer_declined_registers_nothing(monkeypatch):
 
 
 def test_interactive_offer_asks_per_provider(monkeypatch):
-    answers = iter(["y", "y", "n", "n"])
+    answers = iter(["y", "y", "n"])
     registered = []
 
     def fake(spec, environ, **_kwargs):

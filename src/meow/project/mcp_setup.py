@@ -15,7 +15,6 @@ from pathlib import Path
 from meow.project.mcp_registry import _provider_matches, user_scope_servers
 
 _SECRET_MARKERS = ("TOKEN", "PASSWORD", "SECRET")
-_GITHUB_IMAGE = "ghcr.io/github/github-mcp-server"
 _GITLAB_PACKAGE = "@zereight/mcp-gitlab"
 
 REGISTERED = "registered"
@@ -33,8 +32,6 @@ class McpSpec:
     launcher: str  # executable that must already be installed
     args: tuple[str, ...]
     auth: tuple[tuple[str, ...], ...]  # alternative sets of required variables
-    optional: tuple[str, ...] = ()
-    docker: bool = False  # pass each variable through with `docker run -e`
     warmup: tuple[str, ...] = ()  # fetch the package once, before Claude's timeout
 
 
@@ -51,27 +48,16 @@ SPECS = {
         ),
         warmup=("uvx", "mcp-atlassian", "--help"),
     ),
-    "github": McpSpec(
-        "github",
-        "GitHub",
-        "github",
-        "docker",
-        ("run", "-i", "--rm"),
-        auth=(("GITHUB_PERSONAL_ACCESS_TOKEN",),),
-        optional=("GITHUB_HOST",),
-        docker=True,
-        warmup=("docker", "pull", _GITHUB_IMAGE),
+    "gitlab": McpSpec(
+        "gitlab",
+        "GitLab",
+        "gitlab",
+        "npx",
+        ("-y", _GITLAB_PACKAGE),
+        auth=(("GITLAB_PERSONAL_ACCESS_TOKEN", "GITLAB_API_URL"),),
+        warmup=("npx", "-y", _GITLAB_PACKAGE, "--help"),
     ),
 }
-SPECS["gitlab"] = McpSpec(
-    "gitlab",
-    "GitLab",
-    "gitlab",
-    "npx",
-    ("-y", _GITLAB_PACKAGE),
-    auth=(("GITLAB_PERSONAL_ACCESS_TOKEN", "GITLAB_API_URL"),),
-    warmup=("npx", "-y", _GITLAB_PACKAGE, "--help"),
-)
 SUPPORTED = tuple(SPECS)
 
 
@@ -94,7 +80,7 @@ class SetupResult:
 
 
 def parse_providers(raw: str) -> tuple[str, ...]:
-    """`jira,github` (or `all`) to provider names; unknown names are kept."""
+    """`jira,gitlab` (or `all`) to provider names; unknown names are kept."""
     names = [part.strip().lower() for part in raw.split(",") if part.strip()]
     return SUPPORTED if names == ["all"] else tuple(dict.fromkeys(names))
 
@@ -128,15 +114,12 @@ def _collect(
         environ = values
     if alternative is None:
         return None
-    names = [*alternative, *(n for n in spec.optional if environ.get(n))]
-    return {name: environ[name] for name in names}
+    return {name: environ[name] for name in alternative}
 
 
 def build_command(spec: McpSpec, values: Mapping[str, str]) -> list[str]:
     """The `claude mcp add` argv; contains credentials, so never print it."""
     launch = [spec.launcher, *spec.args]
-    if spec.docker:
-        launch += [arg for name in values for arg in ("-e", name)] + [_GITHUB_IMAGE]
     env = [arg for name, value in values.items() for arg in ("-e", f"{name}={value}")]
     return ["claude", "mcp", "add", "--scope", "user", spec.server, *env, "--", *launch]
 
