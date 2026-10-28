@@ -392,14 +392,25 @@ def drive_main(repo: Path, run_id: str, nonce: str) -> int:
         record = store.load(run_id)
         if record.background.get("nonce") != nonce:
             raise BackgroundError("Driver nonce does not match saved run")
-        _drive_invocation(repo, run_id, _saved_invocation(record))
+        asyncio.run(_drive_invocation(repo, run_id, _saved_invocation(record)))
         return 0
     except BaseException as exc:
         _settle_failure(store, run_id, exc)  # park unless blocking
         raise
 
 
-def _drive_invocation(repo: Path, run_id: str, args: argparse.Namespace) -> None:
+async def redrive_saved_invocation(repo: Path, run_id: str) -> None:
+    """Run the run's saved invocation again under its existing record.
+
+    For a run that stopped before its worktree and branch existed: `meow
+    resume` has nothing to validate or replay there, so it starts over from the
+    saved command line, exactly as the worker's `_drive` child would.
+    """
+    record = RunStore(repo).load(run_id)
+    await _drive_invocation(repo, run_id, _saved_invocation(record))
+
+
+async def _drive_invocation(repo: Path, run_id: str, args: argparse.Namespace) -> None:
     from meow.cli.validation import (
         _resolve_input_path,
         parse_inputs,
@@ -411,44 +422,38 @@ def _drive_invocation(repo: Path, run_id: str, args: argparse.Namespace) -> None
     if _invocation_kind(args) == "orchestrator-task":
         from meow.execution.orchestration.task_worker import run_task_attempt
 
-        asyncio.run(run_task_attempt(repo, run_id, args))
+        await run_task_attempt(repo, run_id, args)
     elif args.jira is not None:
-        asyncio.run(
-            run_issue_solver(
-                repo,
-                args.jira or None,
-                test=args.test,
-                **({"force_disable_tests": True} if args.force_disable_tests else {}),
-                run_id=run_id,
-                **({"workflow": args.workflow} if args.workflow else {}),
-                **({"inputs": parse_inputs(args.input)} if args.input else {}),
-            )
+        await run_issue_solver(
+            repo,
+            args.jira or None,
+            test=args.test,
+            **({"force_disable_tests": True} if args.force_disable_tests else {}),
+            run_id=run_id,
+            **({"workflow": args.workflow} if args.workflow else {}),
+            **({"inputs": parse_inputs(args.input)} if args.input else {}),
         )
     else:
-        asyncio.run(
-            run_sprint(
-                repo,
-                args.feature_name,
-                args.request,
-                use_worktree=not args.no_worktree,
-                plan_file=_resolve_input_path(args.plan, repo),
-                source_branch=args.source_branch,
-                resume_at=args.resume_at,
-                test=args.test,
-                **({"force_disable_tests": True} if args.force_disable_tests else {}),
-                run_id=run_id,
-                record_root=repo,
-                **(
-                    {"commit": args.push is not None, "push": args.push is True}
-                    if args.no_worktree
-                    else {}
-                ),
-                **({"workflow": args.workflow} if args.workflow else {}),
-                **({"inputs": parse_inputs(args.input)} if args.input else {}),
-                **(
-                    {"pipeline_options": opts}
-                    if (opts := pipeline_overrides(args))
-                    else {}
-                ),
-            )
+        await run_sprint(
+            repo,
+            args.feature_name,
+            args.request,
+            use_worktree=not args.no_worktree,
+            plan_file=_resolve_input_path(args.plan, repo),
+            source_branch=args.source_branch,
+            resume_at=args.resume_at,
+            test=args.test,
+            **({"force_disable_tests": True} if args.force_disable_tests else {}),
+            run_id=run_id,
+            record_root=repo,
+            **(
+                {"commit": args.push is not None, "push": args.push is True}
+                if args.no_worktree
+                else {}
+            ),
+            **({"workflow": args.workflow} if args.workflow else {}),
+            **({"inputs": parse_inputs(args.input)} if args.input else {}),
+            **(
+                {"pipeline_options": opts} if (opts := pipeline_overrides(args)) else {}
+            ),
         )

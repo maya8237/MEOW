@@ -27,7 +27,7 @@ from meow.execution.run_state import (
     driver_alive,
 )
 from meow.execution.sprint_runner import run_sprint
-from meow.infrastructure.background import inspect_worker
+from meow.infrastructure.background import inspect_worker, redrive_saved_invocation
 from meow.infrastructure.cancellation import clear_cancel
 from meow.infrastructure.checks import config_fingerprint
 from meow.infrastructure.supervisor import (
@@ -405,6 +405,32 @@ def _count_manager_resume(store: RunStore, record: RunRecord) -> None:
     store.transition(record.id, record.phase, park=park)
 
 
+def _never_prepared(record: RunRecord) -> bool:
+    """True for a background run that stopped before its worktree and branch
+    existed (the record still says `preparing`): there is nothing to validate
+    or replay, only the saved command to start again."""
+    phases = {step.get("phase") for step in record.transitions}
+    return (
+        record.branch == "preparing"
+        and "prepared" not in phases
+        and bool(record.background.get("argv"))
+    )
+
+
+async def _restart_unprepared(
+    working_dir: Path, store: RunStore, record: RunRecord
+) -> int:
+    print(
+        f"Run {record.id} stopped before its worktree was prepared; "
+        "starting its saved command again."
+    )
+    clear_cancel(store, record.id)
+    store.set_driver(record.id)
+    store.transition(record.id, "resuming", attempt=record.attempt + 1)
+    await redrive_saved_invocation(working_dir, record.id)
+    return 0
+
+
 async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-many-return-statements, too-many-statements, too-many-branches] -- inspect-first recovery with validation
     working_dir: Path,
     run_id: str | None = None,
@@ -459,6 +485,8 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
             file=sys.stderr,
         )
         return 1
+    if continue_run and _never_prepared(record):
+        return await _restart_unprepared(working_dir, store, record)
     if repair and record.phase != "complete":
         patch, actions = _repair(record, working_dir)
         if patch:

@@ -572,3 +572,51 @@ def test_resume_parked_leaves_a_live_queue_workers_item_alone(tmp_path, capsys):
     assert summary["requeued"] == []
     assert [entry.status for entry in queue.list()] == ["running"]
     assert store.load(run.id).phase == "parked"
+
+
+def _unprepared_run(tmp_path, *, argv):
+    """A background run that parked before its worktree and branch existed."""
+    subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt",
+        request="x",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="preparing",
+    )
+    store.transition(record.id, "preparing")
+    store.update_background(
+        record.id, argv=argv, pid=os.getpid() + 1, start_identity="gone"
+    )
+    store.park(record.id, "connection reset", "transient", "error")
+    return store, record
+
+
+def test_resume_restarts_a_run_parked_before_its_worktree_existed(tmp_path, capsys):
+    """Validation can only fail for such a run ("Branch mismatch: saved
+    preparing"), so every managed resume of it was refused and the manager
+    needed a human. It starts its saved command again under the same record."""
+    argv = ["run", "x", "--background", "--work-dir", str(tmp_path)]
+    store, record = _unprepared_run(tmp_path, argv=argv)
+    with patch(
+        "meow.execution.sprint_runner.run_sprint", new_callable=AsyncMock
+    ) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    run.assert_awaited_once()
+    assert run.await_args.kwargs["run_id"] == record.id
+    assert run.await_args.kwargs["use_worktree"] is True
+    assert "before its worktree was prepared" in capsys.readouterr().out
+    assert store.load(record.id).phase == "resuming"
+
+
+def test_resume_without_a_saved_command_still_refuses_an_unprepared_run(tmp_path):
+    store, record = _unprepared_run(tmp_path, argv=[])
+    store.update_background(record.id, argv=None)
+    with patch(
+        "meow.execution.sprint_runner.run_sprint", new_callable=AsyncMock
+    ) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
+    run.assert_not_awaited()
