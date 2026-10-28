@@ -856,3 +856,37 @@ def test_strict_branch_distinguishes_failure_from_detached_head(tmp_path):
         ["git", "-C", str(tmp_path), "checkout", "-q", "--detach"], check=True
     )
     assert strict_branch(tmp_path) == "detached"
+
+
+def test_a_resume_that_keeps_failing_validation_ends_blocked(tmp_path, capsys):
+    from meow.cli.resume_cli import _Problem
+
+    store, record = _record(tmp_path)
+    store.transition(record.id, "planned")
+    store.park(record.id, RuntimeError("boom"), "transient", "error")
+    limit = run_config(tmp_path)["managed_resumes"]
+    down = _Problem("Git unavailable.", False)
+    with patch("meow.cli.resume_cli._validate", return_value=down):
+        codes = [
+            asyncio.run(resume(tmp_path, record.id, continue_run=True))
+            for _ in range(limit + 1)
+        ]
+    assert codes[:limit] == [EXIT_TEMPFAIL] * limit
+    assert codes[limit] == EXIT_BLOCKED
+    final = store.load(record.id)
+    assert final.phase == "failed"
+    assert final.results["failure"]["cause"] == "no_progress"
+    assert "MEOW_BLOCKED" in capsys.readouterr().err
+
+
+def test_unprepared_restart_respects_the_manager_budget(tmp_path, capsys):
+    store, record = _unprepared_run(tmp_path, argv=["run", "x"])
+    limit = run_config(tmp_path)["managed_resumes"]
+    store.park(record.id, RuntimeError("boom"), "transient", "error")
+    parked = store.load(record.id)
+    parked.park["manager_resumes"] = limit
+    store.transition(record.id, "parked", park=parked.park)
+    with patch("meow.cli.resume_cli.redrive_saved_invocation") as redrive:
+        code = asyncio.run(resume(tmp_path, record.id, continue_run=True))
+    assert code == EXIT_BLOCKED
+    redrive.assert_not_called()

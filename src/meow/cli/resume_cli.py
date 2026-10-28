@@ -493,11 +493,25 @@ def _refuse(  # ruff: ignore[too-many-arguments]
     return 1
 
 
-def _retry_later(record: RunRecord, message: str) -> int:
-    """A refusal caused by the OS or git this time: exit 75, run untouched."""
-    from meow.cli.run_contract import _retry
+def _retry_later(store: RunStore, record: RunRecord, message: str, limit: int) -> int:
+    """A refusal caused by the OS or git this time: exit 75. The streak is
+    counted; past `limit` the problem is not passing and the run ends failed
+    (no_progress) so a cron tick does not retry it forever."""
+    from meow.cli.run_contract import _blocked, _retry
 
     print(message, file=sys.stderr)
+    if record.phase == PARKED_PHASE:
+        streak = store.note_resume_blocked(record.id, message)
+        if streak > limit:
+            final = f"Resume refused {streak} times in a row: {message}"
+            store.transition(
+                record.id,
+                "failed",
+                last_failure=final,
+                results={"failure": {"kind": "blocking", "cause": "no_progress"}},
+            )
+            _blocked(record.id, "no_progress", final, "blocking")
+            return 1
     return _retry(record.id, next_command(record), None, {"message": message})
 
 
@@ -586,6 +600,21 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
             file=sys.stderr,
         )
         return 1
+    reason = (
+        budget_refusal(record, run_config(working_dir))
+        if continue_run
+        and record.phase == PARKED_PHASE
+        and not _launched_by_supervisor(record)
+        else None
+    )
+    if reason:
+        return _refuse(
+            store,
+            record,
+            f"Cannot resume: {reason}.",
+            permanent=False,
+            stop="budget_exhausted" if reason in _EXHAUSTED else "not_resumable",
+        )
     if continue_run and _never_prepared(record):
         return await _restart_unprepared(working_dir, store, record)
     if repair and record.phase != "complete":
@@ -610,26 +639,18 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
             permanent=False,
             stop="not_resumable",
         )
-    reason = (
-        budget_refusal(record, run_config(working_dir))
-        if record.phase == PARKED_PHASE and not _launched_by_supervisor(record)
-        else None
-    )
-    if reason:
-        return _refuse(
-            store,
-            record,
-            f"Cannot resume: {reason}.",
-            permanent=False,
-            stop="budget_exhausted" if reason in _EXHAUSTED else "not_resumable",
-        )
     problem = _validate(record, working_dir)
     if (
         problem
         and not problem.permanent
         and not problem.message.startswith("Repository mismatch")
     ):
-        return _retry_later(record, f"Cannot resume now: {problem.message}")
+        return _retry_later(
+            store,
+            record,
+            f"Cannot resume now: {problem.message}",
+            run_config(working_dir)["managed_resumes"],
+        )
     if problem:
         return _refuse(
             store,

@@ -5,6 +5,7 @@ import os
 import re
 import tempfile
 import time
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -192,6 +193,10 @@ def _own_driver() -> dict:
         "start_identity": process_identity(os.getpid()),
         "host": "claude-code" if os.environ.get("CLAUDECODE") else "cli",
     }
+
+
+_CLAIM_WAIT = 10.0
+_CLAIM_STALE = 30.0
 
 
 class RunStore:  # ruff: ignore[too-many-public-methods]
@@ -406,6 +411,40 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
         drives it since the caller read it, so two resumes never both start.
         `count_manager` spends one `manager_resumes` in the same write.
         """
+        with self._claim_lock(run_id):
+            return self._claim_locked(run_id, phase, count_manager)
+
+    @contextmanager
+    def _claim_lock(self, run_id: str):
+        """Serialise claims with an exclusive lock file; a stale one (its
+        holder died) is broken so a crash never blocks a run."""
+        self.directory.mkdir(parents=True, exist_ok=True)
+        lock = self.directory / f"{run_id}.claim"
+        self._acquire(lock, run_id)
+        try:
+            yield
+        finally:
+            lock.unlink(missing_ok=True)
+
+    @staticmethod
+    def _acquire(lock: Path, run_id: str) -> None:
+        deadline = time.monotonic() + _CLAIM_WAIT
+        while True:
+            try:
+                os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+                return
+            except FileExistsError:
+                with suppress(OSError):
+                    if time.time() - lock.stat().st_mtime > _CLAIM_STALE:
+                        lock.unlink()
+                        continue
+                if time.monotonic() > deadline:
+                    raise RunStateError(
+                        f"Run {run_id} is being claimed by another process."
+                    ) from None
+                time.sleep(0.05)
+
+    def _claim_locked(self, run_id: str, phase: str, count_manager: bool) -> RunRecord:
         record = self.load(run_id)
         driver = record.driver if isinstance(record.driver, dict) else {}
         if record.phase != phase or (
@@ -415,7 +454,7 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
                 f"Run {run_id} changed while resuming (now {record.phase}); "
                 "another process owns it."
             )
-        park = dict(record.park)
+        park = {k: v for k, v in record.park.items() if k != "resume_blocked"}
         if count_manager:
             park["manager_resumes"] = int(park.get("manager_resumes", 0)) + 1
         return self.transition(
@@ -425,6 +464,18 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
             attempt=record.attempt + 1,
             park=park,
         )
+
+    def note_resume_blocked(self, run_id: str, message: str) -> int:
+        """Count a resume that an OS/git problem refused; returns the streak.
+        `park()` and a successful claim reset it."""
+        record = self.load(run_id)
+        record.park = {
+            **record.park,
+            "resume_blocked": int(record.park.get("resume_blocked", 0)) + 1,
+            "resume_blocked_reason": message,
+        }
+        record.updated_at = _now()
+        return int(self._write(record).park["resume_blocked"])
 
     def update_background(self, run_id: str, **patch: object) -> RunRecord:
         """Update worker metadata without changing the workflow phase."""
