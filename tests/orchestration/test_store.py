@@ -192,6 +192,14 @@ def test_cli_lock_without_a_recorded_identity_still_checks_the_pid(tmp_path):
     assert DriverLock(directory, mode="cli").acquire() is False
 
 
+def test_cli_lock_stays_held_when_identity_cannot_be_read(tmp_path, monkeypatch):
+    """An unreadable start time for a live PID is not a dead holder."""
+    directory = tmp_path / "orch"
+    assert DriverLock(directory, mode="cli").acquire() is True
+    monkeypatch.setattr(store_module, "process_identity", lambda _pid: None)
+    assert DriverLock(directory, mode="cli").acquire() is False
+
+
 def test_release_frees_the_lock(tmp_path):
     directory = tmp_path / "orch"
     with DriverLock(directory, mode="cli"):

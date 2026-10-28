@@ -243,7 +243,11 @@ class DriverLock:
         return (
             isinstance(pid, int)
             and _pid_is_alive(pid)
-            and (identity is None or process_identity(pid) == identity)
+            and (
+                identity is None
+                or (actual := process_identity(pid)) is None  # unreadable: PID check
+                or actual == identity
+            )
         )
 
     def _write_over(self) -> None:
