@@ -171,7 +171,8 @@ def test_runtime_uses_the_single_user_scope_server(tmp_path, monkeypatch):
         tmp_path,
         {"atlassian": {"command": "uvx", "args": ["mcp-atlassian"], "env": {"A": "b"}}},
     )
-    monkeypatch.setenv("HOME", str(tmp_path))
+    for name in ("HOME", "USERPROFILE"):  # Path.home() on Windows
+        monkeypatch.setenv(name, str(tmp_path))
     assert provider_mcp_config({}, "jira") == {
         "command": "uvx",
         "args": ["mcp-atlassian"],
@@ -183,13 +184,15 @@ def test_runtime_refuses_to_guess_between_user_scope_servers(tmp_path, monkeypat
     write_user_servers(
         tmp_path, {"jira-a": {"command": "x"}, "atlassian-b": {"command": "y"}}
     )
-    monkeypatch.setenv("HOME", str(tmp_path))
+    for name in ("HOME", "USERPROFILE"):  # Path.home() on Windows
+        monkeypatch.setenv(name, str(tmp_path))
     with pytest.raises(ValueError, match="Several user-scope"):
         provider_mcp_config({}, "jira")
 
 
 def test_runtime_fallback_ignores_project_mcp_json(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    for name in ("HOME", "USERPROFILE"):  # Path.home() on Windows
+        monkeypatch.setenv(name, str(tmp_path / "home"))
     (tmp_path / ".mcp.json").write_text(
         json.dumps({"mcpServers": {"atlassian": {"command": "evil"}}})
     )
@@ -241,7 +244,8 @@ def test_runtime_environment_comes_from_the_user_scope_server(tmp_path, monkeypa
         tmp_path,
         {"gitlab": {"command": "npx", "env": {"GITLAB_PERSONAL_ACCESS_TOKEN": "t"}}},
     )
-    monkeypatch.setenv("HOME", str(tmp_path))
+    for name in ("HOME", "USERPROFILE"):  # Path.home() on Windows
+        monkeypatch.setenv(name, str(tmp_path))
     config = {"_project_root": str(tmp_path)}
     assert provider_environment(config, "gitlab") == {
         "GITLAB_PERSONAL_ACCESS_TOKEN": "t"
@@ -267,7 +271,8 @@ def test_pipeline_accepts_the_servers_own_names_and_the_project_url(
             }
         },
     )
-    monkeypatch.setenv("HOME", str(tmp_path))
+    for name in ("HOME", "USERPROFILE"):  # Path.home() on Windows
+        monkeypatch.setenv(name, str(tmp_path))
     config = {"gitlab": {"url": "https://gitlab.example.com"}}
     client = connect_gitlab(("gitlab.example.com", "group/repo"), config, {})
     assert client.token == "tok"
@@ -288,7 +293,8 @@ def test_native_verify_sees_a_user_scope_server(tmp_path, monkeypatch):
     write_user_servers(
         tmp_path, {"atlassian": {"command": "uvx", "args": ["mcp-atlassian"]}}
     )
-    monkeypatch.setenv("HOME", str(tmp_path))
+    for name in ("HOME", "USERPROFILE"):  # Path.home() on Windows
+        monkeypatch.setenv(name, str(tmp_path))
     result = native._verify_jira({"_project_root": str(tmp_path)})
     assert result["configured"] is True
     assert "uvx" not in json.dumps(result)
@@ -302,7 +308,8 @@ def test_site_mismatch_is_logged_without_failing(tmp_path, monkeypatch):
         tmp_path,
         {"atlassian": {"command": "uvx", "env": {"JIRA_URL": "https://old.example"}}},
     )
-    monkeypatch.setenv("HOME", str(tmp_path))
+    for name in ("HOME", "USERPROFILE"):  # Path.home() on Windows
+        monkeypatch.setenv(name, str(tmp_path))
     warnings = []
     monkeypatch.setattr(
         mcp_registry.logger, "warning", lambda event, **fields: warnings.append(fields)
@@ -324,7 +331,8 @@ def test_gap_report_marks_a_user_scope_server_detected(tmp_path, monkeypatch):
     write_user_servers(
         tmp_path, {"atlassian": {"command": "uvx", "args": ["mcp-atlassian"]}}
     )
-    monkeypatch.setenv("HOME", str(tmp_path))
+    for name in ("HOME", "USERPROFILE"):  # Path.home() on Windows
+        monkeypatch.setenv(name, str(tmp_path))
     repo = tmp_path / "repo"
     repo.mkdir()
     gaps = feature_gaps(repo)

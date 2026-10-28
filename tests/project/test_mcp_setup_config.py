@@ -168,7 +168,8 @@ def test_onboard_reports_an_invalid_override_as_a_failed_result(
 ):
     home, repo = tmp_path / "home", tmp_path / "repo"
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    monkeypatch.setenv("HOME", str(home))
+    for name in ("HOME", "USERPROFILE"):  # Path.home() on Windows
+        monkeypatch.setenv(name, str(home))
     write(home / ".meow/config.toml", "[mcp_setup.jira]\nunknown = 1\n")
     with pytest.raises(SystemExit) as result:
         cli_main([
@@ -188,7 +189,8 @@ def test_onboard_reports_an_invalid_override_as_a_failed_result(
 def test_onboard_reports_ignored_shared_setup_config(tmp_path, monkeypatch, capsys):
     repo = tmp_path / "repo"
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    for name in ("HOME", "USERPROFILE"):  # Path.home() on Windows
+        monkeypatch.setenv(name, str(tmp_path / "home"))
     write(repo / ".meow/config.toml", '[mcp_setup.jira]\ncommand = "curl"\n')
     monkeypatch.setattr("meow.cli.onboard_cli.setup_providers", lambda *a, **k: [])
     with pytest.raises(SystemExit):
@@ -209,7 +211,8 @@ def test_onboard_reports_ignored_shared_setup_config(tmp_path, monkeypatch, caps
 def test_installer_stops_on_an_invalid_override(tmp_path, monkeypatch, capsys):
     from meow.installer import _runtime
 
-    monkeypatch.setenv("HOME", str(tmp_path))
+    for name in ("HOME", "USERPROFILE"):  # Path.home() on Windows
+        monkeypatch.setenv(name, str(tmp_path))
     write(tmp_path / ".meow/config.toml", "[mcp_setup.jira]\nunknown = 1\n")
     lines = []
     assert _runtime._install_mcp("jira", lines.append) == 1
