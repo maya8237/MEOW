@@ -47,6 +47,25 @@ def _disabled(source: dict) -> set[str]:
     return names
 
 
+def _servers(source: dict) -> dict:
+    servers = source.get("mcpServers", {})
+    return servers if isinstance(servers, dict) else {}
+
+
+def _rejected_project_servers(root: Path, claude_dir: Path) -> set[str]:
+    """Names Claude's settings reject for `.mcp.json`; any settings file wins."""
+    names: set[str] = set()
+    for path in (
+        claude_dir / "settings.json",
+        root / ".claude/settings.json",
+        root / ".claude/settings.local.json",
+    ):
+        rejected = _read(path).get("disabledMcpjsonServers", [])
+        if isinstance(rejected, list):
+            names.update(name for name in rejected if isinstance(name, str))
+    return names
+
+
 def discover_registry(root: Path, *, home: Path | None = None) -> dict:
     """Effective registrations: user global < project .mcp.json < user project.
 
@@ -62,11 +81,13 @@ def discover_registry(root: Path, *, home: Path | None = None) -> dict:
     )
     user = _read(user_path)
     scoped = _project_scope(user, root)
+    project = dict(_servers(_read(root / ".mcp.json")))
+    claude_dir = Path(config_dir) if config_dir else (home or Path.home()) / ".claude"
+    for name in _rejected_project_servers(root, claude_dir):
+        project.pop(name, None)
     result = {}
-    for source in (user, _read(root / ".mcp.json"), scoped):
-        servers = source.get("mcpServers", {})
-        if isinstance(servers, dict):
-            result.update(servers)
+    for servers in (_servers(user), project, _servers(scoped)):
+        result.update(servers)
     for name in _disabled(user) | _disabled(scoped):
         result.pop(name, None)
     return result
@@ -197,7 +218,7 @@ def discover_provider_references(root: Path, *, home: Path | None = None) -> dic
     """
     registry = discover_registry(root, home=home)
     matches = _provider_matches(registry)
-    references, hints = {}, {}
+    references, hints, launchers = {}, {}, {}
     for provider, names in matches.items():
         if len(names) > 1:
             hints[provider] = (
@@ -212,4 +233,5 @@ def discover_provider_references(root: Path, *, home: Path | None = None) -> dic
                 )
             else:
                 references[provider] = {"from": names[0]}
-    return {"references": references, "hints": hints}
+                launchers[provider] = Path(registry[names[0]]["command"]).name
+    return {"references": references, "hints": hints, "launchers": launchers}

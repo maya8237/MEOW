@@ -152,3 +152,23 @@ def test_environment_default_and_oversized_file(tmp_path):
     )["args"] == ["fallback"]
     (tmp_path / ".mcp.json").write_text(" " * 2_000_001, encoding="utf-8")
     assert discover_registry(tmp_path, home=tmp_path) == {}
+
+
+@pytest.mark.parametrize(
+    "settings", ["home/.claude/settings.json", ".claude/settings.local.json"]
+)
+def test_settings_rejection_applies_only_to_project_servers(tmp_path, settings):
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    root = tmp_path / "repo"
+    (root / ".claude").mkdir(parents=True)
+    write(
+        root / ".mcp.json",
+        {"mcpServers": {"jira": {"command": "x"}, "github": {"command": "y"}}},
+    )
+    write(home / ".claude.json", {"mcpServers": {"github": {"command": "mine"}}})
+    path = home.parent / settings if settings.startswith("home") else root / settings
+    write(path, {"disabledMcpjsonServers": ["jira", "github"]})
+    registry = discover_registry(root, home=home)
+    assert "jira" not in registry
+    assert registry["github"]["command"] == "mine"

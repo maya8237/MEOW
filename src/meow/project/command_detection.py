@@ -233,7 +233,11 @@ def setup_defaults(root: Path, explicit: dict) -> DetectedCommands:
     for provider, reference in registry["references"].items():
         if _provider_missing(explicit, provider):
             defaults[provider] = {"mcp": {"from": reference["from"]}}
-            origins[f"{provider}.mcp"] = "Claude MCP registration"
+            launcher = registry.get("launchers", {}).get(provider, "")
+            origins[f"{provider}.mcp"] = (
+                f"Claude MCP registration '{reference['from']}'"
+                + (f", launches {launcher}" if launcher else "")
+            )
     hints = tuple(
         f"{provider}: {hint}"
         for provider, hint in registry["hints"].items()

@@ -21,6 +21,11 @@ resolving its current command, arguments, and environment when used. Credentials
 are not copied into generated config or receipts. Existing explicit references
 are retained even when additional registrations appear.
 
+Servers rejected through `disabledMcpjsonServers` in Claude's settings files are
+ignored for `.mcp.json` only. MEOW does not use Claude's project-server approval
+prompt: `from` is your own choice, and setup prints the registration name and
+launcher it bound.
+
 Detection makes no connections. References support stdio registrations;
 hosted connectors and OAuth/HTTP sessions are not reusable by the detached CLI.
 Explicit command-based configurations remain supported for compatibility.
