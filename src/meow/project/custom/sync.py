@@ -69,13 +69,19 @@ def _registered(scope: str, project_dir: Path, user_dir: Path, linked: bool) -> 
     counts; the user file accepts a plugin directory or an enabled marketplace.
     """
     name = plugin_name(scope, linked=linked)
+    root = _root(scope, project_dir, user_dir, linked)
     if scope == "user":
         settings = _settings_path(scope, project_dir)
-        return plugin_dir_registered(
-            settings, _root(scope, project_dir, user_dir, linked)
-        ) or marketplace_registered(settings, name)
+        return plugin_dir_registered(settings, root) or marketplace_registered(
+            settings, name, root.parent
+        )
     return any(
-        marketplace_registered(_settings_path(file, project_dir), name)
+        marketplace_registered(
+            _settings_path(file, project_dir),
+            name,
+            root.parent,
+            relative_to=project_dir,
+        )
         for file in (scope, *(other for other in _SETTINGS if other != scope))
     )
 

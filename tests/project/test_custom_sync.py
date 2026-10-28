@@ -238,7 +238,11 @@ def test_user_plugin_enabled_through_marketplace_counts_as_registered(project, h
     path.parent.mkdir()
     path.write_text(
         json.dumps({
-            "extraKnownMarketplaces": {"meow-user": {}},
+            "extraKnownMarketplaces": {
+                "meow-user": {
+                    "source": {"source": "directory", "path": str(home / ".meow")}
+                }
+            },
             "enabledPlugins": {"meow-user@meow-user": True},
         }),
         encoding="utf-8",
@@ -253,7 +257,9 @@ def test_project_plugin_enabled_in_local_settings_counts_as_registered(project, 
     path.parent.mkdir()
     path.write_text(
         json.dumps({
-            "extraKnownMarketplaces": {"meow-project": {}},
+            "extraKnownMarketplaces": {
+                "meow-project": {"source": {"source": "directory", "path": "./.meow"}}
+            },
             "enabledPlugins": {"meow-project@meow-project": True},
         }),
         encoding="utf-8",
@@ -273,4 +279,26 @@ def test_hidden_files_do_not_make_linked_copies_stale(project, home):
     linked = project / ".meow" / "linked" / "plugin" / "skills"
     (linked / ".DS_Store").write_bytes(b"x")
 
+    assert check(project, home) == []
+
+
+def test_marketplace_pointing_elsewhere_is_not_registered(project, home):
+    skill(project / ".meow" / "plugin" / "skills", "team")
+    path = project / ".claude" / "settings.json"
+    path.parent.mkdir()
+    path.write_text(
+        json.dumps({
+            "extraKnownMarketplaces": {
+                "meow-project": {
+                    "source": {"source": "directory", "path": "../moved/.meow"}
+                }
+            },
+            "enabledPlugins": {"meow-project@meow-project": True},
+        }),
+        encoding="utf-8",
+    )
+
+    (problem,) = check(project, home)
+    assert problem.endswith(": not registered with Claude Code")
+    sync(project, home)
     assert check(project, home) == []

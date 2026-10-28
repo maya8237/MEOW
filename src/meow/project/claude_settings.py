@@ -166,16 +166,36 @@ def register_marketplace(
     _write_settings(settings_path, data)
 
 
-def marketplace_registered(settings_path: Path, marketplace_name: str) -> bool:
-    """Whether a settings file enables the plugin of a directory marketplace."""
+def marketplace_registered(
+    settings_path: Path,
+    marketplace_name: str,
+    directory: Path | None = None,
+    *,
+    relative_to: Path | None = None,
+) -> bool:
+    """Whether a settings file enables the plugin of a directory marketplace.
+
+    With `directory`, the marketplace must also point there: an entry left
+    behind for a moved or different checkout does not load these skills.
+    """
     data = _load_settings(Path(settings_path))
     known, enabled = data.get("extraKnownMarketplaces"), data.get("enabledPlugins")
-    return (
+    if not (
         isinstance(known, dict)
         and isinstance(enabled, dict)
         and marketplace_name in known
         and enabled.get(f"{marketplace_name}@{marketplace_name}") is True
-    )
+    ):
+        return False
+    if directory is None:
+        return True
+    source = known[marketplace_name]
+    source = source.get("source") if isinstance(source, dict) else None
+    entry = source.get("path") if isinstance(source, dict) else None
+    if not isinstance(entry, str):
+        return False
+    base = Path(relative_to).expanduser().resolve() if relative_to else None
+    return _entry_path(entry, base) == path_key(Path(directory).expanduser().resolve())
 
 
 def plugin_dir_registered(
