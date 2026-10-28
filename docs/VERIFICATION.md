@@ -8,6 +8,14 @@ unchanged; recognized reports and configured browser artifacts are tolerated.
 New source/tests rerun checks. Resume reruns commands because
 the reuse baseline is in memory. Source edits/deletions invalidate evidence.
 
+Missing check settings are inferred from established root project configuration:
+package.json lint/test/build scripts and recognized Python lint/test configuration.
+Explicit settings win, including empty lists. Detection executes no commands;
+normal verification executes the resulting checks. Detected tests run as
+deterministic checks without automatically enabling the AI tester. Explicit
+`[[tester.tests]]` retains its existing automatic tester behavior; `--test`
+requests the tester for one run.
+
 ## AI tester
 
 The reviewer reads code; the AI tester explores behavior with Bash after a

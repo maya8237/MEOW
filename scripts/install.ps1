@@ -1,4 +1,7 @@
 # irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
+[CmdletBinding()]
+param([switch]${non-interactive}, [switch]$setup, [string]$mcp = '')
+
 & {
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
@@ -49,7 +52,9 @@
         $root = Join-Path $HOME '.meow'
         $manifestUrl = 'https://raw.githubusercontent.com/maya8237/MEOW/release-channel/latest.json'
         if ($env:MEOW_RELEASE_MANIFEST_URL) { $manifestUrl = $env:MEOW_RELEASE_MANIFEST_URL }
+        Write-Host 'Locating Python 3.12+...'
         $python = Find-Python
+        Write-Host "Using $python`nFetching the latest release..."
         $release = Invoke-RestMethod $manifestUrl
         $tag = $release.tag_name
         if ($tag -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'No published stable MEOW release was found.' }
@@ -67,7 +72,7 @@
         # one built by another Python.
         $bundle = Join-Path $temporary 'bundle'
         New-Item -ItemType Directory -Path $bundle | Out-Null
-        Write-Host "Installing MEOW $tag with $python..."
+        Write-Host "Creating environment and installing MEOW $tag (pip output follows)..."
         $runtime = Join-Path $bundle 'runtime'
         $staged = Join-Path $runtime 'Scripts\python.exe'
         $requirement = Join-Path $temporary 'wheel.txt'
@@ -96,6 +101,7 @@
         }
         $purelib = "$(& $staged -c 'import sysconfig;print(sysconfig.get_path(''purelib''))')".Trim()
         Invoke-Checked 'Could not inspect the staged MEOW install.'
+        Write-Host 'Installing pinned dependencies and launcher (this can take minutes)...'
         $previousPath = $env:PYTHONPATH
         $env:PYTHONPATH = $purelib
         try {
@@ -104,7 +110,10 @@
         } finally {
             $env:PYTHONPATH = $previousPath
         }
-        & (Join-Path $destination 'runtime\Scripts\python.exe') -m meow.installer.releases --activate $destination --setup
+        $setupArgs = @('--activate', $destination)
+        if ($setup -and -not ${non-interactive}) { $setupArgs += '--setup' }
+        if ($mcp) { $setupArgs += @('--mcp', $mcp) }
+        & (Join-Path $destination 'runtime\Scripts\python.exe') -m meow.installer.releases @setupArgs
         if ($LASTEXITCODE -eq 130) { return }
         Invoke-Checked 'MEOW setup failed. Rerun the installer to retry.'
         $bin = Join-Path $root 'bin'

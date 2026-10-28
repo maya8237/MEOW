@@ -55,6 +55,8 @@ def prepare_environment(
 ) -> list[dict[str, object]]:
     """Set up a new worktree, retry an incomplete setup, or repair missing modules."""
     from meow.infrastructure.node_dependencies import ensure_node_dependencies
+    from meow.infrastructure.python_dependencies import ensure_python_dependencies
+    from meow.infrastructure.worktree import _is_linked_worktree
 
     actions: list[dict[str, object]] = []
 
@@ -62,7 +64,8 @@ def prepare_environment(
         return setup_command_decision(config, argv)
 
     pending = active / ".meow" / "worktree-setup.pending"
-    if active != repo and (new or pending.exists()):
+    isolated = active.resolve() != repo.resolve()
+    if isolated and (new or pending.exists()):
         run_setup(
             repo,
             active,
@@ -73,6 +76,13 @@ def prepare_environment(
         )
     else:
         ensure_node_dependencies(
+            active,
+            command_decision=decision,
+            record_action=actions.append,
+            timeout=config.get("install_timeout"),
+        )
+    if isolated or ((active / ".git").is_file() and _is_linked_worktree(active)):
+        ensure_python_dependencies(
             active,
             command_decision=decision,
             record_action=actions.append,

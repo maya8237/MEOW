@@ -2,11 +2,14 @@
 
 import argparse
 import contextlib
+import itertools
 import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
+import threading
 import uuid
 from pathlib import Path
 
@@ -23,6 +26,31 @@ PROBE = (
 )
 PROBE_FIELDS = 4
 PYTHON_NAME = re.compile(r"python(3(\.\d+)?)?")
+
+
+@contextlib.contextmanager
+def progress(message: str):
+    """Show MESSAGE with a spinner on a terminal, or plainly when piped."""
+    if not sys.stdout.isatty():
+        print(f"{message}...", flush=True)
+        yield
+        return
+    done = threading.Event()
+
+    def spin() -> None:
+        for frame in itertools.cycle("|/-\\"):
+            print(f"\r{message}... {frame}", end="", flush=True)
+            if done.wait(0.15):
+                return
+
+    thread = threading.Thread(target=spin, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        done.set()
+        thread.join()
+        print(f"\r{message}... done\033[K", flush=True)
 
 
 def settings_path() -> Path:
@@ -310,14 +338,17 @@ def finish_bundle(bundle: Path, destination: Path) -> None:
 def install_release(tag: str, digest: str) -> Path:
     """Install TAG's wheel with the newest Python, activate it, return its path."""
     maintenance._version_parts(tag)
-    python = find_python()
+    with progress("Locating Python 3.12+"):
+        python = find_python()
+    print(f"Using {python}", flush=True)
     versions = Path.home() / ".meow" / "versions"
     destination = versions / tag
     versions.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=versions, prefix=".install-") as temporary:
         bundle = Path(temporary) / "bundle"
         bundle.mkdir()
-        stage_bundle(python, bundle, tag, digest)
+        with progress(f"Creating environment and installing MEOW {tag}"):
+            stage_bundle(python, bundle, tag, digest)
         purelib = _run(
             str(release_python(bundle)),
             "-c",
@@ -325,24 +356,26 @@ def install_release(tag: str, digest: str) -> Path:
         ).strip()
         # The new release finishes its own install, whatever this one does.
         env = {**os.environ, "PYTHONPATH": purelib}
+        with progress("Installing pinned dependencies and launcher (can take minutes)"):
+            _run(
+                str(python),
+                "-m",
+                "meow.installer.releases",
+                "--finish",
+                str(destination),
+                "--bundle",
+                str(bundle),
+                env=env,
+            )
+    with progress("Verifying and activating the release"):
+        _validate_release(destination, tag)
         _run(
-            str(python),
+            str(release_python(destination)),
             "-m",
             "meow.installer.releases",
-            "--finish",
+            "--activate",
             str(destination),
-            "--bundle",
-            str(bundle),
-            env=env,
         )
-    _validate_release(destination, tag)
-    _run(
-        str(release_python(destination)),
-        "-m",
-        "meow.installer.releases",
-        "--activate",
-        str(destination),
-    )
     return destination
 
 
@@ -367,6 +400,7 @@ def main() -> int:
     parser.add_argument("--finish", type=Path, help="destination for --bundle")
     parser.add_argument("--bundle", type=Path)
     parser.add_argument("--setup", action="store_true")
+    parser.add_argument("--mcp", help="providers to register at Claude user scope")
     args = parser.parse_args()
     if args.finish:
         if not args.bundle:
@@ -378,11 +412,14 @@ def main() -> int:
     _validate_release(args.activate, args.activate.name)
     activate(args.activate)
     print(f"Installed MEOW {args.activate.name} in {args.activate.parent.parent}")
-    if args.setup:
-        from meow.installer._runtime import _setup_projects
+    return _optional_setup(args)
 
-        return _setup_projects()
-    return 0
+
+def _optional_setup(args: argparse.Namespace) -> int:
+    from meow.installer._runtime import _install_mcp, _setup_projects
+
+    status = _install_mcp(args.mcp, print) if args.mcp else 0
+    return (_setup_projects() or status) if args.setup else status
 
 
 if __name__ == "__main__":

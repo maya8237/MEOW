@@ -252,7 +252,9 @@ async def finalize(  # ruff: ignore[too-many-statements, complex-structure, too-
     if Path(record.worktree).resolve() != active_dir.resolve():
         raise ValueError("Saved worktree differs from active directory")
     config = load_config(config_root(repo, active_dir))
-    tester_enabled = bool(config.get("tester", {}).get("tests"))
+    tester_enabled = bool(config.get("tester", {}).get("tests")) and config.get(
+        "tester", {}
+    ).get("auto_test", True)
     if tester_enabled:
         reason = (
             "Configured tester validation requires the CLI tester lifecycle. "

@@ -28,16 +28,12 @@ curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.
 You’ll need **Python 3.12+** and **Claude Code with authentication set up**.
 Restart Claude Code after installation. [Installation details](docs/INSTALL.md).
 
-## Set up your project
+## Open your project
 
-Open your project in Claude Code and run:
-
-```text
-/meow:onboard
-```
-
-MEOW walks you through setup, integrations, and optional features.
-Basic project setup also happens automatically on first use.
+Start a task directly. MEOW detects established project checks and compatible
+Claude MCP registrations automatically, without a setup questionnaire.
+Dependencies are prepared when a task needs its worktree, not during installation.
+Use `/meow:onboard` to inspect or change settings and configure optional features.
 
 ## Try a skill
 

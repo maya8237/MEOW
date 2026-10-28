@@ -63,10 +63,11 @@ verification and coverage bindings; remote reviews use only the supplied diff.
      native latest-plan --work-dir "<project-path>"`; if neither exists
      (no path given, none found), fall back to the prompt source with an
      empty prompt (reviews the git diff / whole project).
-   - **jira**: the project's `.meow/config.toml` must have `[jira]` with
-     `project_key`. Fetch through the Jira MCP tools already connected to
+   - **jira**: a named issue needs no configured `project_key`. For latest-issue
+     lookup, use the configured or only accessible project; ask if ambiguous.
+     Fetch through the Jira MCP tools already connected to
      this session (tool names containing `jira`) -- not `[jira.mcp]`. If
-     none connected, or `[jira]` missing, say so and stop. Need `key`,
+     none connected, say so and stop. Need `key`,
      `summary`, `description`. Build the review basis text: `Review
      whether the current code satisfies Jira issue <key>: <summary>\n\n
      <description>` -- this is exactly what `--focus` carries into the

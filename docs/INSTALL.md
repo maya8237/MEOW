@@ -22,13 +22,38 @@ its skills in Claude Code. It uses `uv` for the virtual environment and package
 installs when `uv` is already installed, and pip otherwise or if `uv` fails.
 Open a new terminal or restart Claude Code.
 
-Open your project in Claude Code and run `/meow:onboard` to configure
-integrations and optional features. Basic setup also happens on first use.
-Installer project setup also refreshes remembered repositories, creates missing
-base files, and repairs outdated ignore rules while preserving existing configs.
-It lists configured and available features; use `/meow:onboard` in each project
-to configure selected additions. Rerunning either flow is safe; a current setup
-needs no file changes. Declining installer project setup leaves repos untouched.
+Installation registers MEOW without project questionnaires, repository scans,
+or project dependency installs. The non-interactive switch also works for
+unattended installation:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh -s -- --non-interactive
+# Or, from a checkout:
+sh scripts/install.sh --non-interactive
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1))) -non-interactive
+# Or, from a checkout:
+./scripts/install.ps1 -non-interactive
+```
+
+For optional project/Bun setup prompts, pass `--setup` to the Bash installer
+or `-setup` to PowerShell. The non-interactive switch takes precedence and
+skips those prompts even when setup was requested.
+`--mcp jira,gitlab` registers user-scope MCP servers without prompting, reading
+the servers' own credential variables; see [MCP](MCP.md).
+
+The switch works even with a terminal attached. Installation still registers
+the Claude Code plugin and launcher. Configure projects separately with
+`meow onboard --non-interactive --work-dir PATH`; see
+[flag-based onboarding](ONBOARDING.md) for optional integration and feature flags.
+
+Open your project in Claude Code and run `/meow:run` directly. First use detects
+local project settings and compatible registered MCP servers. Detection starts
+no agents, connections, tests, or dependency installs. A task prepares its own
+dependencies when needed; provider connections are checked when used.
+Use `/meow:onboard` to inspect or override settings and enable optional features.
 
 ## Update
 

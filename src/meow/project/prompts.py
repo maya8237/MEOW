@@ -84,8 +84,8 @@ def mcp_fetch_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-ar
         f"You fetch one {label} {request}'s details through the configured "
         f"{label} MCP server and write them to a file -- nothing else. {lookup} "
         f"Then write a JSON object with exactly the keys {fields} to "
-        f"{output_file}. Do not write any other file, and do not modify the "
-        f"{request}{forbidden}."
+        f"{output_file}. If every {label} tool call fails, write nothing. Do "
+        f"not write any other file, and do not modify the {request}{forbidden}."
     )
 
 
@@ -468,5 +468,13 @@ def ci_review_prompt(  # ruff: ignore[too-many-arguments] -- immutable revisions
             "on that side of the supplied diff. Only cite added or deleted lines. "
             "Use [] when there are no inline findings. Do not post anything "
             "yourself; the CLI validates and publishes these findings."
+            "\nOptionally append one fenced block labeled meow-resolutions for "
+            "existing threads you are confident the current code fixes: "
+            '[{"id":123,"reason":"One sentence on how it was fixed."}]. Only list '
+            "threads whose first comment contains <!-- meow-review -->, using that "
+            "first comment's id (GitHub: the comment without in_reply_to_id) or the "
+            "discussion id (GitLab). Omit threads that are merely moved, unclear, or "
+            "still reproducible, or already answered with a ✅ Solved reply. The CLI "
+            "resolves them, or replies ✅ Solved when resolving is not permitted."
         )
     return prompt

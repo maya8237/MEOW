@@ -40,13 +40,16 @@ def parse_remote(remote_url: str) -> tuple[str, str] | None:
     return (host.lower(), path) if path else None
 
 
-def _table(value: object) -> dict:
-    return value if isinstance(value, dict) else {}
-
-
 def _gitlab_host(config: dict) -> str | None:
-    env = _table(_table(_table(config.get("gitlab")).get("mcp")).get("env"))
-    url = env.get("GITLAB_URL")
+    from meow.project.mcp_registry import configured_url, provider_environment
+
+    url = configured_url(config, "gitlab")
+    if url is None:
+        try:
+            env = provider_environment(config, "gitlab")
+        except ValueError:
+            return None
+        url = env.get("GITLAB_API_URL") or env.get("GITLAB_URL")
     if not isinstance(url, str) or not url:
         return None
     host = urlparse(url if "://" in url else f"//{url}").hostname

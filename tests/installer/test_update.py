@@ -25,6 +25,19 @@ def test_update_selects_newer_published_release(monkeypatch, current, latest, in
     assert installed == installs
 
 
+@pytest.mark.parametrize("interactive", [False, True])
+def test_update_never_offers_optional_setup(monkeypatch, tmp_path, interactive):
+    monkeypatch.setattr(maintenance, "version", lambda _: "0.1.2")
+    monkeypatch.setattr(maintenance, "latest_release", lambda: ("0.2.0", "0" * 64))
+    monkeypatch.setattr(releases, "install_release", lambda *_: tmp_path)
+    monkeypatch.setattr(maintenance, "announce_onboarding", lambda *_: None)
+    monkeypatch.setattr(maintenance.sys.stdin, "isatty", lambda: interactive)
+    monkeypatch.setattr(
+        maintenance, "offer_bun_store", lambda *_: pytest.fail("optional setup offered")
+    )
+    assert maintenance.update() == 0
+
+
 def test_failed_download_does_not_report_success(monkeypatch, capsys):
     monkeypatch.setattr(maintenance, "version", lambda name: "0.1.2")
     monkeypatch.setattr(maintenance, "latest_release", lambda: ("0.2.0", "0" * 64))
@@ -130,6 +143,8 @@ def _ship(table_file, entries=None, body=None):
 @pytest.fixture
 def released(monkeypatch, release_venv):
     monkeypatch.setattr(maintenance, "_local_install", lambda: False)
+    # The child must read the synthetic release, not the parent's worktree.
+    monkeypatch.delenv("PYTHONPATH", raising=False)
     return release_venv
 
 

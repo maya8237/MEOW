@@ -4,15 +4,12 @@ Read this for native execution. `plan`, `review`, and `lint` default to native;
 `run` defaults to CLI. You execute roles in this session or fresh subagents.
 Orchestrator task sprints remain detached CLI workers. Named workflows,
 including `quick`, execute through CLI ([WORKFLOWS.md](../../docs/WORKFLOWS.md)).
-
-Future-time requests use [schedule](../schedule/SKILL.md) first. Formats:
-[INTEGRATIONS.md](../../docs/INTEGRATIONS.md), [WORKFLOWS.md](../../docs/WORKFLOWS.md).
+Future-time requests use [schedule](../schedule/SKILL.md) first.
 
 ## The `meow native` helper
 
 Helpers start no agents and print JSON on stdout; errors print one JSON line on
-stderr. If `meow` is missing, point to the README installer; do not guess a venv
-path. A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
+stderr. If `meow` is missing, point to the README installer, not a guessed venv. A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
 OSError-class failures: wait `retry_after` (it can be long for an API budget or rate
 limit; the cron simply skips ticks until then), then run the printed `next_command`
 detached (host background execution), or rerun the same native helper, up to
@@ -46,11 +43,14 @@ worktree; keep them consistent.
 | `finalize RUN_ID` / `push BRANCH` | Revalidate evidence and gates, then deliver when eligible / push a named branch |
 
 `prepare` applies setup before returning. Failed setup retains the worktree for
-retry; successful setup is not repeated. Missing Node dependencies install (new/reused
-worktrees, in-place runs) under the `setup` role ([dependency rules](dependencies.md);
-never switch Bun to `hoisted`). Do not dispatch after preparation fails. Report
-`onboarding.files`; onboarding edits stay in the original checkout. Implement in
-`active_dir`. Do not invent lint commands; `/meow:onboard` handles add-ons.
+retry; successful setup is not repeated on reuse. Missing Node dependencies install
+on new/reused worktrees and in-place runs under the `setup` role; isolated Python
+worktrees prepare their own environment. Fix missing modules, browsers, or install
+timeouts under [the dependency rules](dependencies.md); never switch Bun to
+`hoisted`. Do not dispatch after preparation fails. Report `onboarding.files`;
+onboarding edits stay in the original checkout. Implement in `active_dir`. Missing
+checks and Claude MCP references are detected automatically; explicit settings win.
+Use `/meow:onboard` only for inspection, overrides, and optional add-ons.
 
 ## Roles
 

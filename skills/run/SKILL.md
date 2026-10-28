@@ -39,6 +39,19 @@ engine names. Briefly state the choice before launching:
   (`--max-parallel`); the decomposer adds `depends_on` for any that must
   follow another. Results merge into one reviewed branch and PR. Multiple
   files or a long request alone do not justify separate sprints.
+- **Separate MRs / several repos:** when the user wants each task, or each repo
+  it touches, in its own MR ("one MR each", "MRs for all repos"), do not use
+  `--orchestrate` (it merges into one MR). Launch one ordinary
+  `meow run "<task>" --work-dir "<repo>" --background` per deliverable. Keep
+  coupled work in one run. Take each repo from the task text (a path, or a
+  sibling directory of the current repo with that name); if it cannot be
+  found, ask, never clone. Repos need no prior onboarding. Run at most 3 at
+  once and start the rest as runs finish; watch each as described below. Tell
+  every run: do not edit other repos; if another repo needs a change, write
+  `NEEDS REPO <path>: <change>` in the review notes. When a run finishes,
+  search its plan/review files for that line and start a follow-up run in that
+  repo. Report one line per run (repo, MR URL or failure); a failed run does
+  not stop the others.
 - `--tasks FILE`, `--jql QUERY`, and multiple `--jira KEY...` select full
   orchestration automatically; no additional flag is needed. A single Jira
   issue stays an ordinary sprint unless `--orchestrate` is explicit.

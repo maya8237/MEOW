@@ -144,18 +144,15 @@ def _overall(jobs: tuple[PipelineJob, ...], run_status: str) -> str:
     return "failed" if "failed" in states else "success"
 
 
-def _table(value: object) -> dict:
-    return value if isinstance(value, dict) else {}
-
-
 def connect_github(
     parsed: tuple[str, str], config: dict, env: Mapping[str, str]
 ) -> GithubPipeline:
     _host, repo = parsed
-    mcp_env = _table(_table(_table(config.get("github")).get("mcp")).get("env"))
+    from meow.project.mcp_registry import provider_environment
+
     token = (
         env.get("MEOW_GITHUB_TOKEN")
-        or mcp_env.get("GITHUB_PERSONAL_ACCESS_TOKEN")
+        or provider_environment(config, "github").get("GITHUB_PERSONAL_ACCESS_TOKEN")
         or ""
     )
     if not token:

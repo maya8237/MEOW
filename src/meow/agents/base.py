@@ -480,16 +480,17 @@ def _query_failure(  # ruff: ignore[too-many-arguments, too-many-positional-argu
     )
 
 
-async def _consume_query(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+async def _consume_query(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements, too-many-arguments, too-many-positional-arguments]
     prompt: str,
     options: ClaudeAgentOptions,
     role: str,
     retries: ApiRetries | None = None,
+    observe: Callable[[object], None] | None = None,
 ) -> str:
     """Run `query()` once to completion, raising `RuntimeError` on a
     non-success result. A `ProcessError` (the CLI subprocess crashed or
     otherwise failed) propagates unchanged for `Agent.run_query`'s retry
-    loop to handle."""
+    loop to handle. `observe`, when given, sees every streamed message."""
     # query() exposes no transport, so liveness defaults to alive here.
     messages: AsyncIterator = _watch_stream(
         query(prompt=prompt, options=options), lambda: True, _STREAM_POLL_SECONDS
@@ -503,6 +504,8 @@ async def _consume_query(  # ruff: ignore[complex-structure, too-many-branches, 
                 log_stream_message(role, message, options=options)
                 if retries is not None:
                     retries.note(message)
+                if observe is not None:
+                    observe(message)
                 if isinstance(message, AssistantMessage):
                     assistant_error = message.error or assistant_error
                     last_text = _last_text_block(message) or last_text
@@ -529,16 +532,17 @@ async def _consume_query(  # ruff: ignore[complex-structure, too-many-branches, 
     return "\n".join(parts)
 
 
-async def _consume_rebuilding(
+async def _consume_rebuilding(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
     prompt: str,
     options: ClaudeAgentOptions,
     role: str,
     retries: ApiRetries | None = None,
+    observe: Callable[[object], None] | None = None,
 ) -> str:
     """`_consume_query`, retried once on a fresh conversation (no `resume`,
     recap prepended) when the API refuses the message history."""
     try:
-        return await _consume_query(prompt, options, role, retries)
+        return await _consume_query(prompt, options, role, retries, observe)
     except _InvalidSequence:
         logger.warning("agent_query_sequence_retry", role=role)
     try:
@@ -547,13 +551,17 @@ async def _consume_rebuilding(
             _fresh_options(options),
             role,
             retries,
+            observe,
         )
     except _InvalidSequence as exc:
         raise _sequence_giveup(role) from exc
 
 
 async def _consume_resilient(
-    prompt: str, options: ClaudeAgentOptions, role: str
+    prompt: str,
+    options: ClaudeAgentOptions,
+    role: str,
+    observe: Callable[[object], None] | None = None,
 ) -> str:
     """`_consume_rebuilding`, waiting out or backing off API errors (rate
     limits, overload, timeouts) and resending; a fresh session at most once."""
@@ -565,7 +573,7 @@ async def _consume_resilient(
     )
     while True:
         try:
-            return await _consume_rebuilding(prompt, options, role, retries)
+            return await _consume_rebuilding(prompt, options, role, retries, observe)
         except ApiError as exc:
             if await retries.handle(exc):
                 continue
@@ -767,6 +775,9 @@ class Agent:
         # Long builds and test suites must not be killed by the CLI's default
         # two-minute Bash timeout; explicit user/env settings still win.
         env = dict(extra_options.pop("env", None) or {})
+        from meow.infrastructure.python_dependencies import python_environment
+
+        env = python_environment(self.context.active_working_dir(), env, inherit=False)
         for name, value in _BASH_TIMEOUT_ENV.items():
             env.setdefault(name, os.environ.get(name, value))
         options = ClaudeAgentOptions(
@@ -789,7 +800,13 @@ class Agent:
         return options
 
     @staticmethod
-    async def run_query(prompt: str, options: ClaudeAgentOptions, role: str) -> str:
+    async def run_query(
+        prompt: str,
+        options: ClaudeAgentOptions,
+        role: str,
+        *,
+        observe: Callable[[object], None] | None = None,
+    ) -> str:
         """Run a one-shot SDK query and raise when the SDK reports failure.
 
         Retries up to `_SDK_CRASH_RETRY_ATTEMPTS` times, with a short
@@ -811,7 +828,7 @@ class Agent:
         for attempt in range(1, _SDK_CRASH_RETRY_ATTEMPTS + 1):
             logger.info("agent_query_started", role=role, attempt=attempt)
             try:
-                response = await _consume_resilient(prompt, options, role)
+                response = await _consume_resilient(prompt, options, role, observe)
                 logger.info("agent_query_finished", role=role)
                 return response
             except ProcessError as exc:

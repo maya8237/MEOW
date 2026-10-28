@@ -66,6 +66,7 @@ def update() -> int:
     from meow.installer.releases import install_release
 
     current = version("meow-harness")
+    print("Checking for the latest release...", flush=True)
     latest, digest = latest_release()
     if _version_parts(current) >= _version_parts(latest):
         print(f"MEOW {current} is up to date (latest release: {latest}).")
@@ -74,7 +75,6 @@ def update() -> int:
     release = install_release(latest, digest)
     print(f"MEOW updated successfully to {latest}.")
     announce_onboarding(current, latest, release)
-    offer_bun_store(release)
     return 0
 
 

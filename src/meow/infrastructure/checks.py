@@ -16,6 +16,7 @@ from pathlib import Path
 
 from meow.common.process import run_windows_tool
 from meow.execution.run_state import MAX_OUTPUT, CheckResult, RunStore
+from meow.infrastructure.python_dependencies import python_environment
 from meow.infrastructure.test_runner import capture_windows_command, prepared_test_stage
 from meow.project.command_policy import split_command
 from meow.project.config import config_paths
@@ -429,7 +430,7 @@ async def _run_check(
             exit_code, output, timed_out = await run_captured_async(
                 argv,
                 resolve_command_cwd(repo, check.cwd),
-                {**os.environ, **(check.env or {})},
+                python_environment(repo, check.env),
                 check.timeout,
             )
             if not timed_out:

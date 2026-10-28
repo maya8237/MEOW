@@ -10,6 +10,17 @@ from meow.project import repos
 
 
 @pytest.fixture(autouse=True)
+def _no_python_installs(monkeypatch):
+    """Preparation tests must explicitly fake subprocesses, never install packages."""
+    from meow.infrastructure import python_dependencies
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Python dependency subprocess must be mocked in tests")
+
+    monkeypatch.setattr(python_dependencies, "run_captured", forbidden)
+
+
+@pytest.fixture(autouse=True)
 def _restore_logging():
     """`configure_logging()` binds a handler to whatever stderr is current; a
     test that leaves it behind would later write to a closed capture stream."""

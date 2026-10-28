@@ -7,37 +7,11 @@ from meow.agents.mcp_fetcher import GithubFetcherAgent, fetch_record
 
 
 def _load_github_config(config: dict) -> dict:
-    """Validate `[github]`/`[github.mcp]` before starting an agent."""
-    github = config.get("github")
-    if not isinstance(github, dict):
-        raise ValueError(
-            "No [github] table found in .meow/config.toml. `meow review "
-            "--github` needs a [github.mcp] table describing how to launch "
-            "a GitHub MCP server, e.g.:\n\n"
-            "[github.mcp]\n"
-            'command = "npx"\n'
-            'args = ["your-github-mcp-package"]\n\n'
-            "[github.mcp.env]\n"
-            'GITHUB_PERSONAL_ACCESS_TOKEN = "<token>"\n\n'
-            "See docs/INTEGRATIONS.md for the [github.mcp.env] field and its "
-            "security note."
-        )
+    """Resolve this provider only when requested."""
+    from meow.project.mcp_registry import provider_mcp_config
 
-    mcp = github.get("mcp")
-    if not isinstance(mcp, dict) or not mcp.get("command"):
-        raise ValueError(
-            "[github.mcp] in .meow/config.toml must set 'command' (the "
-            "program that launches the GitHub MCP server, with args for the "
-            "server and env for its credentials)."
-        )
-
-    return {
-        "mcp": {
-            "command": mcp["command"],
-            "args": mcp.get("args", []),
-            "env": mcp.get("env", {}),
-        }
-    }
+    mcp = provider_mcp_config(config, "github")
+    return {"mcp": {**mcp, "env": mcp.get("env", {})}}
 
 
 async def _fetch_pull_request(
