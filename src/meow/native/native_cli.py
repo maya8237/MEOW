@@ -564,10 +564,10 @@ def _classify(exc: BaseException) -> tuple[bool, str]:
     kind, cause = classify_failure(exc)
     if kind == "blocking":
         return False, cause
+    if recognised_transient(exc):  # before ValueError: WindowsQueryTimeout is both
+        return True, cause
     if isinstance(exc, (ValueError, FileNotFoundError)):
         return False, "invalid_input"
-    if recognised_transient(exc):
-        return True, cause
     return False, UNRECOGNISED_CAUSE
 
 

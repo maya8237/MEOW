@@ -475,3 +475,14 @@ class NativeOrchestrateCliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(out, "")
         self.assertIn("meow native run", err)
+
+
+def test_windows_query_timeout_is_retryable_not_invalid_input():
+    from meow.execution.run_failures import WindowsQueryTimeout
+    from meow.native.native_cli import _classify
+
+    assert _classify(WindowsQueryTimeout("schtasks timed out")) == (
+        True,
+        "windows_query_timeout",
+    )
+    assert _classify(ValueError("bad flag")) == (False, "invalid_input")
