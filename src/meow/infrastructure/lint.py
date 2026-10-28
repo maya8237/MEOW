@@ -267,29 +267,33 @@ def _file_bytes(path: Path) -> bytes | None:
         return None
 
 
+async def lint_edited_file(
+    working_dir: Path, commands: list[LintCommand], file_path: str, timeout: float
+) -> dict:
+    """Lint (and auto-fix) one edited file; the hook output feeds it back."""
+    logger.debug("lint_hook_running", file=file_path, commands=len(commands))
+    target = Path(file_path.replace("\\", "/"))
+    target = target if target.is_absolute() else working_dir / target
+    written = _file_bytes(target)
+    try:
+        problems = await run_lint_on_file(working_dir, commands, file_path, timeout)
+    except OSError as exc:  # a file the OS won't let us inspect must not crash the turn
+        logger.warning("lint_hook_failed", file=file_path, reason=str(exc))
+        return {}
+
+    # The model's view of the file is stale once a fixer rewrote it.
+    auto_fixed = written is not None and _file_bytes(target) != written
+    return _hook_feedback(file_path, auto_fixed, problems)
+
+
 def make_lint_hook(working_dir: Path, commands: list[LintCommand], timeout: float = 60):
-    async def lint_edited_file(input_data, tool_use_id, context):
+    async def lint_edited(input_data, tool_use_id, context):
         file_path = input_data.get("tool_input", {}).get("file_path")
         if input_data.get("tool_name") not in {"Write", "Edit"} or not file_path:
             return {}
+        return await lint_edited_file(working_dir, commands, file_path, timeout)
 
-        logger.debug("lint_hook_running", file=file_path, commands=len(commands))
-        target = Path(file_path.replace("\\", "/"))
-        target = target if target.is_absolute() else working_dir / target
-        written = _file_bytes(target)
-        try:
-            problems = await run_lint_on_file(working_dir, commands, file_path, timeout)
-        except (
-            OSError
-        ) as exc:  # a file the OS won't let us inspect must not crash the turn
-            logger.warning("lint_hook_failed", file=file_path, reason=str(exc))
-            return {}
-
-        # The model's view of the file is stale once a fixer rewrote it.
-        auto_fixed = written is not None and _file_bytes(target) != written
-        return _hook_feedback(file_path, auto_fixed, problems)
-
-    return lint_edited_file
+    return lint_edited
 
 
 def _hook_feedback(file_path: str, auto_fixed: bool, problems: list[str]) -> dict:

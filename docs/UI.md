@@ -6,7 +6,7 @@ Frontend development/build instructions are in [frontend/README.md](../frontend/
 
 ## Catalog
 
-Browse workflows, agents, and skills across scopes and repositories remembered
+Browse workflows, agents, skills, and hooks across scopes and repositories remembered
 in `~/.meow/repos.toml`; select a repository to narrow results.
 Search name/description/scope with Ctrl+K (Cmd+K on macOS). Visible pages refresh
 every two seconds. Workflow details show steps, expandable source, and CLI/skill commands.

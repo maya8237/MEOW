@@ -1,4 +1,4 @@
-"""JSON view of every skill, agent, and workflow in effect for a project."""
+"""JSON view of every skill, agent, workflow, and hook in effect for a project."""
 
 from pathlib import Path
 
@@ -34,6 +34,24 @@ def _agent(item, delegates: set[str], claude_agents: set[str]) -> dict:
     }
 
 
+def _hook(item) -> dict:
+    from meow.project.custom.hook_sync import syncable
+
+    return {
+        "name": item.name,
+        "description": item.description,
+        "scope": item.source.scope,
+        "file": str(item.file),
+        "event": item.event,
+        "matcher": item.matcher,
+        "command": item.command,
+        "timeout": item.timeout,
+        "roles": list(item.roles or item.source.roles),
+        "synced": syncable(item),
+        "text": item.file.read_text(encoding="utf-8"),
+    }
+
+
 def _skill(item) -> dict:
     return {
         "name": item.name,
@@ -49,7 +67,7 @@ def _by_name(item) -> str:
     return item.name
 
 
-_KINDS = ("workflows", "agents", "skills")
+_KINDS = ("workflows", "agents", "skills", "hooks")
 
 
 def _merge(merged: dict, seen: dict, repo: str) -> None:
@@ -69,7 +87,14 @@ def _merge(merged: dict, seen: dict, repo: str) -> None:
 
 
 def build_global_catalog(repos: list[str]) -> dict:
-    merged = {"error": None, "workflows": [], "agents": [], "skills": [], "notes": []}
+    merged = {
+        "error": None,
+        "workflows": [],
+        "agents": [],
+        "skills": [],
+        "hooks": [],
+        "notes": [],
+    }
     seen = {kind: set() for kind in _KINDS}
     for repo in repos:
         _merge(merged, seen, repo)
@@ -87,6 +112,7 @@ def build_catalog(working_dir: Path) -> dict:
             "workflows": [],
             "agents": [],
             "skills": [],
+            "hooks": [],
             "notes": [],
         }
     delegates = {agent.name for agent in custom.agents}
@@ -103,5 +129,6 @@ def build_catalog(working_dir: Path) -> dict:
             for item in sorted(custom.catalog, key=_by_name)
         ],
         "skills": [_skill(item) for item in sorted(custom.skills, key=_by_name)],
+        "hooks": [_hook(item) for item in sorted(custom.hooks, key=_by_name)],
         "notes": [*custom.overrides, *custom.skipped],
     }

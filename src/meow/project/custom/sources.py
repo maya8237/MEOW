@@ -1,4 +1,4 @@
-"""Where custom skills, agents, and workflows come from.
+"""Where custom skills, agents, workflows, and hooks come from.
 
 Two kinds of source per scope: directories listed in a config layer's
 `[custom]` table, and the scope's conventional directories (`.meow/agents/`
@@ -29,7 +29,7 @@ SKILL_ROLES = frozenset({
 AGENT_ROLES = frozenset({"planner", "generator"})
 
 SCOPES = ("local", "project", "user", "builtin")
-KINDS = ("skills", "agents", "workflows")
+KINDS = ("skills", "agents", "workflows", "hooks")
 _ENTRY_KEYS = frozenset({"path", "roles"})
 # Conventional directories, relative to the project root (local, project) or
 # to `~/.meow` (user).
@@ -39,9 +39,9 @@ _PLUGIN_DIR = "plugin"
 
 @dataclass(frozen=True)
 class CustomSource:
-    """One directory of custom skills, agents, or workflows."""
+    """One directory of custom skills, agents, workflows, or hooks."""
 
-    kind: str  # "skills", "agents", or "workflows"
+    kind: str  # "skills", "agents", "workflows", or "hooks"
     path: Path
     scope: str
     config_file: Path | None  # None: a conventional or builtin directory
