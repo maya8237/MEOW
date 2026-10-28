@@ -316,7 +316,7 @@ def run_id_of(exc: BaseException | None) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _shell_arg(value: str) -> str:
+def shell_arg(value: str) -> str:
     """A path as one shell word. Git Bash eats backslashes (quoted or not), so
     Windows paths go out with forward slashes."""
     if _WINDOWS_PATH.match(value):
@@ -342,5 +342,5 @@ def next_command(record: "RunRecord") -> str | None:
     repair = " --repair" if record.source == "native" else ""
     return (
         f"meow resume {record.id} --continue{repair} "
-        f"--work-dir {_shell_arg(record.repo)}"
+        f"--work-dir {shell_arg(record.repo)}"
     )

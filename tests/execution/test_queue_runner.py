@@ -4,6 +4,7 @@ from meow.execution import queue_runner
 from meow.execution.queue_state import QueueStore
 from meow.execution.run_failures import BlockingRunError, TransientRunError
 from meow.execution.run_state import RunStore
+from meow.infrastructure.supervisor import EXIT_TEMPFAIL
 
 
 def test_queue_runner_processes_fifo_and_pauses_on_blocking_failure(
@@ -60,7 +61,7 @@ def test_item_orphaned_by_a_killed_worker_is_reported_parked_not_stuck(
         seen.append(args[2])
 
     monkeypatch.setattr(queue_runner, "run_sprint", fake_run)
-    assert asyncio.run(queue_runner.run_queue(tmp_path)) == 0
+    assert asyncio.run(queue_runner.run_queue(tmp_path)) == EXIT_TEMPFAIL
     records = {item.id: item for item in store.list()}
     assert records[orphan.id].status == "parked"
     assert "worker" in records[orphan.id].error
@@ -100,7 +101,8 @@ def test_queue_continues_past_parked(tmp_path, monkeypatch):
     seen = []
     monkeypatch.setattr(queue_runner, "run_sprint", _parking_sprint(runs, seen))
 
-    assert asyncio.run(queue_runner.run_queue(tmp_path)) == 0
+    # Parked items are pending work: the contract says 75, not 0.
+    assert asyncio.run(queue_runner.run_queue(tmp_path)) == EXIT_TEMPFAIL
 
     records = {item.id: item for item in store.list()}
     assert seen == ["crashes", "rate limited", "works"]

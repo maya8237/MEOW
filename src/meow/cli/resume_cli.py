@@ -18,7 +18,7 @@ from meow.execution.orchestration.model import is_orchestrator_id
 from meow.execution.orchestration.report import render_status
 from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
 from meow.execution.queue_state import QueueStateError, QueueStore, QueueWorkerLock
-from meow.execution.run_failures import never_prepared, next_command
+from meow.execution.run_failures import never_prepared, next_command, shell_arg
 from meow.execution.run_state import (
     PARKED_PHASE,
     RunRecord,
@@ -397,6 +397,8 @@ async def resume_parked(working_dir: Path) -> int:
         else:
             summary["resumed"].append(await _resume_one(working_dir, store, record))
     code = _parked_exit_code(summary)
+    if summary["requeued"]:  # items only run once a queue worker starts
+        summary["next_command"] = f"meow queue --work-dir {shell_arg(str(working_dir))}"
     print(json.dumps(summary))
     return code
 

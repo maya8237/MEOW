@@ -80,8 +80,9 @@ reports `phase`, `settled`, `retryable`, `cause`, `next_command`, `attempts`,
 when no resume will be tried. A parked run whose supervisor is alive reports
 `settled: false`, `supervised: true` and no `next_command`: it resumes itself.
 A failure before any run record exists exits 75 only for a recognised transient
-class (timeout, SDK process, OS I/O or resource); anything else exits 1. A manager retries at most `[run] auto_retries`
-consecutive 75s that show no progress, then reports the failure. Native
+class (timeout, SDK process, OS I/O or resource); anything else exits 1. A
+manager retries at most `[run] auto_retries` consecutive 75s that show no
+progress, then reports the failure. Native
 helpers follow the same rule and print `{"error", "retryable", "cause",
 "retry_after", "command", "next_command"}` on stderr; on 75 run `next_command`
 when set, else rerun the same command. A network push failure (timeout, DNS,
@@ -98,7 +99,8 @@ and `budget_left > 0` it runs `next_command` detached; with `retryable: false`
 stops. On exit 75 it waits `retry_after`, up to `managed_resumes`, stopping on no
 progress (`attempts`, `no_progress`). A `driver_busy` retry means a live driver owns
 the run: keep watching, do not count it. Orchestrator status JSON has only `phase`,
-`settled` and `next_command`. `meow resume --parked` does the same unattended
+`settled`, `retryable` and `next_command`: `blocked` waits for a person, and
+`failed` retries only after a non-blocking error. `meow resume --parked` does the same unattended
 and inline; run it detached or hourly via OS scheduling
 ([skills](../skills/schedule/SKILL.md)). Exit 75 includes bare transient
 OS errors, so the retry cap lives in the managing session, not the exit code.
@@ -122,7 +124,9 @@ Notification failures are recorded separately from verification.
 
 `meow queue "request"` adds work even while another run is active.
 Bare `meow queue` processes FIFO under a repository worker lock; failed tasks
-pause the queue for inspection/retry.
+pause the queue for inspection/retry. It exits 75 while items stay parked;
+`resume --parked` requeues them and prints `next_command` (`meow queue`) to run
+them.
 
 ## Worktree setup and cleanup
 

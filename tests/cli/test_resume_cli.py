@@ -747,3 +747,19 @@ def test_sweep_leaves_orchestrator_child_runs_to_the_tick(tmp_path, capsys):
     summary = json.loads(capsys.readouterr().out)
     assert child.id not in json.dumps(summary)
     assert store.load(child.id).phase == "parked"
+
+
+def test_sweep_that_requeues_items_names_the_queue_command(tmp_path, capsys):
+    """Requeued items only run when a worker starts: say how, so an
+    unattended manager does not leave them pending forever."""
+    queue = QueueStore(tmp_path)
+    item = queue.enqueue("q")
+    queue.update(item.id, status="parked")
+    assert asyncio.run(resume_parked(tmp_path)) == EXIT_TEMPFAIL
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["next_command"] == f"meow queue --work-dir {tmp_path}"
+
+
+def test_sweep_without_requeued_items_has_no_queue_command(tmp_path, capsys):
+    asyncio.run(resume_parked(tmp_path))
+    assert "next_command" not in json.loads(capsys.readouterr().out)

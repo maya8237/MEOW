@@ -6,6 +6,7 @@ from meow.execution.queue_state import QueueItem, QueueStore, QueueWorkerLock
 from meow.execution.run_failures import classify_failure
 from meow.execution.run_state import PARKED_PHASE, RunStateError, RunStore
 from meow.execution.sprint_runner import run_sprint
+from meow.infrastructure.supervisor import EXIT_TEMPFAIL
 
 
 def _report_orphans(store: QueueStore) -> None:
@@ -75,6 +76,7 @@ async def run_queue(working_dir: Path) -> int:
             item = store.claim(pending[0].id)
             if not await _run_item(working_dir, store, item):
                 return 1
-        return 0
+        # Parked items wait for `meow resume --parked`: pending work, not done.
+        return EXIT_TEMPFAIL if store.parked() else 0
     finally:
         lock.release()
