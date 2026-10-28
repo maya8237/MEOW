@@ -11,6 +11,7 @@ from urllib.request import urlopen
 RELEASE_URL = (
     "https://raw.githubusercontent.com/maya8237/MEOW/release-channel/latest.json"
 )
+PYPI_URL = "https://pypi.org/pypi/meow-harness/json"
 VERSION_COMPONENTS = 3
 ANNOUNCE_LIMIT = 5
 
@@ -47,6 +48,40 @@ def latest_release(*, timeout: float = 10) -> tuple[str, str]:
     return data["tag_name"], digest
 
 
+def _pypi_wheel_digest(files: object) -> str | None:
+    if not isinstance(files, list):
+        return None
+    for file in files:
+        if not isinstance(file, dict) or file.get("packagetype") != "bdist_wheel":
+            continue
+        if file.get("yanked"):
+            continue
+        digests = file.get("digests")
+        digest = digests.get("sha256") if isinstance(digests, dict) else None
+        if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
+            return digest
+    return None
+
+
+def latest_pypi_release(*, timeout: float = 10) -> tuple[str, str]:
+    """Return the newest stable MEOW wheel published on PyPI."""
+    with urlopen(PYPI_URL, timeout=timeout) as response:
+        releases = json.load(response)["releases"]
+    candidates = []
+    for tag, files in releases.items():
+        try:
+            parts = _version_parts(tag)
+        except (AttributeError, ValueError):
+            continue
+        digest = _pypi_wheel_digest(files)
+        if digest:
+            candidates.append((parts, tag, digest))
+    if not candidates:
+        raise ValueError("PyPI has no stable MEOW wheel with a SHA-256 checksum")
+    _, tag, digest = max(candidates)
+    return tag, digest
+
+
 def check_for_updates() -> None:
     """Best-effort public-command warning; keep stdout and helper JSON clean."""
     try:
@@ -62,12 +97,18 @@ def check_for_updates() -> None:
         )
 
 
-def update() -> int:
+def update(*, latest_pypi: bool = False) -> int:
     from meow.installer.releases import install_release
 
     current = version("meow-harness")
-    print("Checking for the latest release...", flush=True)
-    latest, digest = latest_release()
+    source = latest_pypi_release if latest_pypi else latest_release
+    print(
+        "Checking for the latest PyPI release..."
+        if latest_pypi
+        else "Checking for the latest release...",
+        flush=True,
+    )
+    latest, digest = source()
     if _version_parts(current) >= _version_parts(latest):
         print(f"MEOW {current} is up to date (latest release: {latest}).")
         return 0

@@ -162,6 +162,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         "-u",
         "--update",
         "--check-update",
+        "--latest-pypi",
     } and not first.startswith("_"):
         check_for_updates()
     if argv is None and len(sys.argv) == 1:
@@ -176,7 +177,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         from meow.installer.maintenance import update
 
         try:
-            raise SystemExit(update())
+            raise SystemExit(update(latest_pypi=args.latest_pypi))
         except (
             OSError,
             ValueError,

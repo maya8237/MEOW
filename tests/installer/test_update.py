@@ -25,6 +25,25 @@ def test_update_selects_newer_published_release(monkeypatch, current, latest, in
     assert installed == installs
 
 
+def test_update_can_select_newer_pypi_release(monkeypatch):
+    monkeypatch.setattr(maintenance, "version", lambda _: "0.1.24")
+    monkeypatch.setattr(
+        maintenance,
+        "latest_release",
+        lambda: pytest.fail("channel release should not be queried"),
+    )
+    monkeypatch.setattr(
+        maintenance, "latest_pypi_release", lambda: ("0.1.26", "a" * 64)
+    )
+    installed = []
+    monkeypatch.setattr(
+        releases, "install_release", lambda tag, digest: installed.append((tag, digest))
+    )
+
+    assert maintenance.update(latest_pypi=True) == 0
+    assert installed == [("0.1.26", "a" * 64)]
+
+
 @pytest.mark.parametrize("interactive", [False, True])
 def test_update_never_offers_optional_setup(monkeypatch, tmp_path, interactive):
     monkeypatch.setattr(maintenance, "version", lambda _: "0.1.2")
