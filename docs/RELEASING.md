@@ -14,19 +14,21 @@ version edits are needed. Commits to `main` alone do not update users.
 
 The tag also replaces `"unreleased"` in `src/meow/project/announcements.py`, the
 onboarding options `meow --update` lists; an entry tagged after the release
-fails it. After publishing the newest release, the workflow commits the new
-versions and only the announcements that tag shipped to `main`. If `main` is
-protected, let GitHub Actions bypass that rule.
+fails it. After publishing, the workflow commits the new versions and only the
+announcements that tag shipped to `main`. If `main` is protected, let GitHub
+Actions bypass that rule.
 
 MEOW is published to PyPI as `meow-harness` (the import package and `meow`
 command are unchanged). The Release workflow's publish job builds the sdist and
 wheel, uploads them with PyPI trusted publishing (no stored token), reads the
 wheel's SHA-256 back from PyPI, creates the GitHub Release (notes only, no
-attached files), and advances `latest.json` on the `release-channel` branch to
-`{"tag_name", "wheel_sha256"}`. Installers and update checks read it through
-`raw.githubusercontent.com`; they do not require `api.github.com`. The channel
-points only at a version already on PyPI. Publication is serialized and can be
-rerun after a later failure; an older tag cannot replace a newer one.
+attached files). The release workflow does not change the update channel.
+Use its manual `workflow_dispatch` action with a published tag to update
+`latest.json` on `release-channel` to `{"tag_name", "wheel_sha256"}`.
+Installers and update checks read it through `raw.githubusercontent.com`; they
+do not require `api.github.com`. The channel points only at a version already
+on PyPI. Publication is serialized and can be rerun after a later failure;
+manual promotion can intentionally select any published tag.
 
 One-time setup: reserve `meow-harness` on pypi.org and add a trusted publisher
 for this repository, workflow `release.yml`. PyPI versions cannot be replaced, so
