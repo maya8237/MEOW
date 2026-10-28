@@ -4,7 +4,11 @@ import re
 import subprocess
 from pathlib import Path
 
-from meow.execution.run_failures import classify_failure, recognised_transient
+from meow.execution.run_failures import (
+    classify_failure,
+    failure_retry_after,
+    recognised_transient,
+)
 from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled, check_cancel, delivery_lock
 from meow.infrastructure.worktree import _is_linked_worktree, _run_git
@@ -279,6 +283,4 @@ def _settle_delivery_failure(store: RunStore, run_id: str, exc: Exception) -> No
             results={"failure": {"kind": kind, "cause": cause}},
         )
     else:
-        store.park(
-            run_id, exc, kind, cause, retry_after=getattr(exc, "retry_after", None)
-        )
+        store.park(run_id, exc, kind, cause, retry_after=failure_retry_after(exc))

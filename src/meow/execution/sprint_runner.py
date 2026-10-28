@@ -17,6 +17,7 @@ from meow.execution.run_failures import (
     InvalidConfigError,
     attach_run_id,
     classify_failure,
+    failure_retry_after,
 )
 from meow.execution.run_state import (
     PARKED_PHASE,
@@ -236,9 +237,7 @@ def _settle_failure(store: RunStore, run_id: str, exc: BaseException) -> None:
                 results={"failure": {"kind": kind, "cause": cause}},
             )
         else:
-            store.park(
-                run_id, exc, kind, cause, retry_after=getattr(exc, "retry_after", None)
-            )
+            store.park(run_id, exc, kind, cause, retry_after=failure_retry_after(exc))
     except (RunStateError, OSError) as journal_error:
         logger.error(
             "run_failure_not_recorded", run_id=run_id, reason=str(journal_error)

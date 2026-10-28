@@ -243,6 +243,16 @@ def _leaves(exc: BaseException):
             pending.append(current.__cause__)
 
 
+def failure_retry_after(exc: BaseException) -> float | None:
+    """The first `retry_after` (seconds) an exception, its group members or
+    its `raise ... from` causes ask for."""
+    for item in _leaves(exc):
+        value = getattr(item, "retry_after", None)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+    return None
+
+
 def classify_failure(exc: BaseException) -> tuple[FailureKind, str]:
     """Return `(kind, cause)`: blocking only for the known-permanent cases.
 
@@ -253,9 +263,19 @@ def classify_failure(exc: BaseException) -> tuple[FailureKind, str]:
 
     if isinstance(exc, IssueUnresolvedError) and exc.__cause__ is not None:
         return classify_failure(exc.__cause__)
-    if blocking := _blocking_cause(exc):
-        return "blocking", blocking
-    own = getattr(exc, "cause", None)
+    # A blocking cause anywhere in the groups and `raise ... from` chain wins.
+    leaves = list(_leaves(exc))
+    for item in leaves:
+        if blocking := _blocking_cause(item):
+            return "blocking", blocking
+    own = next(
+        (
+            cause
+            for item in leaves
+            if isinstance(cause := getattr(item, "cause", None), str) and cause
+        ),
+        None,
+    )
     if _is_resource(exc):
         return "resource", own if isinstance(own, str) and own else "resource"
     return "transient", own if isinstance(own, str) and own else "error"

@@ -15,6 +15,7 @@ from meow.execution.run_failures import (
     InvalidConfigError,
     TransientRunError,
     classify_failure,
+    failure_retry_after,
     next_command,
     progress_fingerprint,
 )
@@ -23,6 +24,8 @@ from meow.execution.sprint_runner import _SETTLED_PHASES, _settle_failure
 from meow.infrastructure.worktree import StartPointError
 from meow.infrastructure.worktree_setup import WorktreeSetupError
 from meow.project.config import load_config
+
+RETRY_AFTER = 90.0
 
 
 class _ApiFailure(RuntimeError):
@@ -459,3 +462,46 @@ def test_mid_run_missing_file_parks(tmp_path):
     store, record = _store(tmp_path)
     _settle_failure(store, record.id, FileNotFoundError("tmp/slice.json vanished"))
     assert store.load(record.id).phase == "parked"
+
+
+def _raised_from(outer, inner):
+    try:
+        try:
+            raise inner
+        except BaseException as caught:
+            raise outer from caught
+    except BaseException as exc:
+        return exc
+
+
+def test_blocking_cause_inside_an_exception_group_wins():
+    group = ExceptionGroup(
+        "tasks",
+        [
+            TransientRunError("slow", cause="check_timeout"),
+            BlockingRunError("no ref", cause="invalid_ref"),
+        ],
+    )
+    assert classify_failure(group) == ("blocking", "invalid_ref")
+
+
+def test_blocking_cause_behind_raise_from_wins():
+    wrapped = _raised_from(
+        TransientRunError("wrapper", cause="x"),
+        BlockingRunError("bad config", cause="invalid_config"),
+    )
+    assert classify_failure(wrapped) == ("blocking", "invalid_config")
+
+
+def test_transient_group_keeps_its_cause_and_retry_after(tmp_path):
+    group = ExceptionGroup(
+        "tasks", [TransientRunError("busy", cause="api_wait", retry_after=RETRY_AFTER)]
+    )
+    assert classify_failure(group) == ("transient", "api_wait")
+    assert failure_retry_after(group) == pytest.approx(RETRY_AFTER)
+    assert failure_retry_after(RuntimeError("plain")) is None
+    store, record = _store(tmp_path)
+    _settle_failure(store, record.id, group)
+    parked = store.load(record.id)
+    assert parked.phase == "parked"
+    assert parked.park["retry_after"] == pytest.approx(RETRY_AFTER)
