@@ -24,6 +24,7 @@ from meow.execution.run_state import PARKED_PHASE, RunStore, reconcile_quietly
 from meow.native import native
 from meow.project.config import config_root, load_config
 from meow.project.custom import SKILL_ROLES
+from meow.project.custom.hook_files import SDK_EVENTS
 
 
 def _add_dirs(parser: argparse.ArgumentParser) -> None:
@@ -137,6 +138,15 @@ def _add_lint(sub) -> None:
         help="Lint (and auto-fix) just this file, like the SDK post-edit hook.",
     )
     parser.add_argument(
+        "--from-hook",
+        dest="from_hook",
+        action="store_true",
+        help=(
+            "Read a Claude Code PostToolUse hook payload on stdin and lint the "
+            "file it names; prints hook feedback."
+        ),
+    )
+    parser.add_argument(
         "--fix",
         action="store_true",
         help="Project-wide: apply each command's fix flag before checking.",
@@ -150,6 +160,24 @@ def _add_lint(sub) -> None:
             "`gate` (lint-fix must fix everything CLI mode would, not just "
             "the review's gate commands)."
         ),
+    )
+
+
+def _add_hook(sub) -> None:
+    parser = sub.add_parser(
+        "hook",
+        help=(
+            "Run the hooks/*.toml definitions for a Claude Code hook event "
+            "(payload on stdin); exit 2 with the reason on stderr to block."
+        ),
+    )
+    _add_dirs(parser)
+    parser.add_argument("event", choices=SDK_EVENTS, help="Claude Code hook event.")
+    parser.add_argument("--name", default=None, help="Run only this hook definition.")
+    parser.add_argument(
+        "--role",
+        default=None,
+        help="Also run hooks limited to this MEOW role (default: unrestricted only).",
     )
 
 
@@ -366,6 +394,7 @@ def add_native_parser(  # ruff: ignore[too-many-statements] -- register independ
     _add_lookups(sub)
     _add_verdict(sub)
     _add_lint(sub)
+    _add_hook(sub)
     _add_round(sub)
     _add_checkpoint(sub)
     _add_prompt(sub)
@@ -411,7 +440,10 @@ def _verify(args, working_dir: Path, active: Path) -> dict:
 
 def _lint(args, working_dir: Path, active: Path) -> dict:
     options = native.LintOptions(
-        file_path=args.file, fix=args.fix, all_blocking=args.all_blocking
+        file_path=args.file,
+        fix=args.fix,
+        all_blocking=args.all_blocking,
+        from_hook=args.from_hook,
     )
     return native.lint(working_dir, active, options)
 
@@ -536,6 +568,9 @@ _HANDLERS = {
         _resolve(args.review_file, active)
     ),
     "lint": _lint,
+    "hook": lambda args, wd, active: native.hook(
+        wd, active, native.HookOptions(args.event, args.role, args.name)
+    ),
     "round": _round,
     "checkpoint": _checkpoint,
     "finalize": lambda args, wd, active: asyncio.run(

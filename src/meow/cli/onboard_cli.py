@@ -124,6 +124,7 @@ def _command_settings(args):
 
 _SITE_URLS = {
     "jira": "JIRA_URL",
+    "confluence": "CONFLUENCE_URL",
     "gitlab": "GITLAB_API_URL",
 }
 

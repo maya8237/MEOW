@@ -1,0 +1,114 @@
+"""Register hook definitions with Claude Code so they run in any session.
+
+Like custom skills, each scope's hooks are served by its Claude plugin (the
+conventional `plugin/` folder): a generated `hooks/hooks.json` there calls
+`meow native hook` once per definition, keeping its matcher and timeout.
+SDK-only definitions stay with MEOW: those limited to roles, and the
+`sprint_*` lifecycle events. Claude Code picks the plugin up on its next launch.
+"""
+
+import json
+import math
+from pathlib import Path
+
+from meow.project.custom.definitions import CustomHook
+from meow.project.custom.hook_files import SDK_EVENTS
+from meow.project.custom.sources import git_ignored, scope_plugin_dir
+from meow.project.custom.sync import (
+    SYNC_SCOPES,
+    register_scope_plugin,
+    scope_plugin_registered,
+)
+
+_COMMAND = 'meow native hook {event} --name {name} --work-dir "${{CLAUDE_PROJECT_DIR}}"'
+
+
+def syncable(hook: CustomHook) -> bool:
+    """Whether Claude Code itself can run `hook` (no MEOW role or lifecycle)."""
+    return hook.event in SDK_EVENTS and not (hook.roles or hook.source.roles)
+
+
+def hooks_config(hooks: list[CustomHook]) -> dict:
+    """The plugin `hooks.json` content for `hooks`."""
+    events: dict[str, list[dict]] = {}
+    for hook in sorted(hooks, key=lambda item: item.name):
+        entry: dict = {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": _COMMAND.format(event=hook.event, name=hook.name),
+                    "timeout": math.ceil(hook.timeout),
+                }
+            ]
+        }
+        if hook.matcher:
+            entry = {"matcher": hook.matcher, **entry}
+        events.setdefault(hook.event, []).append(entry)
+    return {"description": "MEOW hook definitions.", "hooks": events}
+
+
+def _text(config: dict) -> str:
+    return json.dumps(config, indent=2) + "\n"
+
+
+def _file(scope: str, project_dir: Path, user_dir: Path) -> Path:
+    return scope_plugin_dir(scope, project_dir, user_dir) / "hooks" / "hooks.json"
+
+
+def _stale(path: Path, label: str, apply: bool) -> list[str]:
+    """A scope with no syncable hooks left must not keep serving old ones."""
+    if not path.is_file():
+        return []
+    if apply:
+        path.unlink()
+    return [f"{label}: no hook definitions left; removed"]
+
+
+def _scope_problems(
+    target: tuple[str, Path, Path], hooks: tuple[CustomHook, ...], apply: bool
+) -> list[str]:
+    scope, project_dir, user_dir = target
+    chosen = [h for h in hooks if h.source.scope == scope and syncable(h)]
+    path = _file(scope, project_dir, user_dir)
+    label = f"{scope} hooks ({path})"
+    if not chosen:
+        return _stale(path, label, apply)
+    if scope == "project" and git_ignored(project_dir, path.parent):
+        return [f"{label}: skipped, ignored by git so it would not be shared"]
+    text = _text(hooks_config(chosen))
+    found = []
+    if not path.is_file() or path.read_text(encoding="utf-8") != text:
+        found.append(f"{label}: out of date")
+    if not scope_plugin_registered(scope, project_dir, user_dir):
+        found.append(f"{label}: not registered with Claude Code")
+    if apply and found:
+        register_scope_plugin(scope, project_dir, user_dir)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return found
+
+
+def check_hook_registration(
+    hooks: tuple[CustomHook, ...], project_dir: Path, user_dir: Path
+) -> list[str]:
+    """Problems that keep hooks out of Claude Code; changes nothing."""
+    problems = []
+    for scope in SYNC_SCOPES:
+        try:
+            problems += _scope_problems((scope, project_dir, user_dir), hooks, False)
+        except (OSError, ValueError) as exc:
+            problems.append(f"{scope} hooks: {exc}")
+    return problems
+
+
+def sync_hook_plugins(
+    hooks: tuple[CustomHook, ...],
+    project_dir: Path,
+    user_dir: Path,
+    scopes: tuple[str, ...] = SYNC_SCOPES,
+) -> list[str]:
+    """Write and register every selected scope's hooks; returns what changed."""
+    fixed = []
+    for scope in scopes:
+        fixed += _scope_problems((scope, project_dir, user_dir), hooks, True)
+    return fixed

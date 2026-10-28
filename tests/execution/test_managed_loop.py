@@ -12,6 +12,7 @@ live in `managed_faults.py`; each test's plan names which launch gets which.
 import json
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -54,7 +55,9 @@ POLL_SECONDS = 0.3
 MAX_ACTIONS = 15
 LOOP_SECONDS = 400
 COMMAND_SECONDS = 120
-EXIT_BLOCKED, EXIT_RETRY, EXIT_KILLED = 1, 75, -9
+EXIT_BLOCKED, EXIT_RETRY = 1, 75
+# POSIX reports death by SIGKILL as -9; Windows' TerminateProcess exits 15.
+EXIT_KILLED = -9 if hasattr(signal, "SIGKILL") else signal.SIGTERM
 WEDGED_LAUNCH = 10
 OVERLOADS = 3
 AUTO_RETRIES = 3  # the [run] default

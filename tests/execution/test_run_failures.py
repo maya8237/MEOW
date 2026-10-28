@@ -18,6 +18,7 @@ from meow.execution.run_failures import (
     failure_retry_after,
     next_command,
     progress_fingerprint,
+    shell_arg,
 )
 from meow.execution.run_state import TERMINAL_PHASES, RunStateError, RunStore
 from meow.execution.sprint_runner import _SETTLED_PHASES, _settle_failure
@@ -312,7 +313,8 @@ def test_next_command_shape(tmp_path):
     store, record = _store(tmp_path)
     parked = store.park(record.id, "boom", "transient", "error")
     assert next_command(parked) == (
-        f"meow resume {record.id} --continue --work-dir {tmp_path.resolve()}"
+        f"meow resume {record.id} --continue "
+        f"--work-dir {shell_arg(str(tmp_path.resolve()))}"
     )
     native_dir = tmp_path / "native repo"
     native_dir.mkdir()
@@ -320,7 +322,7 @@ def test_next_command_shape(tmp_path):
     native = native_store.park(native.id, "boom", "transient", "error")
     assert next_command(native) == (
         f"meow resume {native.id} --continue --repair "
-        f'--work-dir "{native_dir.resolve()}"'
+        f"--work-dir {shell_arg(str(native_dir.resolve()))}"
     )
     for phase in ("complete", "failed", "delivered"):
         store.transition(record.id, phase)

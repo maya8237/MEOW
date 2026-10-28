@@ -48,6 +48,15 @@ export default function ItemDetail({
     );
   if (kind === "skills")
     facts.push(["Qualified name", item.qualified_name || item.name]);
+  if (kind === "hooks")
+    facts.push(
+      ["Event", item.event || ""],
+      ["Matcher", item.matcher || "Any tool"],
+      ["Command", item.command || ""],
+      ["Timeout", `${item.timeout ?? 30} s`],
+      ["Roles", item.roles?.length ? item.roles.join(", ") : "Every role"],
+      ["Claude Code", item.synced ? "Synced by meow sync" : "MEOW agents only"],
+    );
   return (
     <article className="detail-content">
       <div className="detail-title">

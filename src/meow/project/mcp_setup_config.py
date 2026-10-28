@@ -42,6 +42,13 @@ def _auth(name: str, key: str, value: object) -> tuple[tuple[str, ...], ...]:
     return alternatives
 
 
+def _names(name: str, key: str, value: object) -> tuple[str, ...]:
+    names = _strings(name, key, value)
+    if any(not _VARIABLE.fullmatch(var) for var in names):
+        raise _bad(name, f"{key} entries must be environment variable names")
+    return names
+
+
 def _env(name: str, key: str, value: object) -> tuple[tuple[str, str], ...]:
     if not isinstance(value, dict) or not all(
         isinstance(k, str) and isinstance(v, str) for k, v in value.items()
@@ -76,6 +83,7 @@ _FIELDS = {  # key -> (McpSpec field, converter)
     "args": ("args", _strings),
     "auth": ("auth", _auth),
     "env": ("env", _env),
+    "optional": ("optional", _names),
     "warmup": ("warmup", _warmup),
 }
 

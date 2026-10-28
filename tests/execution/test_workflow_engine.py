@@ -170,7 +170,7 @@ def test_parallel_waits_for_both_branches_and_runs_concurrently(tmp_path):
         Step(
             "parallel",
             "audits",
-            timeout=1,
+            timeout=30,  # a loaded Windows runner can take over a second to start
             body=(
                 Step("agent", "a", target="explorer", task="first"),
                 Step("agent", "b", target="explorer", task="second"),

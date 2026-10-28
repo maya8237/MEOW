@@ -18,6 +18,13 @@ from meow.project.mcp_registry import _provider_matches, user_scope_servers
 
 _SECRET_MARKERS = ("TOKEN", "PASSWORD", "SECRET")
 _GITLAB_PACKAGE = "@zereight/mcp-gitlab"
+# The Atlassian server also serves Confluence; Jira or Confluence alone suffices.
+_CONFLUENCE = (
+    "CONFLUENCE_URL",
+    "CONFLUENCE_USERNAME",
+    "CONFLUENCE_API_TOKEN",
+    "CONFLUENCE_PERSONAL_TOKEN",
+)
 
 REGISTERED = "registered"
 ALREADY = "already_registered"
@@ -37,6 +44,7 @@ class McpSpec:
     auth: tuple[tuple[str, ...], ...]  # alternative sets of required variables
     warmup: tuple[str, ...] = ()  # fetch the package once, before Claude's timeout
     env: tuple[tuple[str, str], ...] = ()  # fixed, non-secret server settings
+    optional: tuple[str, ...] = ()  # forwarded from the environment when set
     custom: bool = False  # any field came from [mcp_setup] config
     package: str = ""  # PyPI package providing `launcher`, if pip can install it
 
@@ -51,8 +59,11 @@ SPECS = {
         auth=(
             ("JIRA_URL", "JIRA_USERNAME", "JIRA_API_TOKEN"),
             ("JIRA_URL", "JIRA_PERSONAL_TOKEN"),
+            ("CONFLUENCE_URL", "CONFLUENCE_USERNAME", "CONFLUENCE_API_TOKEN"),
+            ("CONFLUENCE_URL", "CONFLUENCE_PERSONAL_TOKEN"),
         ),
         package="mcp-atlassian",
+        optional=_CONFLUENCE,
     ),
     "gitlab": McpSpec(
         "gitlab",
@@ -123,7 +134,8 @@ def _collect(
         environ = values
     if alternative is None:
         return None
-    return {name: environ[name] for name in alternative}
+    extra = (name for name in spec.optional if environ.get(name))
+    return {name: environ[name] for name in (*alternative, *extra)}
 
 
 def build_command(spec: McpSpec, values: Mapping[str, str]) -> list[str]:
@@ -321,6 +333,7 @@ def describe(result: SetupResult) -> str:
 _EXAMPLES = {
     "JIRA_URL": "https://yourcompany.atlassian.net",
     "JIRA_USERNAME": "you@yourcompany.com",
+    "CONFLUENCE_URL": "https://yourcompany.atlassian.net/wiki",
     "GITLAB_API_URL": "https://gitlab.com/api/v4",
 }
 

@@ -10,6 +10,7 @@ name defined in a higher scope replaces the same name from a lower one.
 from meow.project.custom.definitions import (
     PLUGIN_NAME,
     CustomAgent,
+    CustomHook,
     Customizations,
     CustomSkill,
     discover,
@@ -38,6 +39,7 @@ __all__ = [
     "SCOPES",
     "SKILL_ROLES",
     "CustomAgent",
+    "CustomHook",
     "CustomSkill",
     "CustomSource",
     "Customizations",
