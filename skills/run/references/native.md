@@ -21,11 +21,12 @@ For a saved native run, inspect and continue that same ID with `meow resume <run
    description. The project uses `.meow/config.toml` at its root (with an
    optional ignored `.meow/config.local.toml`; see
    the shared protocol if it does not).
-1a. **Jira-sourced build**: the project's `.meow/config.toml` must have
-   `[jira]` with `project_key` (`branch_prefix` optional, default
-   `issue/`). The `[jira.mcp]` table is **not** used here: fetch through
+1a. **Jira-sourced build**: `project_key` is optional for a named issue.
+   Latest-issue lookup uses the configured project or the only accessible project;
+   if several exist, request a project choice. `branch_prefix` defaults to
+   `issue/`. The `[jira.mcp]` table is **not** used here: fetch through
    the Jira MCP tools already connected to this session (tool names
-   containing `jira`). If none connected, or `[jira]` missing, say so and
+   containing `jira`). If none connected, say so and
    stop; point at docs/INTEGRATIONS.md in the meow repo. Fetch the named
    issue, or the most recently created one in `project_key`; need `key`,
    `summary`, `description` -- stop and report if any is missing. Request

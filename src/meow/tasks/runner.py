@@ -9,10 +9,10 @@ from meow.execution.run_state import RunStore
 from meow.execution.sprint import Sprint, build_sprint
 from meow.infrastructure.cancellation import cancel_requested
 from meow.infrastructure.checks import run_captured_async
+from meow.infrastructure.python_dependencies import python_environment
 from meow.infrastructure.usage import usage_scope
-from meow.infrastructure.worktree_setup import run_setup
+from meow.infrastructure.worktree_setup import prepare_environment
 from meow.project.config_models import LintCommand
-from meow.project.permissions import PermissionPolicy
 
 from .executor import execute_in_worktrees
 from .model import TaskGraph, TaskSpec
@@ -53,7 +53,7 @@ async def verify_task(spec: TaskSpec, worktree: Path) -> list[dict[str, object]]
             raise ValueError(f"task {spec.id} has an empty verification command")
         try:
             exit_code, output, timed_out = await run_captured_async(
-                argv, worktree, os.environ.copy(), 300
+                argv, worktree, python_environment(worktree), 300
             )
             if timed_out:
                 raise PermanentTaskError(
@@ -132,21 +132,7 @@ async def run_parallel_plan(  # ruff: ignore[complex-structure, too-many-stateme
             task_state[outcome.id]["note"] = outcome.note
 
     async def prepare(task_dir: Path) -> None:  # ruff: ignore[unused-async]
-        manifest = config.get("worktree_setup", {"copy": [], "commands": []})
-        policy = config.get("permissions")
-
-        def command_decision(argv: list[str]) -> str | None:
-            if not isinstance(policy, PermissionPolicy):
-                return None
-            return policy.for_role("setup").decision("WorktreeSetup", {"argv": argv})
-
-        run_setup(
-            sprint.repo_dir,
-            task_dir,
-            manifest,
-            command_decision=command_decision,
-            timeout=config.get("install_timeout"),
-        )
+        prepare_environment(sprint.repo_dir, task_dir, config, new=True)
 
     async def implement(spec: TaskSpec, task_dir: Path) -> None:
         task_plan = task_dir / ".meow" / "tasks" / f"{spec.id}.md"

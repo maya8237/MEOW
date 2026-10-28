@@ -17,7 +17,7 @@ from meow.infrastructure.worktree_setup import prepare_environment
 from meow.project.config import config_root, load_config
 from meow.project.config_models import LintCommand
 from meow.project.custom.rendering import effective_models
-from meow.project.onboarding import CONFIG_RELPATH, onboard_if_needed
+from meow.project.onboarding import onboard_if_needed
 from meow.project.plan_files import (
     _detect_review_flavor,
     _latest_plan_file,
@@ -113,7 +113,7 @@ def _onboard(
     """
     onboard_dir = working_dir if options.existing_branch else active_dir
     report = onboard_if_needed(onboard_dir, working_dir)
-    if report and CONFIG_RELPATH in report["files"]:
+    if report and (report["files"] or report.get("detected")):
         config = load_config(working_dir)
     return report, config
 

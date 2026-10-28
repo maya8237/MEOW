@@ -26,7 +26,6 @@ from meow.infrastructure.checks import (
 )
 from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import get_logger
-from meow.infrastructure.node_dependencies import ensure_node_dependencies
 from meow.infrastructure.worktree import (
     _is_linked_worktree,
     current_branch,
@@ -35,7 +34,6 @@ from meow.infrastructure.worktree_names import request_name
 from meow.infrastructure.worktree_setup import (
     prepare_environment,
     run_setup,
-    setup_command_decision,
 )
 from meow.project.config import config_paths, config_root, load_config
 from meow.project.custom.definitions import discover
@@ -91,7 +89,13 @@ def _onboard_sprint(
     if report is None:
         return sprint, config_dir, None
     checks_dir = config_dir
-    if ".meow/config.toml" in report["files"]:
+    if any(
+        path in report["files"]
+        for path in (
+            ".meow/config.toml",
+            ".meow/config.local.toml",
+        )
+    ) or report.get("detected"):
         try:
             fresh = load_config(config_dir)
         except (OSError, ValueError) as exc:
@@ -345,11 +349,17 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
         )
         check_cancel(store, record.id)
         store.transition(record.id, "prepared", results={"setup_complete": True})
-    ensure_node_dependencies(
-        active_dir,
-        command_decision=lambda argv: setup_command_decision(sprint.config, argv),
-        timeout=sprint.config.get("install_timeout"),
+    dependency_actions = prepare_environment(
+        setup_source, active_dir, sprint.config, new=False
     )
+    if dependency_actions:
+        store.update_results(
+            record.id,
+            setup=[
+                *store.load(record.id).results.get("setup", []),
+                *dependency_actions,
+            ],
+        )
     sprint, checks_dir = _run_onboarding(
         store, record.id, sprint, (active_dir, settings_dir)
     )
@@ -365,8 +375,10 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
 
     test_requested = test
     skipped = disable_tests(sprint.config) if force_disable_tests else []
-    auto_test = definition.auto_test and bool(
-        sprint.config.get("tester", {}).get("tests")
+    auto_test = (
+        definition.auto_test
+        and bool(sprint.config.get("tester", {}).get("tests"))
+        and sprint.config.get("tester", {}).get("auto_test", True)
     )
     test = not force_disable_tests and (test_requested or auto_test)
     store.update_results(

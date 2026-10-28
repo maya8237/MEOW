@@ -15,6 +15,7 @@ from contextlib import ExitStack, asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+from meow.infrastructure.python_dependencies import python_environment
 from meow.project.command_policy import split_command
 from meow.project.config_models import (
     DevServerCommand,
@@ -93,7 +94,7 @@ def _spawn_windows_job_process(  # ruff: ignore[too-many-statements, too-many-ar
     import win32job
     import win32process
 
-    executable = shutil.which(argv[0]) or argv[0]
+    executable = shutil.which(argv[0], path=env.get("PATH")) or argv[0]
     command_line = subprocess.list2cmdline([executable, *argv[1:]])
     if argv[:2] == ["cmd", "/c"]:
         command_line = f'{subprocess.list2cmdline([executable])} /c "{argv[2]}"'
@@ -230,16 +231,22 @@ class VerificationStageEvidence:
         )
 
 
-def _argv(command: str, args: tuple[str, ...]) -> list[str]:
+def _argv(
+    command: str, args: tuple[str, ...], env: dict[str, str] | None = None
+) -> list[str]:
     argv = split_command(command) + list(args)
     if argv:
-        argv[0] = shutil.which(argv[0]) or argv[0]
+        argv[0] = (
+            shutil.which(argv[0], path=env.get("PATH") if env else None) or argv[0]
+        )
     return argv
 
 
-def _launch_argv(command: str, args: tuple[str, ...]) -> list[str]:
+def _launch_argv(
+    command: str, args: tuple[str, ...], env: dict[str, str] | None = None
+) -> list[str]:
     """`_argv` for a process about to start: no command is a ValueError."""
-    argv = _argv(command, args)
+    argv = _argv(command, args, env)
     if not argv:
         raise ValueError("empty command")
     return argv
@@ -371,9 +378,9 @@ async def _run_test(
         raise VerificationSetupError(
             command.command, active_dir / command.cwd, exc
         ) from exc
-    env = {**os.environ, **(command.env or {})}
+    env = python_environment(active_dir, command.env)
     try:
-        argv = _launch_argv(command.command, command.args)
+        argv = _launch_argv(command.command, command.args, env)
         process = await asyncio.create_subprocess_exec(
             *argv,
             cwd=cwd,
@@ -594,20 +601,22 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
         # Never test against someone else's server: move to a free port.
         server = _relocated(server, _free_port(location[0]))
     try:
-        argv = _launch_argv(server.command, server.args)
+        argv = _launch_argv(
+            server.command, server.args, python_environment(active_dir, server.env)
+        )
         if os.name == "nt":
             process, job = await asyncio.to_thread(
                 _spawn_windows_job_process,
                 argv,
                 cwd,
-                {**os.environ, **(server.env or {})},
+                python_environment(active_dir, server.env),
                 asyncio.get_running_loop(),
             )
         else:
             process = await asyncio.create_subprocess_exec(
                 *argv,
                 cwd=cwd,
-                env={**os.environ, **(server.env or {})},
+                env=python_environment(active_dir, server.env),
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
                 start_new_session=True,

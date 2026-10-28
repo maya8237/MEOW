@@ -31,46 +31,15 @@ class IssueUnresolvedError(RuntimeError):
 
 
 def _load_jira_config(config: dict) -> dict:
-    """Validate `[jira]`/`[jira.mcp]` up front, with a clear error if absent."""
-    jira = config.get("jira")
-    if not isinstance(jira, dict):
-        raise ValueError(
-            "No [jira] table found in .meow/config.toml. `meow run --jira` needs "
-            "[jira] with 'project_key' set, and a [jira.mcp] table "
-            "describing how to launch the Jira MCP server, e.g.:\n\n"
-            "[jira]\n"
-            'project_key = "PROJ"\n\n'
-            "[jira.mcp]\n"
-            'command = "uvx"\n'
-            'args = ["mcp-atlassian"]\n\n'
-            "See docs/INTEGRATIONS.md for the Jira credentials the server "
-            "itself needs in the environment (JIRA_URL, JIRA_USERNAME, "
-            "JIRA_API_TOKEN, or JIRA_PERSONAL_TOKEN)."
-        )
+    """Resolve this provider only when requested."""
+    from meow.project.mcp_registry import provider_mcp_config
 
-    project_key = jira.get("project_key")
-    if not project_key:
-        raise ValueError(
-            "[jira] in .meow/config.toml must set 'project_key' -- the project "
-            "`meow run --jira` searches for the latest issue when none is given."
-        )
-
-    mcp = jira.get("mcp")
-    if not isinstance(mcp, dict) or not mcp.get("command"):
-        raise ValueError(
-            "[jira.mcp] in .meow/config.toml must set 'command' (the program "
-            'that launches the Jira MCP server, e.g. command = "uvx" with '
-            'args = ["mcp-atlassian"]).'
-        )
-
+    mcp = provider_mcp_config(config, "jira")
+    jira = config["jira"]
     return {
-        "project_key": project_key,
+        "project_key": jira.get("project_key"),
         "branch_prefix": jira.get("branch_prefix", DEFAULT_BRANCH_PREFIX),
-        "mcp": {
-            "command": mcp["command"],
-            "args": mcp.get("args", []),
-            **({"env": mcp["env"]} if "env" in mcp else {}),
-        },
+        "mcp": mcp,
     }
 
 

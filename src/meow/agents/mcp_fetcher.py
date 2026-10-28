@@ -115,18 +115,20 @@ class IssueFetcherAgent(McpFetcherAgent):
 
     server, role, label, request = "jira", "issue_fetcher", "Jira", "issue"
     setup_hint = (
-        "Check [jira.mcp] in .meow/config.toml (command/args to launch it, e.g. "
-        'command = "uvx", args = ["mcp-atlassian"]) and the Jira credentials it '
-        "needs in the environment -- see docs/INTEGRATIONS.md."
+        'Set [jira.mcp] from = "registered-name" to select an existing Claude '
+        "MCP registration, or check the inline stdio command/args and credentials. "
+        "See docs/INTEGRATIONS.md."
     )
 
     async def fetch(
-        self, issue_key: str | None, project_key: str, output_file: Path
+        self, issue_key: str | None, project_key: str | None, output_file: Path
     ) -> None:
         """Write `{"key", "summary", "description"}` for one issue to a file."""
         if issue_key:
             lookup = f"Fetch the Jira issue {issue_key} by its key."
         else:
+            if not project_key:
+                project_key = await self.unique_project()
             lookup = (
                 "Find the most recently created issue in the Jira project "
                 f"'{project_key}' (JQL: project = {project_key} ORDER BY "
@@ -138,6 +140,33 @@ class IssueFetcherAgent(McpFetcherAgent):
             "not markup)",
             "",
             output_file,
+        )
+
+    async def unique_project(self) -> str:
+        """Select a project only when the complete accessible list is unique."""
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "projects.json"
+            await self._fetch(
+                "List ALL accessible Jira projects, paging through every result. "
+                "Do not truncate the list or select a project.",
+                '"projects" -- an array of objects with string "key" fields',
+                "",
+                output,
+            )
+            data = _parse_json(self.role, output.read_text(encoding="utf-8"))
+        projects = data.get("projects") if isinstance(data, dict) else None
+        if isinstance(projects, list) and all(
+            isinstance(item, dict)
+            and isinstance(item.get("key"), str)
+            and item["key"].strip()
+            for item in projects
+        ):
+            keys = {item["key"] for item in projects}
+            if len(keys) == 1:
+                return keys.pop()
+        raise RuntimeError(
+            "Cannot select a unique accessible Jira project. Set [jira].project_key "
+            "or pass an explicit issue key."
         )
 
     async def fetch_many(self, jql: str, output_file: Path) -> None:
@@ -161,9 +190,9 @@ class GitlabFetcherAgent(McpFetcherAgent):
 
     server, role, label, request = "gitlab", "gitlab_fetcher", "GitLab", "merge request"
     setup_hint = (
-        "Check [gitlab.mcp] in .meow/config.toml -- command/args to launch it, "
-        "and [gitlab.mcp.env] for whatever credentials it needs -- see "
-        "docs/INTEGRATIONS.md."
+        'Set [gitlab.mcp] from = "registered-name" to select an existing Claude '
+        "MCP registration, or check the inline stdio command/args and credentials. "
+        "See docs/INTEGRATIONS.md."
     )
 
     async def fetch(self, mr_link: str, output_file: Path) -> None:
@@ -183,9 +212,9 @@ class GithubFetcherAgent(McpFetcherAgent):
     server, role, label, request = "github", "github_fetcher", "GitHub", "pull request"
     probe = "fetch the current user or list accessible repositories"
     setup_hint = (
-        "Check [github.mcp] in .meow/config.toml -- command/args to launch it, "
-        "and [github.mcp.env] for whatever credentials it needs -- see "
-        "docs/INTEGRATIONS.md."
+        'Set [github.mcp] from = "registered-name" to select an existing Claude '
+        "MCP registration, or check the inline stdio command/args and credentials. "
+        "See docs/INTEGRATIONS.md."
     )
 
     async def fetch(self, pull_request_link: str, output_file: Path) -> None:

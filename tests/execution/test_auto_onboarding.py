@@ -37,7 +37,7 @@ def _git_dir(path: Path) -> Path:
     return path
 
 
-def _run(active: Path, *, record_root: Path | None = None):
+def _run(active: Path, *, record_root: Path | None = None, **options):
     plan = active / "plan.md"
     plan.write_text("# Plan\n", encoding="utf-8")
     sprint = Sprint(record_root or active, dict(BASE_CONFIG), None, None, active, False)
@@ -73,9 +73,26 @@ def _run(active: Path, *, record_root: Path | None = None):
                 plan_file=plan,
                 resume_at="review",
                 record_root=record_root,
+                **options,
             )
         )
     return final_checks
+
+
+@pytest.mark.parametrize("workflow", [None, "quick"])
+@pytest.mark.parametrize("requested", [False, True])
+@pytest.mark.parametrize("disabled", [False, True])
+def test_detected_checks_do_not_select_ai_tester(
+    tmp_path, workflow, requested, disabled
+):
+    repo = _git_dir(tmp_path / "repo")
+    (repo / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    checks = _run(repo, workflow=workflow, test=requested, force_disable_tests=disabled)
+    record = RunStore(repo).latest()
+    assert record.results["test"] is (requested and not disabled)
+    config = checks.await_args.args[1]
+    assert bool(config["tester"]["tests"]) is not disabled
+    assert config["tester"]["auto_test"] is False
 
 
 def _phases(root: Path) -> list[str]:

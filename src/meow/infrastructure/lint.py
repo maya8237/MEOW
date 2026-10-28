@@ -9,6 +9,7 @@ from pathlib import Path
 
 from meow.infrastructure.checks import run_captured_async
 from meow.infrastructure.logging import get_logger
+from meow.infrastructure.python_dependencies import python_environment
 from meow.project.config_models import LintCommand, resolve_command_cwd
 
 logger = get_logger(__name__)
@@ -51,7 +52,7 @@ async def _run_subprocess(
     failing command, not a crash, so every caller reports it the same way."""
     try:
         code, output, timed_out = await run_captured_async(
-            argv, working_dir, {**os.environ, **(env or {})}, timeout
+            argv, working_dir, env if env is not None else dict(os.environ), timeout
         )
     except OSError as exc:
         return _CANNOT_START, f"Could not run lint command {argv[0]}: {exc}"
@@ -68,7 +69,8 @@ async def _run_one_lint_command(  # ruff: ignore[too-many-return-statements]
         argv = entry.argv_for_file(file_path)
     except ValueError as exc:  # missing cwd, empty or unparsable command
         return f"$ {entry.command}\n{exc}"
-    result = await _run_subprocess(cwd, argv, effective_timeout, entry.env)
+    env = python_environment(working_dir, entry.env)
+    result = await _run_subprocess(cwd, argv, effective_timeout, env)
     if result is None:
         logger.warning(
             "lint_command_timed_out",
@@ -83,7 +85,7 @@ async def _run_one_lint_command(  # ruff: ignore[too-many-return-statements]
         # The fixing command may exit successfully while leaving findings.
         # Report the check-only state of the edited file, not stale fix output.
         result = await _run_subprocess(
-            cwd, [*entry.argv(), file_path], effective_timeout, entry.env
+            cwd, [*entry.argv(), file_path], effective_timeout, env
         )
         if result is None:
             return (
@@ -124,7 +126,12 @@ async def apply_lint_fixes(
                 "lint_fix_command_skipped", command=entry.command, reason=str(exc)
             )
             continue
-        result = await _run_subprocess(cwd, argv, entry.timeout or timeout, entry.env)
+        result = await _run_subprocess(
+            cwd,
+            argv,
+            entry.timeout or timeout,
+            python_environment(working_dir, entry.env),
+        )
         if result is None:
             logger.warning(
                 "lint_fix_command_timed_out",
@@ -160,7 +167,9 @@ async def check_lint_evidence(
                 f"$ {entry.command}\n{exc}"
             )
             continue
-        result = await _run_subprocess(cwd, argv, effective_timeout, entry.env)
+        result = await _run_subprocess(
+            cwd, argv, effective_timeout, python_environment(working_dir, entry.env)
+        )
         if result is None:
             logger.warning(
                 "lint_command_timed_out",

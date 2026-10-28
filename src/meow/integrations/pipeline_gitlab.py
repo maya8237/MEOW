@@ -96,16 +96,15 @@ class GitlabPipeline:
             raise
 
 
-def _table(value: object) -> dict:
-    return value if isinstance(value, dict) else {}
-
-
 def connect_gitlab(
     parsed: tuple[str, str], config: dict, env: Mapping[str, str]
 ) -> GitlabPipeline:
     host, project = parsed
-    mcp_env = _table(_table(_table(config.get("gitlab")).get("mcp")).get("env"))
-    token = env.get("MEOW_GITLAB_TOKEN") or mcp_env.get("GITLAB_TOKEN") or ""
+    from meow.project.mcp_registry import provider_environment
+
+    token = env.get("MEOW_GITLAB_TOKEN")
+    mcp_env = provider_environment(config, "gitlab", resolve_reference=not bool(token))
+    token = token or mcp_env.get("GITLAB_TOKEN") or ""
     if not token:
         raise PipelineUnavailable("MEOW_GITLAB_TOKEN is not set")
     base = str(mcp_env.get("GITLAB_URL") or f"https://{host}").rstrip("/")

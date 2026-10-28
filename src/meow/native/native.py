@@ -279,7 +279,25 @@ def _not_configured() -> dict:
     }
 
 
+def _resolved_provider(config: dict, provider: str) -> dict:
+    """Resolve a requested reference without exposing its launch data."""
+    from meow.project.mcp_registry import provider_mcp_config
+
+    section = config.get(provider)
+    if not isinstance(section, dict):
+        return config
+    mcp = section.get("mcp")
+    if not isinstance(mcp, dict) or "from" not in mcp:
+        return config
+    try:
+        resolved = provider_mcp_config(config, provider)
+    except ValueError:
+        resolved = {}
+    return {**config, provider: {**section, "mcp": resolved, "_reference": True}}
+
+
 def _verify_jira(user_config: dict) -> dict:
+    user_config = _resolved_provider(user_config, "jira")
     jira = user_config.get("jira")
     if not isinstance(jira, dict):
         return {
@@ -292,13 +310,13 @@ def _verify_jira(user_config: dict) -> dict:
     mcp = _verify_mcp(
         "jira",
         mcp_config,
-        required_env=("JIRA_URL",),
+        required_env=() if jira.get("_reference") else ("JIRA_URL",),
         config_env=mcp_env,
     )
     project_key_configured = bool(jira.get("project_key"))
     mcp["project_key_configured"] = project_key_configured
-    if mcp["status"] == "ready_unchecked" and not project_key_configured:
-        mcp["status"] = "missing_project_key"
+    if jira.get("_reference"):
+        mcp.pop("command", None)
     return {
         "configured": bool(jira.get("mcp")),
         "status": mcp["status"],
@@ -309,6 +327,7 @@ def _verify_jira(user_config: dict) -> dict:
 
 
 def _verify_gitlab(user_config: dict) -> dict:
+    user_config = _resolved_provider(user_config, "gitlab")
     gitlab = user_config.get("gitlab")
     if not isinstance(gitlab, dict):
         return {
@@ -321,9 +340,11 @@ def _verify_gitlab(user_config: dict) -> dict:
     check = _verify_mcp(
         "gitlab",
         mcp,
-        required_env=("GITLAB_URL", "GITLAB_TOKEN"),
+        required_env=() if gitlab.get("_reference") else ("GITLAB_URL", "GITLAB_TOKEN"),
         config_env=mcp_env,
     )
+    if gitlab.get("_reference"):
+        check.pop("command", None)
     return {
         "configured": bool(mcp),
         "status": check["status"],
@@ -332,6 +353,7 @@ def _verify_gitlab(user_config: dict) -> dict:
 
 
 def _verify_github(user_config: dict) -> dict:
+    user_config = _resolved_provider(user_config, "github")
     github = user_config.get("github")
     if not isinstance(github, dict):
         return {
@@ -344,9 +366,13 @@ def _verify_github(user_config: dict) -> dict:
     check = _verify_mcp(
         "github",
         mcp,
-        required_env=("GITHUB_PERSONAL_ACCESS_TOKEN",),
+        required_env=()
+        if github.get("_reference")
+        else ("GITHUB_PERSONAL_ACCESS_TOKEN",),
         config_env=mcp_env,
     )
+    if github.get("_reference"):
+        check.pop("command", None)
     return {
         "configured": bool(mcp),
         "status": check["status"],

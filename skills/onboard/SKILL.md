@@ -3,13 +3,17 @@ name: onboard
 description: Use when setting up MEOW in a repository, refreshing an already onboarded repo after an upgrade, or adding or changing its settings, skills, integrations, and optional features.
 ---
 
-# Onboard a repository
+# Inspect and customize automatic setup
 
-Use for new or current projects; follow repository instructions. For explicit
-flag-based setup, run `meow onboard --non-interactive --work-dir PATH` with the
-supplied options (`meow onboard --help`; [flags](../../docs/ONBOARDING.md)).
-This configures only requested options locally, never prompts or starts agents,
-and reports skipped features; do not continue into interactive steps afterward.
+Normal tasks perform local setup automatically; this skill is optional.
+Installation only installs/registers MEOW. First use detects established checks
+and compatible Claude MCP registrations without agents, connections, or installs.
+Dependencies are installed later during task worktree preparation. Show detected
+sources and explicit overrides; ask only for changes or unresolved required choices.
+
+For explicit flag-based setup, run `meow onboard --non-interactive --work-dir PATH`
+with supplied options ([flags](../../docs/ONBOARDING.md)).
+It never prompts or starts agents; do not continue into interactive steps afterward.
 Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## 0. Check the onboarding state first
@@ -36,8 +40,6 @@ or requested changes in step 3, then verify in step 4. A fully current setup wit
 no accepted changes needs no file edits; read-only verification still runs.
 Installer project setup uses the same checklist
 and refreshes remembered repos without replacing their configs.
-
-## Operating mode and safety
 
 Use interactive mode unless the request clearly asks for automatic or headless
 setup. In interactive mode, show the exact files and commands you intend to
@@ -124,7 +126,8 @@ lower-layer or built-in skills. Follow the
 [configuration rules](../../docs/INTEGRATIONS.md#monorepo-lint-and-tester) for
 portable environment references. Do not assume another user has a local skill.
 
-Offer optional features as concise yes/no choices. Applicable choices include
+Do not present a questionnaire for already detected defaults. Offer requested
+optional features as concise choices. Applicable choices include
 Jira, GitLab, GitHub, Automatic scheduled Jira runs, worktree setup, additional design
 docs, testing infrastructure, Tester mode, and another feature
 the user explicitly named. Scheduled runs use Windows Task Scheduler on
@@ -139,22 +142,22 @@ approval.
 Offer `[tester] write_tests` (default false) only if the user wants the tester
 to add new tests to the repository.
 
+For Jira, GitLab, and GitHub, prefer `[provider.mcp] from = "registered-name"`.
+Reuse Claude's registrations; never ask users to duplicate existing tokens.
+One clear provider match is automatic; multiple matches need a selection.
+References support stdio servers; hosted OAuth connectors need a supported
+registration for CLI use. Jira project_key is optional for explicit issue keys.
+
 For every accepted feature that needs an MCP (Jira, GitLab, GitHub, Tester
 mode), check first whether the session has its tools and whether the CLI
 launcher (for example `uvx`) exists. If not, warn the user that the MCP is not
 installed and must be installed before the feature works, in this order:
 
-1. The user installs it with `/plugin` (marketplace plugins), then comes back.
-2. They give Claude the access tokens. Write them only to ignored
-   `.meow/config.local.toml` or the MCP's own env, never the shared config, and
-   never echo them.
-3. For a fresh install, also register the MCP for Claude's own use, not just
-   MEOW: run `claude mcp add` at local or user scope, never project scope or
-   `.mcp.json`, which are committed. Stdio: `claude mcp add NAME -e KEY=val --
-   COMMAND ARGS` (the `--` is required). HTTP: `--transport http NAME URL
-   --header "Authorization: Bearer ..."`. Show the command first.
-4. The user runs `/mcp` to confirm the server connects. It cannot connect
-   before the tokens are set; `claude mcp list` is Claude's equivalent check.
+1. Install the missing MCP through `/plugin` or its documented installer.
+2. Register it for Claude at local or user scope with `claude mcp add`;
+   show the command first. Keep tokens in its private environment, never shared
+   config or output. See [MCP references](../../docs/MCP.md).
+3. Confirm connection with `/mcp` or `claude mcp list`, then save a `from` reference.
 
 If `/plugin`, `/mcp` or `claude mcp` is unavailable or fails, do not retry or
 stall: show the error, give the user the exact command or UI step to run
@@ -162,7 +165,6 @@ themselves, mark that feature unverified, and continue the other setup. Hand a
 command to the user in interactive mode; in automatic mode skip it and list it
 in the summary.
 
-You can also configure the CLI launcher, which does not need a session MCP.
 Leave the feature unverified and unscheduled until a real tool call succeeds.
 
 When an optional feature is accepted, use the matching documented path:
@@ -170,11 +172,8 @@ When an optional feature is accepted, use the matching documented path:
 - Jira: configure the project key/server and approved MCP environment values,
   run `meow native verify --work-dir <project-root>`, then use
   `meow run --jira ISSUE-KEY`. Do not create a schedule until Jira works.
-- GitLab: configure the approved connection, verify checkout and artifact
-  behavior, then use `meow review --gitlab <merge-request-url>`. A headless CI
-  job can include `templates/gitlab-ci-review.yml` and run the CLI-only
-  `meow review --ci`; it requires a masked `ANTHROPIC_API_KEY`, which must
-  never be echoed.
+- GitLab: reference its registered MCP, verify it, then use
+  `meow review --gitlab <merge-request-url>`; CI setup is a separate add-on.
 - GitHub: configure the approved connection, verify checkout and artifact
   behavior, then use `meow review --github <pull-request-url>`.
 - Worktrees: show every proposed copy path and literal command argument list,

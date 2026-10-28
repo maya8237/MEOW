@@ -518,6 +518,9 @@ class Agent:
         # Long builds and test suites must not be killed by the CLI's default
         # two-minute Bash timeout; explicit user/env settings still win.
         env = dict(extra_options.pop("env", None) or {})
+        from meow.infrastructure.python_dependencies import python_environment
+
+        env = python_environment(self.context.active_working_dir(), env, inherit=False)
         for name, value in _BASH_TIMEOUT_ENV.items():
             env.setdefault(name, os.environ.get(name, value))
         options = ClaudeAgentOptions(

@@ -11,9 +11,9 @@ class LoadJiraConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"No \[jira\] table"):
             issue_solver._load_jira_config({})
 
-    def test_raises_when_project_key_is_missing(self):
-        with self.assertRaisesRegex(ValueError, "project_key"):
-            issue_solver._load_jira_config({"jira": {"mcp": {"command": "uvx"}}})
+    def test_project_key_is_optional(self):
+        result = issue_solver._load_jira_config({"jira": {"mcp": {"command": "uvx"}}})
+        self.assertIsNone(result["project_key"])
 
     def test_raises_when_mcp_table_or_command_is_missing(self):
         with self.assertRaisesRegex(ValueError, r"\[jira\.mcp\]"):

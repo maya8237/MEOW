@@ -14,6 +14,7 @@ from meow.execution.plan_approval import _prompt_plan_approval
 from meow.execution.sprint_runner import run_plan, run_sprint
 from meow.infrastructure.lint_fix import run_lint_fix
 from meow.integrations.issue_solver import IssueUnresolvedError, run_issue_solver
+from meow.project.onboarding import bind_provider_references
 
 
 def _dispatch_lint_fix(args, working_dir: Path) -> None:
@@ -23,6 +24,7 @@ def _dispatch_lint_fix(args, working_dir: Path) -> None:
 
 
 def _dispatch_jira_build(args, working_dir: Path) -> None:
+    bind_provider_references(working_dir)
     approve_plan = _prompt_plan_approval if args.manually_approve_plan else None
     try:
         result = asyncio.run(
