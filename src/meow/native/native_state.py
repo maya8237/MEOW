@@ -15,8 +15,10 @@ from meow.execution.run_failures import park_on_check_timeout
 from meow.execution.run_state import (
     PARKED_PHASE,
     TERMINAL_PHASES,
+    RunRecord,
     RunStateError,
     RunStore,
+    driver_alive,
 )
 from meow.infrastructure.checks import (
     adopt_stage_artifacts,
@@ -87,6 +89,19 @@ def _review_errors(
     return errors
 
 
+def _refuse_live_driver(record: RunRecord) -> None:
+    """A CLI process (`meow resume`) took this run over: the native session
+    must stop driving it, not race it on the same worktree."""
+    from meow.execution.orchestration.store import DriverBusyError
+
+    if driver_alive(record) is True:
+        raise DriverBusyError(
+            f"run {record.id} is driven by a live CLI process "
+            f"(pid {record.driver.get('pid')}); stop editing its worktree and "
+            f"watch it with `meow status {record.id} --json`"
+        )
+
+
 def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-statements, too-many-branches]
     repo: Path,
     active_dir: Path,
@@ -145,6 +160,7 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
         run_id = record.id
     else:
         record = store.load(run_id)
+        _refuse_live_driver(record)
     if plan_file is not None:
         plan_file = plan_file.resolve()
         patch["plan_file"] = str(plan_file)
@@ -227,6 +243,7 @@ async def finalize(  # ruff: ignore[too-many-statements, complex-structure, too-
     with suppress(RunStateError, OSError):
         store.heartbeat(run_id)  # the handler's own write, not a racing one
     record = store.load(run_id)
+    _refuse_live_driver(record)
     from meow.cli.resume_cli import _validate
 
     problem = _validate(record, repo)

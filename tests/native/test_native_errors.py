@@ -297,3 +297,22 @@ def test_store_park_refuses_terminal_runs(tmp_path):
     store.transition(run_id, "failed")
     with pytest.raises(RunStateError, match="failed"):
         store.park(run_id, "late", "transient", "error")
+
+
+@pytest.mark.parametrize("command", ["checkpoint", "finalize"])
+def test_native_helpers_refuse_a_run_a_cli_resume_drives(tmp_path, command):
+    repo = _repo(tmp_path, "[run]\nstale_after = 100\n")
+    store, run_id = _native_run(repo, intent="run", age=500)
+    assert reconcile_stale_runs(store) == [run_id]  # the session looked lost
+    store.claim_resume(run_id, phase="parked")  # `meow resume` took it over
+
+    target = (
+        ["reviewer_started", "--run-id", run_id]
+        if command == "checkpoint"
+        else [run_id]
+    )
+    code, _out, err = run_native(command, *target, "--work-dir", str(repo))
+
+    assert code == EXIT_TEMPFAIL
+    assert json.loads(err.strip().splitlines()[-1])["cause"] == "driver_busy"
+    assert store.load(run_id).phase == "resuming"

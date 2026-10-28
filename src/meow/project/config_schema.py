@@ -561,7 +561,7 @@ RUN_DEFAULTS = {
     "api_max_wait": 10800,
     "worker_startup_grace": 180,
     "supervise": False,
-    "stale_after": 21600,
+    "stale_after": 7200,
 }
 
 

@@ -90,7 +90,9 @@ reset, 5xx, stale lock) parks the run; auth, rejected or hook-declined pushes
 and unrecognised git errors end `delivery_failed`.
 `native checkpoint parked --failure TEXT` records a crash the session saw;
 `--intent run|plan` marks plan-only runs, which are never parked or resumed.
-Every helper with a run ID refreshes its heartbeat.
+Every helper with a run ID refreshes its heartbeat. A `--intent run` silent past
+`[run] stale_after` (2 h) is parked as a lost session; once `meow resume` drives it,
+native helpers for that run refuse with `driver_busy`, so the session stops editing.
 
 A managing session starts runs with `--background` and polls `meow status ID --json`
 (cron `*/7 * * * *`), acting only when `settled` is true: with `retryable: true`
