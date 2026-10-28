@@ -263,7 +263,7 @@ def test_jql_over_cap_fails_with_narrowing_message(tmp_path):
 def test_jira_intake_requires_jira_configuration(tmp_path):
     request = IntakeRequest("jira", jira_keys=("PROJ-1",))
 
-    with pytest.raises(ValueError, match=r"No \[jira\] table"):
+    with pytest.raises(ValueError, match=r"No jira MCP server"):
         asyncio.run(
             fetch_jira_tasks(tmp_path, {}, request, with_fetcher(StubFetcher([])))
         )

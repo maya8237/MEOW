@@ -191,8 +191,7 @@ concurrent jobs can still race, so serialize comment-posting jobs per PR/MR.
    - it stores `.meow/ci-artifacts/` even when the review fails;
    - API URL/credentials are CI variables/secrets, with no literal YAML defaults;
    - every model accepts an environment override before any approved fallback;
-   - naming, placement, needs, execution mode, and policies match the choices; and
-   - no application files or generated review fixes were changed.
+   - naming, placement, needs, execution mode, and policies match the choices.
 4. Tell the user which CI file changed, the selected stage/order and job policies,
    imported model defaults, and the posting choice. Explain that review reports
    PASS/FAIL without fixing the change set. End with the environment guide's copy

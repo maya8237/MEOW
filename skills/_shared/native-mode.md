@@ -41,10 +41,13 @@ these directories consistent across calls.
 `prepare` applies setup before returning. Failed setup retains the worktree for
 retry; successful setup is not repeated on reuse. Missing Node dependencies are
 installed on new/reused worktrees and in-place runs under the `setup` permission
-role. Do not dispatch after preparation fails. Report `onboarding.files`;
+role. Isolated Python worktrees also prepare their own environment. Installation
+and local detection never install project dependencies. Do not dispatch after
+preparation fails. Report `onboarding.files` and detected origins;
 existing config is preserved and onboarding edits stay in the original checkout.
-Implementation belongs in `active_dir`. Do not invent lint commands;
-`/meow:onboard` handles add-ons.
+Implementation belongs in `active_dir`. Missing established checks and compatible
+Claude MCP references are detected automatically; explicit settings take priority.
+Use `/meow:onboard` only for inspection, overrides, and optional add-ons.
 
 ## Dependency installs
 

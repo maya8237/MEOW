@@ -143,8 +143,8 @@ def test_onboard_project_writes_boundary_then_config(repo):
         ".meow/config.local.toml",
     }
     text = (repo / ".meow" / "config.toml").read_text(encoding="utf-8")
-    assert 'command = "python -m ruff check"' in text
-    assert 'fix_flag = "--fix"' in text
+    assert "[[lint]]" not in text  # Inference refreshes at load time, not in TOML.
+    assert report.to_dict()["detected"]["lint"] == "pyproject.toml:tool.ruff"
     assert load_config(repo)["lint"]
     assert not _ignored(repo, ".meow/config.toml")
     assert _ignored(repo, ".meow/config.local.toml")

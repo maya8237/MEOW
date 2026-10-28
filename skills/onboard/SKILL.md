@@ -3,13 +3,17 @@ name: onboard
 description: Use when setting up MEOW in a repository, refreshing an already onboarded repo after an upgrade, or adding or changing its settings, skills, integrations, and optional features.
 ---
 
-# Onboard a repository
+# Inspect and customize automatic setup
 
-Use for new or current projects; follow repository instructions. For explicit
-flag-based setup, run `meow onboard --non-interactive --work-dir PATH` with the
-supplied options (`meow onboard --help`; [flags](../../docs/ONBOARDING.md)).
-This configures only requested options locally, never prompts or starts agents,
-and reports skipped features; do not continue into interactive steps afterward.
+Normal tasks perform local setup automatically; this skill is optional.
+Installation only installs/registers MEOW. First use detects established checks
+and compatible Claude MCP registrations without agents, connections, or installs.
+Dependencies are installed later during task worktree preparation. Show detected
+sources and explicit overrides; ask only for changes or unresolved required choices.
+
+For explicit flag-based setup, run `meow onboard --non-interactive --work-dir PATH`
+with supplied options ([flags](../../docs/ONBOARDING.md)).
+It never prompts or starts agents; do not continue into interactive steps afterward.
 Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## 0. Check the onboarding state first
@@ -36,8 +40,6 @@ or requested changes in step 3, then verify in step 4. A fully current setup wit
 no accepted changes needs no file edits; read-only verification still runs.
 Installer project setup uses the same checklist
 and refreshes remembered repos without replacing their configs.
-
-## Operating mode and safety
 
 Use interactive mode unless the request clearly asks for automatic or headless
 setup. In interactive mode, show the exact files and commands you intend to
@@ -124,7 +126,8 @@ lower-layer or built-in skills. Follow the
 [configuration rules](../../docs/INTEGRATIONS.md#monorepo-lint-and-tester) for
 portable environment references. Do not assume another user has a local skill.
 
-Offer optional features as concise yes/no choices. Applicable choices include
+Do not present a questionnaire for already detected defaults. Offer requested
+optional features as concise choices. Applicable choices include
 Jira, GitLab, GitHub, Automatic scheduled Jira runs, worktree setup, additional design
 docs, testing infrastructure, Tester mode, and another feature
 the user explicitly named. Scheduled runs use Windows Task Scheduler on
@@ -139,30 +142,25 @@ approval.
 Offer `[tester] write_tests` (default false) only if the user wants the tester
 to add new tests to the repository.
 
-For every accepted feature that needs an MCP (Jira, GitLab, GitHub, Tester
-mode), check first whether the session has its tools and whether the CLI
-launcher (for example `uvx`) exists. If not, warn the user that the MCP is not
-installed and must be installed before the feature works, in this order:
+Register Jira and GitLab MCPs once per user, not per project:
+`meow onboard --mcp jira,gitlab`. It uses the servers' own variables (Jira
+`JIRA_URL` with `JIRA_USERNAME`/`JIRA_API_TOKEN` or `JIRA_PERSONAL_TOKEN`; GitLab
+`GITLAB_PERSONAL_ACCESS_TOKEN` and `GITLAB_API_URL`), skips providers already
+registered, never installs `uvx` or `npx`, and never prints tokens. Interactive: show the
+command, then let the user export the variables or type them at the hidden
+prompt. Automatic: run it only for providers the user named with the variables
+already set; otherwise list "no MCP: run `meow onboard --mcp NAME`". Projects
+then need no `[provider.mcp]`; with several matches set `from` in local config.
+GitHub has no setup yet: use a server the user registered. Hosted OAuth
+connectors are not usable by the CLI. See [MCP](../../docs/MCP.md).
 
-1. The user installs it with `/plugin` (marketplace plugins), then comes back.
-2. They give Claude the access tokens. Write them only to ignored
-   `.meow/config.local.toml` or the MCP's own env, never the shared config, and
-   never echo them.
-3. For a fresh install, also register the MCP for Claude's own use, not just
-   MEOW: run `claude mcp add` at local or user scope, never project scope or
-   `.mcp.json`, which are committed. Stdio: `claude mcp add NAME -e KEY=val --
-   COMMAND ARGS` (the `--` is required). HTTP: `--transport http NAME URL
-   --header "Authorization: Bearer ..."`. Show the command first.
-4. The user runs `/mcp` to confirm the server connects. It cannot connect
-   before the tokens are set; `claude mcp list` is Claude's equivalent check.
+For Tester MCPs, check whether the session has the tools and the launcher exists.
+If not, warn that the MCP is missing, give the exact install step, mark the
+feature unverified, and continue other setup. If `/mcp` or `claude mcp` is
+unavailable or fails, do not retry or stall: show the error and hand the user
+the command in interactive mode; in automatic mode skip it and list it in the
+summary.
 
-If `/plugin`, `/mcp` or `claude mcp` is unavailable or fails, do not retry or
-stall: show the error, give the user the exact command or UI step to run
-themselves, mark that feature unverified, and continue the other setup. Hand a
-command to the user in interactive mode; in automatic mode skip it and list it
-in the summary.
-
-You can also configure the CLI launcher, which does not need a session MCP.
 Leave the feature unverified and unscheduled until a real tool call succeeds.
 
 When an optional feature is accepted, use the matching documented path:
@@ -170,11 +168,8 @@ When an optional feature is accepted, use the matching documented path:
 - Jira: configure the project key/server and approved MCP environment values,
   run `meow native verify --work-dir <project-root>`, then use
   `meow run --jira ISSUE-KEY`. Do not create a schedule until Jira works.
-- GitLab: configure the approved connection, verify checkout and artifact
-  behavior, then use `meow review --gitlab <merge-request-url>`. A headless CI
-  job can include `templates/gitlab-ci-review.yml` and run the CLI-only
-  `meow review --ci`; it requires a masked `ANTHROPIC_API_KEY`, which must
-  never be echoed.
+- GitLab: register its MCP as above, verify it, then use
+  `meow review --gitlab <merge-request-url>`; CI setup is a separate add-on.
 - GitHub: configure the approved connection, verify checkout and artifact
   behavior, then use `meow review --github <pull-request-url>`.
 - Worktrees: show every proposed copy path and literal command argument list,

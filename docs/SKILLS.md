@@ -68,9 +68,9 @@ Example: `/meow:lint`. [Reference](../skills/lint/SKILL.md)
 
 ## /meow:onboard
 
-Run once per project to configure its settings, skills, integrations, and optional
-features. Later tasks reuse that setup. Rerun after upgrading to review available
-features or add/change setup; existing settings are preserved.
+Optional: inspect or change detected settings, skills, integrations, and optional
+features. Normal tasks perform local setup automatically; no onboarding command
+is required. Existing explicit settings are preserved.
 Example: `/meow:onboard`. [Reference](../skills/onboard/SKILL.md)
 
 ## /meow:customize

@@ -6,13 +6,21 @@ a minimal `.meow/config.toml`. Optional integrations are never configured here;
 the `/onboard` skill offers those. Only the filesystem and `git` are touched.
 """
 
+import hashlib
 import json
 import subprocess
+import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+import tomlkit
+
 from meow.infrastructure.worktree import default_target_branch
+from meow.project.command_detection import (
+    detect_commands,
+    setup_defaults,
+)
 from meow.project.config import _merge_config, config_paths
 from meow.project.repos import remember
 
@@ -63,6 +71,8 @@ class OnboardingReport:
     lint: str | None
     skipped: tuple[str, ...]
     error: str | None = None
+    detected: tuple[tuple[str, str], ...] = ()
+    ambiguous: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -70,6 +80,8 @@ class OnboardingReport:
             "lint": self.lint,
             "skipped": list(self.skipped),
             "error": self.error,
+            "detected": dict(self.detected),
+            "ambiguous": list(self.ambiguous),
         }
 
 
@@ -136,36 +148,17 @@ def repair_boundary(root: Path) -> bool:
     return True
 
 
-def _has_ruff(root: Path) -> bool:
-    if (root / "ruff.toml").is_file() or (root / ".ruff.toml").is_file():
-        return True
-    pyproject = root / "pyproject.toml"
-    return pyproject.is_file() and "[tool.ruff" in pyproject.read_text(
-        encoding="utf-8", errors="replace"
-    )
-
-
-def _has_eslint(root: Path) -> bool:
-    if any(root.glob("eslint.config.*")) or any(root.glob(".eslintrc*")):
-        return True
-    try:
-        package = json.loads((root / "package.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    if not isinstance(package, dict):
-        return False
-    groups = (package.get("dependencies"), package.get("devDependencies"))
-    return any(isinstance(group, dict) and "eslint" in group for group in groups)
-
-
 def detect_lint(root: Path) -> tuple[str, str] | None:
     """Return the project's established lint (command, fix flag), if any."""
-    root = Path(root)
-    if _has_ruff(root):
-        return ("python -m ruff check", "--fix")
-    if _has_eslint(root):
-        return ("npx eslint", "--fix")
-    return None
+    entries = detect_commands(Path(root)).defaults.get("lint", [])
+    if not entries:
+        return None
+    return _lint_label(entries[0]), entries[0].get("fix_flag", "")
+
+
+def _lint_label(entry: dict) -> str:
+    command = " ".join([entry["command"], *entry.get("args", [])])
+    return command.replace("npx --no-install eslint", "npx eslint")
 
 
 def is_onboarded(root: Path) -> bool:
@@ -195,14 +188,6 @@ def _config_text(
             "",
             "# Directory for MEOW-generated plans, reviews, and evidence.",
             'docs_dir = ".meow/plans"',
-        ]
-    if lint and "lint" not in existing:
-        lines += [
-            "",
-            "# Detected lint command; MEOW uses this for per-file and gate checks.",
-            "[[lint]]",
-            f'command = "{lint[0]}"',
-            f'fix_flag = "{lint[1]}"',
         ]
     if target is not None:
         lines += [
@@ -295,15 +280,172 @@ def _apply(
 def onboard_project(root: Path, *, write_config: bool = True) -> OnboardingReport:
     """Refresh the boundary and missing configs; preserve existing config files."""
     root = Path(root)
-    lint = detect_lint(root)
+    explicit: dict = {}
+    for table in reversed(_config_tables(root)):
+        explicit = _merge_config(explicit, table)
+    detected = setup_defaults(root, explicit)
+    lint_entries = detected.defaults.get("lint", [])
+    lint = _lint_label(lint_entries[0]) if lint_entries else None
     files: list[str] = []
     try:
-        error = _apply(root, lint, files, write_config=write_config)
+        error = _apply(root, None, files, write_config=write_config)
+        if error is None:
+            _bind_providers(root, detected.defaults, files)
     except (OSError, ValueError) as exc:
         error = str(exc)
     return OnboardingReport(
-        tuple(files), lint[0] if lint else None, SKIPPED_FEATURES, error
+        tuple(files),
+        lint,
+        SKIPPED_FEATURES,
+        error,
+        tuple(detected.origins.items()),
+        detected.ambiguous,
     )
+
+
+def _bind_providers(root: Path, defaults: dict, files: list[str]) -> None:
+    """Persist only missing references once; preserve TOML comments and settings."""
+    references = {
+        key: value
+        for key, value in defaults.items()
+        if key in {"jira", "gitlab", "github"}
+    }
+    if not references:
+        return
+    path = root / LOCAL_CONFIG_RELPATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document = tomlkit.parse(
+        path.read_text(encoding="utf-8") if path.is_file() else _local_config_text()
+    )
+    for provider, value in references.items():
+        if provider not in document:
+            document[provider] = tomlkit.table()
+        document[provider]["mcp"] = value["mcp"]
+    path.write_text(tomlkit.dumps(document), encoding="utf-8")
+    state = _receipt_state(root)
+    bindings = state.get("bindings", {})
+    bindings.update({
+        provider: _reference_hash(value["mcp"]["from"])
+        for provider, value in references.items()
+    })
+    state["bindings"] = bindings
+    (root / ".meow/setup-receipt.json").write_text(
+        json.dumps(state, sort_keys=True), encoding="utf-8"
+    )
+    if LOCAL_CONFIG_RELPATH not in files:
+        files.append(LOCAL_CONFIG_RELPATH)
+
+
+def bind_provider_references(root: Path, providers: tuple[str, ...]) -> None:
+    """Bind `providers` before their intake without creating tracked setup files.
+
+    Best effort: when binding fails, the caller's config load reports the
+    provider as not configured.
+    """
+    try:
+        _bind_requested(Path(root), providers)
+    except (OSError, ValueError):
+        return
+
+
+def _bind_requested(root: Path, providers: tuple[str, ...]) -> None:
+    explicit: dict = {}
+    for table in reversed(_config_tables(root)):
+        explicit = _merge_config(explicit, table)
+    detected = setup_defaults(root, explicit)
+    references = {
+        key: value for key, value in detected.defaults.items() if key in providers
+    }
+    if not references:
+        return
+    result = _git(root, "rev-parse", "--git-path", "info/exclude")
+    if result is None or result.returncode:
+        return
+    exclude = root / result.stdout.strip()
+    current = exclude.read_text(encoding="utf-8") if exclude.is_file() else ""
+    missing = [
+        name
+        for name in (LOCAL_CONFIG_RELPATH, ".meow/setup-receipt.json")
+        if name not in current.splitlines()
+    ]
+    if missing:
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        exclude.write_text(
+            current.rstrip("\n") + "\n" + "\n".join(missing) + "\n", encoding="utf-8"
+        )
+    _bind_providers(root, references, [])
+
+
+def _reference_hash(reference: str) -> str:
+    return hashlib.sha256(reference.encode()).hexdigest()
+
+
+def _receipt_state(root: Path) -> dict:
+    try:
+        state = json.loads(
+            (root / ".meow/setup-receipt.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError, RecursionError):
+        return {}
+    if not isinstance(state, dict):
+        return {}
+    if not isinstance(state.get("bindings"), dict):
+        state["bindings"] = {}
+    return state
+
+
+def _reference_origins(root: Path, config: dict) -> dict:
+    bindings = _receipt_state(root).get("bindings", {})
+    origins = {}
+    for provider in ("jira", "gitlab", "github"):
+        table = config.get(provider, {})
+        mcp = table.get("mcp", {}) if isinstance(table, dict) else {}
+        reference = mcp.get("from") if isinstance(mcp, dict) else None
+        if isinstance(reference, str) and bindings.get(provider) == _reference_hash(
+            reference
+        ):
+            origins[provider] = "Claude MCP registration"
+    return origins
+
+
+def _receipt(root: Path, report: OnboardingReport) -> bool:
+    explicit: dict = {}
+    for table in reversed(_config_tables(root)):
+        explicit = _merge_config(explicit, table)
+    detected = setup_defaults(root, explicit)
+    references = {
+        provider: explicit.get(provider, {}).get("mcp", {}).get("from")
+        for provider in ("jira", "gitlab", "github")
+        if isinstance(explicit.get(provider), dict)
+        and isinstance(explicit[provider].get("mcp"), dict)
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps([detected.defaults, references], sort_keys=True).encode()
+    ).hexdigest()
+    snapshot = {
+        "fingerprint": fingerprint,
+        "origins": detected.origins,
+        "ambiguous": detected.ambiguous,
+        "bindings": _receipt_state(root).get("bindings", {}),
+    }
+    encoded = json.dumps(snapshot, sort_keys=True)
+    receipt = root / ".meow/setup-receipt.json"
+    previous = receipt.read_text(encoding="utf-8") if receipt.is_file() else None
+    changed = previous != encoded and bool(
+        detected.defaults or detected.ambiguous or references or previous
+    )
+    if changed:
+        receipt.write_text(encoded, encoding="utf-8")
+        details = ", ".join(f"{key} ({origin})" for key, origin in report.detected)
+        print(f"MEOW setup: {details or 'manifest checks refreshed'}", file=sys.stderr)
+    return changed
+
+
+def _receipt_changed(root: Path, report: OnboardingReport) -> bool:
+    try:
+        return _receipt(root, report)
+    except OSError:
+        return False
 
 
 def onboard_if_needed(active_dir: Path, config_dir: Path) -> dict | None:
@@ -314,9 +456,8 @@ def onboard_if_needed(active_dir: Path, config_dir: Path) -> dict | None:
     (with `error` set on failure), or None when nothing needed doing.
     """
     active_dir, config_dir = Path(active_dir), Path(config_dir)
-    if is_onboarded(config_dir) or is_onboarded(active_dir):
-        remember(config_dir)
-        return None
+    if not is_onboarded(config_dir) and is_onboarded(active_dir):
+        config_dir = active_dir
     write_config = not (config_dir / CONFIG_RELPATH).is_file()
     try:
         report = onboard_project(config_dir, write_config=write_config)
@@ -324,6 +465,9 @@ def onboard_if_needed(active_dir: Path, config_dir: Path) -> dict | None:
         return {"files": [], "lint": None, "skipped": [], "error": str(exc)}
     if report.error is None:
         remember(config_dir)
+        changed = _receipt_changed(config_dir, report)
+        if not report.files and not changed:
+            return None
     return report.to_dict()
 
 
@@ -335,21 +479,24 @@ _GUIDE = "docs/INTEGRATIONS.md"
 _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
     "jira": (
         ("jira",),
-        f"Configure [jira] and [jira.mcp] ({_GUIDE}), run `meow native verify`, "
-        "then `meow run --jira ISSUE-KEY`.",
+        f"Run `meow onboard --mcp jira` once per user ({_GUIDE}), set [jira] "
+        "project_key, run `meow native verify`, then `meow run --jira ISSUE-KEY`.",
     ),
     "gitlab": (
         ("gitlab",),
-        f"Configure [gitlab.mcp] ({_GUIDE}), then `meow review --gitlab <url>`.",
+        f"Run `meow onboard --mcp gitlab` once per user ({_GUIDE}), "
+        "then `meow review --gitlab <url>`.",
     ),
     "github": (
         ("github",),
-        f"Configure [github.mcp] ({_GUIDE}), then `meow review --github <url>`.",
+        f"Register a GitHub MCP server for your user in Claude ({_GUIDE}), "
+        "then `meow review --github <url>`.",
     ),
     "tester_tests": (
         ("tester", "tests"),
         "Add [[tester.tests]] commands, verify with `meow native verify`, "
-        "and note that configured tests enable Tester mode on every run.",
+        "and note that explicit tests enable Tester mode unless auto_test = false; "
+        "detected tests run deterministic checks only.",
     ),
     "tester_write_tests": (
         ("tester", "write_tests"),
@@ -429,6 +576,14 @@ def _config_tables(root: Path) -> list[dict]:
     return tables
 
 
+def _user_scope_providers() -> set[str]:
+    """Providers with exactly one server registered at Claude's user scope."""
+    from meow.project.mcp_registry import _provider_matches, user_scope_servers
+
+    matches = _provider_matches(user_scope_servers())
+    return {provider for provider, names in matches.items() if len(names) == 1}
+
+
 def feature_gaps(root: Path) -> dict[str, dict]:
     """Report which optional capabilities the project has configured.
 
@@ -440,8 +595,23 @@ def feature_gaps(root: Path) -> dict[str, dict]:
     config: dict = {}
     for table in reversed(tables):
         config = _merge_config(config, table)
+    detected = setup_defaults(root, config)
+    config = _merge_config(detected.defaults, config)
+    references = _reference_origins(root, config)
+    user_scope = _user_scope_providers()
     gaps = {
-        key: {"configured": _present(config, path), "enable": enable}
+        key: {
+            "configured": _present(config, path),
+            "enable": enable,
+            "detected": ".".join(path) in detected.origins
+            or key in references
+            or key in user_scope
+            or f"{key}.mcp" in detected.origins,
+            "verified": False,
+            "ambiguous": [
+                hint for hint in detected.ambiguous if hint.startswith(f"{key}:")
+            ],
+        }
         for key, (path, enable) in _GAPS.items()
     }
     # Runtime accumulates custom sources from every layer before merging config.

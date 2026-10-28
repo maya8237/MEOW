@@ -32,24 +32,17 @@ default = []
 # project_key = "PROJ"
 # branch_prefix = "issue/"
 # [jira.mcp]
-# command = "uvx"
-# args = ["mcp-atlassian"]
+# from = "atlassian"  # reuse Claude's registered stdio server, including its env
 
 # Shared GitLab MCP launcher settings. Put tokens in the environment or local
 # config. The URL can be shared; credentials should not be.
 # [gitlab.mcp]
-# command = "npx"
-# args = ["your-gitlab-mcp-package"]
-# [gitlab.mcp.env]
-# GITLAB_URL = "https://gitlab.example.com"
+# from = "gitlab"
 
 # Shared GitHub MCP launcher settings. Put tokens in the environment or local
 # config. The pull-request URL is supplied to `meow review --github`.
 # [github.mcp]
-# command = "npx"
-# args = ["your-github-mcp-package"]
-# [github.mcp.env]
-# GITHUB_PERSONAL_ACCESS_TOKEN = "<token>"
+# from = "github"
 
 # Add one or more project lint commands as needed.
 # [[lint]]
@@ -66,6 +59,7 @@ default = []
 # Optional tester commands and a local development server.
 # [tester]
 # test_dirs = ["tests"]
+# auto_test = false  # run configured checks without an additional AI tester
 # write_tests = false  # true lets the tester add new tests for the change
 # [[tester.tests]]
 # command = "python -m pytest -q"

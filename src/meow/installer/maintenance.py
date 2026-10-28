@@ -75,7 +75,6 @@ def update() -> int:
     release = install_release(latest, digest)
     print(f"MEOW updated successfully to {latest}.")
     announce_onboarding(current, latest, release)
-    offer_bun_store(release)
     return 0
 
 

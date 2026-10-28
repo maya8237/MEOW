@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 
 from meow.infrastructure.worktree import default_target_branch
+from meow.project.command_detection import command_defaults
 from meow.project.command_policy import _os_mismatch, _validate_os_compatibility
 from meow.project.config_env import _expand_config_environment
 from meow.project.config_files import (
@@ -64,6 +65,17 @@ DEFAULT_CONFIG = {
 }
 
 
+def _replace_mcp(key: str, previous: object, value: dict) -> bool:
+    """References, inline launchers, and explicit empty tables replace definitions."""
+    if key != "mcp":
+        return False
+    return (
+        not value
+        or "from" in value
+        or ("command" in value and isinstance(previous, dict) and "from" in previous)
+    )
+
+
 def _merge_config(base: dict, override: dict) -> dict:
     """Merge config layers, appending skill lists across every layer."""
     merged = dict(base)
@@ -82,7 +94,11 @@ def _merge_config(base: dict, override: dict) -> dict:
                     skills[role] = additions
             merged[key] = skills
             continue
-        if isinstance(merged.get(key), dict) and isinstance(value, dict):
+        if (
+            isinstance(merged.get(key), dict)
+            and isinstance(value, dict)
+            and not _replace_mcp(key, merged[key], value)
+        ):
             merged[key] = _merge_config(merged[key], value)
         else:
             merged[key] = value
@@ -165,10 +181,17 @@ def load_config(working_dir: Path) -> dict:
         custom_sources.extend(_layer_custom_sources(layer, config_path, working_dir))
         user_config = _merge_config(user_config, layer)
 
+    detected = command_defaults(Path(working_dir), user_config)
+    user_config = _merge_config(detected.defaults, user_config)
     config = {**DEFAULT_CONFIG, **user_config}
+    config["_project_root"] = str(Path(working_dir).resolve())
     config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}
     lint_configured = "lint" in user_config
-    config["lint"] = _normalize_lint_commands(user_config) if lint_configured else []
+    config["lint"] = (
+        _normalize_lint_commands(user_config)
+        if lint_configured and user_config["lint"] != []
+        else []
+    )
     _validate_os_compatibility(config["lint"])
     config["tester"] = _normalize_tester_config(user_config)
     config["build"] = normalize_build(user_config.get("build", []))

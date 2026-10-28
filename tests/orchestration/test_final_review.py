@@ -1,6 +1,7 @@
 """The whole-objective review loop on the integration branch."""
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -177,13 +178,17 @@ def test_failing_checks_force_fail_even_when_reviewer_passes(tmp_path, monkeypat
     [(True, True, 1), (True, False, 0), (False, True, 0)],
     ids=["option-and-config", "no-tester-config", "no-test-option"],
 )
-def test_tester_runs_only_with_test_option_and_config(tmp_path, monkeypatch, scenario):
+@pytest.mark.parametrize("auto_test", [True, False])
+def test_tester_runs_only_with_test_option_and_config(
+    tmp_path, monkeypatch, scenario, auto_test
+):
     option, configured, expected_calls = scenario
     case = setup(tmp_path, ["PASS"], test=option)
     case.config["tester"] = {
         "tests": [VerificationCommand(Path("."), "pytest", gate=False)]
         if configured
-        else []
+        else [],
+        "auto_test": auto_test,
     }
     no_checks_and_fake_stage(monkeypatch)
 
@@ -207,3 +212,19 @@ def test_tester_failure_is_a_failure(tmp_path, monkeypatch):
     assert result == "FAIL"
     assert case.store.load(case.oid).blocker["cause"] == "objective-review"
     assert case.script.fixes == []
+
+
+def test_explicit_objective_tester_runs_with_detected_tests(tmp_path, monkeypatch):
+    from meow.project.config import load_config
+
+    case = setup(tmp_path, ["PASS"], test=True)
+    (case.repo / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    case.config["tester"] = load_config(case.repo)["tester"]
+    assert case.config["tester"]["auto_test"] is False
+    # This selection test fakes deterministic execution without gate evidence.
+    case.config["tester"]["tests"] = [
+        replace(command, gate=False) for command in case.config["tester"]["tests"]
+    ]
+    no_checks_and_fake_stage(monkeypatch)
+    assert review(case) == "PASS"
+    assert len(case.script.tests) == 1

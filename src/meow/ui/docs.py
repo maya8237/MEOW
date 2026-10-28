@@ -20,6 +20,7 @@ GUIDES = (
     "docs/CUSTOM.md",
     "docs/HOOKS.md",
     "docs/INTEGRATIONS.md",
+    "docs/MCP.md",
     "docs/CLEANUP.md",
     "docs/WORKTREE_SETUP.md",
     "docs/UI.md",

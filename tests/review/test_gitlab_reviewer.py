@@ -5,7 +5,7 @@ from meow.integrations import gitlab_reviewer
 
 class LoadGitlabConfigTests(unittest.TestCase):
     def test_raises_when_gitlab_table_is_missing(self):
-        with self.assertRaisesRegex(ValueError, r"No \[gitlab\] table"):
+        with self.assertRaisesRegex(ValueError, r"No gitlab MCP server"):
             gitlab_reviewer._load_gitlab_config({})
 
     def test_raises_when_mcp_table_or_command_is_missing(self):

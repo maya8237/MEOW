@@ -1,6 +1,6 @@
 # Configuration and integrations
 
-Base configuration is automatic. Configure optional features with `/meow:onboard`
+Base configuration and recognized project checks are automatic. Override them with `/meow:onboard`
 or [flag-based onboarding](ONBOARDING.md). See
 [the template](../templates/meow-config.toml.example) for fields, [custom sources](CUSTOM.md)
 for discovery, and [worktree setup](WORKTREE_SETUP.md) for dependency installation.
@@ -10,7 +10,7 @@ for discovery, and [worktree setup](WORKTREE_SETUP.md) for dependency installati
 Priority: ignored `.meow/config.local.toml` > shared `.meow/config.toml` >
 `~/.meow/config.toml` > defaults. Worktrees normally read the launch project's
 config, including local values. Onboarding creates missing shared config there;
-its edits stay outside feature/task branches. Without lint entries, none run.
+its edits stay outside feature/task branches. Explicit empty check lists disable detection.
 
 String values recursively expand `$NAME`, `${NAME}`, or `%NAME%` without shell
 evaluation; unknown variables remain visible. Keep credentials/machine settings
@@ -25,6 +25,8 @@ Timeout is per-entry or `lint_timeout` (default 60 seconds). [Verification](VERI
 `meow review --plan PATH --test` is report-only unless `--fix` is added;
 other review sources and review-file reject tester mode.
 Without configured commands the tester may inspect/run documented tests.
+Detected test commands do not enable the AI tester; `[tester] auto_test = false`
+also disables automatic AI testing for explicit commands. `--test` overrides it.
 `[tester] write_tests = true` (default false) lets the tester add new test
 files for the change; it still may not edit or delete existing files.
 Native tester flows route through CLI for server lifecycle.
@@ -63,12 +65,6 @@ execution or connectivity.
 `env`, `timeout`) plus `required` (default true). Required failures block
 delivery; advisory failures are recorded. Commands are argv, without shell
 evaluation; timeout defaults to 300 seconds.
-
-## New-worktree setup
-
-See [WORKTREE_SETUP.md](WORKTREE_SETUP.md) for `[worktree_setup]`, setup-role
-permissions, retained failures, Node package managers, and Bun shared storage.
-This applies to SDK/native preparation, reused worktrees, and in-place dependency repair.
 
 ## Role permissions
 
@@ -119,24 +115,29 @@ clearly unsafe maintenance issues; otherwise record an advisory follow-up.
 
 ## Jira
 
-`[jira].project_key` is required for Jira flows; omitted issue keys select
-the latest issue in that project. `branch_prefix` defaults to `"issue/"`
+`[jira].project_key` is optional for an explicit issue key; omitted issue keys select
+the latest issue in the configured project, or the only accessible project.
+Multiple projects require an explicit choice. `branch_prefix` defaults to `"issue/"`
 for builds; reviews create no branch.
-`[jira.mcp].command` launches the CLI server (for example `uvx`);
-`args` defaults to `[]` (for example `["mcp-atlassian"]`).
-
-Credentials are `JIRA_URL` and either Cloud `JIRA_USERNAME`/`JIRA_API_TOKEN`
-or Server/Data Center `JIRA_PERSONAL_TOKEN`. Native skills use session-connected tools.
+Without `[jira.mcp]`, your single user-scope Jira server is used; see
+[MCP](MCP.md). `[jira].url` (not secret) prefills setup. Legacy inline
+`[jira.mcp].command`/`args` still work. Credentials use the server's own names:
+`JIRA_URL` with `JIRA_USERNAME`/`JIRA_API_TOKEN` (Cloud) or `JIRA_PERSONAL_TOKEN`
+(Server/Data Center). Native skills use session-connected tools.
 
 ## GitLab and GitHub MCP
 
-`[gitlab.mcp]` and `[github.mcp]` require `command` for their CLI flows;
+Without `[provider.mcp]`, your single user-scope server is used; `from = "NAME"`
+selects one explicitly. See [MCP](MCP.md) for setup, scopes, and connectors.
+
+Legacy inline `[gitlab.mcp]` and `[github.mcp]` require `command` for CLI flows;
 optional `args = []` and `env = {}` configure their launchers.
 The URL is supplied per review; there is no provider project-key setting.
 Servers must expose title/description/unified-diff read tools.
 MCP env is passed to the server as configured: keep tokens private.
-Typical variables: GitLab `GITLAB_URL`/`GITLAB_TOKEN`,
-GitHub `GITHUB_PERSONAL_ACCESS_TOKEN`. Native skills use connected tools instead.
+Variables use each server's names: GitLab `GITLAB_PERSONAL_ACCESS_TOKEN` and
+`GITLAB_API_URL` (older `GITLAB_TOKEN`/`GITLAB_URL` still read), GitHub
+`GITHUB_PERSONAL_ACCESS_TOKEN` (`GITHUB_HOST` for Enterprise).
 
 ## Orchestrator
 
@@ -181,15 +182,13 @@ account/integration credentials; `MEOW_LOG_FILE` adds a persistent log.
 For recurrence, external Task Scheduler/cron/systemd/CI can invoke
 `meow run` with absolute executable/project paths; built-in triggers are one-shot.
 
-## If something's missing
-
 | Condition | Result |
 |---|---|
-| No config before first use | Base onboarding/defaults; no lint until configured |
+| No config before first use | Automatic base setup and recognized check defaults |
 | Lint fields without entries, or unknown lint keys | ValueError naming the problem; model/skill/MCP-only config is valid |
 | No architecture doc | Optional context; generic architecture checks still apply |
 | Missing Jira/GitLab/GitHub config | ValueError before agents |
-| Unreachable MCP | RuntimeError; preflight requires a real provider tool call |
+| Unreachable or crashed MCP | RuntimeError; preflight and fetch each need a non-error provider tool result, and a fetch retries once on a fresh server |
 | Remote `--fix`, or remote/branch review-file resume | Rejected; check out locally or rerun the original source |
 | Missing review file | FileNotFoundError naming docs_dir and review-file |
 | Exhausted fix rounds | LintFixError with output, or review RuntimeError naming report |

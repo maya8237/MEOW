@@ -8,11 +8,14 @@ from claude_agent_sdk import (
     AssistantMessage,
     ResultMessage,
     TextBlock,
+    ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
 )
 
 from meow.agents.mcp_fetcher import IssueFetcherAgent
 from meow.project.config_models import LintCommand
+from tests.integrations.mcp_fakes import server_call
 
 
 class FakeProjectContext:
@@ -59,6 +62,7 @@ class IssueFetcherCheckActiveTests(unittest.IsolatedAsyncioTestCase):
                 ],
                 model="model",
             )
+            yield UserMessage(content=[ToolResultBlock(tool_use_id="1", content="ok")])
             yield _result("success")
 
         with patch("meow.agents.mcp_fetcher.query", fake_query):
@@ -104,6 +108,8 @@ class IssueFetcherFetchTests(unittest.IsolatedAsyncioTestCase):
 
             async def fake_query(*, prompt, options):
                 await asyncio.sleep(0)
+                for message in server_call("jira"):
+                    yield message
                 yield _result("success")
 
             with (
@@ -112,4 +118,67 @@ class IssueFetcherFetchTests(unittest.IsolatedAsyncioTestCase):
             ):
                 await self.agent.fetch("PROJ-1", "PROJ", output_file)
 
+            self.assertFalse(output_file.exists())
+
+
+class IssueFetcherServerCrashTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.context = FakeProjectContext(Path.cwd())
+        self.agent = IssueFetcherAgent(self.context, {"command": "uvx", "args": []})
+
+    async def test_preflight_rejects_a_failed_server_call(self):
+        async def fake_query(*, prompt, options):
+            await asyncio.sleep(0)
+            for message in server_call("jira", is_error=True):
+                yield message
+            yield _result("success")
+
+        with (
+            patch("meow.agents.mcp_fetcher.query", fake_query),
+            self.assertRaisesRegex(RuntimeError, "No active Jira MCP server"),
+        ):
+            await self.agent.check_active()
+
+    async def test_fetch_retries_once_with_a_fresh_server(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_file = Path(tmp) / "issue.json"
+            attempts = []
+
+            async def fake_query(*, prompt, options):
+                attempts.append(prompt)
+                await asyncio.sleep(0)
+                crashed = len(attempts) == 1
+                for message in server_call("jira", is_error=crashed):
+                    yield message
+                output_file.write_text("{}", encoding="utf-8")
+                yield _result("success")
+
+            with patch("meow.agents.base.query", fake_query):
+                await self.agent.fetch("PROJ-1", "PROJ", output_file)
+
+            self.assertEqual(len(attempts), 2)
+            self.assertTrue(output_file.is_file())
+
+    async def test_fetch_rejects_a_file_written_without_a_server_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_file = Path(tmp) / "issue.json"
+            attempts = []
+
+            async def fake_query(*, prompt, options):
+                attempts.append(prompt)
+                await asyncio.sleep(0)
+                for message in server_call("jira", is_error=True):
+                    yield message
+                output_file.write_text(
+                    '{"key": "", "summary": "", "description": ""}', encoding="utf-8"
+                )
+                yield _result("success")
+
+            with (
+                patch("meow.agents.base.query", fake_query),
+                self.assertRaisesRegex(RuntimeError, "no successful Jira MCP result"),
+            ):
+                await self.agent.fetch("PROJ-1", "PROJ", output_file)
+
+            self.assertEqual(len(attempts), 2)
             self.assertFalse(output_file.exists())
