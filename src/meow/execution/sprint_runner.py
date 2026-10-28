@@ -12,7 +12,15 @@ from meow.execution.cleanup import cleanup_completed
 from meow.execution.orchestrator import (
     _prepare_sprint,
 )
+from meow.execution.run_failures import (
+    BlockingRunError,
+    InvalidConfigError,
+    attach_run_id,
+    classify_failure,
+    failure_retry_after,
+)
 from meow.execution.run_state import (
+    PARKED_PHASE,
     TERMINAL_PHASES,
     CheckResult,
     RunStateError,
@@ -25,7 +33,7 @@ from meow.infrastructure.checks import (
     config_fingerprint,
 )
 from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
-from meow.infrastructure.logging import get_logger
+from meow.infrastructure.logging import configure_error_log, get_logger
 from meow.infrastructure.user_hooks import run_lifecycle
 from meow.infrastructure.worktree import (
     _is_linked_worktree,
@@ -133,7 +141,7 @@ def _new_delivery(config: dict, options: dict, target: str | None) -> dict:
     }
 
 
-async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -- journal setup and terminal exception ownership stay together
+async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, complex-structure, too-many-branches] -- journal setup and terminal exception ownership stay together
     working_dir: Path,
     feature_name: str | None,
     request: str,
@@ -141,21 +149,38 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -
     run_id: str | None = None,
     record_root: Path | None = None,
     source: str = "prompt",
+    on_created: Callable[[str], None] | None = None,
     **options,
 ) -> None:
     """Journal one sprint (see `_drive_sprint` for `options`).
 
-    Creates the run record unless `run_id` continues one, and marks the run
-    failed when anything raises before it reached a settled phase, so no
-    failure path leaves a run looking active.
+    Creates the run record unless `run_id` continues one, reporting a new ID
+    to `on_created`. When anything
+    raises before the run reached a settled phase, `_settle_failure` parks it
+    resumable, or fails it for a blocking cause, so no failure path leaves a
+    run looking active.
     """
     resume_at = options.get("resume_at", "generate")
     if resume_at not in {"generate", "review"}:
         raise ValueError(f"resume_at must be 'generate' or 'review', got {resume_at!r}")
-    config = load_config(Path(record_root or working_dir))
-    select_workflow(config, options.get("workflow"))
-    target = options.pop("target_branch", None)
     store = RunStore(Path(record_root or working_dir).resolve())
+    try:
+        config = load_config(Path(record_root or working_dir))
+        select_workflow(config, options.get("workflow"))
+    except (OSError, ValueError) as exc:
+        error = (
+            InvalidConfigError(str(exc))
+            if isinstance(exc, ValueError)
+            and not isinstance(exc, (BlockingRunError, RunStateError))
+            else exc
+        )
+        if run_id is not None:  # a continued run must not stay "resuming"
+            _settle_failure(store, run_id, error)
+            attach_run_id(error, run_id)
+        if error is exc:
+            raise
+        raise error from exc
+    target = options.pop("target_branch", None)
     delivery = {
         field: options[option]
         for field, option in (("enabled", "commit"), ("push", "push"))
@@ -171,6 +196,8 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -
             branch="preparing",
             delivery=delivery,
         ).id
+        if on_created is not None:
+            on_created(run_id)
     elif delivery:
         record = store.load(run_id)
         store.transition(run_id, record.phase, delivery={**record.delivery, **delivery})
@@ -178,6 +205,8 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -
     event = {"run_id": run_id, "request": request, "work_dir": str(working_dir)}
     await run_lifecycle(hooks, "sprint_start", event, working_dir)
     try:
+        configure_error_log(store.directory / f"{run_id}.error.log")
+        store.set_driver(run_id)
         base = store.load(run_id).delivery.get("base", "none (not selected)")
         print(f"[run] MR target: {base} (saved for resume).", flush=True)
         await _drive_sprint(
@@ -191,7 +220,8 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements] -
     except RunCancelled:
         raise
     except BaseException as exc:
-        _mark_failed(store, run_id, exc)
+        _settle_failure(store, run_id, exc)
+        attach_run_id(exc, run_id)
         raise
     finally:
         await run_lifecycle(
@@ -209,11 +239,27 @@ def _phase_of(store: RunStore, run_id: str) -> str | None:
         return None
 
 
-def _mark_failed(store: RunStore, run_id: str, exc: BaseException) -> None:
-    """Record why the run died; an unreadable journal must not hide the cause."""
+def _settle_failure(store: RunStore, run_id: str, exc: BaseException) -> None:
+    """Settle an unsettled run: blocking causes fail it, the rest park it.
+
+    An unreadable journal must not hide the original cause.
+    """
     try:
-        if store.load(run_id).phase not in _SETTLED_PHASES:
-            store.transition(run_id, "failed", last_failure=str(exc))
+        if store.load(run_id).phase in _SETTLED_PHASES:
+            return
+        if isinstance(exc, LoopExhausted):  # a verdict, not a crash
+            store.transition(run_id, "exhausted", last_failure=str(exc))
+            return
+        kind, cause = classify_failure(exc)
+        if kind == "blocking":
+            store.transition(
+                run_id,
+                "failed",
+                last_failure=str(exc) or type(exc).__name__,
+                results={"failure": {"kind": kind, "cause": cause}},
+            )
+        else:
+            store.park(run_id, exc, kind, cause, retry_after=failure_retry_after(exc))
     except (RunStateError, OSError) as journal_error:
         logger.error(
             "run_failure_not_recorded", run_id=run_id, reason=str(journal_error)
@@ -221,7 +267,7 @@ def _mark_failed(store: RunStore, run_id: str, exc: BaseException) -> None:
 
 
 # A run in one of these phases already says why it stopped.
-_SETTLED_PHASES = TERMINAL_PHASES | {"interrupted_mutation"}
+_SETTLED_PHASES = TERMINAL_PHASES | {"interrupted_mutation", PARKED_PHASE}
 
 
 async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, too-many-locals, complex-structure, too-many-branches]

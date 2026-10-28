@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import os
 import secrets
+import signal
 import subprocess
 import sys
 import time
@@ -13,15 +14,33 @@ from pathlib import Path
 from typing import Literal
 
 from meow.common.process import process_identity as _process_identity
-from meow.execution.run_state import TERMINAL_PHASES, RunRecord, RunStore
+from meow.execution.run_failures import BlockingRunError
+from meow.execution.run_state import (
+    PARKED_PHASE,
+    TERMINAL_PHASES,
+    RunRecord,
+    RunStore,
+    launcher_starting,
+    park_crashed,
+    run_owner_alive,
+    startup_grace,
+)
+from meow.infrastructure.logging import get_logger
 from meow.project.config import _merge_config, config_paths
 from meow.project.config_env import _expand_config_environment
 
-_STARTUP_GRACE_SECONDS = 10
+logger = get_logger(__name__)
+
+# Phases no worker drives any more; a parked run waits for `meow resume`.
+_SETTLED = TERMINAL_PHASES | {PARKED_PHASE}
 
 
 class BackgroundError(RuntimeError):
     """A worker could not be launched or validated."""
+
+
+class InvalidInvocationError(BackgroundError, BlockingRunError):
+    """A saved worker invocation no resume can repair."""
 
 
 @dataclass(frozen=True)
@@ -50,14 +69,15 @@ def inspect_worker(  # ruff: ignore[too-many-return-statements]
     log = data.get("log")
     if not data:
         return WorkerState("not_background", None, None)
-    if record.phase in TERMINAL_PHASES and not include_terminal:
+    if record.phase in _SETTLED and not include_terminal:
         return WorkerState(record.phase, pid if isinstance(pid, int) else None, log)
     expected = data.get("start_identity")
     if not isinstance(pid, int) or not isinstance(expected, str) or not expected:
+        if launcher_starting(data, Path(record.repo)):
+            return WorkerState("starting", None, log)  # slow venv or imports
         started = data.get("launch_started_at")
-        if (
-            isinstance(started, (int, float))
-            and time.time() - started > _STARTUP_GRACE_SECONDS
+        if isinstance(started, (int, float)) and time.time() - started > startup_grace(
+            Path(record.repo)
         ):
             return WorkerState("interrupted", None, log)
         return WorkerState("starting", None, log)
@@ -66,17 +86,11 @@ def inspect_worker(  # ruff: ignore[too-many-return-statements]
 
 
 def reconcile_worker(store: RunStore, run_id: str) -> WorkerState:
+    """Report the worker state; park the run if its worker and driver died."""
     record = store.load(run_id)
     state = inspect_worker(record)
-    if state.state == "interrupted" and record.phase not in {
-        *TERMINAL_PHASES,
-        "interrupted_mutation",
-    }:
-        store.transition(
-            run_id,
-            "interrupted_mutation",
-            last_failure="Background worker exited; inspect worktree before resume",
-        )
+    if record.phase not in _SETTLED and run_owner_alive(record) is False:
+        park_crashed(store, run_id)
     return state
 
 
@@ -170,6 +184,7 @@ def _spawn_worker(store: RunStore, repo: Path, run_id: str, argv: list[str]) -> 
         )
     command = [
         sys.executable,
+        "-u",
         "-c",
         "from meow.cli.cli import cli_main; cli_main()",
         "_worker",
@@ -185,6 +200,7 @@ def _spawn_worker(store: RunStore, repo: Path, run_id: str, argv: list[str]) -> 
             process = subprocess.Popen(
                 command,
                 cwd=repo,
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
@@ -192,7 +208,15 @@ def _spawn_worker(store: RunStore, repo: Path, run_id: str, argv: list[str]) -> 
                 creationflags=creationflags,
                 close_fds=True,
             )
-        store.update_background(run_id, launcher_pid=process.pid, state="starting")
+        identity = _process_identity(process.pid)
+        if identity is None:
+            logger.warning("launcher_identity_unreadable", pid=process.pid)
+        store.update_background(
+            run_id,
+            launcher_pid=process.pid,
+            launcher_identity=identity,
+            state="starting",
+        )
     except (OSError, BackgroundError) as exc:
         if process is not None and process.poll() is None:
             process.terminate()
@@ -203,7 +227,10 @@ def _spawn_worker(store: RunStore, repo: Path, run_id: str, argv: list[str]) -> 
 
 
 def detach_command(
-    working_dir: Path, argv: list[str], log: str | None = None
+    working_dir: Path,
+    argv: list[str],
+    log: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> dict[str, object]:
     """Start `argv` in its own session/process group so nothing kills it.
 
@@ -232,6 +259,7 @@ def detach_command(
         process = subprocess.Popen(
             argv,
             cwd=working_dir,
+            env=env,
             stdin=subprocess.DEVNULL,
             stdout=stream,
             stderr=subprocess.STDOUT,
@@ -308,11 +336,81 @@ def _notify_once(  # ruff: ignore[complex-structure, too-many-return-statements]
     store.update_background(run_id, notification=outcome)
 
 
-def worker_main(  # ruff: ignore[too-many-statements]
-    repo: Path, run_id: str, nonce: str
-) -> int:
-    """Run saved invocation in the detached process, never prompting."""
+def _saved_invocation(record: RunRecord) -> argparse.Namespace:
+    """Parse and validate the saved worker argv; reject anything unexpected."""
     from meow.cli.parser import _build_arg_parser
+
+    args = _build_arg_parser().parse_args(record.background["argv"])
+    try:
+        _invocation_kind(args)
+    except BackgroundError as exc:
+        raise InvalidInvocationError(
+            "Saved worker invocation is invalid", cause="invalid_input"
+        ) from exc
+    return args
+
+
+def worker_main(repo: Path, run_id: str, nonce: str) -> int:
+    """The detached worker: register, then supervise the run's driver.
+
+    The driver runs as a `_drive` child (see `supervisor.supervise`), which
+    relaunches a parked run within the `[run]` retry budget.
+    """
+    from meow.execution.sprint_runner import _settle_failure
+    from meow.infrastructure.supervisor import supervise
+
+    store = RunStore(repo)
+    try:
+        _saved_invocation(_wait_for_registration(store, run_id, nonce))
+        return supervise(repo, run_id, nonce)
+    except BaseException as exc:
+        _settle_failure(store, run_id, exc)  # park unless blocking
+        raise
+    finally:
+        _notify_once(store, run_id)
+
+
+def _raise_interrupt(_signum: int, _frame: object) -> None:
+    raise KeyboardInterrupt
+
+
+def _install_break_handler() -> None:
+    """On Windows the supervisor forwards Ctrl-C as CTRL_BREAK_EVENT, which
+    would kill Python outright; turn it into KeyboardInterrupt so the run
+    settles (parks) first."""
+    if sys.platform == "win32" and hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _raise_interrupt)
+
+
+def drive_main(repo: Path, run_id: str, nonce: str) -> int:
+    """Run the saved invocation in this process (the supervised driver)."""
+    from meow.execution.sprint_runner import _settle_failure
+
+    _install_break_handler()
+    store = RunStore(repo)
+    try:
+        record = store.load(run_id)
+        if record.background.get("nonce") != nonce:
+            raise BackgroundError("Driver nonce does not match saved run")
+        asyncio.run(_drive_invocation(repo, run_id, _saved_invocation(record)))
+        return 0
+    except BaseException as exc:
+        _settle_failure(store, run_id, exc)  # park unless blocking
+        raise
+
+
+async def redrive_saved_invocation(repo: Path, run_id: str) -> None:
+    """Run the run's saved invocation again under its existing record.
+
+    For a run that stopped before its worktree and branch existed: `meow
+    resume` has nothing to validate or replay there, so it starts over from the
+    saved command line, exactly as the worker's `_drive` child would.
+    """
+    record = RunStore(repo).load(run_id)
+    await _drive_invocation(repo, run_id, _saved_invocation(record))
+
+
+async def _drive_invocation(repo: Path, run_id: str, args: argparse.Namespace) -> None:
     from meow.cli.validation import (
         _resolve_input_path,
         parse_inputs,
@@ -321,70 +419,41 @@ def worker_main(  # ruff: ignore[too-many-statements]
     from meow.execution.sprint_runner import run_sprint
     from meow.integrations.issue_solver import run_issue_solver
 
-    store = RunStore(repo)
-    try:
-        record = _wait_for_registration(store, run_id, nonce)
-        args = _build_arg_parser().parse_args(record.background["argv"])
-        try:
-            kind = _invocation_kind(args)
-        except BackgroundError as exc:
-            raise BackgroundError("Saved worker invocation is invalid") from exc
-        if kind == "orchestrator-task":
-            from meow.execution.orchestration.task_worker import run_task_attempt
+    if _invocation_kind(args) == "orchestrator-task":
+        from meow.execution.orchestration.task_worker import run_task_attempt
 
-            asyncio.run(run_task_attempt(repo, run_id, args))
-        elif args.jira is not None:
-            asyncio.run(
-                run_issue_solver(
-                    repo,
-                    args.jira or None,
-                    test=args.test,
-                    **(
-                        {"force_disable_tests": True}
-                        if args.force_disable_tests
-                        else {}
-                    ),
-                    run_id=run_id,
-                    **({"workflow": args.workflow} if args.workflow else {}),
-                    **({"inputs": parse_inputs(args.input)} if args.input else {}),
-                )
-            )
-        else:
-            asyncio.run(
-                run_sprint(
-                    repo,
-                    args.feature_name,
-                    args.request,
-                    use_worktree=not args.no_worktree,
-                    plan_file=_resolve_input_path(args.plan, repo),
-                    source_branch=args.source_branch,
-                    resume_at=args.resume_at,
-                    test=args.test,
-                    **(
-                        {"force_disable_tests": True}
-                        if args.force_disable_tests
-                        else {}
-                    ),
-                    run_id=run_id,
-                    record_root=repo,
-                    **(
-                        {"commit": args.push is not None, "push": args.push is True}
-                        if args.no_worktree
-                        else {}
-                    ),
-                    **({"workflow": args.workflow} if args.workflow else {}),
-                    **({"inputs": parse_inputs(args.input)} if args.input else {}),
-                    **(
-                        {"pipeline_options": opts}
-                        if (opts := pipeline_overrides(args))
-                        else {}
-                    ),
-                )
-            )
-        return 0
-    except BaseException as exc:
-        if store.load(run_id).phase not in TERMINAL_PHASES:
-            store.transition(run_id, "failed", last_failure=f"Worker failed: {exc}")
-        raise
-    finally:
-        _notify_once(store, run_id)
+        await run_task_attempt(repo, run_id, args)
+    elif args.jira is not None:
+        await run_issue_solver(
+            repo,
+            args.jira or None,
+            test=args.test,
+            **({"force_disable_tests": True} if args.force_disable_tests else {}),
+            run_id=run_id,
+            **({"workflow": args.workflow} if args.workflow else {}),
+            **({"inputs": parse_inputs(args.input)} if args.input else {}),
+        )
+    else:
+        await run_sprint(
+            repo,
+            args.feature_name,
+            args.request,
+            use_worktree=not args.no_worktree,
+            plan_file=_resolve_input_path(args.plan, repo),
+            source_branch=args.source_branch,
+            resume_at=args.resume_at,
+            test=args.test,
+            **({"force_disable_tests": True} if args.force_disable_tests else {}),
+            run_id=run_id,
+            record_root=repo,
+            **(
+                {"commit": args.push is not None, "push": args.push is True}
+                if args.no_worktree
+                else {}
+            ),
+            **({"workflow": args.workflow} if args.workflow else {}),
+            **({"inputs": parse_inputs(args.input)} if args.input else {}),
+            **(
+                {"pipeline_options": opts} if (opts := pipeline_overrides(args)) else {}
+            ),
+        )

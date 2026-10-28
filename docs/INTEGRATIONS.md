@@ -13,17 +13,17 @@ config, including local values. Onboarding creates missing shared config there;
 its edits stay outside feature/task branches. Explicit empty check lists disable detection.
 
 String values recursively expand `$NAME`, `${NAME}`, or `%NAME%` without shell
-evaluation; unknown variables remain visible. Keep credentials/machine settings
-in local/user config or the environment, never shared config.
+evaluation; unknown variables remain visible. Keep credentials and machine
+settings in local/user config or the environment, never shared config.
 
 `[[lint]]` accepts `command`, `args`, `cwd`, `include`, `exclude`, `env`,
 `timeout`, and `gate` (default true). Include/exclude are repository-relative
 prefixes. Per-file lint respects cwd/prefixes; project-wide runs every entry.
-Timeout is per-entry or `lint_timeout` (default 60 seconds). [Verification](VERIFICATION.md).
+Timeout: per-entry or `lint_timeout` (60 s). [Verification](VERIFICATION.md).
 
-`meow run --test` enables tester validation after passing review; `--force-disable-tests` overrides it.
-`meow review --plan PATH --test` is report-only unless `--fix` is added;
-other review sources and review-file reject tester mode.
+`meow run --test` enables tester validation after passing review;
+`--force-disable-tests` overrides it. `meow review --plan PATH --test` is
+report-only unless `--fix` is added; other review sources reject tester mode.
 Without configured commands the tester may inspect/run documented tests.
 Detected test commands do not enable the AI tester; `[tester] auto_test = false`
 also disables automatic AI testing for explicit commands. `--test` overrides it.
@@ -85,33 +85,30 @@ Path-scoped roles must deny both Bash and Agent.
 and `entrypoint`; `required` defaults false. Provider `inputs`, `outputs`,
 and `permissions` can be tables/lists. Commands also accept `args`, `cwd`,
 `env`, `timeout`, named `flows`, and repository-relative `artifacts`.
-Configure a dev server/readiness URL when needed; MEOW starts it for browser
-checks and stops it afterward. Required failures/unavailable providers block
-completion. Status separates lint/test/build/browser evidence. Keep generated
-artifacts under `.meow/` so checks do not alter the reviewed revision.
+Configure a dev server/readiness URL when needed; MEOW starts it for browser checks
+and stops it afterward. Required failures/unavailable providers block completion.
+Status separates lint/test/build/browser evidence. Keep generated artifacts under
+`.meow/` so checks do not alter the reviewed revision.
 
 ## Agent skills and delivery defaults
 
-`[agent_skills].default` and role lists append across config layers to resolved
-definition/custom skills. Agent overrides may replace built-in skill lists.
-Explicit `[models].role` wins over agent models.
+`[agent_skills].default` and role lists append across config layers; agent
+overrides may replace built-in lists. Explicit `[models].role` wins.
 `[delivery].target_branch` selects the default MR target; `meow run --target`
 overrides it per run. Auto-onboarding saves existing `dev` (local or origin),
-otherwise `master`. It also supplies the CI target unless `--target-ref` overrides it.
+otherwise `master`; it also supplies the CI target unless `--target-ref` is given.
 
 ## Custom skills and agents
 
-Read [CUSTOM.md](CUSTOM.md) for `[custom]` paths, roles, scopes, validation,
-and permission boundaries; [WORKFLOWS.md](WORKFLOWS.md) owns definition formats.
-Custom sources reload each run without reinstalling.
+[CUSTOM.md](CUSTOM.md): `[custom]` paths, roles, scopes, validation, permissions;
+[WORKFLOWS.md](WORKFLOWS.md): definition formats. Sources reload each run.
 
 ## Reviewer architecture check
 
 Reviewers inspect correctness, configured gates, and responsibility/dependency
-boundaries without universal file/line thresholds. Findings cite files/evidence
-and propose a responsibility-based split. Block only feature-relevant or
-clearly unsafe maintenance issues; otherwise record an advisory follow-up.
-`AGENTS.md` is project guidance, not configuration.
+boundaries without file/line thresholds, citing evidence and proposing a
+responsibility-based split. Block only feature-relevant or clearly unsafe
+issues; otherwise record an advisory follow-up. `AGENTS.md` is guidance only.
 
 ## Jira
 
@@ -154,31 +151,37 @@ open_pr = true
 ```
 
 Concurrency/review rounds are integers ≥1, recovery cycles ≥0 (shared by split
-lineage), and polling seconds >0. Prefixes must be nonempty, without spaces,
-`..`, or leading `-`; integration uses `<prefix>ID`, tasks `<prefix>ID-TASK`.
-Wrong types/unknown keys fail config validation. CLI `--max-parallel` and
-`--no-mr` override defaults; models can set `decomposer`, `triage`,
-`integrator`, and `pull_request`. Jira inputs require project/server config
-and never comment on or transition issues.
+lineage), polling seconds >0. Prefixes must be nonempty, without spaces, `..`, or
+leading `-`; integration uses `<prefix>ID`, tasks `<prefix>ID-TASK`. Wrong
+types/unknown keys fail validation. CLI `--max-parallel` and `--no-mr` override
+defaults; models can set `decomposer`, `triage`, `integrator`, and `pull_request`.
+Jira inputs require project/server config and never comment on or transition issues.
 
 MR provider comes from origin: hosts containing `github` select GitHub;
 `gitlab` or the host in `[gitlab.mcp].env.GITLAB_URL` selects GitLab.
-Other hosts have no provider. Missing provider MCP config reports
+Other hosts have no provider; missing provider MCP config reports
 `provider not configured`. MR tools are restricted to names containing
 `create_pull_request`, `create_merge_request`, `list_pull_requests`,
-`list_merge_requests`, or `search_pull_requests`; existing open requests
-can be reused. The agent writes only its result file.
-Creation failure never undoes a push: delivered state, exit 3,
-`MR not opened: REASON`, and a manual link. Native uses connected tools.
+`list_merge_requests`, or `search_pull_requests`; existing open requests can be
+reused. The agent writes only its result file. Creation failure never undoes a
+push: delivered state, exit 3, `MR not opened: REASON`, and a manual link.
+Native uses connected tools.
+
+## Run retry ladder
+
+`[run]`: `auto_retries` (3), `retry_backoff` ([60, 300, 900] s), `managed_resumes`
+(6, per parked run and queue item), `max_total_resumes` (20), `api_max_wait` (10800 s),
+`worker_startup_grace` (180 s), `supervise` (false), `stale_after` (7200 s: parks a
+silent native `--intent run`). See [RUNS.md](RUNS.md#managed-runs).
 
 ## Scheduling automatic runs
 
 [CLI scheduling](CLI.md#scheduling-a-run) covers commands and OS requirements.
-Jira schedules need reachable project/MCP configuration and scheduler-user
-credentials; an omitted key selects the latest issue when execution begins.
-Claude/Git credentials must support noninteractive execution. Registration
-preserves executable PATH but does not copy shell-only secrets. Use persistent
-account/integration credentials; `MEOW_LOG_FILE` adds a persistent log.
+Jira schedules need reachable project/MCP config and scheduler-user credentials;
+an omitted key selects the latest issue at execution.
+Claude/Git credentials must work noninteractively; registration preserves the
+executable PATH but not shell-only secrets, so use persistent account/integration
+credentials. `MEOW_LOG_FILE` adds a persistent log.
 For recurrence, external Task Scheduler/cron/systemd/CI can invoke
 `meow run` with absolute executable/project paths; built-in triggers are one-shot.
 
@@ -190,9 +193,7 @@ For recurrence, external Task Scheduler/cron/systemd/CI can invoke
 | Missing Jira/GitLab/GitHub config | ValueError before agents |
 | Unreachable or crashed MCP | RuntimeError; preflight and fetch each need a non-error provider tool result, and a fetch retries once on a fresh server |
 | Remote `--fix`, or remote/branch review-file resume | Rejected; check out locally or rerun the original source |
-| Missing review file | FileNotFoundError naming docs_dir and review-file |
-| Exhausted fix rounds | LintFixError with output, or review RuntimeError naming report |
+| Missing review file; exhausted fix rounds | FileNotFoundError naming docs_dir; LintFixError or review RuntimeError |
 | Jira delivery without origin | RuntimeError after PASS; evidence/worktree retained |
-| Orchestrator dirty start or missing Jira config | Exit 1 before work starts |
-| Orchestrator push failure | Failed state; repair origin and resume delivery |
+| Orchestrator dirty start/missing Jira config; push failure | Exit 1 before work / failed, repair origin and resume |
 | Missing MR provider/creation failure | Delivered, exit 3, manual MR link |

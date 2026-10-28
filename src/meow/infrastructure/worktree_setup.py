@@ -5,8 +5,18 @@ import re
 import shutil
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 from meow.infrastructure.checks import run_captured
+from meow.infrastructure.logging import get_logger
+from meow.infrastructure.python_env import (
+    ENV_COMMAND_TIMEOUT,
+    env_command_env,
+    is_env_command,
+    repair_venvs,
+)
+
+logger = get_logger(__name__)
 
 _SENSITIVE = re.compile(
     r"(^|[._-])(env|secrets?|credentials?|tokens?|keys?)([._-]|$)", re.I
@@ -21,7 +31,14 @@ _COMMAND_TIMEOUT = 300
 
 
 class WorktreeSetupError(RuntimeError):
-    """Configured setup failed while retaining the new worktree."""
+    """Configured setup failed while retaining the new worktree.
+
+    `cause` names a known failure (`policy_denied` blocks the run).
+    """
+
+    def __init__(self, message: str, *, cause: str | None = None) -> None:
+        super().__init__(message)
+        self.cause = cause
 
 
 def setup_command_decision(config: dict, argv: list[str]) -> str | None:
@@ -132,17 +149,79 @@ def _no_symlinks(root: Path, relative: Path) -> Path:
     return current
 
 
-def _already_copied(source: Path, destination: Path) -> bool:
-    """True when `destination` is a regular file with exactly `source`'s bytes."""
-    if not destination.is_file() or destination.is_symlink():
-        return False
+def _tracked(worktree: Path, destination: Path) -> bool:
     try:
-        return source.read_bytes() == destination.read_bytes()
-    except OSError:
+        exit_code, _output, timed_out = run_captured(
+            [
+                "git",
+                "ls-files",
+                "--error-unmatch",
+                "--",
+                destination.relative_to(worktree).as_posix(),
+            ],
+            worktree,
+            dict(os.environ),
+            _COMMAND_TIMEOUT,
+        )
+    except (OSError, ValueError):
         return False
+    return exit_code == 0 and not timed_out
 
 
-def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-arguments, too-many-branches]
+def copy_setup_file(
+    source: Path, destination: Path, worktree: Path
+) -> Literal["copied", "identical", "kept", "replaced", "skipped"]:
+    """Copy `source` to `destination` without failing on an occupied destination."""
+    if not source.is_file():
+        logger.warning("setup_copy_source_missing", source=str(source))
+        return "skipped"
+    if destination.is_dir() and not destination.is_symlink():
+        raise WorktreeSetupError(
+            f"setup copy destination is a directory: {destination}"
+        )
+    result: Literal["copied", "replaced"] = "copied"
+    if destination.exists():
+        if destination.read_bytes() == source.read_bytes():
+            return "identical"
+        if _tracked(worktree, destination):
+            return "kept"  # the branch wins; install reconciles lockfiles
+        backup = worktree / ".meow" / "setup-backup" / destination.relative_to(worktree)
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(destination, backup, follow_symlinks=False)
+        result = "replaced"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination, follow_symlinks=False)
+    return result
+
+
+def _run_setup_command(argv: list[str], worktree: Path, timeout: float | None) -> int:
+    """Run one setup command; a timeout repairs venvs and retries at double."""
+    env_command = is_env_command(argv)
+    limit = timeout or (ENV_COMMAND_TIMEOUT if env_command else _COMMAND_TIMEOUT)
+    env = env_command_env(argv, dict(os.environ))
+    for last in (False, True):
+        try:
+            exit_code, _output, timed_out = run_captured(argv, worktree, env, limit)
+        except (OSError, ValueError) as exc:
+            raise WorktreeSetupError(f"setup command failed: {argv[0]}: {exc}") from exc
+        if not timed_out:
+            return exit_code if exit_code is not None else 1
+        if last:
+            raise WorktreeSetupError(
+                f"setup command timed out twice: {argv[0]}", cause="setup_timeout"
+            )
+        repaired = repair_venvs(worktree) if env_command else []
+        logger.warning(
+            "setup_command_timeout_retry",
+            command=argv[0],
+            timeout=limit,
+            repaired=[str(path) for path in repaired],
+        )
+        limit *= 2
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-arguments]
     repo: Path,
     worktree: Path,
     manifest: dict[str, list],
@@ -160,32 +239,17 @@ def run_setup(  # ruff: ignore[complex-structure, too-many-statements, too-many-
         relative = _relative(relative_text)
         source = _no_symlinks(repo, relative)
         destination = _no_symlinks(worktree, relative)
-        if source.is_file() and _already_copied(source, destination):
-            pass  # an earlier attempt copied it; resume re-applies setup
-        elif not source.is_file() or destination.exists():
-            raise WorktreeSetupError(
-                "setup copy requires a regular source and vacant destination: "
-                f"{relative}"
-            )
-        else:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, destination, follow_symlinks=False)
+        status = copy_setup_file(source, destination, worktree)
         if record_action:
-            record_action({"kind": "copy", "path": relative_text, "status": "passed"})
+            record_action({"kind": "copy", "path": relative_text, "status": status})
     for argv in manifest["commands"]:
         decision = command_decision(argv) if command_decision else None
         if decision in {"deny", "ask"}:
             raise WorktreeSetupError(
-                f"setup command requires approval or is denied by policy: {argv[0]}"
+                f"setup command requires approval or is denied by policy: {argv[0]}",
+                cause="policy_denied",
             )
-        try:
-            exit_code, _output, timed_out = run_captured(
-                argv, worktree, dict(os.environ), _COMMAND_TIMEOUT
-            )
-        except (OSError, ValueError) as exc:
-            raise WorktreeSetupError(f"setup command failed: {argv[0]}: {exc}") from exc
-        if timed_out:
-            raise WorktreeSetupError(f"setup command timed out: {argv[0]}")
+        exit_code = _run_setup_command(argv, worktree, timeout)
         if record_action:
             record_action({
                 "kind": "command",

@@ -18,17 +18,19 @@ from meow.infrastructure.worktree_names import request_name
 def _validate_feature_name_requirement(
     parser: argparse.ArgumentParser, args, working_dir: Path
 ) -> None:
+    # `queue` has no --no-worktree: it always works in the selected checkout.
+    no_worktree = getattr(args, "no_worktree", True)
     try:
         _require_source_worktree(
             working_dir,
             getattr(args, "source_branch", None),
-            use_worktree=not args.no_worktree,
+            use_worktree=not no_worktree,
         )
     except ValueError as exc:
         parser.error(str(exc))
     requires_name = (
         (args.command == "plan" or _is_plain_build(args))
-        and not args.no_worktree
+        and not no_worktree
         # --work-dir already pointing at a linked worktree means "work
         # here", not "nest another worktree inside it" -- _resolve_working_dir
         # treats this exactly like --no-worktree, so the upfront requirement

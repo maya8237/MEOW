@@ -69,6 +69,7 @@ from meow.execution.orchestration.triage import (
     parse_decision,
     record_failure,
 )
+from meow.execution.run_failures import park_on_check_timeout
 from meow.execution.run_state import RunStore
 from meow.infrastructure.background import launch_background
 from meow.infrastructure.checks import run_final_checks
@@ -598,6 +599,7 @@ def review(  # ruff: ignore[too-many-statements] -- one atomic review-round setu
     if record.review["round"]:
         commit_worktree(worktree, ["-m", f"Fix objective review findings ({number})"])
     results = asyncio.run(run_final_checks(worktree, config))
+    park_on_check_timeout(results)
     _raise_if_cancelled(store, orch_id)
     evidence = review_evidence.capture(repo, worktree, config, results)
     failures = [_check_json(r) for r in results if r.required and not r.passed]

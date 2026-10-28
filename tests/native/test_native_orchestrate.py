@@ -684,6 +684,21 @@ def test_review_reports_failing_required_checks(git_repo, monkeypatch):
     assert payload["check_failures"][0]["exit_code"] == 1
 
 
+def test_review_parks_when_a_required_check_times_out(git_repo, monkeypatch):
+    from dataclasses import replace
+
+    from meow.execution.run_failures import TransientRunError
+
+    repo, _ = git_repo
+    orch_id, store = merged_orchestrator(repo)
+    no_checks(monkeypatch, [replace(failing_check(), exit_code=None, timed_out=True)])
+
+    with pytest.raises(TransientRunError):
+        orch.review(repo, orch_id)
+
+    assert store.load(orch_id).phase != "reviewing"
+
+
 def test_review_needs_every_task_merged(git_repo, monkeypatch):
     repo, _ = git_repo
     orch_id, store = started(repo)

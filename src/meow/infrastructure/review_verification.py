@@ -104,6 +104,12 @@ def _live(state: dict) -> bool:
     return time.time() - state.get("started_at", 0) < _STARTUP_GRACE
 
 
+def _park_if_timed_out(results: list[CheckResult]) -> None:
+    from meow.execution.run_failures import park_on_check_timeout
+
+    park_on_check_timeout(results)
+
+
 def _result_evidence(results: list[CheckResult]) -> LintGateEvidence:
     blocking, informational = [], []
     for result in results:
@@ -142,7 +148,11 @@ def _status(root: Path, config: dict, signature: dict, state: dict) -> dict:  # 
         return {**status, "status": "interrupted"}
     evidence = _result_evidence(results)
     status.update(
-        blocking=list(evidence.blocking), informational=list(evidence.informational)
+        blocking=list(evidence.blocking),
+        informational=list(evidence.informational),
+        timed_out=[
+            f"{r.kind} `{r.command}`" for r in results if r.required and r.timed_out
+        ],
     )
     if record.get("error"):
         status["blocking"].append(record["error"])
@@ -270,12 +280,21 @@ async def review_evidence(
     """Run or reuse deterministic lint/test/build checks for a local review."""
     cached = await cached_workflow_results(root, config)
     if cached is not None:
+        _park_if_timed_out(cached)
         return _result_evidence(cached)
     root, config = root.resolve(), _normalized(config)
     job, reserved = _reserve(root, config, retry_failed=retry_failed)
     if reserved:
         await _execute(root, config, job)
-    return _evidence(review_check_status(root, config))
+    status = review_check_status(root, config)
+    if status.get("timed_out"):
+        from meow.execution.run_failures import TransientRunError
+
+        raise TransientRunError(
+            "required check timed out twice: " + ", ".join(status["timed_out"]),
+            cause="check_timeout",
+        )
+    return _evidence(status)
 
 
 def start_review_checks(project_root: Path, active_dir: Path) -> dict:

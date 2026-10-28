@@ -236,7 +236,9 @@ class FreshFeatureWorktreeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
 
-            with self.assertRaisesRegex(RuntimeError, "Failed to create worktree"):
+            with self.assertRaisesRegex(
+                RuntimeError, "refs/heads/no-such-branch.*refs/remotes/origin"
+            ):
                 _ensure_feature_worktree(
                     root, "feat", source_branch="no-such-branch", fresh=True
                 )
@@ -305,13 +307,22 @@ def test_explicit_base_creates_separate_worktree_when_name_is_taken(tmp_path):
     assert (first / "README.md").read_text(encoding="utf-8") == "unfinished work"
 
 
-@pytest.mark.parametrize("source_branch", ["missing-branch", "", "--force"])
-def test_invalid_base_does_not_reuse_existing_worktree(tmp_path, source_branch):
+@pytest.mark.parametrize(
+    ("source_branch", "message"),
+    [
+        ("missing-branch", r"refs/heads/missing-branch.*refs/remotes/origin"),
+        ("", "Invalid start point"),
+        ("--force", "Invalid start point"),
+    ],
+)
+def test_invalid_base_does_not_reuse_existing_worktree(
+    tmp_path, source_branch, message
+):
     root = make_repo(str(tmp_path))
     first = _ensure_feature_worktree(root, "feat")
     (first / "README.md").write_text("unfinished work", encoding="utf-8")
 
-    with pytest.raises(RuntimeError, match="Failed to create worktree"):
+    with pytest.raises(RuntimeError, match=message):
         _ensure_feature_worktree(root, "feat", source_branch=source_branch)
 
     assert (first / "README.md").read_text(encoding="utf-8") == "unfinished work"

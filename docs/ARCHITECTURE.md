@@ -27,6 +27,10 @@ top-level alias or compatibility modules.
   lock, task scheduling and child processes, merges into the integration
   branch, triage, the shared supervisor `tick()`, the whole-objective review,
   delivery, and the CLI driver (`runner.py`).
+- `common/`: dependency-free primitives. `safe_platform.py` keeps `platform`
+  queries off WMI (installed first by `meow/__init__.py`); use `sys.platform`,
+  never `platform.system()`. `process.py` owns process identity and
+  `run_windows_tool` (timeout-bounded `taskkill`).
 - `evaluation/`: read-only evaluation reports over run journals.
 - `infrastructure/`: lint/test execution, user hook commands (`user_hooks.py`), checks, logging, cancellation,
   background workers, usage accounting, and worktree lifecycle/setup.

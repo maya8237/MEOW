@@ -4,6 +4,11 @@ import re
 import subprocess
 from pathlib import Path
 
+from meow.execution.run_failures import (
+    classify_failure,
+    failure_retry_after,
+    recognised_transient,
+)
 from meow.execution.run_state import RunStore
 from meow.infrastructure.cancellation import RunCancelled, check_cancel, delivery_lock
 from meow.infrastructure.worktree import _is_linked_worktree, _run_git
@@ -20,13 +25,22 @@ _NO_IDENTITY = re.compile(
 )
 
 
+class GitCommandError(RuntimeError):
+    """A git command failed; `detail` is git's own output, without the
+    command line, branch or remote URL meow passed to it."""
+
+    def __init__(self, command: str, detail: str) -> None:
+        super().__init__(f"git {command} failed: {detail}")
+        self.detail = detail
+
+
 def _git(
     directory: Path, *args: str, check: bool = True
 ) -> subprocess.CompletedProcess:
     result = _run_git(["git", *args], cwd=directory, timeout=_GIT_TIMEOUT)
     if check and result.returncode:
         detail = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(f"git {' '.join(args)} failed: {detail}")
+        raise GitCommandError(" ".join(args), detail)
     return result
 
 
@@ -63,7 +77,7 @@ def _commit(directory: Path, message: list[str]) -> None:
         _git(directory, *_FALLBACK_IDENTITY, "commit", *message)
     elif committed.returncode:
         detail = committed.stderr.strip() or committed.stdout.strip()
-        raise RuntimeError(f"git commit failed: {detail}")
+        raise GitCommandError("commit", detail)
 
 
 def commit_worktree(active: Path, message: list[str]) -> str:
@@ -202,5 +216,71 @@ def _deliver_verified_run(  # ruff: ignore[too-many-statements, complex-structur
     except RunCancelled:
         raise
     except (OSError, RuntimeError) as exc:
-        store.transition(run_id, "delivery_failed", last_failure=str(exc))
+        _settle_delivery_failure(store, run_id, exc)
         raise
+
+
+# Git's own push/commit output (never the command line, branch or URL):
+# what a retry cannot fix vs. a network hiccup. Patterns are anchored to
+# git/server phrasing so a branch or repository name cannot match them.
+_GIT_AUTH = re.compile(
+    r"Authentication failed|could not read (?:Username|Password)"
+    r"|Permission denied \(publickey|returned error: 40[13]\b|invalid credentials",
+    re.I,
+)
+_GIT_POLICY = re.compile(
+    r"! \[(?:remote )?rejected\]|hook declined|protected branch"
+    r"|\(non-fast-forward\)|not allowed to push",
+    re.I,
+)
+_GIT_TRANSIENT = re.compile(
+    r"Could not resolve host|Connection (?:reset|refused|timed out)|RPC failed"
+    r"|early EOF|unable to access|returned error: 5\d\d\b"
+    r"|remote end hung up unexpectedly|Operation timed out"
+    r"|Network is unreachable|No route to host|kex_exchange_identification"
+    r"|index\.lock'?: File exists|Unable to create '[^']*\.lock'",
+    re.I,
+)
+
+
+def delivery_failure_kind(exc: BaseException) -> tuple[str, str]:
+    """`(kind, cause)` for a commit/push failure.
+
+    Exception classes decide first (a git timeout or a known transient class
+    parks). Text rules then read only git's own output: auth, rejected or
+    hook-declined pushes and protected branches are blocking; recognisable
+    network trouble and a stale lock park; anything else is blocking, so a
+    resume never replays review just to be rejected again.
+    """
+    kind, cause = classify_failure(exc)
+    if kind == "blocking":
+        return kind, cause
+    if kind == "resource":
+        return kind, cause
+    if recognised_transient(exc):
+        return "transient", cause
+    detail = exc.detail if isinstance(exc, GitCommandError) else ""
+    decisions = (
+        (bool(_GIT_AUTH.search(detail)), ("blocking", "auth")),
+        (bool(_GIT_POLICY.search(detail)), ("blocking", "policy_denied")),
+        (bool(_GIT_TRANSIENT.search(detail)), ("transient", cause)),
+    )
+    return next(
+        (decision for hit, decision in decisions if hit),
+        ("blocking", "unrecognised_failure"),
+    )
+
+
+def _settle_delivery_failure(store: RunStore, run_id: str, exc: Exception) -> None:
+    """A blocking failure ends `delivery_failed`; a transient or resource one
+    (network, timeout) parks the run resumable."""
+    kind, cause = delivery_failure_kind(exc)
+    if kind == "blocking":
+        store.transition(
+            run_id,
+            "delivery_failed",
+            last_failure=str(exc),
+            results={"failure": {"kind": kind, "cause": cause}},
+        )
+    else:
+        store.park(run_id, exc, kind, cause, retry_after=failure_retry_after(exc))

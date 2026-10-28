@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from meow.common.atomic import replace_with_retry
+
 _WINDOWS_QUERY_LIMITED_INFORMATION = 0x1000
 _WINDOWS_SYNCHRONIZE = 0x100000
 # A lock with no readable owner after this long was left by a worker that died
@@ -106,7 +108,7 @@ class QueueStore:
         temporary = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
         payload = json.dumps([asdict(item) for item in items], indent=2)
         temporary.write_text(payload, encoding="utf-8")
-        os.replace(temporary, self.path)
+        replace_with_retry(temporary, self.path)
 
     def enqueue(self, request: str, feature_name: str | None = None) -> QueueItem:
         if not request.strip():
@@ -140,20 +142,36 @@ class QueueStore:
                 return item
         raise QueueStateError(f"Queue item {item_id} is missing")
 
+    def parked(self) -> list[QueueItem]:
+        return [item for item in self._load_all() if item.status == "parked"]
+
+    def requeue_parked(self, max_attempts: int | None = None) -> list[QueueItem]:
+        """Return parked items to `pending` for the next queue worker.
+
+        Items already run `max_attempts` times stay parked: requeueing them
+        again would only repeat the same failure.
+        """
+        return [
+            self.update(item.id, status="pending", error=None)
+            for item in self.parked()
+            if max_attempts is None or item.attempts < max_attempts
+        ]
+
     def recover_orphans(self) -> list[QueueItem]:
-        """Fail items left `running` by a worker that died without cleaning up.
+        """Park items left `running` by a worker that died without cleaning up.
 
         Call only while holding the worker lock, when no live worker can own
-        them. They are failed, not retried: the interrupted run may have left
-        half-written work in the checkout for a person to inspect.
+        them. A dead worker is not a blocking failure, so they are parked, not
+        retried at once: the interrupted run may have left half-written work
+        in the checkout; `meow resume --parked` requeues them.
         """
         orphans = [item for item in self._load_all() if item.status == "running"]
         return [
             self.update(
                 item.id,
-                status="failed",
-                error="worker exited before finishing; inspect the checkout "
-                "and re-queue the request",
+                status="parked",
+                error="worker exited before finishing; inspect the checkout, "
+                "then requeue with meow resume --parked",
             )
             for item in orphans
         ]

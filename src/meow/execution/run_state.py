@@ -4,12 +4,25 @@ import json
 import os
 import re
 import tempfile
-from dataclasses import asdict, dataclass, field, fields
+import time
+from collections.abc import Callable
+from contextlib import ExitStack, contextmanager, suppress
+from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from meow.common.atomic import replace_with_retry
+from meow.common.process import process_identity
+from meow.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
+
 MAX_OUTPUT = 8000
+_DEFAULT_AUTO_RETRIES = 3
+_DEFAULT_STARTUP_GRACE = 180
+NATIVE_LOST_CAUSE = "native_session_lost"
+ERROR_LOG_TAIL_LINES = 20
 SCHEMA_VERSION = 1
 # Phases after which a run no longer drives work. The single source for worker
 # reconciliation, cancellation, and plan-ownership checks.
@@ -34,6 +47,11 @@ _ACTIVE_PHASES = frozenset({
     "pipeline_waiting",
     "pipeline_fixing",
 })
+# Parked runs stopped on a retryable failure: settled (no driver owns them) but
+# not terminal, since `next_command` continues them.
+PARKED_PHASE = "parked"
+# Phases a dead driver must not overwrite: they already say why work stopped.
+_RECONCILE_SKIP = TERMINAL_PHASES | {PARKED_PHASE, "interrupted_mutation"}
 _SECRET_KEY = re.compile(
     r"(?:token|secret|password|credential|api.?key|authorization)", re.I
 )
@@ -46,6 +64,10 @@ _ID = re.compile(r"[0-9a-f]{32}\Z")
 
 class RunStateError(ValueError):
     """A run cannot be loaded safely; no agent should be started."""
+
+
+class ClaimBusyError(RunStateError):
+    """Another process holds the run's claim lock."""
 
 
 def _now() -> str:
@@ -150,11 +172,39 @@ class RunRecord:
     usage: object = "unavailable"
     delivery: dict = field(default_factory=dict)
     background: dict = field(default_factory=dict)
+    park: dict = field(default_factory=dict)
+    driver: dict = field(default_factory=dict)
     ui_session_id: str | None = None
     ui_attempt_id: str | None = None
 
 
-class RunStore:
+def _drop_stale_failure(record: RunRecord, phase: str, patch: dict) -> None:
+    """`results.failure` describes the latest stop only: drop it when work
+    resumes, when a run leaves `parked`, or on a `failed` that brings no cause."""
+    results = patch.get("results")
+    if isinstance(results, dict) and "failure" in results:
+        return
+    if (
+        phase in _ACTIVE_PHASES
+        or (record.phase == PARKED_PHASE and phase != PARKED_PHASE)
+        or phase == "failed"
+    ):
+        record.results.pop("failure", None)
+
+
+def _own_driver() -> dict:
+    return {
+        "pid": os.getpid(),
+        "start_identity": process_identity(os.getpid()),
+        "host": "claude-code" if os.environ.get("CLAUDECODE") else "cli",
+    }
+
+
+_CLAIM_WAIT = 10.0
+_CLAIM_STALE = 30.0
+
+
+class RunStore:  # ruff: ignore[too-many-public-methods]
     def __init__(self, repo: Path):
         self.directory = Path(repo).resolve() / ".meow" / "runs"
 
@@ -185,7 +235,7 @@ class RunStore:
                 stream.write(payload)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, self._path(record.id))
+            replace_with_retry(temporary, self._path(record.id))
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
@@ -286,6 +336,8 @@ class RunStore:
                 raise ValueError("invalid transitions")
             if not isinstance(record.results, dict):
                 raise ValueError("invalid results")
+            if not isinstance(record.park, dict) or not isinstance(record.driver, dict):
+                raise ValueError("invalid park or driver")
             if not isinstance(record.schema_version, int) or isinstance(
                 record.schema_version, bool
             ):
@@ -348,6 +400,88 @@ class RunStore:
         record.updated_at = _now()
         return self._write(record)
 
+    def set_driver(self, run_id: str) -> RunRecord:
+        """Record the process now driving the run (read by liveness checks)."""
+        record = self.load(run_id)
+        record.driver = _own_driver()
+        record.updated_at = _now()
+        return self._write(record)
+
+    def claim_resume(
+        self, run_id: str, *, phase: str, count_manager: bool = False
+    ) -> RunRecord:
+        """Take over a run in one write: reload, re-check, then own it.
+
+        Raises RunStateError when the run left `phase` or another live process
+        drives it since the caller read it, so two resumes never both start.
+        `count_manager` spends one `manager_resumes` in the same write.
+        """
+        with self._claim_lock(run_id):
+            return self._claim_locked(run_id, phase, count_manager)
+
+    @contextmanager
+    def _claim_lock(self, run_id: str):
+        """Serialise claims with an exclusive lock file; a stale one (its
+        holder died) is broken so a crash never blocks a run."""
+        self.directory.mkdir(parents=True, exist_ok=True)
+        lock = self.directory / f"{run_id}.claim"
+        self._acquire(lock, run_id)
+        try:
+            yield
+        finally:
+            lock.unlink(missing_ok=True)
+
+    @staticmethod
+    def _acquire(lock: Path, run_id: str) -> None:
+        deadline = time.monotonic() + _CLAIM_WAIT
+        while True:
+            try:
+                os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+                return
+            except FileExistsError:
+                with suppress(OSError):
+                    if time.time() - lock.stat().st_mtime > _CLAIM_STALE:
+                        lock.unlink()
+                        continue
+                if time.monotonic() > deadline:
+                    raise ClaimBusyError(
+                        f"Run {run_id} is being claimed by another process."
+                    ) from None
+                time.sleep(0.05)
+
+    def _claim_locked(self, run_id: str, phase: str, count_manager: bool) -> RunRecord:
+        record = self.load(run_id)
+        driver = record.driver if isinstance(record.driver, dict) else {}
+        if record.phase != phase or (
+            driver.get("pid") != os.getpid() and driver_alive(record)
+        ):
+            raise RunStateError(
+                f"Run {run_id} changed while resuming (now {record.phase}); "
+                "another process owns it."
+            )
+        park = {k: v for k, v in record.park.items() if k != "resume_blocked"}
+        if count_manager:
+            park["manager_resumes"] = int(park.get("manager_resumes", 0)) + 1
+        return self.transition(
+            run_id,
+            "resuming",
+            driver=_own_driver(),
+            attempt=record.attempt + 1,
+            park=park,
+        )
+
+    def note_resume_blocked(self, run_id: str, message: str) -> int:
+        """Count a resume that an OS/git problem refused; returns the streak.
+        `park()` and a successful claim reset it."""
+        record = self.load(run_id)
+        record.park = {
+            **record.park,
+            "resume_blocked": int(record.park.get("resume_blocked", 0)) + 1,
+            "resume_blocked_reason": message,
+        }
+        record.updated_at = _now()
+        return int(self._write(record).park["resume_blocked"])
+
     def update_background(self, run_id: str, **patch: object) -> RunRecord:
         """Update worker metadata without changing the workflow phase."""
         record = self.load(run_id)
@@ -357,6 +491,10 @@ class RunStore:
         record.updated_at = _now()
         return self._write(record)
 
+    def heartbeat(self, run_id: str) -> RunRecord:
+        """Stamp `results.heartbeat_at`: a driverless (native) run is alive."""
+        return self.update_results(run_id, heartbeat_at=time.time())
+
     def update_results(self, run_id: str, **patch: object) -> RunRecord:
         """Persist workflow progress without adding a phase transition."""
         record = self.load(run_id)
@@ -364,7 +502,9 @@ class RunStore:
         record.updated_at = _now()
         return self._write(record)
 
-    def transition(self, run_id: str, phase: str, **patch: object) -> RunRecord:
+    def transition(  # ruff: ignore[complex-structure]
+        self, run_id: str, phase: str, **patch: object
+    ) -> RunRecord:
         record = self.load(run_id)
         if not phase or not isinstance(phase, str):
             raise ValueError("phase must be a non-empty string")
@@ -377,6 +517,11 @@ class RunStore:
                 record.results.update(safe_value)
             else:
                 setattr(record, key, safe_value)
+        if phase in _ACTIVE_PHASES or phase in TERMINAL_PHASES:
+            # Only a parked run offers a continuation; `park` stays so the
+            # no-progress budget survives the resume.
+            record.results.pop("next_command", None)
+        _drop_stale_failure(record, phase, patch)
         if "last_failure" not in patch and phase in _ACTIVE_PHASES:
             record.last_failure = None  # a resumed/progressing run is not failed
         record.phase = phase
@@ -388,3 +533,289 @@ class RunStore:
             "round": record.round,
         })
         return self._write(record)
+
+    def park(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+        self,
+        run_id: str,
+        reason: BaseException | str,
+        kind: str,
+        cause: str,
+        retry_after: float | None = None,
+    ) -> RunRecord:
+        """Settle a retryable failure as `parked` with a `next_command`.
+
+        `attempts` counts parks since the progress fingerprint last changed;
+        past `[run] auto_retries` with no progress the run ends `failed` with
+        cause `no_progress`, naming the failure that kept repeating.
+        """
+        from meow.execution.run_failures import next_command, progress_fingerprint
+        from meow.project.config import run_config
+
+        record = self.load(run_id)
+        if record.phase in TERMINAL_PHASES:
+            raise RunStateError(
+                f"Run {run_id} is {record.phase}; a finished run cannot be parked."
+            )
+        message = (
+            reason if isinstance(reason, str) else str(reason) or type(reason).__name__
+        )
+        previous = record.park if isinstance(record.park, dict) else {}
+        phase_before = (
+            str(previous.get("phase_before") or "created")
+            if record.phase == PARKED_PHASE
+            else record.phase
+        )
+        fingerprint = progress_fingerprint(record)
+        unchanged = bool(previous) and previous.get("fingerprint") == fingerprint
+        attempts = int(previous.get("attempts", 0)) + 1 if unchanged else 1
+        park = {
+            "kind": kind,
+            "cause": cause,
+            "reason": message,
+            "phase_before": phase_before,
+            "attempts": attempts,
+            "total_resumes": sum(
+                1 for item in record.transitions if item.get("phase") == "resuming"
+            ),
+            "manager_resumes": int(previous.get("manager_resumes", 0)),
+            "fingerprint": fingerprint,
+            "parked_at": _now(),
+            "retry_after": retry_after,
+        }
+        try:
+            auto_retries = run_config(Path(record.repo))["auto_retries"]
+        except (OSError, ValueError):
+            auto_retries = _DEFAULT_AUTO_RETRIES
+        if unchanged and attempts > auto_retries:
+            park.update(
+                kind="blocking",
+                cause="no_progress",
+                repeated_kind=kind,
+                repeated_cause=cause,
+            )
+            return self.transition(
+                run_id,
+                "failed",
+                park=park,
+                results={"failure": {"kind": "blocking", "cause": "no_progress"}},
+                last_failure=(
+                    f"No progress: {cause} failure repeated {attempts} times "
+                    f"at {phase_before} with nothing new: {message}"
+                ),
+            )
+        parked = replace(record, phase=PARKED_PHASE)
+        return self.transition(
+            run_id,
+            PARKED_PHASE,
+            park=park,
+            results={
+                "failure": {"kind": kind, "cause": cause},
+                "next_command": next_command(parked),
+            },
+            last_failure=message,
+        )
+
+
+def _owner_alive(info: dict) -> bool | None:
+    """Whether the recorded process still runs; None when none was recorded."""
+    pid, identity = info.get("pid"), info.get("start_identity")
+    if not isinstance(pid, int) or not isinstance(identity, str) or not identity:
+        return None
+    return process_identity(pid) == identity
+
+
+def startup_grace(repo: Path) -> float:
+    """`[run] worker_startup_grace`: how long a launched worker may take to
+    register before it counts as dead."""
+    from meow.project.config import run_config
+
+    try:
+        return float(run_config(Path(repo))["worker_startup_grace"])
+    except (OSError, ValueError):
+        return _DEFAULT_STARTUP_GRACE
+
+
+_LAUNCHER_CEILING_SECONDS = 1800
+
+
+def launcher_starting(background: dict, repo: Path) -> bool:
+    """True while the launched worker process itself (matched by start
+    identity, so a reused PID never counts) is alive and within
+    `max(10 x grace, 30 min)` of launch; a hung launcher is then dead."""
+    pid, identity = background.get("launcher_pid"), background.get("launcher_identity")
+    started = background.get("launch_started_at")
+    if not (isinstance(pid, int) and isinstance(identity, str) and identity):
+        return False
+    ceiling = max(startup_grace(repo) * 10, _LAUNCHER_CEILING_SECONDS)
+    if isinstance(started, (int, float)) and time.time() - started > ceiling:
+        return False
+    return process_identity(pid) == identity
+
+
+def run_owner_alive(record: RunRecord) -> bool | None:
+    """True while a driver or background worker owns the run; False when every
+    recorded owner died; None when no owner was ever recorded (native runs)."""
+    owners: list[bool] = []
+    background = record.background if isinstance(record.background, dict) else {}
+    if background:
+        alive = _owner_alive(background)
+        if alive is None:  # launched, not registered yet
+            started = background.get("launch_started_at")
+            alive = launcher_starting(background, Path(record.repo)) or not (
+                isinstance(started, (int, float))
+                and time.time() - started > startup_grace(Path(record.repo))
+            )
+        owners.append(alive)
+    if (driver := driver_alive(record)) is not None:
+        owners.append(driver)
+    return any(owners) if owners else None
+
+
+def driver_alive(record: RunRecord) -> bool | None:
+    """Whether the recorded driver still runs; None when none was recorded.
+
+    The birth identity guards against PID reuse. When it is missing or cannot
+    be read now, a plain PID-exists check decides instead.
+    """
+    from meow.execution.queue_state import _pid_is_alive
+
+    driver = record.driver if isinstance(record.driver, dict) else {}
+    pid, expected = driver.get("pid"), driver.get("start_identity")
+    if not driver:
+        return None
+    if not isinstance(pid, int) or isinstance(pid, bool):
+        return False
+    actual = process_identity(pid) if isinstance(expected, str) and expected else None
+    if actual is None:
+        return _pid_is_alive(pid)
+    return actual == expected
+
+
+def error_log_tail(store: RunStore, run_id: str) -> str:
+    """The last `ERROR_LOG_TAIL_LINES` lines of `<run_id>.error.log`."""
+    try:
+        text = (store.directory / f"{run_id}.error.log").read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except OSError:
+        return "(no error log)"
+    lines = text.strip().splitlines()[-ERROR_LOG_TAIL_LINES:]
+    return "\n".join(lines) or "(error log empty)"
+
+
+def park_crashed(
+    store: RunStore,
+    run_id: str,
+    owner: Callable[[RunRecord], bool | None] = run_owner_alive,
+) -> RunRecord | None:
+    """Park a run whose driver died without settling it; None if settled.
+
+    Holds the claim lock and re-checks `owner` on the fresh record, so a
+    resume that claimed the run since the caller looked is never parked.
+    """
+    with ExitStack() as stack:
+        try:
+            stack.enter_context(store._claim_lock(run_id))
+        except ClaimBusyError:
+            return None  # another process is claiming it right now
+        record = store.load(run_id)
+        if record.phase in _RECONCILE_SKIP or owner(record) is True:
+            return None
+        return _park_dead(store, record)
+
+
+def _park_dead(store: RunStore, record: RunRecord) -> RunRecord:
+    run_id = record.id
+    tail = error_log_tail(store, run_id)
+    return store.park(
+        run_id,
+        f"driver died during {record.phase}: {tail}",
+        "crashed",
+        "driver_died",
+    )
+
+
+def _run_settings(repo: Path) -> dict:
+    from meow.project.config import run_config
+    from meow.project.config_schema import RUN_DEFAULTS
+
+    try:
+        return run_config(Path(repo))
+    except (OSError, ValueError):
+        return dict(RUN_DEFAULTS)
+
+
+def _native_silent(record: RunRecord, stale_after: float) -> bool:
+    """A full native run (`intent=run`) whose session stopped checkpointing.
+
+    Plan-only native runs, and records without an intent or heartbeat (older
+    sessions), are never treated as lost.
+    """
+    beat = record.results.get("heartbeat_at")
+    return (
+        record.source == "native"
+        and record.results.get("intent") == "run"
+        and isinstance(beat, (int, float))
+        and not isinstance(beat, bool)
+        and time.time() - beat > stale_after
+    )
+
+
+def park_lost_native(store: RunStore, record: RunRecord) -> RunRecord:
+    """Park a silent native run, like `park_crashed` parks a dead driver.
+
+    `park` applies the no-progress stop rule; a spent resume budget is
+    reported by `budget_refusal` when someone tries to continue it.
+    """
+    beat = datetime.fromtimestamp(record.results["heartbeat_at"], UTC).isoformat()
+    return store.park(
+        record.id,
+        f"native session lost during {record.phase}: no checkpoint since {beat}",
+        "transient",
+        NATIVE_LOST_CAUSE,
+    )
+
+
+def _settle_stale(store: RunStore, record: RunRecord, settings: dict) -> bool:
+    """Settle one unsettled run if its owner (or native session) is gone."""
+    owner = run_owner_alive(record)
+    if owner is None:  # driverless: a native run is judged by its heartbeat
+        if not _native_silent(record, float(settings["stale_after"])):
+            return False
+        park_lost_native(store, record)
+        return True
+    return owner is False and park_crashed(store, record.id) is not None
+
+
+def reconcile_stale_runs(store: RunStore, skip: str | None = None) -> list[str]:
+    """Park every unsettled run whose driver and worker are both gone.
+
+    Driverless native runs are judged by their heartbeat instead: only
+    `intent=run` records silent past `[run] stale_after` are parked. `skip`
+    names a run the calling command is driving right now.
+    Returns the IDs that were settled (parked, or failed on no progress).
+    """
+    paths = sorted(store.record_paths())
+    settings = _run_settings(store.directory.parent.parent) if paths else {}
+    settled = []
+    for path in paths:
+        try:
+            if path.stem == skip:
+                continue
+            record = store.load(path.stem)
+            if record.phase not in _RECONCILE_SKIP and _settle_stale(
+                store, record, settings
+            ):
+                settled.append(record.id)
+        except (RunStateError, OSError) as exc:
+            logger.warning("run_reconcile_skipped", run=path.stem, reason=str(exc))
+    return settled
+
+
+def reconcile_quietly(repo: Path, skip: str | None = None) -> list[str]:
+    """`reconcile_stale_runs` for command entry: never blocks the command."""
+    try:
+        return reconcile_stale_runs(RunStore(repo), skip)
+    except (RunStateError, OSError, ValueError) as exc:
+        logger.warning("run_reconcile_failed", reason=str(exc))
+        return []

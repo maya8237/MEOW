@@ -119,7 +119,8 @@ def test_resume_preserves_explicit_tester_mode(tmp_path):
                 test=True,
             )
         )
-    assert store.load(record.id).phase == "failed"
+    assert store.load(record.id).phase == "parked"
+    assert store.load(record.id).last_failure == "interrupted"
 
     with patch("meow.execution.sprint_runner.run_workflow", new=AsyncMock()) as execute:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0

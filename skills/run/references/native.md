@@ -12,7 +12,8 @@ or `tester.configured` is true, use [CLI mode](../SKILL.md#cli-mode): native mod
 cannot run the tester's server/agent lifecycle. CLI selects it by workflow and risk.
 Preserve the user's Jira, existing-plan, source-branch, and worktree options.
 For a saved native run, inspect and continue that same ID with `meow resume <run_id>
---continue --repair`; for an existing plan without a saved run use the documented
+--continue --repair` (detached from a managing session); for an existing plan
+without a saved run use the documented
 `--resume-at review --plan <plan_file>` flow, never a fresh sprint.
 
 1. **Request text**: whatever the user gave, unless they named a Jira issue
@@ -57,7 +58,7 @@ For a saved native run, inspect and continue that same ID with `meow resume <run
    nonzero exit (e.g. uncommitted changes), report the message verbatim and
    stop. Keep `active_dir`, `plan_file`, `review_file`,
    `max_rounds`, `use_worktree` from the JSON; do all further work in `active_dir`.
-   Immediately call `meow native checkpoint preparing --request "<request>"
+   Immediately call `meow native checkpoint preparing --intent run --request "<request>"
    --work-dir "<project-path>" --active-dir "<active_dir>"` and keep its
    `run_id`. Reuse `--run-id <run_id>` for every later checkpoint.
    Pass `--target BRANCH` on this first checkpoint when explicitly requested;
@@ -88,7 +89,7 @@ For a saved native run, inspect and continue that same ID with `meow resume <run
    Record `reviewer_started` before dispatch and `reviewer_finished
    --review <review_file> --reviewer PASS|FAIL` after reading the verdict.
    If tester configuration is enabled after preparation, continue the saved
-   run with `meow resume <run_id> --continue --repair` through CLI mode; native
+   run with `meow resume <run_id> --continue --repair` (detached) through CLI mode; native
    checkpoints have no Claude session IDs, so `--repair` starts fresh agent
    sessions against the saved plan. Do not invent a tester verdict.
    On final PASS, call `meow native finalize <run_id>

@@ -10,8 +10,8 @@ Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](OR
 | `meow run` | Plan, implement, verify, review, and deliver a feature |
 | `meow plan` | Plan without implementation |
 | `meow review` | Review existing code; `--fix` enables fixes |
-| `meow status [ID]` | Inspect the latest or named run; `--verbose` includes evidence |
-| `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates |
+| `meow status [ID]` | Inspect the latest or named run; `--verbose` includes evidence, `--json` the [retry contract](RUNS.md#managed-runs) |
+| `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates, `--parked` continues every parked run (JSON summary; exit 0 settled, 75 pending, 1 blocked or budget exhausted) |
 | `meow cancel ID` | Cooperatively stop a run, preserving recovery state |
 | `meow worktree` | List, inspect, or safely clean owned worktrees |
 | `meow cleanup [ID]` | [Keep results and remove integrated task artifacts](CLEANUP.md) |
@@ -61,18 +61,16 @@ meow plan "Add a dark mode toggle" --name dark-mode
 ```
 
 Normal runs use a worktree and commit/push after verification.
-`-n` / `--no-worktree` uses the selected checkout without committing or pushing.
-`-nc` / `--no-worktree-commit` uses it and commits without pushing;
-`-np` / `--no-worktree-push` uses it and commits/pushes. These options are exclusive.
+`-n` / `--no-worktree` uses the selected checkout without committing or pushing;
+`-nc` / `--no-worktree-commit` commits without pushing; `-np` / `--no-worktree-push`
+commits/pushes. These options are exclusive.
 An existing linked worktree selected with `-d PATH` is used directly.
 Omit `--name` to derive a short request name. `--from BRANCH` (`-b`) selects the starting branch.
 `--from` chooses the start in a new worktree. Existing linked worktrees are reused without `--from`. `--target` overrides `[delivery].target_branch` (auto-onboarded to existing `dev`, otherwise `master`). Targets survive resume; [MR/pipeline options](PIPELINE.md).
 `--plan PATH` supplies a plan; `--resume-at review` reviews existing work first.
 `--manually-approve-plan` (`-m`) pauses before implementation; plan-only rejects it.
-`--background` detaches a run and rejects manual approval and lint-fix.
-
-First use onboards the project. Checks and review precede commits and pushes.
-See [runs and recovery](RUNS.md) and [test selection / `--force-disable-tests`](VERIFICATION.md).
+`--background` detaches a run and rejects manual approval and lint-fix. First use onboards the
+project; checks and review precede commits and pushes. See [runs and recovery](RUNS.md), [test selection](VERIFICATION.md).
 
 ## Multi-sprint runs
 
@@ -89,9 +87,12 @@ Task files, JQL, and multiple Jira keys select orchestration automatically.
 `--orchestrate` (`-o`) selects it explicitly; `--max-parallel N` limits concurrent
 sprints, `--dry-run` saves the decomposition, and `--no-mr` skips opening an MR.
 Local edits require explicit `--from BRANCH`; execution uses an isolated worktree.
-Exit code 3 means the branch was delivered but `MR not opened`; output includes a manual link.
 See [ORCHESTRATION.md](ORCHESTRATION.md) for sources, flags, delivery gates, and recovery.
 `/meow:run` chooses the engine; native supervision requires explicit opt-in.
+Exit code 3 means delivered but `MR not opened` (manual link in output); 0 settled,
+75 parked or retryable (`MEOW_RETRY`), 1 blocked or budget exhausted (`MEOW_BLOCKED`),
+130 interrupted. `meow status ID --json` and `meow resume --parked` drive unattended
+continuation ([managed runs](RUNS.md#managed-runs)); `[run]` keys: [INTEGRATIONS.md](INTEGRATIONS.md#run-retry-ladder).
 
 ## Review
 
@@ -107,9 +108,8 @@ the selected checkout and permit pending changes.
 `--scope project` covers every inventoried area, including frontend/backend,
 despite pending changes or an existing plan. Prompt/Jira reviews also accept
 `diff` or `auto`; whole-project wording such as "from 0" selects project scope.
-Project verdicts require grounded, current `COVERAGE:` records.
-Local PASS also requires current configured lint/test/build evidence;
-remote reviews use their supplied diff without local checks.
+Project verdicts require grounded, current `COVERAGE:` records; local PASS also needs
+current lint/test/build evidence (remote reviews use their diff only).
 
 `--review-file PATH` (`-r`) always resumes fixes for prompt/plan reviews.
 Pass the original prompt for prompt reviews; rerun remote/branch sources instead.

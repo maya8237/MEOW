@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from meow.common.atomic import replace_with_retry
 from meow.common.process import process_identity
 from meow.execution.orchestration.model import (
     MODES,
@@ -120,7 +121,7 @@ class OrchestratorStore:
                 stream.write(payload)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, directory / STATE_FILE)
+            replace_with_retry(temporary, directory / STATE_FILE)
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
@@ -204,6 +205,7 @@ class DriverLock:
             data = {
                 "mode": "cli",
                 "pid": os.getpid(),
+                "start_identity": process_identity(os.getpid()),
                 "host": socket.gethostname(),
                 "started_at": _now(),
             }
@@ -228,30 +230,33 @@ class DriverLock:
             return self._unreadable_is_stale()
         if holder.get("mode") == "native":
             beat = holder.get("heartbeat_at")
-            return not self._live_native(holder) and (
+            return not self._live_holder(holder) and (
                 not isinstance(beat, (int, float))
                 or time.time() - beat > NATIVE_HEARTBEAT_SECONDS
             )
-        pid = holder.get("pid")
-        return not isinstance(pid, int) or not _pid_is_alive(pid)
+        return not self._live_holder(holder)
 
     @staticmethod
-    def _live_native(holder: dict) -> bool:
+    def _live_holder(holder: dict) -> bool:
         pid = holder.get("pid")
         identity = holder.get("start_identity")
         return (
             isinstance(pid, int)
             and _pid_is_alive(pid)
-            and (identity is None or process_identity(pid) == identity)
+            and (
+                identity is None
+                or (actual := process_identity(pid)) is None  # unreadable: PID check
+                or actual == identity
+            )
         )
 
     def _write_over(self) -> None:
         temporary = self.path.with_name(f"{LOCK_FILE}.{os.getpid()}.tmp")
         temporary.write_text(self._payload(), encoding="utf-8")
-        os.replace(temporary, self.path)
+        replace_with_retry(temporary, self.path)
 
     def _take_native(self, holder: dict) -> bool:
-        if holder.get("pid") != os.getpid() and self._live_native(holder):
+        if holder.get("pid") != os.getpid() and self._live_holder(holder):
             return False
         self._write_over()
         self._owned = True

@@ -1,9 +1,12 @@
 """Explicit worktree setup must stay within its selected files."""
 
+import subprocess
+
 import pytest
 
 from meow.infrastructure.worktree_setup import (
     WorktreeSetupError,
+    copy_setup_file,
     run_setup,
     validate_setup,
 )
@@ -23,7 +26,7 @@ def test_copy_selected_regular_file(tmp_path):
         record_action=actions.append,
     )
     assert (worktree / "local.cfg").read_text(encoding="utf-8") == "value"
-    assert actions[0]["status"] == "passed"
+    assert actions[0]["status"] == "copied"
 
 
 @pytest.mark.parametrize("path", ["../outside", ".env", "secrets.toml"])
@@ -46,9 +49,6 @@ def test_rejects_symlink_source_and_collision(tmp_path):
     else:
         with pytest.raises(WorktreeSetupError):
             run_setup(repo, worktree, validate_setup({"copy": ["link.cfg"]}))
-    (worktree / "source.cfg").write_text("mine", encoding="utf-8")
-    with pytest.raises(WorktreeSetupError):
-        run_setup(repo, worktree, validate_setup({"copy": ["source.cfg"]}))
 
 
 def test_policy_denies_setup_command_before_execution(tmp_path):
@@ -112,3 +112,74 @@ def test_timed_out_setup_command_leaves_no_orphans(tmp_path, monkeypatch):
         run_setup(tmp_path, tmp_path, manifest)
     time.sleep(2.5)
     assert not marker.exists()
+
+
+def _git_worktree(path):
+    path.mkdir()
+    for argv in (
+        ["init", "-q"],
+        ["config", "user.email", "t@t"],
+        ["config", "user.name", "t"],
+    ):
+        subprocess.run(["git", *argv], cwd=path, check=True)
+    return path
+
+
+def test_copy_identical_destination_is_skipped(tmp_path):
+    source, dest = tmp_path / "s", tmp_path / "wt" / "d"
+    source.write_text("v", encoding="utf-8")
+    dest.parent.mkdir()
+    dest.write_text("v", encoding="utf-8")
+    assert copy_setup_file(source, dest, tmp_path / "wt") == "identical"
+
+
+def test_copy_keeps_tracked_differing_destination(tmp_path):
+    repo, worktree = tmp_path / "repo", _git_worktree(tmp_path / "wt")
+    (repo / "backends").mkdir(parents=True)
+    (repo / "backends/bun.lock").write_text("local", encoding="utf-8")
+    (worktree / "backends").mkdir()
+    (worktree / "backends/bun.lock").write_text("branch", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-qm", "x"], cwd=worktree, check=True)
+    actions = []
+    run_setup(
+        repo,
+        worktree,
+        validate_setup({"copy": ["backends/bun.lock"]}),
+        record_action=actions.append,
+    )
+    assert (worktree / "backends/bun.lock").read_text(encoding="utf-8") == "branch"
+    assert actions[0] == {"kind": "copy", "path": "backends/bun.lock", "status": "kept"}
+
+
+def test_copy_replaces_untracked_with_backup(tmp_path):
+    repo, worktree = tmp_path / "repo", _git_worktree(tmp_path / "wt")
+    repo.mkdir()
+    (repo / "local.cfg").write_text("new", encoding="utf-8")
+    (worktree / "local.cfg").write_text("mine", encoding="utf-8")
+    actions = []
+    run_setup(
+        repo,
+        worktree,
+        validate_setup({"copy": ["local.cfg"]}),
+        record_action=actions.append,
+    )
+    assert (worktree / "local.cfg").read_text(encoding="utf-8") == "new"
+    backup = worktree / ".meow/setup-backup/local.cfg"
+    assert backup.read_text(encoding="utf-8") == "mine"
+    assert actions[0]["status"] == "replaced"
+
+
+def test_copy_missing_source_skips(tmp_path):
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    assert copy_setup_file(tmp_path / "absent", worktree / "d", worktree) == "skipped"
+    assert not (worktree / "d").exists()
+
+
+def test_copy_onto_directory_still_errors(tmp_path):
+    source, worktree = tmp_path / "s", tmp_path / "wt"
+    source.write_text("v", encoding="utf-8")
+    (worktree / "d").mkdir(parents=True)
+    with pytest.raises(WorktreeSetupError):
+        copy_setup_file(source, worktree / "d", worktree)

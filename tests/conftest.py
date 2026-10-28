@@ -42,6 +42,14 @@ def _offline_update_checks(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_host_session(monkeypatch):
+    """Tests run inside Claude Code too; a foreground `meow run` must not
+    switch to the supervised path just because `CLAUDECODE` is set."""
+    for name in ("CLAUDECODE", "MEOW_SUPERVISOR_NONCE"):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_home(tmp_path_factory, monkeypatch):
     """Keep the developer's real ~/.meow config and repo registry out of tests."""
     home = tmp_path_factory.mktemp("home")

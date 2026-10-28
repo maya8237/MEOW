@@ -225,7 +225,8 @@ def run_node_install(  # ruff: ignore[complex-structure, too-many-statements, to
     if command_decision and command_decision(argv) in {"deny", "ask"}:
         raise WorktreeSetupError(
             "Dependency install requires approval or is denied by policy: "
-            f"{' '.join(argv)}"
+            f"{' '.join(argv)}",
+            cause="policy_denied",
         )
     executable = shutil.which(argv[0])
     if not executable:

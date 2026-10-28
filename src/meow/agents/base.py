@@ -6,7 +6,7 @@ import os
 import re
 import time
 from collections.abc import AsyncIterator, Callable
-from contextlib import suppress
+from contextlib import aclosing, suppress
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -30,6 +30,14 @@ from claude_agent_sdk import (
     query,
 )
 
+from meow.agents.api_errors import (
+    DEFAULT_MAX_WAIT,
+    ApiError,
+    ApiRetries,
+    classify_api_error,
+    redact,
+)
+from meow.execution.run_failures import TransientRunError
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
 from meow.infrastructure.user_hooks import SDK_AGENT_ENV, merge_hooks, sdk_hooks
@@ -49,12 +57,84 @@ _PREVIEW_LEN = 200
 _BASH_TIMEOUT_ENV = {
     "BASH_DEFAULT_TIMEOUT_MS": str(30 * 60 * 1000),
     "BASH_MAX_TIMEOUT_MS": str(2 * 60 * 60 * 1000),
+    # First rung of the API retry ladder: the CLI retries internally first.
+    "CLAUDE_CODE_MAX_RETRIES": "8",
+    "API_TIMEOUT_MS": "600000",
 }
 _SDK_CRASH_RETRY_ATTEMPTS = 3
 _SDK_CRASH_RETRY_BACKOFF = 1.0
 _NTSTATUS_SEVERITY_BIT = 0x80000000
 _OUTPUT_UNLINK_ATTEMPTS = 3
 _OUTPUT_UNLINK_BACKOFF = 0.2
+# How long an SDK stream may stay silent before the CLI's liveness is checked.
+_STREAM_POLL_SECONDS = 30.0
+# LiteLLM (and Anthropic) 400s for a message history the API refuses.
+_SEQUENCE_ERROR = re.compile(
+    r"unexpected role ['\"`]?user['\"`]? after role ['\"`]?tool|"
+    r"roles must alternate|tool_use ids were found without .?tool_result|"
+    r"unexpected .?tool_use_id",
+    re.I,
+)
+_CLOSE_RACE = re.compile(r"asynchronous generator is already running", re.I)
+_SEQUENCE_REBUILDS = 2
+_SEQUENCE_RECAP_REASON = "had an invalid message history"
+
+
+class _InvalidSequence(Exception):
+    """The API rejected the session's message history (tool/user ordering)."""
+
+
+def _raise_if_invalid_sequence(*texts: object, assistant: str = "") -> None:
+    """Raise `_InvalidSequence` for an error detail that names a sequence
+    fault, or for assistant text that is itself the LiteLLM 400 notice (prose
+    that merely mentions the phrase does not count)."""
+    if any(_SEQUENCE_ERROR.search(str(text or "")) for text in texts) or (
+        "API Error: 400" in assistant
+        and "litellm" in assistant.lower()
+        and _SEQUENCE_ERROR.search(assistant)
+    ):
+        raise _InvalidSequence
+
+
+def _sequence_giveup(role: str) -> TransientRunError:
+    return TransientRunError(
+        f"{role} kept hitting an invalid message history",
+        cause="invalid_sequence",
+    )
+
+
+def _fresh_options(options: ClaudeAgentOptions) -> ClaudeAgentOptions:
+    """A copy of `options` that starts a new conversation (no `resume`)."""
+    fresh = copy.copy(options)
+    for name in ("resume", "continue_conversation"):
+        if hasattr(fresh, name):
+            setattr(fresh, name, None if name == "resume" else False)
+    callback = getattr(options, "_meow_session_callback", None)
+    if callback is not None:
+        fresh._meow_session_callback = callback
+    return fresh
+
+
+_RETRY_RECAP_LEAD = "Your previous attempt was cut off by "
+
+
+def _retry_recap(cause: str = "an invalid message history") -> str:
+    return f"{_RETRY_RECAP_LEAD}{cause}; start over and complete the task below.\n\n"
+
+
+def _recapped(prompt: str, cause: str = "an invalid message history") -> str:
+    """`prompt` behind a retry recap, never behind two."""
+    if prompt.startswith(_RETRY_RECAP_LEAD):
+        return prompt
+    return _retry_recap(cause) + prompt
+
+
+def _restart_recap(reason: str) -> str:
+    return (
+        f"Your previous session {reason} and was replaced. "
+        "Re-read the plan and inspect the working tree (git status, git diff) "
+        "to see what is already done; do not redo finished work.\n\n"
+    )
 
 
 def _is_os_failure(exc: BaseException) -> bool:
@@ -190,7 +270,7 @@ def prepare_output_file(output_file: Path) -> None:
 
 
 def _preview(text: str) -> str:
-    text = text.strip().replace("\n", " ")
+    text = redact(text).strip().replace("\n", " ")
     return text if len(text) <= _PREVIEW_LEN else text[:_PREVIEW_LEN] + "..."
 
 
@@ -282,52 +362,224 @@ class GeneratorContext(AgentContext, Protocol):
     def lint_hook(self) -> object: ...
 
 
+def _transport_alive(client: object) -> bool:
+    """False only when the SDK's `claude` subprocess has visibly exited.
+
+    Reads SDK internals defensively: anything unknown counts as alive.
+    """
+    process = getattr(getattr(client, "_transport", None), "_process", None)
+    return process is None or getattr(process, "returncode", None) is None
+
+
+async def _next_item(iterator: AsyncIterator) -> object:
+    return await anext(iterator)
+
+
+async def _stop_iteration(pending: asyncio.Task | None, iterator: AsyncIterator):
+    """Stop the task iterating `iterator`, then close the iterator itself.
+
+    Closing a generator another task is still running raises "already running"."""
+    if pending is not None:
+        pending.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await pending
+    aclose = getattr(iterator, "aclose", None)
+    if aclose is not None:
+        with suppress(Exception):
+            await aclose()
+
+
+async def _watch_stream(
+    stream: AsyncIterator, alive: Callable[[], bool], poll: float
+) -> AsyncIterator:
+    """Yield `stream`'s items; fail a turn whose CLI died without ending it.
+
+    When `poll` seconds pass with no item and `alive()` is False, raises
+    `CLIConnectionError`, which the session/query retry paths replay.
+    """
+    iterator = aiter(stream)
+    pending: asyncio.Task | None = None
+    try:
+        while True:
+            pending = asyncio.ensure_future(_next_item(iterator))
+            while not (await asyncio.wait({pending}, timeout=poll))[0]:
+                if not alive():
+                    raise CLIConnectionError("claude CLI exited mid-turn")
+            done, pending = pending, None
+            try:
+                item = done.result()
+            except StopAsyncIteration:
+                return
+            yield item
+    finally:
+        await _stop_iteration(pending, iterator)
+
+
 def _last_text_block(message: AssistantMessage) -> str:
     """The text of the final `TextBlock` in an assistant message, or ""."""
     texts = [b.text for b in message.content if isinstance(b, TextBlock)]
     return texts[-1] if texts else ""
 
 
-async def _consume_query(  # ruff: ignore[complex-structure]
+def _api_failure(
+    status: int | None, error: str | None, text: str, prose: str = ""
+) -> ApiError | None:
+    """An `ApiError` for a failure the retry policy handles. `text` is a
+    structured detail (result, stderr); `prose` is assistant text, used only
+    when it carries the CLI's `API Error:` notice. A sequence fault raises
+    `_InvalidSequence`; a context overflow keeps its own recovery path."""
+    if "API Error:" in prose:
+        text = f"{text} {prose}".strip()
+    failure = classify_api_error(status=status, error=error, text=text)
+    if failure is None or failure.kind == "overflow":
+        return None
+    if failure.kind == "sequence":
+        raise _InvalidSequence
+    return ApiError(failure, text)
+
+
+def _redact_process_error(exc: ProcessError) -> None:
+    """Strip key-like tokens from a process error before it is logged,
+    chained or turned into a park reason."""
+    if exc.stderr:
+        exc.stderr = redact(exc.stderr)
+    exc.args = tuple(redact(a) if isinstance(a, str) else a for a in exc.args)
+
+
+def _max_wait(config: object, cwd: object) -> float:
+    """`[run] api_max_wait`: from loaded config, else the project at `cwd`."""
+    run = config.get("run") if isinstance(config, dict) else None
+    if isinstance(run, dict) and "api_max_wait" in run:
+        return float(run["api_max_wait"])
+    try:
+        from meow.project.config import run_config
+
+        return float(run_config(Path(str(cwd)))["api_max_wait"])
+    except Exception:
+        return DEFAULT_MAX_WAIT
+
+
+def _query_failure(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+    role: str,
+    message: ResultMessage,
+    last_text: str,
+    assistant: str,
+    assistant_error: str | None = None,
+) -> Exception:
+    _raise_if_invalid_sequence(assistant=message.result or "")
+    _raise_if_invalid_sequence(assistant=assistant)
+    api = _api_failure(
+        message.api_error_status, assistant_error, message.result or "", assistant
+    )
+    if api is not None:
+        logger.warning("agent_api_error", role=role, cause=api.failure.cause)
+        return api
+    logger.error("agent_query_failed", role=role, subtype=message.subtype)
+    return RuntimeError(
+        f"{role} failed: {message.subtype}"
+        + (f": {redact(last_text)}" if last_text else "")
+    )
+
+
+async def _consume_query(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements, too-many-arguments, too-many-positional-arguments]
     prompt: str,
     options: ClaudeAgentOptions,
     role: str,
+    retries: ApiRetries | None = None,
     observe: Callable[[object], None] | None = None,
 ) -> str:
     """Run `query()` once to completion, raising `RuntimeError` on a
     non-success result. A `ProcessError` (the CLI subprocess crashed or
     otherwise failed) propagates unchanged for `Agent.run_query`'s retry
     loop to handle. `observe`, when given, sees every streamed message."""
-    messages: AsyncIterator = query(prompt=prompt, options=options)
-    last_text = ""
+    # query() exposes no transport, so liveness defaults to alive here.
+    messages: AsyncIterator = _watch_stream(
+        query(prompt=prompt, options=options), lambda: True, _STREAM_POLL_SECONDS
+    )
+    last_text = assistant_text = ""
+    assistant_error = None
     parts = []
     try:
-        async for message in messages:
-            log_stream_message(role, message, options=options)
-            if observe is not None:
-                observe(message)
-            if isinstance(message, AssistantMessage):
-                last_text = _last_text_block(message) or last_text
-                parts.extend(
-                    block.text
-                    for block in message.content
-                    if isinstance(block, TextBlock)
-                )
-            if isinstance(message, ResultMessage):
-                last_text = message.result or last_text
-                if message.is_error or message.subtype != "success":
-                    logger.error(
-                        "agent_query_failed", role=role, subtype=message.subtype
+        async with aclosing(messages):
+            async for message in messages:
+                log_stream_message(role, message, options=options)
+                if retries is not None:
+                    retries.note(message)
+                if observe is not None:
+                    observe(message)
+                if isinstance(message, AssistantMessage):
+                    assistant_error = message.error or assistant_error
+                    last_text = _last_text_block(message) or last_text
+                    parts.extend(
+                        block.text
+                        for block in message.content
+                        if isinstance(block, TextBlock)
                     )
-                    raise RuntimeError(
-                        f"{role} failed: {message.subtype}"
-                        + (f": {last_text}" if last_text else "")
-                    )
+                if isinstance(message, ResultMessage):
+                    assistant_text, last_text = last_text, message.result or last_text
+                    if message.is_error or message.subtype != "success":
+                        raise _query_failure(
+                            role, message, last_text, assistant_text, assistant_error
+                        )
     except ProcessError as exc:
+        _raise_if_invalid_sequence(exc.stderr, exc, assistant=last_text)
+        api = _api_failure(None, None, f"{exc.stderr or ''} {exc}", last_text)
         if not exc.stderr and last_text:
             exc.stderr = last_text
+        _redact_process_error(exc)
+        if api is not None:
+            raise api from exc
         raise
     return "\n".join(parts)
+
+
+async def _consume_rebuilding(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+    prompt: str,
+    options: ClaudeAgentOptions,
+    role: str,
+    retries: ApiRetries | None = None,
+    observe: Callable[[object], None] | None = None,
+) -> str:
+    """`_consume_query`, retried once on a fresh conversation (no `resume`,
+    recap prepended) when the API refuses the message history."""
+    try:
+        return await _consume_query(prompt, options, role, retries, observe)
+    except _InvalidSequence:
+        logger.warning("agent_query_sequence_retry", role=role)
+    try:
+        return await _consume_query(
+            _recapped(prompt),
+            _fresh_options(options),
+            role,
+            retries,
+            observe,
+        )
+    except _InvalidSequence as exc:
+        raise _sequence_giveup(role) from exc
+
+
+async def _consume_resilient(
+    prompt: str,
+    options: ClaudeAgentOptions,
+    role: str,
+    observe: Callable[[object], None] | None = None,
+) -> str:
+    """`_consume_rebuilding`, waiting out or backing off API errors (rate
+    limits, overload, timeouts) and resending; a fresh session at most once."""
+    base_prompt = prompt
+    retries = ApiRetries(
+        role,
+        lambda: _max_wait({}, getattr(options, "cwd", None)),
+        model=getattr(options, "model", None),
+    )
+    while True:
+        try:
+            return await _consume_rebuilding(prompt, options, role, retries, observe)
+        except ApiError as exc:
+            if await retries.handle(exc):
+                continue
+            prompt = _recapped(base_prompt, "an API error")
+            options = _fresh_options(options)
 
 
 def _check_os_retry(exc: BaseException, role: str, attempt: int) -> None:
@@ -587,7 +839,7 @@ class Agent:
         for attempt in range(1, _SDK_CRASH_RETRY_ATTEMPTS + 1):
             logger.info("agent_query_started", role=role, attempt=attempt)
             try:
-                response = await _consume_query(prompt, options, role, observe)
+                response = await _consume_resilient(prompt, options, role, observe)
                 logger.info("agent_query_finished", role=role)
                 return response
             except ProcessError as exc:
@@ -687,8 +939,22 @@ class SessionAgent(Agent):
 
     async def __aexit__(self, *exc):
         self._entered = False
+        await self._close(self._client, *exc)
+
+    async def _close(self, client: object, *exc: object) -> None:
+        """Close `client`; a close that fails must not mask the real error.
+
+        Callers have already closed the receive iterator (`aclosing` in
+        `_run_turn`), so an "already running" race only means a stray task."""
         try:
-            await self._client.__aexit__(*exc)
+            await client.__aexit__(*exc)
+        except RuntimeError as error:
+            event = (
+                "session_close_race"
+                if _CLOSE_RACE.search(str(error))
+                else "session_close_failed"
+            )
+            logger.warning(event, role=self.role, reason=str(error))
         except Exception as error:  # the process may already be gone
             logger.warning("session_close_failed", role=self.role, reason=str(error))
 
@@ -698,57 +964,61 @@ class SessionAgent(Agent):
             "session_recycled", role=self.role, context_tokens=self._context_size
         )
         old = self._client
-        options = copy.copy(self._session_options)
-        for name in ("resume", "continue_conversation"):
-            if hasattr(options, name):
-                setattr(options, name, None if name == "resume" else False)
-        callback = getattr(self._session_options, "_meow_session_callback", None)
-        if callback is not None:
-            options._meow_session_callback = callback
+        options = _fresh_options(self._session_options)
         self._session_options = options
         self._client = ClaudeSDKClient(options=options)
         if self._entered:
-            with suppress(Exception):
-                await old.__aexit__(None, None, None)
+            await self._close(old, None, None, None)
             await self._client.__aenter__()
         self._context_size = 0
-        self._recap = (
-            f"Your previous session {reason} and was replaced. "
-            "Re-read the plan and inspect the working tree (git status, git diff) "
-            "to see what is already done; do not redo finished work.\n\n"
-        )
+        self._recap = _restart_recap(reason)
 
-    async def _turn(  # ruff: ignore[too-many-statements]
+    async def _turn(  # ruff: ignore[too-many-statements, too-many-branches, complex-structure]
         self, message: str
     ) -> str:
         """Send one message and return the assistant's text for that turn.
 
         A full context window or a crashed CLI process replaces the session and
         replays the turn, the same recovery one-shot queries get for crashes."""
-        if self._entered and self._context_size > _SESSION_TOKEN_LIMIT:
-            await self._restart()
-        overflows = crashes = 0
+        await self._restart_if_full()
+        overflows = crashes = rebuilds = 0
+        retries = ApiRetries(
+            self.role,
+            lambda: _max_wait(
+                self.context.config, getattr(self._session_options, "cwd", None)
+            ),
+            model=getattr(self._session_options, "model", None),
+        )
         while True:
             logger.info("session_turn_started", role=self.role)
             try:
-                text = await self._run_turn(self._recap + message)
+                text = await self._run_turn(self._recap + message, retries)
             except _ContextOverflow:
                 overflows += 1
                 await self._recover_overflow(overflows)
                 continue
-            except ProcessError as exc:
-                crashes += 1
-                await self._recover_crash(exc, crashes)
+            except _InvalidSequence as exc:
+                rebuilds += 1
+                await self._recover_sequence(exc, rebuilds)
                 continue
-            except (OSError, CLIConnectionError) as exc:
+            except ApiError as exc:
+                if not await retries.handle(exc):
+                    await self._restart("hit an API error")
+                continue
+            except (ProcessError, OSError, CLIConnectionError) as exc:
                 crashes += 1
-                _check_os_retry(exc, self.role, crashes)
-                await asyncio.sleep(_SDK_CRASH_RETRY_BACKOFF * 2 ** (crashes - 1))
-                await self._restart("hit an operating-system error")
+                if isinstance(exc, ProcessError):
+                    await self._recover_crash(exc, crashes)
+                else:
+                    await self._recover_os_error(exc, crashes)
                 continue
             self._recap = ""
             logger.info("session_turn_finished", role=self.role)
             return text
+
+    async def _restart_if_full(self) -> None:
+        if self._entered and self._context_size > _SESSION_TOKEN_LIMIT:
+            await self._restart()
 
     async def _recover_overflow(self, overflows: int) -> None:
         """Replace a session that ran out of context, or give up."""
@@ -757,6 +1027,17 @@ class SessionAgent(Agent):
                 f"{self.role} session exceeded its context window"
             ) from None
         await self._restart()
+
+    async def _recover_os_error(self, exc: BaseException, crashes: int) -> None:
+        _check_os_retry(exc, self.role, crashes)
+        await asyncio.sleep(_SDK_CRASH_RETRY_BACKOFF * 2 ** (crashes - 1))
+        await self._restart("hit an operating-system error")
+
+    async def _recover_sequence(self, exc: Exception, rebuilds: int) -> None:
+        """Rebuild a session whose history the API refused, or park the run."""
+        if rebuilds > _SEQUENCE_REBUILDS or not self._entered:
+            raise _sequence_giveup(self.role) from exc
+        await self._restart(_SEQUENCE_RECAP_REASON)
 
     async def _recover_crash(self, exc: ProcessError, crashes: int) -> None:
         """Replace a crashed session, or report a terminal process failure."""
@@ -782,47 +1063,82 @@ class SessionAgent(Agent):
         await asyncio.sleep(_SDK_CRASH_RETRY_BACKOFF * 2 ** (crashes - 1))
         await self._restart("ended unexpectedly")
 
-    async def _run_turn(self, message: str) -> str:  # ruff: ignore[complex-structure]
+    async def _run_turn(  # ruff: ignore[complex-structure, too-many-statements]
+        self, message: str, retries: ApiRetries | None = None
+    ) -> str:
         text = []
         last_call = 0
+        api_error = None
         try:
             await self._client.query(message)
-            async for item in self._client.receive_response():
-                log_stream_message(self.role, item, options=self._session_options)
-                if isinstance(item, AssistantMessage):
-                    text.extend(
-                        block.text
-                        for block in item.content
-                        if isinstance(block, TextBlock)
-                    )
-                    if item.parent_tool_use_id is None:
-                        last_call = _context_tokens(item) or last_call
-                elif isinstance(item, ResultMessage):
-                    # The result's usage totals every API call of the turn; the
-                    # last call alone is what the next turn's context starts at.
-                    self._context_size = (
-                        last_call or _context_tokens(item) or self._context_size
-                    )
-                    self._check_result(item)
+            stream = _watch_stream(
+                self._client.receive_response(),
+                lambda: _transport_alive(self._client),
+                _STREAM_POLL_SECONDS,
+            )
+            async with aclosing(stream):
+                async for item in stream:
+                    log_stream_message(self.role, item, options=self._session_options)
+                    if retries is not None:
+                        retries.note(item)
+                    if isinstance(item, AssistantMessage):
+                        api_error = item.error or api_error
+                        text.extend(
+                            block.text
+                            for block in item.content
+                            if isinstance(block, TextBlock)
+                        )
+                        if item.parent_tool_use_id is None:
+                            last_call = _context_tokens(item) or last_call
+                    elif isinstance(item, ResultMessage):
+                        # The result's usage totals every API call of the turn; the
+                        # last call alone is what the next turn's context starts at.
+                        self._context_size = (
+                            last_call or _context_tokens(item) or self._context_size
+                        )
+                        self._check_result(item, text[-1] if text else "", api_error)
         except ProcessError as exc:
-            if not exc.stderr and text:
-                exc.stderr = text[-1]
-            if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
-                raise _ContextOverflow from exc
+            _classify_process_error(exc, text)
             raise
         return "\n".join(text)
 
-    def _check_result(self, result: ResultMessage) -> None:
+    def _check_result(
+        self,
+        result: ResultMessage,
+        last_text: str = "",
+        api_error: str | None = None,
+    ) -> None:
         """A failed turn must fail, not hand its partial text back as success."""
         failed = getattr(result, "is_error", False) is True
         if not failed and getattr(result, "subtype", "success") == "success":
             return
         detail = str(getattr(result, "result", "") or "")
+        _raise_if_invalid_sequence(assistant=detail)
+        _raise_if_invalid_sequence(assistant=last_text)
         if _CONTEXT_OVERFLOW.search(detail):
             raise _ContextOverflow
+        status = getattr(result, "api_error_status", None)
+        if (api := _api_failure(status, api_error, detail, last_text)) is not None:
+            raise api
         raise RuntimeError(
-            f"{self.role} failed: {result.subtype}" + (f": {detail}" if detail else "")
+            f"{self.role} failed: {result.subtype}"
+            + (f": {redact(detail)}" if detail else "")
         )
+
+
+def _classify_process_error(exc: ProcessError, text: list[str]) -> None:
+    """Raise the typed recovery signal a failed CLI process calls for, if any."""
+    _raise_if_invalid_sequence(exc.stderr, exc, assistant=text[-1] if text else "")
+    api = _api_failure(
+        None, None, f"{exc.stderr or ''} {exc}", text[-1] if text else ""
+    )
+    if not exc.stderr and text:
+        exc.stderr = text[-1]
+    _redact_process_error(exc)
+    if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
+        raise _ContextOverflow from exc
+    if api is not None:
+        raise api from exc
 
 
 class _ContextOverflow(Exception):

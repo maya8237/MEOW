@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from meow.agents import explorer as explorer_agent
 from meow.agents import generator as generator_agent
@@ -1145,6 +1145,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             plan_file=(Path(temp_dir) / "docs/exec-plans/active/ship-it.md").resolve(),
             source_branch=None,
             approve_plan=None,
+            on_created=ANY,
             resume_at="generate",
         )
         mock_plan.assert_not_called()
@@ -1184,6 +1185,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             plan_file=Path("docs/exec-plans/active/ship-it.md").resolve(),
             source_branch=None,
             approve_plan=None,
+            on_created=ANY,
             resume_at="generate",
         )
         mock_plan.assert_not_called()
@@ -1223,6 +1225,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             plan_file=None,
             source_branch="release/1.0",
             approve_plan=None,
+            on_created=ANY,
             resume_at="generate",
         )
 
@@ -1257,6 +1260,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             plan_file=None,
             source_branch="release/1.0",
             approve_plan=None,
+            on_created=ANY,
             resume_at="generate",
         )
 
@@ -1282,6 +1286,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             plan_file=None,
             source_branch=None,
             approve_plan=None,
+            on_created=ANY,
             resume_at="generate",
         )
 
@@ -1655,6 +1660,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             plan_file=None,
             source_branch=None,
             approve_plan=None,
+            on_created=ANY,
             resume_at="generate",
             commit=False,
             push=False,
@@ -1781,6 +1787,7 @@ class ManuallyApprovePlanFlagTests(unittest.TestCase):
             plan_file=None,
             source_branch=None,
             approve_plan=_prompt_plan_approval,
+            on_created=ANY,
             resume_at="generate",
         )
 
@@ -1881,6 +1888,7 @@ class ResumeAtFlagTests(unittest.TestCase):
             plan_file=None,
             source_branch=None,
             approve_plan=None,
+            on_created=ANY,
             resume_at="review",
         )
 
@@ -1902,6 +1910,7 @@ class ResumeAtFlagTests(unittest.TestCase):
             plan_file=None,
             source_branch=None,
             approve_plan=None,
+            on_created=ANY,
             resume_at="generate",
         )
 

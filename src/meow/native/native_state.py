@@ -4,12 +4,22 @@ run-journal checkpoints and gated finalize shared with CLI runs."""
 import asyncio
 import hashlib
 import json
+import time
+from contextlib import suppress
 from dataclasses import asdict
 from pathlib import Path
 
 from meow.execution.cleanup import cleanup_completed
 from meow.execution.delivery import deliver_verified_run
-from meow.execution.run_state import RunStore
+from meow.execution.run_failures import park_on_check_timeout
+from meow.execution.run_state import (
+    PARKED_PHASE,
+    TERMINAL_PHASES,
+    RunRecord,
+    RunStateError,
+    RunStore,
+    driver_alive,
+)
 from meow.infrastructure.checks import (
     adopt_stage_artifacts,
     code_revision,
@@ -79,6 +89,19 @@ def _review_errors(
     return errors
 
 
+def _refuse_live_driver(record: RunRecord) -> None:
+    """A CLI process (`meow resume`) took this run over: the native session
+    must stop driving it, not race it on the same worktree."""
+    from meow.execution.orchestration.store import DriverBusyError
+
+    if driver_alive(record) is True:
+        raise DriverBusyError(
+            f"run {record.id} is driven by a live CLI process "
+            f"(pid {record.driver.get('pid')}); stop editing its worktree and "
+            f"watch it with `meow status {record.id} --json`"
+        )
+
+
 def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-statements, too-many-branches]
     repo: Path,
     active_dir: Path,
@@ -92,10 +115,24 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
     reviewer: str | None = None,
     tester: str | None = None,
     target_branch: str | None = None,
+    intent: str | None = None,
+    failure: str | None = None,
 ) -> dict:
-    """Persist one native phase using the CLI run journal schema."""
+    """Persist one native phase using the CLI run journal schema.
+
+    Phase `parked` records a crash the native driver saw (`failure`) through
+    `RunStore.park`, so it gets a `next_command` and the no-progress budget.
+    Every checkpoint stamps the run's heartbeat; `intent` (`run` or `plan`)
+    tells reconciliation whether a silent run is a lost session.
+    """
     if phase == "complete":
         raise ValueError("Native completion requires current gate evidence")
+    if (phase == PARKED_PHASE) != bool(failure):
+        raise ValueError("Phase parked requires --failure (and only parked takes it)")
+    if phase == PARKED_PHASE and run_id is None:
+        raise ValueError("Phase parked requires --run-id")
+    if intent not in {None, "run", "plan"}:
+        raise ValueError(f"intent must be run or plan, got {intent!r}")
     if tester == "PASS" and load_config(config_root(repo, active_dir)).get(
         "tester", {}
     ).get("tests"):
@@ -123,6 +160,7 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
         run_id = record.id
     else:
         record = store.load(run_id)
+        _refuse_live_driver(record)
     if plan_file is not None:
         plan_file = plan_file.resolve()
         patch["plan_file"] = str(plan_file)
@@ -173,7 +211,22 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
             results["tester_revision"] = ""
     if not record.config_fingerprint and config_paths(repo):
         patch["config_fingerprint"] = config_fingerprint(repo)
-    record = store.transition(run_id, phase, **patch)
+    results = patch.setdefault("results", {})
+    results["heartbeat_at"] = time.time()
+    if intent is not None:
+        results["intent"] = intent
+    if phase == PARKED_PHASE:
+        if record.phase in TERMINAL_PHASES:  # a late crash report must not revive it
+            raise RunStateError(
+                f"Run {run_id} is {record.phase}; a finished run cannot be parked."
+            )
+        if set(patch) == {"results"}:
+            store.update_results(run_id, **results)
+        else:
+            store.transition(run_id, record.phase, **patch)
+        record = store.park(run_id, failure, "transient", "native_reported")
+    else:
+        record = store.transition(run_id, phase, **patch)
     return {
         "run_id": record.id,
         "phase": record.phase,
@@ -187,7 +240,10 @@ async def finalize(  # ruff: ignore[too-many-statements, complex-structure, too-
 ) -> dict:
     """Run current configured gates and seal a reviewed native run."""
     store = RunStore(repo)
+    with suppress(RunStateError, OSError):
+        store.heartbeat(run_id)  # the handler's own write, not a racing one
     record = store.load(run_id)
+    _refuse_live_driver(record)
     from meow.cli.resume_cli import _validate
 
     problem = _validate(record, repo)
@@ -230,8 +286,11 @@ async def finalize(  # ruff: ignore[too-many-statements, complex-structure, too-
         await asyncio.to_thread(
             adopt_stage_artifacts, store, run_id, active_dir, baseline
         )
+        park_on_check_timeout(results)
     except BaseException as exc:
-        store.transition(run_id, "failed", last_failure=str(exc))
+        from meow.execution.sprint_runner import _settle_failure
+
+        _settle_failure(store, run_id, exc)  # a crashed check parks resumable
         raise
     store.transition(
         run_id,

@@ -228,3 +228,26 @@ def test_native_finalize_tolerates_files_written_by_checks(tmp_path):
     with patch("meow.native.native_state.deliver_verified_run"):
         result = asyncio.run(finalize(tmp_path, tmp_path, run_id))
     assert result["complete"], RunStore(tmp_path).load(run_id).last_failure
+
+
+def test_native_finalize_parks_when_a_required_check_times_out(tmp_path):
+    from meow.execution.run_failures import TransientRunError
+    from meow.execution.run_state import CheckResult
+
+    subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
+    (tmp_path / ".meow").mkdir()
+    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
+    run_id = checkpoint(tmp_path, tmp_path, "planned", request="work")["run_id"]
+    _review(tmp_path, run_id)
+    timed_out = CheckResult("lint", "x", True, None, 1.0, "", "r", "f", True)
+    with (
+        patch(
+            "meow.native.native_state.run_final_checks",
+            new_callable=AsyncMock,
+            return_value=[timed_out],
+        ),
+        pytest.raises(TransientRunError),
+    ):
+        asyncio.run(finalize(tmp_path, tmp_path, run_id))
+    record = RunStore(tmp_path).load(run_id)
+    assert record.phase == "parked"

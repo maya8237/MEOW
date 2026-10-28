@@ -1,9 +1,9 @@
 """Command splitting and launch-compatibility policy for configured commands."""
 
 import os
-import platform
 import shlex
 import shutil
+import sys
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
@@ -115,13 +115,21 @@ def _os_mismatch(command: str, system: str) -> str | None:
     return None
 
 
+_SYSTEM_NAMES = {"win32": "Windows", "linux": "Linux", "darwin": "Darwin"}
+
+
+def system_name() -> str:
+    """The OS name as `platform.system()` spells it, without querying WMI."""
+    return _SYSTEM_NAMES.get(sys.platform, sys.platform)
+
+
 def _validate_os_compatibility(
     commands: "list[LintCommand]", system: str | None = None
 ) -> None:
     """Fail fast on a lint command that can only ever run on a different OS
     than the one meow is running on right now -- before any agent runs,
     rather than failing obscurely partway through a lint pass."""
-    system = system or platform.system()
+    system = system or system_name()
     for cmd in commands:
         problem = _os_mismatch(" ".join([cmd.command, *cmd.args]), system)
         if problem:

@@ -107,3 +107,16 @@ def test_outer_timeout_waits_for_the_operation_to_unwind(tmp_path):
         return list(unwound)
 
     assert asyncio.run(scenario()) == [True]
+
+
+def test_cancelling_a_parked_run_settles_it(tmp_path):
+    from meow.execution.run_state import RunStore
+    from meow.infrastructure.cancellation import request_cancel
+
+    store = RunStore(tmp_path)
+    record = store.create(
+        source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
+    )
+    store.park(record.id, RuntimeError("boom"), "transient", "error")
+    assert request_cancel(store, record.id).phase == "cancelled"
+    assert "next_command" not in store.load(record.id).results

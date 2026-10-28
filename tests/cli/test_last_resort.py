@@ -1,4 +1,8 @@
-"""Failures that reach the CLI's outermost handler end as one message, exit 1."""
+"""Failures that reach the CLI's outermost handler end as one message.
+
+With no run record, only a recognised transient failure (timeout, SDK
+process, OS I/O) exits 75 with `MEOW_RETRY`; anything else exits 1 with
+`MEOW_BLOCKED`, so a managing agent never retries it unbounded."""
 
 import subprocess
 from unittest.mock import patch
@@ -7,6 +11,7 @@ import pytest
 from claude_agent_sdk import ProcessError
 
 from meow.cli import cli
+from meow.cli.run_contract import EXIT_BLOCKED, EXIT_TEMPFAIL
 
 
 class _Quit(RuntimeError):
@@ -14,21 +19,30 @@ class _Quit(RuntimeError):
 
 
 @pytest.mark.parametrize(
-    ("error", "expected"),
+    ("error", "expected", "code"),
     [
-        (TimeoutError("step timed out"), "step timed out"),
-        (PermissionError("denied"), "denied"),
-        (ProcessError("CLI startup failed", exit_code=-11), "CLI startup failed"),
+        (TimeoutError("step timed out"), "step timed out", EXIT_TEMPFAIL),
+        (PermissionError("denied"), "denied", EXIT_BLOCKED),
+        (
+            ProcessError("CLI startup failed", exit_code=-11),
+            "CLI startup failed",
+            EXIT_TEMPFAIL,
+        ),
         (
             subprocess.CalledProcessError(
                 128, ["git", "worktree", "add"], stderr="boom"
             ),
             "git worktree add",
+            EXIT_BLOCKED,
         ),
-        (ExceptionGroup("branches", [OSError("disk full")]), "disk full"),
+        (
+            ExceptionGroup("branches", [OSError("disk full")]),
+            "disk full",
+            EXIT_TEMPFAIL,
+        ),
     ],
 )
-def test_unexpected_failures_exit_one_without_a_traceback(error, expected, capsys):
+def test_unexpected_failures_exit_cleanly(error, expected, code, capsys):
     with (
         patch("meow.execution.run_policy._ensure_clean_tree"),
         patch("meow.cli.cli._boot_repo"),
@@ -37,8 +51,9 @@ def test_unexpected_failures_exit_one_without_a_traceback(error, expected, capsy
         pytest.raises(SystemExit) as raised,
     ):
         cli.cli_main()
-    assert raised.value.code == 1
+    assert raised.value.code == code
     err = capsys.readouterr().err
+    assert ("MEOW_RETRY " if code == EXIT_TEMPFAIL else "MEOW_BLOCKED ") in err
     assert expected in err
     assert "Traceback" not in err
 
@@ -53,7 +68,8 @@ def test_resume_failure_exits_one_without_a_traceback(capsys):
         pytest.raises(SystemExit) as raised,
     ):
         cli.cli_main()
-    assert raised.value.code == 1
+    assert raised.value.code == EXIT_BLOCKED
     err = capsys.readouterr().err
+    assert "MEOW_BLOCKED " in err
     assert "Parallel task execution stopped" in err
     assert "Traceback" not in err
