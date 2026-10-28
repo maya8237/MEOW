@@ -205,6 +205,7 @@ class DriverLock:
             data = {
                 "mode": "cli",
                 "pid": os.getpid(),
+                "start_identity": process_identity(os.getpid()),
                 "host": socket.gethostname(),
                 "started_at": _now(),
             }
@@ -229,15 +230,14 @@ class DriverLock:
             return self._unreadable_is_stale()
         if holder.get("mode") == "native":
             beat = holder.get("heartbeat_at")
-            return not self._live_native(holder) and (
+            return not self._live_holder(holder) and (
                 not isinstance(beat, (int, float))
                 or time.time() - beat > NATIVE_HEARTBEAT_SECONDS
             )
-        pid = holder.get("pid")
-        return not isinstance(pid, int) or not _pid_is_alive(pid)
+        return not self._live_holder(holder)
 
     @staticmethod
-    def _live_native(holder: dict) -> bool:
+    def _live_holder(holder: dict) -> bool:
         pid = holder.get("pid")
         identity = holder.get("start_identity")
         return (
@@ -252,7 +252,7 @@ class DriverLock:
         replace_with_retry(temporary, self.path)
 
     def _take_native(self, holder: dict) -> bool:
-        if holder.get("pid") != os.getpid() and self._live_native(holder):
+        if holder.get("pid") != os.getpid() and self._live_holder(holder):
             return False
         self._write_over()
         self._owned = True
