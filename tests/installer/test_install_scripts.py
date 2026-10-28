@@ -69,18 +69,27 @@ esac
     return (tmp_path / "activation").read_text()
 
 
-@pytest.mark.parametrize("setup", [False, True])
-@pytest.mark.parametrize("non_interactive", [False, True])
-def test_installer_switch_controls_setup_without_network(
-    tmp_path, non_interactive, setup
+@pytest.mark.parametrize(
+    "flags,asks",
+    [
+        ([], False),  # no terminal in the test run: the questions are skipped
+        (["--no-setup"], False),
+        (["--non-interactive"], False),
+        (["--setup", "--non-interactive"], False),
+    ],
+)
+def test_installer_skips_questions_without_terminal_or_with_switches(
+    tmp_path, flags, asks
 ):
-    flags = [
-        *(["--non-interactive"] if non_interactive else []),
-        *(["--setup"] if setup else []),
-    ]
     activation = _run_installer(tmp_path, flags)
-    assert ("--setup" in activation) is (setup and not non_interactive)
+    assert ("--setup" in activation) is asks
     assert "--activate" in activation
+
+
+def test_installer_forwards_bun_without_asking(tmp_path):
+    activation = _run_installer(tmp_path, ["--non-interactive", "--bun"])
+    assert "--bun" in activation
+    assert "--setup" not in activation
 
 
 @pytest.mark.parametrize(

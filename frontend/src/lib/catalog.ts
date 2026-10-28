@@ -1,4 +1,4 @@
-export type Kind = "workflows" | "agents" | "skills";
+export type Kind = "workflows" | "agents" | "skills" | "hooks";
 export type Scope = "builtin" | "user" | "project" | "local";
 export interface CatalogItem {
   name: string;
@@ -17,11 +17,18 @@ export interface CatalogItem {
   qualified_name?: string;
   delegate?: boolean;
   claude_resolvable?: boolean;
+  event?: string;
+  matcher?: string | null;
+  command?: string;
+  timeout?: number;
+  roles?: string[];
+  synced?: boolean;
 }
 export interface Catalog {
   workflows: CatalogItem[];
   agents: CatalogItem[];
   skills: CatalogItem[];
+  hooks: CatalogItem[];
   repos: string[];
   notes: string[];
   error: string | null;
@@ -49,6 +56,12 @@ export const kinds: {
     label: "Skills",
     singular: "skill",
     description: "Find reusable instructions for your agents.",
+  },
+  {
+    key: "hooks",
+    label: "Hooks",
+    singular: "hook",
+    description: "See the commands that run on agent and run events.",
   },
 ];
 export const scopes: { value: Scope; label: string }[] = [

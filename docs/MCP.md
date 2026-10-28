@@ -45,10 +45,11 @@ export GITLAB_PERSONAL_ACCESS_TOKEN=... GITLAB_API_URL=https://gitlab.example.co
 meow onboard --mcp jira,gitlab   # or the installer's --mcp flag
 ```
 
-The installer asks the same under `--setup`; `--non-interactive` never asks.
+The installer asks the same when run in a terminal; `--no-setup` and
+`--non-interactive` never ask.
 Servers: Jira `uvx mcp-atlassian`, GitLab `npx -y @zereight/mcp-gitlab`;
-variables keep the servers' own names. GitHub has no setup yet: register your
-own with `claude mcp add --scope user` and MEOW uses it. MEOW registers at
+variables keep the servers' own names. For other servers, register your own
+with `claude mcp add --scope user` and MEOW uses it. MEOW registers at
 Claude's user scope with `claude mcp add`, skips providers already registered,
 and never installs `uvx`, `npx`, or `claude`: a missing launcher is reported.
 Tokens are stored by Claude in plain text in `~/.claude.json`; MEOW never prints
@@ -71,13 +72,13 @@ since setup writes into your own Claude config):
 [mcp_setup.gitlab]                 # pin the version; other fields keep defaults
 args = ["-y", "@zereight/mcp-gitlab@2.1.45"]
 
-[mcp_setup.github]                 # a new provider needs a command
-command = "docker"
-args = ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "my/image"]
-auth = [["GITHUB_PERSONAL_ACCESS_TOKEN"]]   # alternatives of required variables
-warmup = ["docker", "pull", "my/image"]     # [] skips it
-[mcp_setup.github.env]
-GITHUB_HOST = "https://gh.example.com"      # fixed, non-secret settings only
+[mcp_setup.mytool]                 # a new provider needs a command
+command = "npx"
+args = ["-y", "my-mcp-package"]
+auth = [["MYTOOL_TOKEN"]]          # alternatives of required variables
+warmup = []                        # [] skips the one-time download
+[mcp_setup.mytool.env]
+MYTOOL_HOST = "https://tool.example.com"   # fixed, non-secret settings only
 ```
 
 Keys: `command`, `args`, `server` (name in Claude), `label`, `auth`, `env`,

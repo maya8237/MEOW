@@ -2,12 +2,15 @@
 post-edit hook) or project-wide."""
 
 import asyncio
+import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from meow.infrastructure.lint import (
     apply_lint_fixes,
     check_lint_commands,
+    lint_edited_file,
     run_lint_on_file,
 )
 from meow.project.config import config_root, load_config
@@ -21,6 +24,7 @@ class LintOptions:
     file_path: str | None = None
     fix: bool = False
     all_blocking: bool = False
+    from_hook: bool = False
 
 
 async def _lint_one_file(
@@ -45,10 +49,31 @@ async def _lint_project(
     return {"clean": not blocking, "blocking": blocking, "informational": informational}
 
 
+def _lint_hook_input(
+    active_dir: Path, commands: list[LintCommand], timeout: float
+) -> dict:
+    """Lint the file a Claude Code `PostToolUse` hook names on stdin.
+
+    Prints the hook's feedback (`{}` when clean or no file), so a skill's
+    `hooks:` frontmatter can run it as-is.
+    """
+    try:
+        payload = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        return {}
+    tool_input = payload.get("tool_input") if isinstance(payload, dict) else None
+    file_path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
+    if not isinstance(file_path, str) or not file_path:
+        return {}
+    return asyncio.run(lint_edited_file(active_dir, commands, file_path, timeout))
+
+
 def lint(working_dir: Path, active_dir: Path, options: LintOptions) -> dict:
     """Run the configured lint plan in `active_dir`.
 
-    With `options.file_path`, behave like the SDK generator's post-edit hook:
+    With `options.from_hook`, read a Claude Code hook payload from stdin and
+    lint the file it names. With `options.file_path`, behave like the SDK
+    generator's post-edit hook:
     run each per-file command (with its fix flag) on that file and report
     what could not be auto-fixed. Otherwise run every command project-wide in
     check-only mode, split into blocking (`gate`) and informational
@@ -63,6 +88,8 @@ def lint(working_dir: Path, active_dir: Path, options: LintOptions) -> dict:
     """
     config = load_config(config_root(working_dir, active_dir))
     commands, timeout = config["lint"], config["lint_timeout"]
+    if options.from_hook:
+        return _lint_hook_input(active_dir, commands, timeout)
     if options.file_path:
         problems = asyncio.run(
             _lint_one_file(active_dir, commands, options.file_path, timeout)

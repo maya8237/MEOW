@@ -85,6 +85,10 @@ capped to its parent and exclude `Agent`. Agents registered through
 optional `roles`. Conventional definitions are used when explicitly named.
 Resolved tools remain subject to `[permissions]`; prompts never bypass policy.
 
+**Hook:** `<name>.toml` under `hooks/` with `description`, `event`, `command`
+(optional `matcher`, `timeout`, `roles`). Exit 2 denies or feeds back; hooks never
+grant permissions. Events and `meow native hook`: [HOOKS](../../docs/HOOKS.md).
+
 **Workflow:** `<name>.toml`, with `description` and a `steps` list. Choose from
 `uses = "builtin.name"`, `agent`, `gate`, `loop`, `parallel`, and `call`.
 
@@ -124,9 +128,10 @@ JSON, `meow native prompt ROLE` for resolved role instructions, and
 For project scope, confirm files are committable with `git status`.
 
 Report paths, scope, overrides, selection/config changes, and verification.
-After adding or changing a skill, run `meow skills sync` (registers it with
+After adding or changing a skill or hook, run `meow sync` (registers both with
 Claude Code at every scope; `--check` reports only), then tell the user to
 restart Claude Code so it loads. Skills appear as `/meow-<scope>:<name>`.
+Role-limited and `sprint_*` hooks stay in MEOW's SDK agents and need no sync.
 Commit only when the user requests it. Remove a file to remove a definition;
 remove a configured directory entry to unregister its contents. Follow the
 chosen scope's path rules when moving definitions.

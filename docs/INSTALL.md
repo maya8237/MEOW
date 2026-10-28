@@ -22,9 +22,10 @@ its skills in Claude Code. It uses `uv` for the virtual environment and package
 installs when `uv` is already installed, and pip otherwise or if `uv` fails.
 Open a new terminal or restart Claude Code.
 
-Installation registers MEOW without project questionnaires, repository scans,
-or project dependency installs. The non-interactive switch also works for
-unattended installation:
+In a terminal, installation then asks about Jira/GitLab MCP servers, Bun's shared
+dependency store, and which projects to set up. Every question can be skipped.
+Without a terminal, or with `--no-setup`, it only registers MEOW. The
+non-interactive switch also works for unattended installation:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh -s -- --non-interactive
@@ -38,11 +39,12 @@ sh scripts/install.sh --non-interactive
 ./scripts/install.ps1 -non-interactive
 ```
 
-For optional project/Bun setup prompts, pass `--setup` to the Bash installer
-or `-setup` to PowerShell. The non-interactive switch takes precedence and
-skips those prompts even when setup was requested.
+`--no-setup` (`-no-setup` in PowerShell) skips the questions but still honors
+`--mcp` and `--bun`. `--non-interactive` skips the questions too.
 `--mcp jira,gitlab` registers user-scope MCP servers without prompting, reading
-the servers' own credential variables; see [MCP](MCP.md).
+the servers' own credential variables; see [MCP](MCP.md). `--bun` enables the
+Bun shared store and migrates registered repos. Projects are set up with
+`meow onboard --non-interactive --work-dir PATH`.
 
 The switch works even with a terminal attached. Installation still registers
 the Claude Code plugin and launcher. Configure projects separately with

@@ -34,6 +34,7 @@ from meow.infrastructure.checks import (
 )
 from meow.infrastructure.lint import describe_lint_plan, make_lint_hook
 from meow.infrastructure.logging import configure_error_log, get_logger
+from meow.infrastructure.user_hooks import run_lifecycle
 from meow.infrastructure.worktree import (
     _is_linked_worktree,
     current_branch,
@@ -200,6 +201,9 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, c
     elif delivery:
         record = store.load(run_id)
         store.transition(run_id, record.phase, delivery={**record.delivery, **delivery})
+    hooks = config["customizations"].hooks
+    event = {"run_id": run_id, "request": request, "work_dir": str(working_dir)}
+    await run_lifecycle(hooks, "sprint_start", event, working_dir)
     try:
         configure_error_log(store.directory / f"{run_id}.error.log")
         store.set_driver(run_id)
@@ -219,6 +223,20 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, c
         _settle_failure(store, run_id, exc)
         attach_run_id(exc, run_id)
         raise
+    finally:
+        await run_lifecycle(
+            hooks,
+            "sprint_end",
+            {**event, "phase": _phase_of(store, run_id)},
+            working_dir,
+        )
+
+
+def _phase_of(store: RunStore, run_id: str) -> str | None:
+    try:
+        return store.load(run_id).phase
+    except (RunStateError, OSError):
+        return None
 
 
 def _settle_failure(store: RunStore, run_id: str, exc: BaseException) -> None:
