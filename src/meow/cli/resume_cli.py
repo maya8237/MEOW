@@ -18,7 +18,7 @@ from meow.execution.orchestration.model import is_orchestrator_id
 from meow.execution.orchestration.report import render_status
 from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
 from meow.execution.queue_state import QueueStateError, QueueStore, QueueWorkerLock
-from meow.execution.run_failures import next_command
+from meow.execution.run_failures import never_prepared, next_command
 from meow.execution.run_state import (
     PARKED_PHASE,
     RunRecord,
@@ -283,7 +283,6 @@ def _parked_run_ids(store: RunStore) -> list[str]:
 
 async def _resume_one(working_dir: Path, store: RunStore, record: RunRecord) -> dict:
     """Continue one parked run (its output to stderr); summarize the result."""
-    _count_manager_resume(store, record)
     error = None
     with redirect_stdout(sys.stderr):
         try:
@@ -399,22 +398,54 @@ async def resume_parked(working_dir: Path) -> int:
     return code
 
 
-def _count_manager_resume(store: RunStore, record: RunRecord) -> None:
-    park = dict(record.park)
-    park["manager_resumes"] = int(park.get("manager_resumes", 0)) + 1
-    store.transition(record.id, record.phase, park=park)
-
-
 def _never_prepared(record: RunRecord) -> bool:
     """True for a background run that stopped before its worktree and branch
     existed (the record still says `preparing`): there is nothing to validate
     or replay, only the saved command to start again."""
-    phases = {step.get("phase") for step in record.transitions}
-    return (
-        record.branch == "preparing"
-        and "prepared" not in phases
-        and bool(record.background.get("argv"))
-    )
+    return never_prepared(record) and bool(record.background.get("argv"))
+
+
+def _refuse(  # ruff: ignore[too-many-arguments]
+    store: RunStore,
+    record: RunRecord,
+    message: str,
+    *,
+    permanent: bool,
+    stop: str = "blocking",
+) -> int:
+    """Print why a resume cannot run and end the invocation with the contract
+    line. A permanent refusal also settles a parked run `failed`
+    (invalid_run_state), so a cron tick does not retry it forever."""
+    from meow.cli.run_contract import _blocked
+
+    print(message, file=sys.stderr)
+    cause = "invalid_run_state"
+    if permanent and record.phase == PARKED_PHASE:
+        store.transition(
+            record.id,
+            "failed",
+            last_failure=message,
+            results={"failure": {"kind": "blocking", "cause": cause}},
+        )
+    _blocked(record.id, cause, message, stop)
+    return 1
+
+
+def _claim(store: RunStore, record: RunRecord) -> RunRecord | None:
+    """Own the run before it looks active again, so a concurrent reconcile
+    never mistakes this resume for the dead driver it replaces. A resume of a
+    parked run that no supervisor launched spends one manager resume. None
+    when the run changed or was taken over since it was read."""
+    try:
+        return store.claim_resume(
+            record.id,
+            phase=record.phase,
+            count_manager=record.phase == PARKED_PHASE
+            and not _launched_by_supervisor(record),
+        )
+    except RunStateError as exc:
+        print(f"Cannot resume: {exc}", file=sys.stderr)
+        return None
 
 
 async def _restart_unprepared(
@@ -425,8 +456,8 @@ async def _restart_unprepared(
         "starting its saved command again."
     )
     clear_cancel(store, record.id)
-    store.set_driver(record.id)
-    store.transition(record.id, "resuming", attempt=record.attempt + 1)
+    if _claim(store, record) is None:
+        return 1
     await redrive_saved_invocation(working_dir, record.id)
     return 0
 
@@ -501,20 +532,36 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
         print("Run already complete.", file=sys.stderr)
         return 1
     if record.source not in RESUMABLE_SOURCES:
-        print(
+        return _refuse(
+            store,
+            record,
             f"Cannot resume {record.source} run with feature agents. "
             f"Inspect with meow status {record.id} and rerun its command.",
-            file=sys.stderr,
+            permanent=False,
+            stop="not_resumable",
         )
-        return 1
+    reason = (
+        budget_refusal(record, run_config(working_dir))
+        if record.phase == PARKED_PHASE and not _launched_by_supervisor(record)
+        else None
+    )
+    if reason:
+        return _refuse(
+            store,
+            record,
+            f"Cannot resume: {reason}.",
+            permanent=False,
+            stop="budget_exhausted" if reason in _EXHAUSTED else "not_resumable",
+        )
     problem = _validate(record, working_dir)
     if problem:
-        print(
+        return _refuse(
+            store,
+            record,
             f"Cannot resume: {problem} Inspect with meow status {record.id}, "
             f"or re-baseline with meow resume {record.id} --continue --repair.",
-            file=sys.stderr,
+            permanent=not problem.startswith("Repository mismatch"),
         )
-        return 1
     saved_workflow = record.results.get("workflow")
     resume_at = _resume_at(record)
     required_sessions = _required_session_roles(record, resume_at)
@@ -527,18 +574,17 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
         required_sessions -= set(missing_sessions)
         missing_sessions = []
     if missing_sessions:
-        print(
+        return _refuse(
+            store,
+            record,
             "Cannot resume: missing Claude session reference(s) for "
             f"{', '.join(missing_sessions)}. Inspect with meow status "
             f"{record.id} and start a new run if the transcript is unavailable.",
-            file=sys.stderr,
+            permanent=True,
         )
-        return 1
     clear_cancel(store, record.id)
-    # Own the run before it looks active again, so a concurrent reconcile
-    # never mistakes this resume for the dead driver it replaces.
-    store.set_driver(record.id)
-    record = store.transition(record.id, "resuming", attempt=record.attempt + 1)
+    if (record := _claim(store, record)) is None:
+        return 1
     await run_sprint(
         Path(record.worktree),
         record.results.get("feature_name"),

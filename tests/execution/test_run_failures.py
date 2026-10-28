@@ -328,6 +328,16 @@ def test_next_command_shape(tmp_path):
     assert next_command(lint) is None
 
 
+def test_no_next_command_for_an_unprepared_run_without_a_saved_command(tmp_path):
+    """Nothing can continue it: no worktree to validate, no command to restart."""
+    store, record = _store(tmp_path)
+    store.transition(record.id, "preparing", branch="preparing")
+    parked = store.park(record.id, "boom", "transient", "error")
+    assert next_command(parked) is None
+    store.update_background(record.id, argv=["run", "x"])
+    assert next_command(store.load(record.id)) is not None
+
+
 def test_next_command_emits_posix_paths_for_windows_repos(tmp_path):
     """Git Bash eats backslashes, quoted or not: emit forward slashes."""
     from dataclasses import replace

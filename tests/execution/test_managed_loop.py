@@ -45,7 +45,9 @@ module.install()
 # A real 1 s supervisor backoff keeps the "parked but supervised" window open
 # long enough for the managing loop to hit it; the API wait ceiling is 1 s so a
 # 2 s model-per-key reset parks instead of sleeping.
-RUN_CONFIG = "[run]\nretry_backoff = [1]\napi_max_wait = 1\n"
+# The eleven launches take nine manager resumes (two are the supervisor's own);
+# `next_command` spends `managed_resumes` now, so the default six is too few.
+RUN_CONFIG = "[run]\nretry_backoff = [1]\napi_max_wait = 1\nmanaged_resumes = 10\n"
 FAST_CONFIG = "[run]\nretry_backoff = [0]\n"
 DONE = frozenset({"complete", "delivered"})
 POLL_SECONDS = 0.3

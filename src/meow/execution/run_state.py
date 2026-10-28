@@ -186,6 +186,14 @@ def _drop_stale_failure(record: RunRecord, phase: str, patch: dict) -> None:
         record.results.pop("failure", None)
 
 
+def _own_driver() -> dict:
+    return {
+        "pid": os.getpid(),
+        "start_identity": process_identity(os.getpid()),
+        "host": "claude-code" if os.environ.get("CLAUDECODE") else "cli",
+    }
+
+
 class RunStore:  # ruff: ignore[too-many-public-methods]
     def __init__(self, repo: Path):
         self.directory = Path(repo).resolve() / ".meow" / "runs"
@@ -385,13 +393,38 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
     def set_driver(self, run_id: str) -> RunRecord:
         """Record the process now driving the run (read by liveness checks)."""
         record = self.load(run_id)
-        record.driver = {
-            "pid": os.getpid(),
-            "start_identity": process_identity(os.getpid()),
-            "host": "claude-code" if os.environ.get("CLAUDECODE") else "cli",
-        }
+        record.driver = _own_driver()
         record.updated_at = _now()
         return self._write(record)
+
+    def claim_resume(
+        self, run_id: str, *, phase: str, count_manager: bool = False
+    ) -> RunRecord:
+        """Take over a run in one write: reload, re-check, then own it.
+
+        Raises RunStateError when the run left `phase` or another live process
+        drives it since the caller read it, so two resumes never both start.
+        `count_manager` spends one `manager_resumes` in the same write.
+        """
+        record = self.load(run_id)
+        driver = record.driver if isinstance(record.driver, dict) else {}
+        if record.phase != phase or (
+            driver.get("pid") != os.getpid() and driver_alive(record)
+        ):
+            raise RunStateError(
+                f"Run {run_id} changed while resuming (now {record.phase}); "
+                "another process owns it."
+            )
+        park = dict(record.park)
+        if count_manager:
+            park["manager_resumes"] = int(park.get("manager_resumes", 0)) + 1
+        return self.transition(
+            run_id,
+            "resuming",
+            driver=_own_driver(),
+            attempt=record.attempt + 1,
+            park=park,
+        )
 
     def update_background(self, run_id: str, **patch: object) -> RunRecord:
         """Update worker metadata without changing the workflow phase."""

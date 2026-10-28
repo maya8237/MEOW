@@ -63,7 +63,10 @@ def test_run_parked_exits_75(tmp_path, monkeypatch, capsys):
     payload = _line(err, "MEOW_RETRY ")
     record = RunStore(repo).load(payload["run_id"])
     assert record.phase == "parked"
-    assert payload["next_command"].startswith(f"meow resume {record.id} --continue")
+    # The foreground run stopped before its worktree existed: no resume can
+    # validate it, so the original command is the continuation.
+    assert payload["next_command"].startswith("meow run 'Add a thing'")
+    assert "resume" not in payload["next_command"]
     assert "retry_after" in payload
 
 

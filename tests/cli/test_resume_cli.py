@@ -16,6 +16,7 @@ from meow.execution.queue_state import QueueStore, QueueWorkerLock
 from meow.execution.run_state import RunStore
 from meow.infrastructure.checks import config_fingerprint
 from meow.infrastructure.supervisor import EXIT_BLOCKED, EXIT_TEMPFAIL
+from meow.project.config import run_config
 
 
 def _record(tmp_path):
@@ -620,3 +621,109 @@ def test_resume_without_a_saved_command_still_refuses_an_unprepared_run(tmp_path
     ) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()
+
+
+def _parked(tmp_path, **patch):
+    store, record = _record(tmp_path)
+    store.park(record.id, "boom", "transient", "error")
+    if patch:
+        store.transition(record.id, "parked", **patch)
+    return store, record
+
+
+def test_continue_counts_a_manager_resume(tmp_path):
+    """`meow resume ID --continue` (the next_command) spends the same budget
+    as the sweep, once."""
+    store, record = _parked(tmp_path)
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock):
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    assert store.load(record.id).park["manager_resumes"] == 1
+
+
+def test_supervisor_relaunch_does_not_spend_manager_budget(tmp_path, monkeypatch):
+    store, record = _parked(tmp_path)
+    store.update_background(record.id, nonce="n", pid=os.getpid())
+    monkeypatch.setenv("MEOW_SUPERVISOR_NONCE", "n")
+    with (
+        patch(
+            "meow.infrastructure.background._process_identity",
+            return_value="supervisor",
+        ),
+        patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock),
+    ):
+        store.update_background(record.id, start_identity="supervisor")
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    assert store.load(record.id).park["manager_resumes"] == 0
+
+
+def test_continue_refuses_a_spent_budget_with_a_contract_line(tmp_path, capsys):
+    store, record = _parked(tmp_path)
+    spent = run_config(tmp_path)["managed_resumes"]
+    park = {**store.load(record.id).park, "manager_resumes": spent}
+    store.transition(record.id, "parked", park=park)
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
+    run.assert_not_awaited()
+    err = capsys.readouterr().err
+    assert "MEOW_BLOCKED" in err
+    assert "budget_exhausted" in err
+    assert store.load(record.id).park["manager_resumes"] == spent
+
+
+def test_sweep_counts_each_resume_once(tmp_path, capsys):
+    store, record = _parked(tmp_path)
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock):
+        asyncio.run(resume_parked(tmp_path))
+    assert store.load(record.id).park["manager_resumes"] == 1
+
+
+def test_permanent_refusal_settles_a_parked_run_blocked(tmp_path, capsys):
+    """A cron tick re-running next_command must not loop on a worktree that
+    will never come back: the run ends failed/invalid_run_state."""
+    store, record = _parked(tmp_path, worktree=str(tmp_path / "missing"))
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
+    run.assert_not_awaited()
+    current = store.load(record.id)
+    assert current.phase == "failed"
+    assert current.results["failure"]["cause"] == "invalid_run_state"
+    assert "Worktree missing" in current.last_failure
+    err = capsys.readouterr().err
+    assert "MEOW_BLOCKED" in err
+    assert "invalid_run_state" in err
+
+
+def test_permanent_refusal_does_not_settle_a_run_nobody_parked(tmp_path, capsys):
+    store, record = _record(tmp_path)
+    store.transition(record.id, "interrupted_mutation", branch="other")
+    assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
+    assert store.load(record.id).phase == "interrupted_mutation"
+    assert "MEOW_BLOCKED" in capsys.readouterr().err
+
+
+def test_refused_sweep_spends_no_budget(tmp_path, capsys):
+    store, record = _parked(tmp_path, worktree=str(tmp_path / "missing"))
+    asyncio.run(resume_parked(tmp_path))
+    assert store.load(record.id).park["manager_resumes"] == 0
+
+
+def test_claim_refuses_a_run_that_changed_since_it_was_read(tmp_path, capsys):
+    store, record = _parked(tmp_path)
+    from meow.execution.run_state import RunStateError
+
+    store.transition(record.id, "resuming")  # another process got there first
+    with pytest.raises(RunStateError):
+        store.claim_resume(record.id, phase="parked")
+
+
+def test_claim_refuses_a_run_a_live_process_took_over(tmp_path):
+    from meow.execution.run_state import RunStateError
+
+    store, record = _parked(tmp_path)
+    store.transition(
+        record.id,
+        "parked",
+        driver={"pid": os.getppid(), "start_identity": _process_identity(os.getppid())},
+    )
+    with pytest.raises(RunStateError):
+        store.claim_resume(record.id, phase="parked")

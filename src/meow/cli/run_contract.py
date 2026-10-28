@@ -20,6 +20,7 @@ from meow.execution.run_failures import (
     DRIVER_BUSY_RETRY_AFTER,
     classify_failure,
     is_driver_busy,
+    never_prepared,
     next_command,
     recognised_transient,
 )
@@ -208,6 +209,22 @@ def record_exit(record: RunRecord) -> int:
     return _blocked(record.id, cause, detail, stop)
 
 
+def _record_or_rerun_exit(record: RunRecord, argv: list[str]) -> int:
+    """`record_exit`, except a retryable run that stopped before its worktree
+    existed and has no saved command: only the original command can start it
+    again, so that is the `next_command`."""
+    if (
+        record.phase == PARKED_PHASE
+        and _retryable_phase(record)
+        and _continuation(record) is None
+        and never_prepared(record)
+        and not_resumed_reason(record, _config(record)) is not None
+    ):
+        retry_after = (record.park or {}).get("retry_after")
+        return _retry(record.id, shlex.join(["meow", *argv]), retry_after)
+    return record_exit(record)
+
+
 def outcome_exit(
     working_dir: Path,
     run_id: str | None,
@@ -222,9 +239,11 @@ def outcome_exit(
     """
     if run_id is not None:
         try:
-            return record_exit(RunStore(working_dir).load(run_id))
+            record = RunStore(working_dir).load(run_id)
         except RunStateError:
-            pass
+            record = None
+        if record is not None:
+            return _record_or_rerun_exit(record, argv)
     if exc is None:
         return EXIT_OK
     return _record_free_exit(run_id, exc, argv)

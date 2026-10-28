@@ -324,10 +324,19 @@ def _shell_arg(value: str) -> str:
     return value if _SAFE_ARG.fullmatch(value) else f'"{value}"'
 
 
+def never_prepared(record: "RunRecord") -> bool:
+    """True for a run that stopped before its worktree and branch existed (the
+    record still says `preparing`)."""
+    phases = {step.get("phase") for step in record.transitions}
+    return record.branch == "preparing" and "prepared" not in phases
+
+
 def next_command(record: "RunRecord") -> str | None:
     """The `meow resume` command that continues this run, or None."""
     if record.source not in RESUMABLE_SOURCES or record.phase in TERMINAL_PHASES:
         return None
+    if never_prepared(record) and not record.background.get("argv"):
+        return None  # nothing to validate or replay, and no command to restart
     if record.results.get("intent") == "plan":  # stops at planned on purpose
         return None
     repair = " --repair" if record.source == "native" else ""
