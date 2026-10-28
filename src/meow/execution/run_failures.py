@@ -8,7 +8,7 @@ import errno
 import re
 import subprocess
 from contextlib import suppress
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import TYPE_CHECKING, Literal
 
 from meow.execution.run_state import (
@@ -78,7 +78,8 @@ _INPUT_OSERRORS = (
     NotADirectoryError,
     PermissionError,
 )
-_SAFE_ARG = re.compile(r"[\w@%+=:,./\\-]+")
+_SAFE_ARG = re.compile(r"[\w@%+=:,./-]+")
+_WINDOWS_PATH = re.compile(r"[A-Za-z]:[\\/]|\\\\")
 
 
 DRIVER_BUSY = "driver_busy"
@@ -316,6 +317,10 @@ def run_id_of(exc: BaseException | None) -> str | None:
 
 
 def _shell_arg(value: str) -> str:
+    """A path as one shell word. Git Bash eats backslashes (quoted or not), so
+    Windows paths go out with forward slashes."""
+    if _WINDOWS_PATH.match(value):
+        value = PureWindowsPath(value).as_posix()
     return value if _SAFE_ARG.fullmatch(value) else f'"{value}"'
 
 

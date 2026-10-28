@@ -328,6 +328,21 @@ def test_next_command_shape(tmp_path):
     assert next_command(lint) is None
 
 
+def test_next_command_emits_posix_paths_for_windows_repos(tmp_path):
+    """Git Bash eats backslashes, quoted or not: emit forward slashes."""
+    from dataclasses import replace
+
+    store, record = _store(tmp_path)
+    parked = store.park(record.id, "boom", "transient", "error")
+    for repo, shown in (
+        (r"C:\Users\maya\repo", "C:/Users/maya/repo"),
+        (r"C:\Users\maya\my repo", '"C:/Users/maya/my repo"'),
+    ):
+        command = next_command(replace(parked, repo=repo))
+        assert command == (f"meow resume {record.id} --continue --work-dir {shown}")
+        assert "\\" not in command
+
+
 def test_load_rejects_non_dict_park(tmp_path):
     store, record = _store(tmp_path)
     path = store.directory / f"{record.id}.json"
