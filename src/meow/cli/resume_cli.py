@@ -269,7 +269,10 @@ def _resume_budget_left(record: RunRecord, config: dict) -> str | None:
 
 
 def _parked_run_ids(store: RunStore) -> list[str]:
-    """Parked runs, oldest update first; unreadable records are skipped."""
+    """Parked runs, oldest update first; unreadable records are skipped.
+
+    Orchestrator child runs belong to the orchestrator tick, which triages
+    them; resuming one here would put a second driver on its worktree."""
     records = []
     for path in store.record_paths():
         with suppress(RunStateError):
@@ -277,7 +280,7 @@ def _parked_run_ids(store: RunStore) -> list[str]:
     return [
         record.id
         for record in sorted(records, key=lambda item: item.updated_at)
-        if record.phase == PARKED_PHASE
+        if record.phase == PARKED_PHASE and record.source != "orchestrator"
     ]
 
 

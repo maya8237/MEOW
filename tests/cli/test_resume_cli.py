@@ -727,3 +727,23 @@ def test_claim_refuses_a_run_a_live_process_took_over(tmp_path):
     )
     with pytest.raises(RunStateError):
         store.claim_resume(record.id, phase="parked")
+
+
+def test_sweep_leaves_orchestrator_child_runs_to_the_tick(tmp_path, capsys):
+    """The tick already sent them to triage; a second driver would share
+    their worktree."""
+    store, _ = _record(tmp_path)
+    child = store.create(
+        source="orchestrator",
+        request="t",
+        repo=tmp_path,
+        worktree=tmp_path,
+        branch="dev",
+    )
+    store.park(child.id, "boom", "transient", "error")
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        asyncio.run(resume_parked(tmp_path))
+    run.assert_not_awaited()
+    summary = json.loads(capsys.readouterr().out)
+    assert child.id not in json.dumps(summary)
+    assert store.load(child.id).phase == "parked"
