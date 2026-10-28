@@ -18,8 +18,7 @@ Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](OR
 | `meow detach [--log FILE] -- CMD...` | Detach a command; returns PID and log JSON |
 | `meow queue ["request"]` | Add a request, or process pending requests serially |
 | `meow workflows` / `meow agents` | Inspect, eject, validate, or diff definitions |
-| `meow skills sync [--scope S] [--check]` | Register custom skills with Claude Code; `--check` only reports |
-| `meow hooks sync` / `meow sync` | Register hooks ([HOOKS](HOOKS.md)) / skills and hooks together; same options |
+| `meow skills sync`, `hooks sync`, `sync` `[--scope S] [--check]` | Register custom skills, [hooks](HOOKS.md), or both with Claude Code; `--check` only reports |
 | `meow ui` | Read-only catalog, session history, and docs |
 | `meow schedule` | Add, list, edit, or cancel a one-shot trigger |
 | `meow onboard` | [Configure a project without prompts](ONBOARDING.md); optional integration/feature flags |
@@ -196,4 +195,5 @@ appear as `comments_error` in `verdict.json`; partial publishes can leave notes 
   later runs use that baseline. It reports changes without committing/pushing.
 - `meow native`: deterministic JSON helpers for skill authors/debugging.
 - `meow evaluate`: read-only harness evaluation over saved runs.
-- `meow _worker`, `_orchestrator-task`, `_scheduled ID`: private background, task, and schedule workers.
+- `meow _worker`: private implementation detail for automatic background runs.
+- `meow _orchestrator-task`, `meow _scheduled ID`: private task and schedule workers.
