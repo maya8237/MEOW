@@ -269,7 +269,11 @@ def status(
         # Imported here: run_contract builds on resume_cli, which imports us.
         from meow.cli.run_contract import status_payload
 
-        print(json.dumps(status_payload(record, inspect_worker(record).state)))
+        supervised = record.phase == PARKED_PHASE and inspect_worker(
+            record, include_terminal=True
+        ).state in {"running", "starting"}
+        worker = inspect_worker(record).state
+        print(json.dumps(status_payload(record, worker, supervised=supervised)))
         return 0
     _print_run(record, verbose, rollups)
     return 0

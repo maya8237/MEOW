@@ -115,8 +115,13 @@ def heartbeat_age(record: RunRecord) -> float | None:
     return round(max(0.0, time.time() - beat), 1)
 
 
-def status_payload(record: RunRecord, worker: str) -> dict:
-    """The `meow status --json` document for one run record."""
+def status_payload(record: RunRecord, worker: str, *, supervised: bool = False) -> dict:
+    """The `meow status --json` document for one run record.
+
+    A parked run whose supervisor is still alive is not settled: the supervisor
+    resumes it itself, and a manager running `next_command` meanwhile would be
+    refused, so it gets no `next_command` and `supervised: true`.
+    """
     config = _config(record)
     reason = not_resumed_reason(record, config)
     retryable = _retryable_phase(record) and reason is None
@@ -124,11 +129,11 @@ def status_payload(record: RunRecord, worker: str) -> dict:
     payload = {
         "id": record.id,
         "phase": record.phase,
-        "settled": record.phase in _SETTLED_PHASES,
+        "settled": record.phase in _SETTLED_PHASES and not supervised,
         "retryable": retryable,
         "last_failure": record.last_failure,
         "cause": failure_cause(record),
-        "next_command": _continuation(record) if retryable else None,
+        "next_command": _continuation(record) if retryable and not supervised else None,
         "attempts": int(park.get("attempts", 0)),
         "budget_left": budget_left(record, config),
         "worker": worker,
@@ -138,6 +143,8 @@ def status_payload(record: RunRecord, worker: str) -> dict:
     }
     if reason is not None:
         payload["not_resumed_reason"] = reason
+    if supervised:
+        payload["supervised"] = True
     return payload
 
 

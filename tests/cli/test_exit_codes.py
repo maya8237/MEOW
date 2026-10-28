@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -126,6 +127,32 @@ def test_status_json_fields(tmp_path, capsys):
     assert payload["next_command"].startswith(f"meow resume {record.id}")
     assert payload["worker"] == "not_background"
     assert "not_resumed_reason" not in payload
+
+
+def test_status_json_parked_run_with_live_supervisor_is_not_settled(tmp_path, capsys):
+    """The supervisor resumes a parked run itself after its backoff; a manager
+    that ran `next_command` meanwhile would be refused ("worker is running")."""
+    from meow.common.process import process_identity
+
+    repo, store, record = _parked(tmp_path)
+    store.update_background(
+        record.id,
+        nonce="n",
+        pid=os.getpid(),
+        start_identity=process_identity(os.getpid()),
+        argv=["run", "x", "--background"],
+    )
+    payload = _status_json(repo, record.id, capsys)
+    assert payload["phase"] == "parked"
+    assert payload["settled"] is False
+    assert payload["retryable"] is True
+    assert payload["next_command"] is None
+    assert payload["supervised"] is True
+    store.update_background(record.id, start_identity="another-process")
+    payload = _status_json(repo, record.id, capsys)  # the supervisor died
+    assert payload["settled"] is True
+    assert payload["next_command"].startswith(f"meow resume {record.id}")
+    assert "supervised" not in payload
 
 
 def test_status_json_reports_why_not_resumed(tmp_path, capsys):

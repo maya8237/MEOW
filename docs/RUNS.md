@@ -77,9 +77,10 @@ or out of budget (`MEOW_BLOCKED {"run_id", "cause", "message", "stop"}`), 3 when
 pushed but the MR failed, and 130 when interrupted. `meow status ID --json`
 reports `phase`, `settled`, `retryable`, `cause`, `next_command`, `attempts`,
 `budget_left`, `worker`, `intent` and `heartbeat_age`, plus `not_resumed_reason`
-when no resume will be tried. A failure before any run record exists exits 75
-only for a recognised transient class (timeout, SDK process, OS I/O or
-resource); anything else exits 1. A manager retries at most `[run] auto_retries`
+when no resume will be tried. A parked run whose supervisor is alive reports
+`settled: false`, `supervised: true` and no `next_command`: it resumes itself.
+A failure before any run record exists exits 75 only for a recognised transient
+class (timeout, SDK process, OS I/O or resource); anything else exits 1. A manager retries at most `[run] auto_retries`
 consecutive 75s that show no progress, then reports the failure. Native
 helpers follow the same rule and print `{"error", "retryable", "cause",
 "retry_after", "command", "next_command"}` on stderr; on 75 run `next_command`
