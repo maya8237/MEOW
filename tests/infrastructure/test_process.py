@@ -59,7 +59,7 @@ def test_stdin_is_closed(tmp_path):
         dict(os.environ),
         30,
     )
-    assert (code, output, timed_out) == (0, "''\n", False)
+    assert (code, output.replace("\r\n", "\n"), timed_out) == (0, "''\n", False)
     assert time.monotonic() - started < SLOW_SECONDS
 
 
