@@ -17,9 +17,16 @@ GOOD_DIGEST = "a" * 64
 def source_server(request):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            if self.path == "/latest.json":
-                manifest = {"tag_name": "1.2.3", "wheel_sha256": GOOD_DIGEST}
-                body = json.dumps(manifest).encode()
+            if self.path == "/simple/meow-harness/":
+                index = {
+                    "files": [
+                        {
+                            "filename": "meow_harness-1.2.3-py3-none-any.whl",
+                            "hashes": {"sha256": GOOD_DIGEST},
+                        }
+                    ]
+                }
+                body = json.dumps(index).encode()
                 self.send_response(200)
             else:
                 body = b"index failure"
@@ -52,7 +59,7 @@ def _install(tmp_path, shell, base, **extra):
         "PIP_INDEX_URL": f"{base}/simple",
         "PIP_RETRIES": "0",
         "PIP_NO_INPUT": "1",
-        "MEOW_RELEASE_MANIFEST_URL": f"{base}/latest.json",
+        "MEOW_PYPI_INDEX_URL": f"{base}/simple/meow-harness/",
         **extra,
     }
     script = Path(__file__).resolve().parents[2] / "scripts" / "install.ps1"

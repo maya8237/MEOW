@@ -1,8 +1,8 @@
 """Stamp a release tag into the package and plugin versions before building.
 
-The tag also replaces "unreleased" in the onboarding announcement table; an
-announcement for a later version fails. With no tag, only check that the
-package and plugin manifests agree.
+A stable tag also replaces "unreleased" in the onboarding announcement table; an
+announcement for a later version fails. Beta tags (X.Y.ZbN) leave it alone.
+With no tag, only check that the package and plugin manifests agree.
 """
 
 import argparse
@@ -13,7 +13,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TAG = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
+TAG = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(b[1-9][0-9]*)?")
 ANNOUNCEMENTS = Path("src/meow/project/announcements.py")
 UNRELEASED = "unreleased"
 
@@ -23,7 +23,7 @@ def check_version(tag: str | None = None) -> str:
     version = tomllib.loads(project.read_text())["project"]["version"]
     if tag:
         if not TAG.fullmatch(tag):
-            raise ValueError(f"Expected a three-part release tag, got {tag!r}")
+            raise ValueError(f"Expected an X.Y.Z or X.Y.ZbN release tag, got {tag!r}")
         version = tag
         project.write_text(
             re.sub(
@@ -45,7 +45,7 @@ def check_version(tag: str | None = None) -> str:
 
 
 def _parts(version: str) -> tuple[int, ...]:
-    if not TAG.fullmatch(version):
+    if not TAG.fullmatch(version) or "b" in version:
         raise ValueError(f"Expected a three-part release version, got {version!r}")
     return tuple(int(part) for part in version.split("."))
 
@@ -101,7 +101,7 @@ def main() -> None:
         print(",".join(unreleased()))
         return
     version = check_version(args.tag)
-    if args.tag:
+    if args.tag and "b" not in args.tag:
         keys = None if args.keys is None else set(filter(None, args.keys.split(",")))
         stamp_announcements(args.tag, keys)
     print(version)

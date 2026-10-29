@@ -93,11 +93,9 @@ class _MeowParser(argparse.ArgumentParser):
             print(f"\ncat shortcuts:\n  {_format_shortcuts(_FUN_SHORTCUTS)}")
             self.exit()
         parsed, rest = super().parse_known_args(expand_shortcuts(argv), namespace)
-        if parsed.latest_pypi and not parsed.update:
-            self.error("--latest-pypi requires --update")
-        if (
-            parsed.update or parsed.check_update or parsed.latest_pypi
-        ) and parsed.command:
+        if parsed.beta and not parsed.update:
+            self.error("--beta requires --update")
+        if (parsed.update or parsed.check_update or parsed.beta) and parsed.command:
             self.error("update options cannot be combined with a command")
         if not (parsed.update or parsed.check_update or parsed.command):
             self.error("a command or --update is required")
@@ -244,12 +242,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
         help="Only check for a newer version and print an update warning.",
     )
     parser.add_argument(
-        "--latest-pypi",
+        "--beta",
         action="store_true",
-        help=(
-            "With --update, use the newest stable PyPI release instead of "
-            "the release channel."
-        ),
+        help="With --update, also consider beta releases (default: stable only).",
     )
     subparsers = parser.add_subparsers(
         parser_class=argparse.ArgumentParser,

@@ -1,6 +1,7 @@
 """Published-release discovery and updates; never update from a branch tip."""
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -8,87 +9,80 @@ from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-RELEASE_URL = (
-    "https://raw.githubusercontent.com/maya8237/MEOW/release-channel/latest.json"
+PYPI_INDEX_URL = os.environ.get(
+    "MEOW_PYPI_INDEX_URL", "https://pypi.org/simple/meow-harness/"
 )
-PYPI_INDEX_URL = "https://pypi.org/simple/meow-harness/"
 PYPI_INDEX_ACCEPT = "application/vnd.pypi.simple.v1+json"
 PYPI_LEGACY_URL = "https://pypi.org/pypi/meow-harness/json"
-VERSION_COMPONENTS = 3
+RELEASE_VERSION = re.compile(r"(\d+)\.(\d+)\.(\d+)(?:b(\d+))?")
 ANNOUNCE_LIMIT = 5
 
 
+def _release_key(value: str) -> tuple[int, ...]:
+    """Order stable `X.Y.Z` and beta `X.Y.ZbN` versions; a beta precedes its stable."""
+    match = RELEASE_VERSION.fullmatch(value) if value.isascii() else None
+    if not match:
+        raise ValueError(f"Expected a MEOW X.Y.Z or X.Y.ZbN version, got {value!r}")
+    *base, beta = match.groups()
+    return (*map(int, base), 0, int(beta)) if beta else (*map(int, base), 1, 0)
+
+
 def _version_parts(value: str) -> tuple[int, ...]:
-    parts = value.split(".")
-    if len(parts) != VERSION_COMPONENTS or any(
-        not part.isascii() or not part.isdecimal() for part in parts
-    ):
+    """The stable `X.Y.Z` triple; announcements are only ever stamped with these."""
+    key = _release_key(value)
+    if not key[3]:
         raise ValueError(f"Expected a three-part MEOW release version, got {value!r}")
-    return tuple(int(part) for part in parts)
+    return key[:3]
 
 
-def _manifest(timeout: float) -> dict:
-    with urlopen(RELEASE_URL, timeout=timeout) as response:
-        data = json.load(response)
-    tag = data["tag_name"]
-    if not isinstance(tag, str):
-        raise ValueError("Expected a published MEOW X.Y.Z release tag")
-    _version_parts(tag)
-    return data
+def _is_beta(value: str) -> bool:
+    return not _release_key(value)[3]
 
 
-def latest_version(*, timeout: float = 10) -> str:
-    return _manifest(timeout)["tag_name"]
-
-
-def latest_release(*, timeout: float = 10) -> tuple[str, str]:
-    """The newest published tag with the SHA-256 of its wheel on the index."""
-    data = _manifest(timeout)
-    digest = data.get("wheel_sha256")
-    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
-        raise ValueError("The published MEOW release has no wheel checksum")
-    return data["tag_name"], digest
-
-
-def _pypi_wheel_release(files: object) -> tuple[tuple[int, ...], str, str] | None:
-    if not isinstance(files, list):
+def _wheel_candidate(file: object) -> tuple[tuple[int, ...], str, str] | None:
+    if not isinstance(file, dict) or file.get("yanked"):
         return None
-    for file in files:
-        if not isinstance(file, dict) or file.get("yanked"):
-            continue
-        filename = file.get("filename")
-        match = (
-            re.fullmatch(r"meow[-_]harness-(\d+\.\d+\.\d+)-[^/]+\.whl", filename)
-            if isinstance(filename, str)
-            else None
-        )
-        if not match:
-            continue
-        tag = match.group(1)
-        hashes = file.get("hashes")
-        digest = hashes.get("sha256") if isinstance(hashes, dict) else None
-        if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
-            return _version_parts(tag), tag, digest
-    return None
+    filename = file.get("filename")
+    match = re.fullmatch(r"meow[-_]harness-([^-]+)-[^/]+\.whl", str(filename))
+    hashes = file.get("hashes")
+    digest = str(hashes.get("sha256")) if isinstance(hashes, dict) else ""
+    if not match or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        return None
+    try:
+        return _release_key(match.group(1)), match.group(1), digest
+    except ValueError:
+        return None
 
 
-def latest_pypi_release(*, timeout: float = 10) -> tuple[str, str]:
-    """Return the newest stable MEOW wheel published on PyPI."""
+def _pypi_wheel_release(files: object, beta: bool) -> tuple[tuple[int, ...], str, str]:
+    """The newest (key, version, sha256) among wheel FILES the index serves."""
+    candidates = [
+        candidate
+        for candidate in map(_wheel_candidate, files if isinstance(files, list) else [])
+        if candidate and (beta or candidate[0][3])
+    ]
+    if not candidates:
+        kind = "beta or stable" if beta else "stable"
+        raise ValueError(f"PyPI Index API returned no {kind} MEOW wheel")
+    return max(candidates)
+
+
+def latest_release(*, beta: bool = False, timeout: float = 10) -> tuple[str, str]:
+    """The newest wheel on PyPI (stable only, unless BETA) and its SHA-256."""
     try:
         request = Request(PYPI_INDEX_URL, headers={"Accept": PYPI_INDEX_ACCEPT})
         with urlopen(request, timeout=timeout) as response:
             files = json.load(response).get("files")
-        candidates = []
-        for file in files if isinstance(files, list) else []:
-            release = _pypi_wheel_release([file])
-            if release:
-                candidates.append(release)
-        if not candidates:
-            raise ValueError("PyPI Index API returned no stable wheel")
-        _, tag, digest = max(candidates)
+        _, tag, digest = _pypi_wheel_release(files, beta)
         return tag, digest
     except (AttributeError, OSError, TypeError, ValueError, KeyError):
+        if beta:
+            raise
         return _latest_pypi_legacy_release(timeout=timeout)
+
+
+def latest_version(*, beta: bool = False, timeout: float = 10) -> str:
+    return latest_release(beta=beta, timeout=timeout)[0]
 
 
 def _latest_pypi_legacy_release(*, timeout: float) -> tuple[str, str]:
@@ -96,9 +90,8 @@ def _latest_pypi_legacy_release(*, timeout: float) -> tuple[str, str]:
         data = json.load(response)
     info = data.get("info")
     tag = info.get("version") if isinstance(info, dict) else None
-    if not isinstance(tag, str):
+    if not isinstance(tag, str) or _is_beta(tag):
         raise ValueError("PyPI legacy JSON has no stable project version")
-    _version_parts(tag)
     for file in data.get("urls", []) if isinstance(data, dict) else []:
         if not isinstance(file, dict) or file.get("packagetype") != "bdist_wheel":
             continue
@@ -114,8 +107,9 @@ def _latest_pypi_legacy_release(*, timeout: float) -> tuple[str, str]:
 def check_for_updates() -> None:
     """Best-effort public-command warning; keep stdout and helper JSON clean."""
     try:
-        latest, current = latest_version(timeout=1), version("meow-harness")
-        newer = _version_parts(current) < _version_parts(latest)
+        current = version("meow-harness")
+        latest = latest_version(beta=_is_beta(current), timeout=1)
+        newer = _release_key(current) < _release_key(latest)
     except (OSError, ValueError, RuntimeError, KeyError):
         return
     if newer:
@@ -126,19 +120,18 @@ def check_for_updates() -> None:
         )
 
 
-def update(*, latest_pypi: bool = False) -> int:
+def update(*, beta: bool = False) -> int:
     from meow.installer.releases import install_release
 
     current = version("meow-harness")
-    source = latest_pypi_release if latest_pypi else latest_release
     print(
-        "Checking for the latest PyPI release..."
-        if latest_pypi
-        else "Checking for the latest release...",
+        "Checking PyPI for the latest beta or stable release..."
+        if beta
+        else "Checking PyPI for the latest stable release...",
         flush=True,
     )
-    latest, digest = source()
-    if _version_parts(current) >= _version_parts(latest):
+    latest, digest = latest_release(beta=beta)
+    if _release_key(current) >= _release_key(latest):
         print(f"MEOW {current} is up to date (latest release: {latest}).")
         return 0
     print(f"Upgrading MEOW {current} to release {latest}...")
@@ -168,7 +161,7 @@ def _new_options(old: str, new: str, release: Path) -> list[str]:
         text=True,
         timeout=60,
     )
-    low, high = _version_parts(old), _version_parts(new)
+    low, high = _release_key(old)[:3], _release_key(new)[:3]
     summaries = []
     for entry in json.loads(result.stdout).values():
         try:

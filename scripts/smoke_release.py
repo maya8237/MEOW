@@ -27,15 +27,20 @@ from meow.installer.releases import release_python  # ruff: ignore[module-import
 
 class ReleaseServer(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/latest.json":
+        if self.path == "/simple/meow-harness/":
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "application/vnd.pypi.simple.v1+json")
             self.end_headers()
-            manifest = {
-                "tag_name": self.server.tag,
-                "wheel_sha256": self.server.digest,
+            index = {
+                "files": [
+                    {
+                        "filename": self.server.wheel,
+                        "hashes": {"sha256": self.server.digest},
+                        "yanked": False,
+                    }
+                ]
             }
-            self.wfile.write(json.dumps(manifest, indent=2).encode())
+            self.wfile.write(json.dumps(index, indent=2).encode())
         else:
             super().do_GET()
 
@@ -73,14 +78,14 @@ def snapshot(destination: Path, version: str) -> None:
         manifest.write_text(json.dumps(data, indent=2) + "\n")
 
 
-def build_wheel(source: Path, destination: Path) -> str:
-    """Build SOURCE's wheel into DESTINATION; return its SHA-256."""
+def build_wheel(source: Path, destination: Path) -> tuple[str, str]:
+    """Build SOURCE's wheel into DESTINATION; return its filename and SHA-256."""
     run(
         ["uv", "build", "--wheel", "--out-dir", str(destination), str(source)],
         os.environ,
     )
     (wheel,) = destination.glob("meow_harness-*.whl")
-    return hashlib.sha256(wheel.read_bytes()).hexdigest()
+    return wheel.name, hashlib.sha256(wheel.read_bytes()).hexdigest()
 
 
 def run(argv: list[str], env: dict, **kwargs) -> str:
@@ -168,13 +173,12 @@ def smoke(scenario: str = "all", pip_only: bool = False) -> None:  # ruff: ignor
         source = temporary / "source"
         source.mkdir()
         snapshot(source, version)
-        digest = build_wheel(source, wheels)
+        built = build_wheel(source, wheels)
         server = http.server.ThreadingHTTPServer(
             ("127.0.0.1", 0),
             functools.partial(ReleaseServer, directory=str(temporary / "server")),
         )
-        server.tag = version
-        server.digest = digest
+        server.wheel, server.digest = built
         threading.Thread(target=server.serve_forever, daemon=True).start()
         # Test-only startup patch: never modify the developer's real Windows
         # registry PATH or contact GitHub while exercising a local fixture.
@@ -197,7 +201,7 @@ def smoke(scenario: str = "all", pip_only: bool = False) -> None:  # ruff: ignor
             "  if name != 'Path': return original_set(key, name, *args)\n"
             " winreg.SetValueEx = safe_set\n"
             "maintenance.check_for_updates = lambda: None\n"
-            "maintenance.RELEASE_URL = os.environ['MEOW_RELEASE_MANIFEST_URL']\n"
+            "maintenance.PYPI_INDEX_URL = os.environ['MEOW_PYPI_INDEX_URL']\n"
         )
         base = f"http://127.0.0.1:{server.server_port}"
         env = {
@@ -209,7 +213,7 @@ def smoke(scenario: str = "all", pip_only: bool = False) -> None:  # ruff: ignor
             "PIP_FIND_LINKS": str(wheels),
             # The installer uses uv when it is on PATH, and uv ignores pip's variable.
             "UV_FIND_LINKS": str(wheels),
-            "MEOW_RELEASE_MANIFEST_URL": base + "/latest.json",
+            "MEOW_PYPI_INDEX_URL": base + "/simple/meow-harness/",
         }
         if pip_only:
             env["PATH"] = without_uv(env["PATH"])

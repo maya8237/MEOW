@@ -37,8 +37,8 @@ other commands work directly or through `%meow`/`!meow`.
 All public commands accept `--work-dir PATH` (`-d`); native helpers also accept
 `--working-dir`. Artifacts default to `.meow/plans/` unless `docs_dir` is set.
 
-`meow --update` (`-u`) installs the latest published stable release, never
-a branch tip; it cannot accompany a project command. It installs that version's
+`meow --update` (`-u`) installs the newest stable release on PyPI, never
+a branch tip (`--beta` also considers `X.Y.ZbN` betas); it cannot accompany a project command. It installs that version's
 checksum-verified wheel from the package index into a venv built by the newest
 Python 3.12+ found. The installer registers the plugin before switching
 launchers in `~/.meow/bin`; config, caches, and earlier runtimes are retained.
@@ -49,9 +49,8 @@ version, read from the new release, and suggests `/meow:onboard` in each project
 It checks no project, so options already configured are still listed. Listing is
 best-effort and skipped for checkout installs. In a terminal it then offers Bun's
 shared dependency store once and migrates registered repos in the background.
-Use `meow --update --latest-pypi` to opt into the newest stable PyPI release instead of the pinned `release-channel` version; the default remains channel-first.
-Public commands warn on stderr about newer versions, silently ignoring network
-failures; `--check-update` checks only. Internal workers skip this check.
+Public commands warn on stderr when PyPI has a newer version (betas count only
+when a beta is installed), silently ignoring network failures; `--check-update` checks only. Internal workers skip this check.
 Runs execute automatically; `-m` adds a plan approval pause. `-u` means update.
 
 ## Build and plan

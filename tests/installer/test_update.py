@@ -16,7 +16,7 @@ from meow.installer import maintenance, releases
 )
 def test_update_selects_newer_published_release(monkeypatch, current, latest, installs):
     monkeypatch.setattr(maintenance, "version", lambda name: current)
-    monkeypatch.setattr(maintenance, "latest_release", lambda: (latest, "0" * 64))
+    monkeypatch.setattr(maintenance, "latest_release", lambda **_: (latest, "0" * 64))
     installed = []
     monkeypatch.setattr(
         releases, "install_release", lambda tag, digest: installed.append(tag)
@@ -25,29 +25,50 @@ def test_update_selects_newer_published_release(monkeypatch, current, latest, in
     assert installed == installs
 
 
-def test_update_can_select_newer_pypi_release(monkeypatch):
+def test_update_considers_betas_only_when_asked(monkeypatch):
     monkeypatch.setattr(maintenance, "version", lambda _: "0.1.24")
-    monkeypatch.setattr(
-        maintenance,
-        "latest_release",
-        lambda: pytest.fail("channel release should not be queried"),
-    )
-    monkeypatch.setattr(
-        maintenance, "latest_pypi_release", lambda: ("0.1.26", "a" * 64)
-    )
+
+    def newest(*, beta=False):
+        return ("0.2.0b1", "a" * 64) if beta else ("0.1.25", "b" * 64)
+
+    monkeypatch.setattr(maintenance, "latest_release", newest)
     installed = []
     monkeypatch.setattr(
-        releases, "install_release", lambda tag, digest: installed.append((tag, digest))
+        releases, "install_release", lambda tag, digest: installed.append(tag)
     )
 
-    assert maintenance.update(latest_pypi=True) == 0
-    assert installed == [("0.1.26", "a" * 64)]
+    assert maintenance.update() == 0
+    assert maintenance.update(beta=True) == 0
+    assert installed == ["0.1.25", "0.2.0b1"]
+
+
+@pytest.mark.parametrize(
+    "current,latest,installs",
+    [
+        ("0.2.0b1", "0.2.0b2", True),
+        ("0.2.0b2", "0.2.0", True),
+        ("0.2.0", "0.2.0b3", False),
+        ("0.2.0b10", "0.2.0b9", False),
+        ("0.1.9", "0.2.0b1", True),
+    ],
+)
+def test_betas_order_before_their_stable_release(
+    monkeypatch, current, latest, installs
+):
+    monkeypatch.setattr(maintenance, "version", lambda _: current)
+    monkeypatch.setattr(maintenance, "latest_release", lambda **_: (latest, "0" * 64))
+    installed = []
+    monkeypatch.setattr(
+        releases, "install_release", lambda tag, digest: installed.append(tag)
+    )
+    maintenance.update(beta=True)
+    assert bool(installed) is installs
 
 
 @pytest.mark.parametrize("interactive", [False, True])
 def test_update_never_offers_optional_setup(monkeypatch, tmp_path, interactive):
     monkeypatch.setattr(maintenance, "version", lambda _: "0.1.2")
-    monkeypatch.setattr(maintenance, "latest_release", lambda: ("0.2.0", "0" * 64))
+    monkeypatch.setattr(maintenance, "latest_release", lambda **_: ("0.2.0", "0" * 64))
     monkeypatch.setattr(releases, "install_release", lambda *_: tmp_path)
     monkeypatch.setattr(maintenance, "announce_onboarding", lambda *_: None)
     monkeypatch.setattr(maintenance.sys.stdin, "isatty", lambda: interactive)
@@ -59,7 +80,7 @@ def test_update_never_offers_optional_setup(monkeypatch, tmp_path, interactive):
 
 def test_failed_download_does_not_report_success(monkeypatch, capsys):
     monkeypatch.setattr(maintenance, "version", lambda name: "0.1.2")
-    monkeypatch.setattr(maintenance, "latest_release", lambda: ("0.2.0", "0" * 64))
+    monkeypatch.setattr(maintenance, "latest_release", lambda **_: ("0.2.0", "0" * 64))
 
     def fail(tag, digest):
         raise OSError("offline")
@@ -80,6 +101,17 @@ def test_warning_uses_release_version_and_stderr(monkeypatch, capsys, latest, wa
     out = capsys.readouterr()
     assert not out.out
     assert ("meow --update" in out.err) == warns
+
+
+@pytest.mark.parametrize("current,beta", [("0.1.2", False), ("0.2.0b1", True)])
+def test_update_check_follows_the_installed_channel(monkeypatch, current, beta):
+    asked = []
+    monkeypatch.setattr(maintenance, "version", lambda name: current)
+    monkeypatch.setattr(
+        maintenance, "latest_version", lambda **kw: asked.append(kw["beta"]) or current
+    )
+    maintenance.check_for_updates()
+    assert asked == [beta]
 
 
 def test_offline_check_is_quiet(capsys):
@@ -171,7 +203,7 @@ def test_update_announces_options_from_the_new_release(monkeypatch, capsys, rele
     release, table = released
     _ship(table, [("seen", "0.1.18"), ("next", "0.1.20"), ("first", "0.1.19")])
     monkeypatch.setattr(maintenance, "version", lambda name: "0.1.18")
-    monkeypatch.setattr(maintenance, "latest_release", lambda: ("0.1.21", "0" * 64))
+    monkeypatch.setattr(maintenance, "latest_release", lambda **_: ("0.1.21", "0" * 64))
     monkeypatch.setattr(releases, "install_release", lambda tag, digest: release)
 
     assert maintenance.update() == 0

@@ -6,7 +6,7 @@ non_interactive=false
 setup=true
 bun=false
 install_missing=false
-latest_pypi=false
+beta=false
 mcp=
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -15,13 +15,13 @@ while [ "$#" -gt 0 ]; do
         --no-setup) setup=false ;;
         --bun) bun=true ;;
         --install-missing) install_missing=true ;;
-        --latest-pypi) latest_pypi=true ;;
+        --beta) beta=true ;;
         --mcp)
             [ "$#" -ge 2 ] || { printf 'Missing value for --mcp\n' >&2; exit 2; }
             mcp=$2; shift ;;
         --mcp=*) mcp=${1#--mcp=} ;;
         -h|--help)
-            printf '%s\n' 'Usage: sh install.sh [--non-interactive] [--no-setup] [--latest-pypi] [--mcp atlassian,gitlab] [--install-missing] [--bun]' 'With a terminal, asks about MCP servers, the Bun shared store, and projects after installing.' '--no-setup or --non-interactive skips those questions; so does having no terminal.' '--latest-pypi installs the newest stable MEOW wheel published on PyPI instead of the release channel version.' '--mcp registers user-scope MCP servers from their credential environment variables.' '--install-missing pip-installs a missing Jira server (mcp-atlassian) for --mcp.' '--bun configures the Bun shared dependency store and migrates registered repos.'
+            printf '%s\n' 'Usage: sh install.sh [--non-interactive] [--no-setup] [--beta] [--mcp atlassian,gitlab] [--install-missing] [--bun]' 'With a terminal, asks about MCP servers, the Bun shared store, and projects after installing.' '--no-setup or --non-interactive skips those questions; so does having no terminal.' '--beta also considers beta releases; by default the newest stable PyPI release is installed.' '--mcp registers user-scope MCP servers from their credential environment variables.' '--install-missing pip-installs a missing Jira server (mcp-atlassian) for --mcp.' '--bun configures the Bun shared dependency store and migrates registered repos.'
             exit 0 ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
@@ -81,38 +81,44 @@ if [ -z "$python" ]; then
 fi
 
 printf 'Using %s\n' "$python"
-if [ "$latest_pypi" = true ]; then
-    printf '%s\n' 'Fetching the latest PyPI release...'
-    release=
-    if pypi_json=$(curl -fsSL --retry 3 \
-        -H 'Accept: application/vnd.pypi.simple.v1+json' \
-        'https://pypi.org/simple/meow-harness/'); then
-        release=$(printf '%s' "$pypi_json" | "$python" -c '
+printf '%s\n' 'Fetching the latest release from PyPI...'
+release=
+if pypi_json=$(curl -fsSL --retry 3 \
+    -H 'Accept: application/vnd.pypi.simple.v1+json' \
+    "${MEOW_PYPI_INDEX_URL:-https://pypi.org/simple/meow-harness/}"); then
+    release=$(printf '%s' "$pypi_json" | MEOW_BETA=$beta "$python" -c '
 import json
+import os
 import re
 import sys
 
 data = json.load(sys.stdin)
+beta = os.environ["MEOW_BETA"] == "true"
 candidates = []
 for file in data.get("files", []):
     filename = file.get("filename")
-    match = re.fullmatch(r"meow[-_]harness-(\d+\.\d+\.\d+)-[^/]+\.whl", filename or "")
+    match = re.fullmatch(r"meow[-_]harness-(\d+)\.(\d+)\.(\d+)(?:b(\d+))?-[^/]+\.whl", filename or "")
     if not match or file.get("yanked"):
         continue
-    tag = match.group(1)
+    major, minor, patch, pre = match.groups()
+    # A beta sorts before the stable release it precedes.
+    if pre and not beta:
+        continue
+    tag = f"{major}.{minor}.{patch}" + (f"b{pre}" if pre else "")
     digest = file.get("hashes", {}).get("sha256")
     if re.fullmatch(r"[0-9a-f]{64}", digest or ""):
-        candidates.append((tuple(map(int, tag.split("."))), tag, digest))
+        key = (int(major), int(minor), int(patch), 0 if pre else 1, int(pre or 0))
+        candidates.append((key, tag, digest))
 if not candidates:
-    raise SystemExit("No published stable MEOW wheel was found on PyPI.")
+    raise SystemExit("No published MEOW wheel was found on PyPI.")
 _, tag, digest = max(candidates)
 print(tag, digest)
-            ' 2>/dev/null) || release=
-    fi
-    if [ -z "$release" ]; then
-        printf '%s\n' 'PyPI Index API unavailable; trying the legacy JSON API...'
-        pypi_json=$(curl -fsSL --retry 3 'https://pypi.org/pypi/meow-harness/json')
-        release=$(printf '%s' "$pypi_json" | "$python" -c '
+    ' 2>/dev/null) || release=
+fi
+if [ -z "$release" ] && [ "$beta" = false ] && [ -z "${MEOW_PYPI_INDEX_URL:-}" ]; then
+    printf '%s\n' 'PyPI Index API unavailable; trying the legacy JSON API...'
+    pypi_json=$(curl -fsSL --retry 3 'https://pypi.org/pypi/meow-harness/json')
+    release=$(printf '%s' "$pypi_json" | "$python" -c '
 import json
 import re
 import sys
@@ -132,24 +138,13 @@ for file in data.get("urls", []):
 else:
     raise SystemExit("PyPI legacy JSON has no stable wheel with a SHA-256 checksum")
 ')
-    fi
-    tag=${release%% *}
-    digest=${release#* }
-else
-    # Only the publishing workflow advances this manifest, after the wheel is on the index.
-    manifest_url=${MEOW_RELEASE_MANIFEST_URL:-https://raw.githubusercontent.com/maya8237/MEOW/release-channel/latest.json}
-    manifest=$(curl -fsSL --retry 3 "$manifest_url")
-    tag=$(printf '%s\n' "$manifest" | sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+)"[,]?[[:space:]]*$/\1/p')
-    digest=$(printf '%s\n' "$manifest" | sed -nE 's/^[[:space:]]*"wheel_sha256"[[:space:]]*:[[:space:]]*"([0-9a-f]{64})"[,]?[[:space:]]*$/\1/p')
-    if ! printf '%s\n' "$tag" | LC_ALL=C grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-        printf '%s\n' 'No published stable MEOW release was found.' >&2
-        exit 1
-    fi
-    if [ -z "$digest" ]; then
-        printf '%s\n' "Release $tag has no wheel checksum; installation stopped." >&2
-        exit 1
-    fi
 fi
+if [ -z "$release" ]; then
+    printf '%s\n' 'No published MEOW release was found on PyPI.' >&2
+    exit 1
+fi
+tag=${release%% *}
+digest=${release#* }
 
 # Install exactly the published wheel (pip checks its hash) into a staging venv,
 # then let that release finish its own install from the staged package: pinned

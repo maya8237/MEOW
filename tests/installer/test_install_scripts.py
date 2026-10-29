@@ -18,7 +18,7 @@ def _executable(directory, name, content):
     return path
 
 
-def _run_installer(tmp_path, flags, *, latest_pypi=False, pypi_mode="simple"):
+def _run_installer(tmp_path, flags, *, pypi_mode="simple"):
     tools = tmp_path / "tools"
     tools.mkdir()
     _executable(tools, "uv", "exit 1\n")
@@ -38,6 +38,13 @@ JSON"""
       "filename": "meow_harness-9.9.9-py3-none-any.whl",
       "hashes": {
         "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "yanked": false
+    },
+    {
+      "filename": "meow_harness-10.0.0b2-py3-none-any.whl",
+      "hashes": {
+        "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
       },
       "yanked": false
     }
@@ -69,14 +76,7 @@ JSON"""
     *pypi.org/pypi/meow-harness/json*)
         {legacy_response}
         ;;
-    *)
-        cat <<'JSON'
-{{
-            "tag_name": "1.2.3",
-  "wheel_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-}}
-JSON
-        ;;
+    *) exit 22 ;;
 esac
 """,
     )
@@ -92,7 +92,11 @@ esac
                 case "$input" in
                     *'"files": []'*) exit 1 ;;
                 esac
-                printf '9.9.9 '
+                if [ "$MEOW_BETA" = true ]; then
+                    printf '10.0.0b2 '
+                else
+                    printf '9.9.9 '
+                fi
                 printf '%s%s\\n' \
                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
@@ -173,22 +177,20 @@ def test_installer_forwards_mcp_providers(tmp_path, flags, expected):
     assert (expected in activation) if expected else ("-m meow mcp" not in activation)
 
 
-def test_installer_can_select_newest_stable_pypi_release(tmp_path):
-    activation = _run_installer(
-        tmp_path, ["--non-interactive", "--latest-pypi"], latest_pypi=True
-    )
+def test_installer_reads_the_newest_stable_release_from_pypi(tmp_path):
+    activation = _run_installer(tmp_path, ["--non-interactive"])
     assert "9.9.9" in activation
-    assert "1.2.3" not in activation
+    assert "10.0.0b2" not in activation
+
+
+def test_installer_beta_flag_picks_the_newest_prerelease(tmp_path):
+    activation = _run_installer(tmp_path, ["--non-interactive", "--beta"])
+    assert "10.0.0b2" in activation
 
 
 @pytest.mark.parametrize("pypi_mode", ["error", "empty"])
 def test_installer_falls_back_to_legacy_pypi_json(tmp_path, pypi_mode):
-    activation = _run_installer(
-        tmp_path,
-        ["--non-interactive", "--latest-pypi"],
-        latest_pypi=True,
-        pypi_mode=pypi_mode,
-    )
+    activation = _run_installer(tmp_path, ["--non-interactive"], pypi_mode=pypi_mode)
     assert "8.8.8" in activation
     assert "9.9.9" not in activation
 

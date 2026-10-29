@@ -1,9 +1,11 @@
 # Releasing MEOW
 
-Commit and push the changes to `main`, then create and push a three-part tag:
+Commit and push the changes to `main`, then create and push a tag: `X.Y.Z` for
+a stable release or `X.Y.ZbN` for a beta.
 
 ```bash
-git tag 0.1.6
+git tag 0.1.6      # stable
+git tag 0.2.0b1    # beta
 git push origin 0.1.6
 ```
 
@@ -22,13 +24,11 @@ MEOW is published to PyPI as `meow-harness` (the import package and `meow`
 command are unchanged). The Release workflow's publish job builds the sdist and
 wheel, uploads them with PyPI trusted publishing (no stored token), reads the
 wheel's SHA-256 back from PyPI, creates the GitHub Release (notes only, no
-attached files). The release workflow does not change the update channel.
-Use its manual `workflow_dispatch` action with a published tag to update
-`latest.json` on `release-channel` to `{"tag_name", "wheel_sha256"}`.
-Installers and update checks read it through `raw.githubusercontent.com`; they
-do not require `api.github.com`. The channel points only at a version already
-on PyPI. Publication is serialized and can be rerun after a later failure;
-manual promotion can intentionally select any published tag.
+attached files). PyPI is the only update source: there is no release-channel
+branch. Installers and `meow --update` read the PyPI Simple index and verify the
+wheel's SHA-256 from it; stable by default, betas only with `--beta`. A beta
+does not stamp announcements or touch `main`. Publication is serialized and can
+be rerun after a later failure.
 
 One-time setup: reserve `meow-harness` on pypi.org and add a trusted publisher
 for this repository, workflow `release.yml`. PyPI versions cannot be replaced, so
@@ -45,7 +45,7 @@ under `meow/_release/`, so installs need nothing but the wheel.
 1. Pick the newest Python 3.12+: `where python` and `py -0p` on Windows, `PATH`
    elsewhere, or `MEOW_PYTHON`. Virtual environments resolve to their base.
 2. Create a staging venv and run `pip install --no-deps --require-hashes
-   --only-binary :all:` for exactly the manifest's version and wheel hash. When
+   --only-binary :all:` for exactly the PyPI version and wheel hash. When
    `uv` is installed the venv and install use `uv venv --seed` and `uv pip
    install`; any `uv` failure falls back to `venv` and pip.
 3. Run the new release's `python -m meow.installer.releases --finish`: install
