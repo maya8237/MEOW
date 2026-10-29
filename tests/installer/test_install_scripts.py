@@ -92,11 +92,7 @@ esac
                 case "$input" in
                     *'"files": []'*) exit 1 ;;
                 esac
-                if [ "$MEOW_BETA" = true ]; then
-                    printf '10.0.0b2 '
-                else
-                    printf '9.9.9 '
-                fi
+                printf '%s ' "$MEOW_CHANNEL${MEOW_PIN:+=$MEOW_PIN}"
                 printf '%s%s\\n' \
                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
@@ -179,13 +175,21 @@ def test_installer_forwards_mcp_providers(tmp_path, flags, expected):
 
 def test_installer_reads_the_newest_stable_release_from_pypi(tmp_path):
     activation = _run_installer(tmp_path, ["--non-interactive"])
-    assert "9.9.9" in activation
-    assert "10.0.0b2" not in activation
+    assert "versions/stable\n" in activation
 
 
-def test_installer_beta_flag_picks_the_newest_prerelease(tmp_path):
-    activation = _run_installer(tmp_path, ["--non-interactive", "--beta"])
-    assert "10.0.0b2" in activation
+@pytest.mark.parametrize(
+    "flags,selection",
+    [
+        (["--latest-pypi"], "any"),
+        (["--beta"], "beta"),
+        (["--version", "10.0.0b2"], "stable=10.0.0b2"),
+        (["--version=9.9.9"], "stable=9.9.9"),
+    ],
+)
+def test_installer_passes_release_selection(tmp_path, flags, selection):
+    activation = _run_installer(tmp_path, ["--non-interactive", *flags])
+    assert selection in activation
 
 
 @pytest.mark.parametrize("pypi_mode", ["error", "empty"])

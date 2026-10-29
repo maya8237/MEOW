@@ -38,7 +38,8 @@ All public commands accept `--work-dir PATH` (`-d`); native helpers also accept
 `--working-dir`. Artifacts default to `.meow/plans/` unless `docs_dir` is set.
 
 `meow --update` (`-u`) installs the newest stable release on PyPI, never
-a branch tip (`--beta` also considers `X.Y.ZbN` betas); it cannot accompany a project command. It installs that version's
+a branch tip (`--latest-pypi`: newest beta or stable; `--beta`: newest beta;
+`--version X.Y.Z[bN]`: exactly that version, even older; at most one); it cannot accompany a project command. It installs that version's
 checksum-verified wheel from the package index into a venv built by the newest
 Python 3.12+ found. The installer registers the plugin before switching
 launchers in `~/.meow/bin`; config, caches, and earlier runtimes are retained.

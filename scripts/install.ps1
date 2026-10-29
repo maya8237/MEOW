@@ -1,6 +1,6 @@
 # irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
 [CmdletBinding()]
-param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$bun, [switch]${install-missing}, [switch]$beta, [string]$mcp = '')
+param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$bun, [switch]${install-missing}, [switch]${latest-pypi}, [switch]$beta, [string]$version = '', [string]$mcp = '')
 
 & {
     $ErrorActionPreference = 'Stop'
@@ -73,8 +73,12 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
                         $suffix = "$($Matches[4])"
                         $isBeta = [bool]$suffix
                         $number = [int]("0$($Matches[5])")
-                        if ($isBeta -and -not $beta) { return }
                         $candidateTag = "$base$suffix"
+                        if ($version) {
+                            if ($candidateTag -cne $version) { return }
+                        } elseif ((-not $isBeta -and $beta) -or ($isBeta -and -not ${latest-pypi} -and -not $beta)) {
+                            return
+                        }
                         $digest = "$($_.hashes.sha256)"
                         if ($digest -notmatch '^[0-9a-f]{64}$') { return }
                         [PSCustomObject]@{
@@ -94,7 +98,7 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
         if ($release) {
             $tag = $release.Tag
             $digest = $release.Digest
-        } elseif ($beta -or $env:MEOW_PYPI_INDEX_URL) {
+        } elseif ($beta -or ${latest-pypi} -or $version -or $env:MEOW_PYPI_INDEX_URL) {
             throw 'No published MEOW release was found on PyPI.'
         } else {
             Write-Host 'PyPI Index API unavailable; trying the legacy JSON API...'

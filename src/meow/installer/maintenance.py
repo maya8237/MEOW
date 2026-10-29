@@ -54,35 +54,45 @@ def _wheel_candidate(file: object) -> tuple[tuple[int, ...], str, str] | None:
         return None
 
 
-def _pypi_wheel_release(files: object, beta: bool) -> tuple[tuple[int, ...], str, str]:
-    """The newest (key, version, sha256) among wheel FILES the index serves."""
+def _pypi_wheel_release(
+    files: object, channel: str, pin: str | None
+) -> tuple[tuple[int, ...], str, str]:
+    """The (key, version, sha256) among wheel FILES that CHANNEL or PIN selects."""
+    wanted = {"stable": (1,), "beta": (0,), "any": (0, 1)}[channel]
     candidates = [
         candidate
         for candidate in map(_wheel_candidate, files if isinstance(files, list) else [])
-        if candidate and (beta or candidate[0][3])
+        if candidate and (candidate[1] == pin if pin else candidate[0][3] in wanted)
     ]
     if not candidates:
-        kind = "beta or stable" if beta else "stable"
-        raise ValueError(f"PyPI Index API returned no {kind} MEOW wheel")
+        what = f"MEOW {pin}" if pin else f"a {channel} MEOW"
+        raise ValueError(f"PyPI has no wheel for {what} release")
     return max(candidates)
 
 
-def latest_release(*, beta: bool = False, timeout: float = 10) -> tuple[str, str]:
-    """The newest wheel on PyPI (stable only, unless BETA) and its SHA-256."""
+def latest_release(
+    *, channel: str = "stable", pin: str | None = None, timeout: float = 10
+) -> tuple[str, str]:
+    """The wheel on PyPI and its SHA-256: PIN exactly, else the newest of CHANNEL.
+
+    CHANNEL is "stable", "beta" (prereleases only), or "any" (newest of both).
+    """
+    if pin:
+        _release_key(pin)
     try:
         request = Request(PYPI_INDEX_URL, headers={"Accept": PYPI_INDEX_ACCEPT})
         with urlopen(request, timeout=timeout) as response:
             files = json.load(response).get("files")
-        _, tag, digest = _pypi_wheel_release(files, beta)
+        _, tag, digest = _pypi_wheel_release(files, channel, pin)
         return tag, digest
     except (AttributeError, OSError, TypeError, ValueError, KeyError):
-        if beta:
-            raise
+        if channel != "stable" or pin:
+            raise  # the legacy JSON only describes the newest stable release
         return _latest_pypi_legacy_release(timeout=timeout)
 
 
-def latest_version(*, beta: bool = False, timeout: float = 10) -> str:
-    return latest_release(beta=beta, timeout=timeout)[0]
+def latest_version(*, channel: str = "stable", timeout: float = 10) -> str:
+    return latest_release(channel=channel, timeout=timeout)[0]
 
 
 def _latest_pypi_legacy_release(*, timeout: float) -> tuple[str, str]:
@@ -108,7 +118,9 @@ def check_for_updates() -> None:
     """Best-effort public-command warning; keep stdout and helper JSON clean."""
     try:
         current = version("meow-harness")
-        latest = latest_version(beta=_is_beta(current), timeout=1)
+        latest = latest_version(
+            channel="any" if _is_beta(current) else "stable", timeout=1
+        )
         newer = _release_key(current) < _release_key(latest)
     except (OSError, ValueError, RuntimeError, KeyError):
         return
@@ -120,21 +132,29 @@ def check_for_updates() -> None:
         )
 
 
-def update(*, beta: bool = False) -> int:
+def update(
+    *, latest_pypi: bool = False, beta: bool = False, pin: str | None = None
+) -> int:
+    """Install the newest stable release, or the newest of any/beta, or PIN."""
     from meow.installer.releases import install_release
 
     current = version("meow-harness")
+    channel = "any" if latest_pypi else "beta" if beta else "stable"
+    label = {"any": "beta or stable", "beta": "beta", "stable": "stable"}[channel]
     print(
-        "Checking PyPI for the latest beta or stable release..."
-        if beta
-        else "Checking PyPI for the latest stable release...",
+        f"Checking PyPI for MEOW {pin}..."
+        if pin
+        else f"Checking PyPI for the newest {label} release...",
         flush=True,
     )
-    latest, digest = latest_release(beta=beta)
-    if _release_key(current) >= _release_key(latest):
-        print(f"MEOW {current} is up to date (latest release: {latest}).")
+    latest, digest = latest_release(channel=channel, pin=pin)
+    # An explicit version may also be a downgrade; searches never are.
+    if (_release_key(current) == _release_key(latest)) or (
+        not pin and _release_key(current) > _release_key(latest)
+    ):
+        print(f"MEOW {current} is up to date (requested release: {latest}).")
         return 0
-    print(f"Upgrading MEOW {current} to release {latest}...")
+    print(f"Installing MEOW {latest} (current: {current})...")
     release = install_release(latest, digest)
     print(f"MEOW updated successfully to {latest}.")
     announce_onboarding(current, latest, release)

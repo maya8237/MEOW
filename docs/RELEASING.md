@@ -26,7 +26,7 @@ wheel, uploads them with PyPI trusted publishing (no stored token), reads the
 wheel's SHA-256 back from PyPI, creates the GitHub Release (notes only, no
 attached files). PyPI is the only update source: there is no release-channel
 branch. Installers and `meow --update` read the PyPI Simple index and verify the
-wheel's SHA-256 from it; stable by default, betas only with `--beta`. A beta
+wheel's SHA-256 from it; stable by default; `--latest-pypi`, `--beta` and `--version` select others. A beta
 does not stamp announcements or touch `main`. Publication is serialized and can
 be rerun after a later failure.
 

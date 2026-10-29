@@ -6,7 +6,8 @@ non_interactive=false
 setup=true
 bun=false
 install_missing=false
-beta=false
+channel=stable
+pin=
 mcp=
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -15,13 +16,18 @@ while [ "$#" -gt 0 ]; do
         --no-setup) setup=false ;;
         --bun) bun=true ;;
         --install-missing) install_missing=true ;;
-        --beta) beta=true ;;
+        --latest-pypi) channel=any ;;
+        --beta) channel=beta ;;
+        --version)
+            [ "$#" -ge 2 ] || { printf 'Missing value for --version\n' >&2; exit 2; }
+            pin=$2; shift ;;
+        --version=*) pin=${1#--version=} ;;
         --mcp)
             [ "$#" -ge 2 ] || { printf 'Missing value for --mcp\n' >&2; exit 2; }
             mcp=$2; shift ;;
         --mcp=*) mcp=${1#--mcp=} ;;
         -h|--help)
-            printf '%s\n' 'Usage: sh install.sh [--non-interactive] [--no-setup] [--beta] [--mcp atlassian,gitlab] [--install-missing] [--bun]' 'With a terminal, asks about MCP servers, the Bun shared store, and projects after installing.' '--no-setup or --non-interactive skips those questions; so does having no terminal.' '--beta also considers beta releases; by default the newest stable PyPI release is installed.' '--mcp registers user-scope MCP servers from their credential environment variables.' '--install-missing pip-installs a missing Jira server (mcp-atlassian) for --mcp.' '--bun configures the Bun shared dependency store and migrates registered repos.'
+            printf '%s\n' 'Usage: sh install.sh [--non-interactive] [--no-setup] [--latest-pypi | --beta | --version X.Y.Z[bN]] [--mcp atlassian,gitlab] [--install-missing] [--bun]' 'With a terminal, asks about MCP servers, the Bun shared store, and projects after installing.' '--no-setup or --non-interactive skips those questions; so does having no terminal.' 'By default the newest stable PyPI release is installed. --latest-pypi takes the newest release, beta or stable; --beta the newest beta; --version an exact stable or beta version.' '--mcp registers user-scope MCP servers from their credential environment variables.' '--install-missing pip-installs a missing Jira server (mcp-atlassian) for --mcp.' '--bun configures the Bun shared dependency store and migrates registered repos.'
             exit 0 ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
@@ -86,14 +92,15 @@ release=
 if pypi_json=$(curl -fsSL --retry 3 \
     -H 'Accept: application/vnd.pypi.simple.v1+json' \
     "${MEOW_PYPI_INDEX_URL:-https://pypi.org/simple/meow-harness/}"); then
-    release=$(printf '%s' "$pypi_json" | MEOW_BETA=$beta "$python" -c '
+    release=$(printf '%s' "$pypi_json" | MEOW_CHANNEL=$channel MEOW_PIN=$pin "$python" -c '
 import json
 import os
 import re
 import sys
 
 data = json.load(sys.stdin)
-beta = os.environ["MEOW_BETA"] == "true"
+channel = os.environ["MEOW_CHANNEL"]
+pin = os.environ["MEOW_PIN"]
 candidates = []
 for file in data.get("files", []):
     filename = file.get("filename")
@@ -101,12 +108,15 @@ for file in data.get("files", []):
     if not match or file.get("yanked"):
         continue
     major, minor, patch, pre = match.groups()
-    # A beta sorts before the stable release it precedes.
-    if pre and not beta:
-        continue
     tag = f"{major}.{minor}.{patch}" + (f"b{pre}" if pre else "")
+    if pin:
+        if tag != pin:
+            continue
+    elif (channel == "stable" and pre) or (channel == "beta" and not pre):
+        continue
     digest = file.get("hashes", {}).get("sha256")
     if re.fullmatch(r"[0-9a-f]{64}", digest or ""):
+        # A beta sorts before the stable release it precedes.
         key = (int(major), int(minor), int(patch), 0 if pre else 1, int(pre or 0))
         candidates.append((key, tag, digest))
 if not candidates:
@@ -115,7 +125,8 @@ _, tag, digest = max(candidates)
 print(tag, digest)
     ' 2>/dev/null) || release=
 fi
-if [ -z "$release" ] && [ "$beta" = false ] && [ -z "${MEOW_PYPI_INDEX_URL:-}" ]; then
+if [ -z "$release" ] && [ "$channel" = stable ] && [ -z "$pin" ] \
+    && [ -z "${MEOW_PYPI_INDEX_URL:-}" ]; then
     printf '%s\n' 'PyPI Index API unavailable; trying the legacy JSON API...'
     pypi_json=$(curl -fsSL --retry 3 'https://pypi.org/pypi/meow-harness/json')
     release=$(printf '%s' "$pypi_json" | "$python" -c '

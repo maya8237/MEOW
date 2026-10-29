@@ -52,8 +52,10 @@ def test_bootstrap_installers_read_pypi_and_offer_beta():
     root = Path(__file__).resolve().parents[2]
     powershell = (root / "scripts/install.ps1").read_text()
     posix = (root / "scripts/install.sh").read_text()
-    assert "[switch]$beta" in powershell
-    assert "--beta) beta=true ;;" in posix
+    for flag in ("${latest-pypi}", "$beta", "$version"):
+        assert flag in powershell
+    for flag in ("--latest-pypi)", "--beta)", "--version)"):
+        assert flag in posix
     assert "release-channel" not in powershell + posix
 
 

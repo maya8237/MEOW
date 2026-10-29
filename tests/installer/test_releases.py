@@ -108,8 +108,17 @@ def test_update_flags_are_standalone():
     assert parser.parse_args(["--update"]).update
     assert parser.parse_args(["-u"]).update
     assert parser.parse_args(["--update", "--beta"]).beta
-    with pytest.raises(SystemExit):
-        parser.parse_args(["--beta"])
+    assert parser.parse_args(["--update", "--latest-pypi"]).latest_pypi
+    assert parser.parse_args(["--update", "--version", "0.2.0b1"]).version == "0.2.0b1"
+    for argv in (
+        ["--beta"],
+        ["--latest-pypi"],
+        ["--version", "0.2.0"],
+        ["--update", "--beta", "--latest-pypi"],
+        ["--update", "--beta", "--version", "0.2.0"],
+    ):
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
     with pytest.raises(SystemExit):
         parser.parse_args(["--update", "status", "run-1"])
 
@@ -149,7 +158,7 @@ def test_latest_release_selects_newest_stable_wheel_from_index(monkeypatch):
     )
 
 
-def test_latest_release_with_beta_prefers_the_newest_prerelease(monkeypatch):
+def test_latest_release_channels_and_pins(monkeypatch):
     body = _index(
         "meow_harness-0.2.0-py3-none-any.whl",
         "meow_harness-0.3.0b2-py3-none-any.whl",
@@ -159,18 +168,30 @@ def test_latest_release_with_beta_prefers_the_newest_prerelease(monkeypatch):
     monkeypatch.setattr(
         maintenance, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(body).encode())
     )
-    assert maintenance.latest_release(beta=True) == ("0.3.0b10", "2" * 64)
+    assert maintenance.latest_release(channel="stable")[0] == "0.2.0"
+    assert maintenance.latest_release(channel="beta") == ("0.3.0b10", "2" * 64)
+    assert maintenance.latest_release(channel="any")[0] == "0.3.0b10"
+    assert maintenance.latest_release(pin="0.3.0b2") == ("0.3.0b2", "1" * 64)
+    assert maintenance.latest_release(pin="0.2.0")[0] == "0.2.0"
+    with pytest.raises(ValueError, match=r"0\.9\.0"):
+        maintenance.latest_release(pin="0.9.0")
+    with pytest.raises(ValueError):
+        maintenance.latest_release(pin="0.2")
     body["files"].append(_index("meow_harness-0.3.0-py3-none-any.whl")["files"][0])
-    assert maintenance.latest_release(beta=True)[0] == "0.3.0"
+    assert maintenance.latest_release(channel="any")[0] == "0.3.0"
+    assert maintenance.latest_release(channel="beta")[0] == "0.3.0b10"
 
 
-def test_beta_lookup_never_falls_back_to_stable_only_json(monkeypatch):
-    def fetch(request, **kwargs):
+@pytest.mark.parametrize(
+    "kwargs", [{"channel": "beta"}, {"channel": "any"}, {"pin": "0.2.0"}]
+)
+def test_only_the_newest_stable_lookup_uses_legacy_json(monkeypatch, kwargs):
+    def fetch(request, **kw):
         raise OSError("HTTP 406")
 
     monkeypatch.setattr(maintenance, "urlopen", fetch)
     with pytest.raises(OSError):
-        maintenance.latest_release(beta=True)
+        maintenance.latest_release(**kwargs)
 
 
 @pytest.mark.parametrize("primary", ["error", "empty"])
