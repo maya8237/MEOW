@@ -6,12 +6,13 @@ import subprocess
 import sys
 from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 RELEASE_URL = (
     "https://raw.githubusercontent.com/maya8237/MEOW/release-channel/latest.json"
 )
-PYPI_URL = "https://pypi.org/pypi/meow-harness/json"
+PYPI_INDEX_URL = "https://pypi.org/simple/meow-harness/"
+PYPI_INDEX_ACCEPT = "application/vnd.pypi.simple.v1+json"
 VERSION_COMPONENTS = 3
 ANNOUNCE_LIMIT = 5
 
@@ -48,34 +49,38 @@ def latest_release(*, timeout: float = 10) -> tuple[str, str]:
     return data["tag_name"], digest
 
 
-def _pypi_wheel_digest(files: object) -> str | None:
+def _pypi_wheel_release(files: object) -> tuple[tuple[int, ...], str, str] | None:
     if not isinstance(files, list):
         return None
     for file in files:
-        if not isinstance(file, dict) or file.get("packagetype") != "bdist_wheel":
+        if not isinstance(file, dict) or file.get("yanked"):
             continue
-        if file.get("yanked"):
+        filename = file.get("filename")
+        match = (
+            re.fullmatch(r"meow[-_]harness-(\d+\.\d+\.\d+)-[^/]+\.whl", filename)
+            if isinstance(filename, str)
+            else None
+        )
+        if not match:
             continue
-        digests = file.get("digests")
-        digest = digests.get("sha256") if isinstance(digests, dict) else None
+        tag = match.group(1)
+        hashes = file.get("hashes")
+        digest = hashes.get("sha256") if isinstance(hashes, dict) else None
         if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
-            return digest
+            return _version_parts(tag), tag, digest
     return None
 
 
 def latest_pypi_release(*, timeout: float = 10) -> tuple[str, str]:
     """Return the newest stable MEOW wheel published on PyPI."""
-    with urlopen(PYPI_URL, timeout=timeout) as response:
-        releases = json.load(response)["releases"]
+    request = Request(PYPI_INDEX_URL, headers={"Accept": PYPI_INDEX_ACCEPT})
+    with urlopen(request, timeout=timeout) as response:
+        files = json.load(response).get("files")
     candidates = []
-    for tag, files in releases.items():
-        try:
-            parts = _version_parts(tag)
-        except (AttributeError, ValueError):
-            continue
-        digest = _pypi_wheel_digest(files)
-        if digest:
-            candidates.append((parts, tag, digest))
+    for file in files if isinstance(files, list) else []:
+        release = _pypi_wheel_release([file])
+        if release:
+            candidates.append(release)
     if not candidates:
         raise ValueError("PyPI has no stable MEOW wheel with a SHA-256 checksum")
     _, tag, digest = max(candidates)

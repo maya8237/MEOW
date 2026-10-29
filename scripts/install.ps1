@@ -57,26 +57,22 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
         Write-Host "Using $python"
         if (${latest-pypi}) {
             Write-Host 'Fetching the latest PyPI release...'
-            $pypi = Invoke-RestMethod 'https://pypi.org/pypi/meow-harness/json'
+            $pypi = Invoke-RestMethod `
+                -Headers @{ Accept = 'application/vnd.pypi.simple.v1+json' } `
+                'https://pypi.org/simple/meow-harness/'
             $release = @(
-                $pypi.releases.PSObject.Properties |
+                $pypi.files |
                     ForEach-Object {
-                        $candidateTag = $_.Name
-                        if ($candidateTag -notmatch '^\d+\.\d+\.\d+$') { return }
-                        $wheel = @(
-                            $_.Value |
-                                Where-Object {
-                                    $_.packagetype -eq 'bdist_wheel' -and
-                                    -not $_.yanked -and
-                                    "$($_.digests.sha256)" -match '^[0-9a-f]{64}$'
-                                } |
-                                Select-Object -First 1
-                        )
-                        if ($wheel.Count -eq 0) { return }
+                        $filename = "$($_.filename)"
+                        if ($filename -notmatch '^meow[-_]harness-(\d+\.\d+\.\d+)-[^/]+\.whl$') { return }
+                        if ($_.yanked) { return }
+                        $candidateTag = $Matches[1]
+                        $digest = "$($_.hashes.sha256)"
+                        if ($digest -notmatch '^[0-9a-f]{64}$') { return }
                         [PSCustomObject]@{
                             Tag = $candidateTag
                             Version = [version]$candidateTag
-                            Digest = "$($wheel[0].digests.sha256)"
+                            Digest = $digest
                         }
                     } |
                     Sort-Object Version |

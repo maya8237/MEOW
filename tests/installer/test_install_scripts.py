@@ -25,16 +25,15 @@ def _run_installer(tmp_path, flags, *, latest_pypi=False):
     pypi_response = (
         """cat <<'JSON'
 {
-  "releases": {
-    "9.9.9": [
-      {
-        "packagetype": "bdist_wheel",
-        "digests": {
-          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-        }
-      }
-    ]
-  }
+  "files": [
+    {
+      "filename": "meow_harness-9.9.9-py3-none-any.whl",
+      "hashes": {
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "yanked": false
+    }
+  ]
 }
 JSON"""
         if latest_pypi
@@ -44,7 +43,7 @@ JSON"""
         tools,
         "curl",
         f"""case "$*" in
-    *pypi.org/pypi/meow-harness/json*)
+    *pypi.org/simple/meow-harness/*)
         {pypi_response}
         ;;
     *)
@@ -65,7 +64,7 @@ esac
     -c)
         case "$2" in
             *sysconfig*) printf '%s\\n' "$HOME/purelib" ;;
-            *releases*)
+            *files*)
                 printf '9.9.9 '
                 printf '%s%s\\n' \
                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \

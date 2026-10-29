@@ -83,7 +83,9 @@ fi
 printf 'Using %s\n' "$python"
 if [ "$latest_pypi" = true ]; then
     printf '%s\n' 'Fetching the latest PyPI release...'
-    pypi_json=$(curl -fsSL --retry 3 'https://pypi.org/pypi/meow-harness/json')
+    pypi_json=$(curl -fsSL --retry 3 \
+        -H 'Accept: application/vnd.pypi.simple.v1+json' \
+        'https://pypi.org/simple/meow-harness/')
     release=$(printf '%s' "$pypi_json" | "$python" -c '
 import json
 import re
@@ -91,16 +93,15 @@ import sys
 
 data = json.load(sys.stdin)
 candidates = []
-for tag, files in data.get("releases", {}).items():
-    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", tag):
+for file in data.get("files", []):
+    filename = file.get("filename")
+    match = re.fullmatch(r"meow[-_]harness-(\d+\.\d+\.\d+)-[^/]+\.whl", filename or "")
+    if not match or file.get("yanked"):
         continue
-    for file in files:
-        if file.get("packagetype") != "bdist_wheel" or file.get("yanked"):
-            continue
-        digest = file.get("digests", {}).get("sha256")
-        if re.fullmatch(r"[0-9a-f]{64}", digest or ""):
-            candidates.append((tuple(map(int, tag.split("."))), tag, digest))
-            break
+    tag = match.group(1)
+    digest = file.get("hashes", {}).get("sha256")
+    if re.fullmatch(r"[0-9a-f]{64}", digest or ""):
+        candidates.append((tuple(map(int, tag.split("."))), tag, digest))
 if not candidates:
     raise SystemExit("No published stable MEOW wheel was found on PyPI.")
 _, tag, digest = max(candidates)

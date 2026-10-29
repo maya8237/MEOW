@@ -128,36 +128,40 @@ def test_latest_version_comes_from_published_release(monkeypatch):
     ]
 
 
-def test_latest_pypi_release_selects_newest_stable_wheel(monkeypatch):
+def test_latest_pypi_release_selects_newest_stable_wheel_from_index(monkeypatch):
     body = {
-        "releases": {
-            "0.2.0": [
-                {
-                    "packagetype": "sdist",
-                    "digests": {"sha256": "s" * 64},
-                },
-                {
-                    "packagetype": "bdist_wheel",
-                    "digests": {"sha256": "a" * 64},
-                },
-            ],
-            "0.3.0rc1": [
-                {
-                    "packagetype": "bdist_wheel",
-                    "digests": {"sha256": "r" * 64},
-                }
-            ],
-        }
+        "files": [
+            {
+                "filename": "meow_harness-0.2.0-py3-none-any.whl",
+                "hashes": {"sha256": "a" * 64},
+                "yanked": False,
+            },
+            {
+                "filename": "meow_harness-0.2.0.tar.gz",
+                "hashes": {"sha256": "s" * 64},
+                "yanked": False,
+            },
+            {
+                "filename": "meow_harness-0.3.0rc1-py3-none-any.whl",
+                "hashes": {"sha256": "r" * 64},
+                "yanked": False,
+            },
+        ]
     }
     urls = []
 
-    def fetch(url, **kwargs):
-        urls.append(url)
+    def fetch(request, **kwargs):
+        urls.append((request.full_url, request.headers["Accept"]))
         return io.BytesIO(json.dumps(body).encode())
 
     monkeypatch.setattr(maintenance, "urlopen", fetch)
     assert maintenance.latest_pypi_release() == ("0.2.0", "a" * 64)
-    assert urls == ["https://pypi.org/pypi/meow-harness/json"]
+    assert urls == [
+        (
+            "https://pypi.org/simple/meow-harness/",
+            "application/vnd.pypi.simple.v1+json",
+        )
+    ]
 
 
 def test_latest_release_requires_a_wheel_checksum(monkeypatch):
