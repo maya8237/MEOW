@@ -96,6 +96,8 @@ warmup = []                        # [] skips the one-time download
 MYTOOL_HOST = "https://tool.example.com"   # fixed, non-secret settings only
 ```
 
+For project runtime configuration, `[atlassian.mcp]` aliases `[jira.mcp]`.
+
 Keys: `command`, `args`, `server` (name in Claude), `label`, `auth`, `env`,
 `optional` (variables forwarded when set), `warmup`. Secrets always come from the `auth` variables in the environment, never
 the file. This changes registration only; to change how a project launches a

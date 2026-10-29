@@ -250,6 +250,13 @@ def test_runtime_uses_the_single_user_scope_server(tmp_path, monkeypatch):
     }
 
 
+def test_atlassian_mcp_config_is_an_alias_for_jira():
+    config = {"atlassian": {"mcp": {"command": "uvx", "args": ["mcp-atlassian"]}}}
+    expected = {"command": "uvx", "args": ["mcp-atlassian"]}
+    assert provider_mcp_config(config, "jira") == expected
+    assert provider_mcp_config(config, "atlassian") == expected
+
+
 def test_runtime_refuses_to_guess_between_user_scope_servers(tmp_path, monkeypatch):
     write_user_servers(
         tmp_path, {"jira-a": {"command": "x"}, "atlassian-b": {"command": "y"}}

@@ -12,6 +12,7 @@ logger = get_logger(__name__)
 
 _VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 PROVIDERS = ("jira", "github", "gitlab")
+_CONFIG_ALIASES = {"atlassian": "jira"}
 _MAX_REGISTRY_CHARS = 2_000_000
 
 
@@ -193,7 +194,7 @@ _SITE_VARIABLES = {
 
 def configured_url(config: dict, provider: str) -> str | None:
     """The project's non-secret `[provider].url`, if it set one."""
-    section = config.get(provider)
+    section = _config_section(config, provider)
     url = section.get("url") if isinstance(section, dict) else None
     return url if isinstance(url, str) and url.strip() else None
 
@@ -217,6 +218,7 @@ def _warn_site_mismatch(config: dict, provider: str, mcp: dict) -> None:
 
 def provider_mcp_config(config: dict, provider: str) -> dict:
     """Resolve the requested provider and warn about a site mismatch."""
+    provider = _CONFIG_ALIASES.get(provider, provider)
     mcp = _resolve_provider(config, provider)
     _warn_site_mismatch(config, provider, mcp)
     return mcp
@@ -228,14 +230,17 @@ def _resolve_provider(config: dict, provider: str) -> dict:
     Without an `[x.mcp]` table the user's single matching user-scope server is
     used, so shared project config need not describe how any one user runs it.
     """
+    provider = _CONFIG_ALIASES.get(provider, provider)
     command_provider = "atlassian" if provider == "jira" else provider
+    config_hint = f"[{provider}.mcp]"
+    alias_hint = " (or [atlassian.mcp])" if provider == "jira" else ""
     hint = (
         f"Run `meow onboard --mcp {command_provider}` to register one for your "
         "user, or "
-        f'set [{provider}.mcp] from = "NAME" to use an existing registration. '
+        f'set {config_hint} from = "NAME"{alias_hint} to use an existing registration. '
         "An inline stdio command is also supported."
     )
-    section = config.get(provider)
+    section = _config_section(config, provider)
     if not isinstance(section, dict) or "mcp" not in section:
         return _user_scope_fallback(provider, hint)
     try:
@@ -250,7 +255,8 @@ def provider_environment(
     config: dict, provider: str, *, resolve_reference: bool = True
 ) -> dict:
     """Read inline API settings or a referenced provider's runtime environment."""
-    section = config.get(provider)
+    provider = _CONFIG_ALIASES.get(provider, provider)
+    section = _config_section(config, provider)
     mcp = section.get("mcp") if isinstance(section, dict) else None
     if mcp is not None and not isinstance(mcp, dict):
         return {}
@@ -265,6 +271,20 @@ def provider_environment(
             raise
     env = mcp.get("env", {})
     return env if isinstance(env, dict) else {}
+
+
+def _config_section(config: dict, provider: str) -> object:
+    """Read a provider table, falling back to the Atlassian alias for Jira."""
+    provider = _CONFIG_ALIASES.get(provider, provider)
+    section = config.get(provider)
+    alias = config.get("atlassian") if provider == "jira" else None
+    if not isinstance(alias, dict):
+        return section
+    if not isinstance(section, dict):
+        return alias
+    if "mcp" not in section and "mcp" in alias:
+        return {**section, "mcp": alias["mcp"]}
+    return section
 
 
 def _provider_matches(registry: dict) -> dict:
