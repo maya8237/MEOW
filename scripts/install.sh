@@ -83,10 +83,11 @@ fi
 printf 'Using %s\n' "$python"
 if [ "$latest_pypi" = true ]; then
     printf '%s\n' 'Fetching the latest PyPI release...'
-    pypi_json=$(curl -fsSL --retry 3 \
+    release=
+    if pypi_json=$(curl -fsSL --retry 3 \
         -H 'Accept: application/vnd.pypi.simple.v1+json' \
-        'https://pypi.org/simple/meow-harness/')
-    release=$(printf '%s' "$pypi_json" | "$python" -c '
+        'https://pypi.org/simple/meow-harness/'); then
+        release=$(printf '%s' "$pypi_json" | "$python" -c '
 import json
 import re
 import sys
@@ -106,7 +107,32 @@ if not candidates:
     raise SystemExit("No published stable MEOW wheel was found on PyPI.")
 _, tag, digest = max(candidates)
 print(tag, digest)
+            ' 2>/dev/null) || release=
+    fi
+    if [ -z "$release" ]; then
+        printf '%s\n' 'PyPI Index API unavailable; trying the legacy JSON API...'
+        pypi_json=$(curl -fsSL --retry 3 'https://pypi.org/pypi/meow-harness/json')
+        release=$(printf '%s' "$pypi_json" | "$python" -c '
+import json
+import re
+import sys
+
+data = json.load(sys.stdin)
+info = data.get("info", {})
+tag = info.get("version")
+if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", tag or ""):
+    raise SystemExit("PyPI legacy JSON has no stable project version")
+for file in data.get("urls", []):
+    if file.get("packagetype") != "bdist_wheel" or file.get("yanked"):
+        continue
+    digest = file.get("digests", {}).get("sha256")
+    if re.fullmatch(r"[0-9a-f]{64}", digest or ""):
+        print(tag, digest)
+        break
+else:
+    raise SystemExit("PyPI legacy JSON has no stable wheel with a SHA-256 checksum")
 ')
+    fi
     tag=${release%% *}
     digest=${release#* }
 else

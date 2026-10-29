@@ -13,6 +13,7 @@ RELEASE_URL = (
 )
 PYPI_INDEX_URL = "https://pypi.org/simple/meow-harness/"
 PYPI_INDEX_ACCEPT = "application/vnd.pypi.simple.v1+json"
+PYPI_LEGACY_URL = "https://pypi.org/pypi/meow-harness/json"
 VERSION_COMPONENTS = 3
 ANNOUNCE_LIMIT = 5
 
@@ -73,18 +74,41 @@ def _pypi_wheel_release(files: object) -> tuple[tuple[int, ...], str, str] | Non
 
 def latest_pypi_release(*, timeout: float = 10) -> tuple[str, str]:
     """Return the newest stable MEOW wheel published on PyPI."""
-    request = Request(PYPI_INDEX_URL, headers={"Accept": PYPI_INDEX_ACCEPT})
-    with urlopen(request, timeout=timeout) as response:
-        files = json.load(response).get("files")
-    candidates = []
-    for file in files if isinstance(files, list) else []:
-        release = _pypi_wheel_release([file])
-        if release:
-            candidates.append(release)
-    if not candidates:
-        raise ValueError("PyPI has no stable MEOW wheel with a SHA-256 checksum")
-    _, tag, digest = max(candidates)
-    return tag, digest
+    try:
+        request = Request(PYPI_INDEX_URL, headers={"Accept": PYPI_INDEX_ACCEPT})
+        with urlopen(request, timeout=timeout) as response:
+            files = json.load(response).get("files")
+        candidates = []
+        for file in files if isinstance(files, list) else []:
+            release = _pypi_wheel_release([file])
+            if release:
+                candidates.append(release)
+        if not candidates:
+            raise ValueError("PyPI Index API returned no stable wheel")
+        _, tag, digest = max(candidates)
+        return tag, digest
+    except (AttributeError, OSError, TypeError, ValueError, KeyError):
+        return _latest_pypi_legacy_release(timeout=timeout)
+
+
+def _latest_pypi_legacy_release(*, timeout: float) -> tuple[str, str]:
+    with urlopen(PYPI_LEGACY_URL, timeout=timeout) as response:
+        data = json.load(response)
+    info = data.get("info")
+    tag = info.get("version") if isinstance(info, dict) else None
+    if not isinstance(tag, str):
+        raise ValueError("PyPI legacy JSON has no stable project version")
+    _version_parts(tag)
+    for file in data.get("urls", []) if isinstance(data, dict) else []:
+        if not isinstance(file, dict) or file.get("packagetype") != "bdist_wheel":
+            continue
+        if file.get("yanked"):
+            continue
+        digests = file.get("digests")
+        digest = digests.get("sha256") if isinstance(digests, dict) else None
+        if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
+            return tag, digest
+    raise ValueError("PyPI legacy JSON has no stable wheel with a SHA-256 checksum")
 
 
 def check_for_updates() -> None:

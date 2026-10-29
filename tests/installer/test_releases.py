@@ -164,6 +164,49 @@ def test_latest_pypi_release_selects_newest_stable_wheel_from_index(monkeypatch)
     ]
 
 
+@pytest.mark.parametrize("primary", ["error", "empty"])
+def test_latest_pypi_release_falls_back_to_legacy_project_json(monkeypatch, primary):
+    legacy = {
+        "info": {"version": "0.4.0"},
+        "urls": [
+            {
+                "packagetype": "bdist_wheel",
+                "yanked": "withdrawn",
+                "digests": {"sha256": "y" * 64},
+            },
+            {
+                "packagetype": "sdist",
+                "yanked": False,
+                "digests": {"sha256": "s" * 64},
+            },
+            {
+                "packagetype": "bdist_wheel",
+                "yanked": False,
+                "digests": {"sha256": "b" * 64},
+            },
+        ],
+    }
+    responses = [
+        OSError("HTTP 406") if primary == "error" else {"files": []},
+        legacy,
+    ]
+    urls = []
+
+    def fetch(request, **kwargs):
+        urls.append(request.full_url if hasattr(request, "full_url") else request)
+        response = responses.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return io.BytesIO(json.dumps(response).encode())
+
+    monkeypatch.setattr(maintenance, "urlopen", fetch)
+    assert maintenance.latest_pypi_release() == ("0.4.0", "b" * 64)
+    assert urls == [
+        "https://pypi.org/simple/meow-harness/",
+        "https://pypi.org/pypi/meow-harness/json",
+    ]
+
+
 def test_latest_release_requires_a_wheel_checksum(monkeypatch):
     def serve(body):
         monkeypatch.setattr(

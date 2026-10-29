@@ -57,30 +57,52 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
         Write-Host "Using $python"
         if (${latest-pypi}) {
             Write-Host 'Fetching the latest PyPI release...'
-            $pypi = Invoke-RestMethod `
-                -Headers @{ Accept = 'application/vnd.pypi.simple.v1+json' } `
-                'https://pypi.org/simple/meow-harness/'
-            $release = @(
-                $pypi.files |
-                    ForEach-Object {
-                        $filename = "$($_.filename)"
-                        if ($filename -notmatch '^meow[-_]harness-(\d+\.\d+\.\d+)-[^/]+\.whl$') { return }
-                        if ($_.yanked) { return }
-                        $candidateTag = $Matches[1]
-                        $digest = "$($_.hashes.sha256)"
-                        if ($digest -notmatch '^[0-9a-f]{64}$') { return }
-                        [PSCustomObject]@{
-                            Tag = $candidateTag
-                            Version = [version]$candidateTag
-                            Digest = $digest
-                        }
-                    } |
-                    Sort-Object Version |
-                    Select-Object -Last 1
-            )
-            if (-not $release) { throw 'No published stable MEOW wheel was found on PyPI.' }
-            $tag = $release.Tag
-            $digest = $release.Digest
+            $release = $null
+            try {
+                $pypi = Invoke-RestMethod `
+                    -Headers @{ Accept = 'application/vnd.pypi.simple.v1+json' } `
+                    'https://pypi.org/simple/meow-harness/'
+                $release = @(
+                    $pypi.files |
+                        ForEach-Object {
+                            $filename = "$($_.filename)"
+                            if ($filename -notmatch '^meow[-_]harness-(\d+\.\d+\.\d+)-[^/]+\.whl$') { return }
+                            if ($_.yanked) { return }
+                            $candidateTag = $Matches[1]
+                            $digest = "$($_.hashes.sha256)"
+                            if ($digest -notmatch '^[0-9a-f]{64}$') { return }
+                            [PSCustomObject]@{
+                                Tag = $candidateTag
+                                Version = [version]$candidateTag
+                                Digest = $digest
+                            }
+                        } |
+                        Sort-Object Version |
+                        Select-Object -Last 1
+                )
+            } catch {
+                $release = $null
+            }
+            if ($release) {
+                $tag = $release.Tag
+                $digest = $release.Digest
+            } else {
+                Write-Host 'PyPI Index API unavailable; trying the legacy JSON API...'
+                $legacy = Invoke-RestMethod 'https://pypi.org/pypi/meow-harness/json'
+                $tag = "$($legacy.info.version)"
+                if ($tag -notmatch '^\d+\.\d+\.\d+$') { throw 'PyPI legacy JSON has no stable project version.' }
+                $wheel = @(
+                    $legacy.urls |
+                        Where-Object {
+                            $_.packagetype -eq 'bdist_wheel' -and
+                            -not $_.yanked -and
+                            "$($_.digests.sha256)" -match '^[0-9a-f]{64}$'
+                        } |
+                        Select-Object -First 1
+                )
+                if ($wheel.Count -eq 0) { throw 'PyPI legacy JSON has no stable wheel with a SHA-256 checksum.' }
+                $digest = "$($wheel[0].digests.sha256)"
+            }
         } else {
             Write-Host 'Fetching the latest release...'
             $release = Invoke-RestMethod $manifestUrl

@@ -18,12 +18,20 @@ def _executable(directory, name, content):
     return path
 
 
-def _run_installer(tmp_path, flags, *, latest_pypi=False):
+def _run_installer(tmp_path, flags, *, latest_pypi=False, pypi_mode="simple"):
     tools = tmp_path / "tools"
     tools.mkdir()
     _executable(tools, "uv", "exit 1\n")
-    pypi_response = (
-        """cat <<'JSON'
+    simple_response = (
+        "exit 22"
+        if pypi_mode == "error"
+        else """cat <<'JSON'
+{
+  "files": []
+}
+JSON"""
+        if pypi_mode == "empty"
+        else """cat <<'JSON'
 {
   "files": [
     {
@@ -36,22 +44,37 @@ def _run_installer(tmp_path, flags, *, latest_pypi=False):
   ]
 }
 JSON"""
-        if latest_pypi
-        else ":"
     )
+    legacy_response = """cat <<'JSON'
+{
+  "info": {"version": "8.8.8"},
+  "urls": [
+    {
+      "packagetype": "bdist_wheel",
+      "yanked": false,
+      "digests": {
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    }
+  ]
+}
+JSON"""
     _executable(
         tools,
         "curl",
         f"""case "$*" in
     *pypi.org/simple/meow-harness/*)
-        {pypi_response}
+        {simple_response}
+        ;;
+    *pypi.org/pypi/meow-harness/json*)
+        {legacy_response}
         ;;
     *)
         cat <<'JSON'
-{
+{{
             "tag_name": "1.2.3",
   "wheel_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-}
+}}
 JSON
         ;;
 esac
@@ -69,6 +92,12 @@ esac
                 printf '%s%s\\n' \
                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+                ;;
+            *urls*)
+                printf '8.8.8 '
+                printf '%s%s\\n' \
+                    'cccccccccccccccccccccccccccccccc' \
+                    'cccccccccccccccccccccccccccccccc'
                 ;;
             *) printf '31300 %s\\n' "$0" ;;
         esac ;;
@@ -142,6 +171,18 @@ def test_installer_can_select_newest_stable_pypi_release(tmp_path):
     )
     assert "9.9.9" in activation
     assert "1.2.3" not in activation
+
+
+@pytest.mark.parametrize("pypi_mode", ["error", "empty"])
+def test_installer_falls_back_to_legacy_pypi_json(tmp_path, pypi_mode):
+    activation = _run_installer(
+        tmp_path,
+        ["--non-interactive", "--latest-pypi"],
+        latest_pypi=True,
+        pypi_mode=pypi_mode,
+    )
+    assert "8.8.8" in activation
+    assert "9.9.9" not in activation
 
 
 def test_mcp_flag_needs_a_value(tmp_path):
