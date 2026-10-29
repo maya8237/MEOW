@@ -181,8 +181,7 @@ Exit: 0 PASS, 1 FAIL, 2 infrastructure/unverified.
 Add `--post-comments gitlab` with masked `MEOW_GITLAB_TOKEN` (`api` scope and comment
 access), or `--post-comments github` with `MEOW_GITHUB_TOKEN` (Pull requests write). See
 [the integration skill](../skills/integrate-ci-review/SKILL.md) for CI variables.
-Posting mode requires an MR event and validates added/deleted-line locations
-and remote revisions. Existing comments inform the review; matching inline notes
+Posting mode requires an MR event and validates added/deleted-line locations and remote revisions. Existing comments inform the review; matching inline notes
 (reworded, or open with a moved line) are skipped on reruns. Open threads meow
 started (marked `<!-- meow-review -->`) that the reviewer finds fixed are resolved
 with a "Resolved: reason" reply, or "✅ Solved: reason" if resolving is refused.
