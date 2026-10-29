@@ -48,6 +48,15 @@ def test_powershell_setup_is_default_in_a_console():
     assert "-and -not ${non-interactive}" in script
 
 
+def test_bootstrap_installers_offer_latest_pypi_source():
+    root = Path(__file__).resolve().parents[2]
+    powershell = (root / "scripts/install.ps1").read_text()
+    posix = (root / "scripts/install.sh").read_text()
+    assert "[switch]${latest-pypi}" in powershell
+    assert "--latest-pypi) latest_pypi=true ;;" in posix
+    assert "--latest-pypi" in posix
+
+
 @pytest.mark.parametrize("setup", [False, True])
 @pytest.mark.parametrize("non_interactive", [False, True])
 def test_powershell_activation_arguments(setup, non_interactive):

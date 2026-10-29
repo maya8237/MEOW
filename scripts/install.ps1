@@ -1,6 +1,6 @@
 # irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
 [CmdletBinding()]
-param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$bun, [switch]${install-missing}, [string]$mcp = '')
+param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$bun, [switch]${install-missing}, [switch]${latest-pypi}, [string]$mcp = '')
 
 & {
     $ErrorActionPreference = 'Stop'
@@ -54,12 +54,45 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
         if ($env:MEOW_RELEASE_MANIFEST_URL) { $manifestUrl = $env:MEOW_RELEASE_MANIFEST_URL }
         Write-Host 'Locating Python 3.12+...'
         $python = Find-Python
-        Write-Host "Using $python`nFetching the latest release..."
-        $release = Invoke-RestMethod $manifestUrl
-        $tag = $release.tag_name
-        if ($tag -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'No published stable MEOW release was found.' }
-        $digest = "$($release.wheel_sha256)"
-        if ($digest -cnotmatch '^[0-9a-f]{64}$') { throw "Release $tag has no wheel checksum; installation stopped." }
+        Write-Host "Using $python"
+        if (${latest-pypi}) {
+            Write-Host 'Fetching the latest PyPI release...'
+            $pypi = Invoke-RestMethod 'https://pypi.org/pypi/meow-harness/json'
+            $release = @(
+                $pypi.releases.PSObject.Properties |
+                    ForEach-Object {
+                        $candidateTag = $_.Name
+                        if ($candidateTag -notmatch '^\d+\.\d+\.\d+$') { return }
+                        $wheel = @(
+                            $_.Value |
+                                Where-Object {
+                                    $_.packagetype -eq 'bdist_wheel' -and
+                                    -not $_.yanked -and
+                                    "$($_.digests.sha256)" -match '^[0-9a-f]{64}$'
+                                } |
+                                Select-Object -First 1
+                        )
+                        if ($wheel.Count -eq 0) { return }
+                        [PSCustomObject]@{
+                            Tag = $candidateTag
+                            Version = [version]$candidateTag
+                            Digest = "$($wheel[0].digests.sha256)"
+                        }
+                    } |
+                    Sort-Object Version |
+                    Select-Object -Last 1
+            )
+            if (-not $release) { throw 'No published stable MEOW wheel was found on PyPI.' }
+            $tag = $release.Tag
+            $digest = $release.Digest
+        } else {
+            Write-Host 'Fetching the latest release...'
+            $release = Invoke-RestMethod $manifestUrl
+            $tag = $release.tag_name
+            if ($tag -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'No published stable MEOW release was found.' }
+            $digest = "$($release.wheel_sha256)"
+            if ($digest -cnotmatch '^[0-9a-f]{64}$') { throw "Release $tag has no wheel checksum; installation stopped." }
+        }
         $versions = Join-Path $root 'versions'
         $destination = Join-Path $versions $tag
         New-Item -ItemType Directory -Force -Path $versions | Out-Null

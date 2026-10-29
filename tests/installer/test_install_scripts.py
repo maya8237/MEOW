@@ -18,19 +18,44 @@ def _executable(directory, name, content):
     return path
 
 
-def _run_installer(tmp_path, flags):
+def _run_installer(tmp_path, flags, *, latest_pypi=False):
     tools = tmp_path / "tools"
     tools.mkdir()
     _executable(tools, "uv", "exit 1\n")
+    pypi_response = (
+        """cat <<'JSON'
+{
+  "releases": {
+    "9.9.9": [
+      {
+        "packagetype": "bdist_wheel",
+        "digests": {
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    ]
+  }
+}
+JSON"""
+        if latest_pypi
+        else ":"
+    )
     _executable(
         tools,
         "curl",
-        """cat <<'JSON'
+        f"""case "$*" in
+    *pypi.org/pypi/meow-harness/json*)
+        {pypi_response}
+        ;;
+    *)
+        cat <<'JSON'
 {
-  "tag_name": "1.2.3",
+            "tag_name": "1.2.3",
   "wheel_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 }
 JSON
+        ;;
+esac
 """,
     )
     python = _executable(
@@ -40,6 +65,12 @@ JSON
     -c)
         case "$2" in
             *sysconfig*) printf '%s\\n' "$HOME/purelib" ;;
+            *releases*)
+                printf '9.9.9 '
+                printf '%s%s\\n' \
+                    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
+                    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+                ;;
             *) printf '31300 %s\\n' "$0" ;;
         esac ;;
     -m)
@@ -104,6 +135,14 @@ def test_installer_forwards_bun_without_asking(tmp_path):
 def test_installer_forwards_mcp_providers(tmp_path, flags, expected):
     activation = _run_installer(tmp_path, flags)
     assert (expected in activation) if expected else ("--mcp" not in activation)
+
+
+def test_installer_can_select_newest_stable_pypi_release(tmp_path):
+    activation = _run_installer(
+        tmp_path, ["--non-interactive", "--latest-pypi"], latest_pypi=True
+    )
+    assert "9.9.9" in activation
+    assert "1.2.3" not in activation
 
 
 def test_mcp_flag_needs_a_value(tmp_path):
