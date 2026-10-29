@@ -22,7 +22,7 @@ its skills in Claude Code. It uses `uv` for the virtual environment and package
 installs when `uv` is already installed, and pip otherwise or if `uv` fails.
 Open a new terminal or restart Claude Code.
 
-In a terminal, installation then asks about Jira/GitLab MCP servers, Bun's shared
+In a terminal, installation then asks about Jira, Confluence and GitLab MCP servers (tokens are shown as typed), Bun's shared
 dependency store, and which projects to set up. Every question can be skipped.
 Without a terminal, or with `--no-setup`, it only registers MEOW. The
 non-interactive switch also works for unattended installation:

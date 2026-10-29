@@ -58,9 +58,10 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
         Write-Host 'Fetching the latest release from PyPI...'
         $release = $null
         try {
-            $pypi = Invoke-RestMethod `
+            # Windows PowerShell 5.1 leaves a +json response as text, so parse it here.
+            $pypi = (Invoke-WebRequest -UseBasicParsing `
                 -Headers @{ Accept = 'application/vnd.pypi.simple.v1+json' } `
-                $indexUrl
+                $indexUrl).Content | ConvertFrom-Json
             # A beta sorts before the stable release it precedes.
             $release = @(
                 $pypi.files |
@@ -94,12 +95,13 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
             )
         } catch {
             $release = $null
+            $indexError = $_.Exception.Message
         }
         if ($release) {
             $tag = $release.Tag
             $digest = $release.Digest
         } elseif ($beta -or ${latest-pypi} -or $version -or $env:MEOW_PYPI_INDEX_URL) {
-            throw 'No published MEOW release was found on PyPI.'
+            throw "No published MEOW release was found on PyPI. $indexError"
         } else {
             Write-Host 'PyPI Index API unavailable; trying the legacy JSON API...'
             $legacy = Invoke-RestMethod 'https://pypi.org/pypi/meow-harness/json'

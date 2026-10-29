@@ -5,7 +5,6 @@ Credentials come from the servers' own environment variable names (or a hidden
 prompt) and appear nowhere in results, logs, or MEOW config.
 """
 
-import getpass
 import os
 import shutil
 import subprocess
@@ -27,6 +26,7 @@ _ATLASSIAN_OPTIONAL = (
     "CONFLUENCE_PERSONAL_TOKEN",
     "CONFLUENCE_SSL_VERIFY",
 )
+CONFLUENCE_AUTH = ("CONFLUENCE_URL", "CONFLUENCE_USERNAME", "CONFLUENCE_API_TOKEN")
 
 REGISTERED = "registered"
 ALREADY = "already_registered"
@@ -61,7 +61,7 @@ SPECS = {
         auth=(
             ("JIRA_URL", "JIRA_USERNAME", "JIRA_API_TOKEN"),
             ("JIRA_URL", "JIRA_PERSONAL_TOKEN"),
-            ("CONFLUENCE_URL", "CONFLUENCE_USERNAME", "CONFLUENCE_API_TOKEN"),
+            CONFLUENCE_AUTH,
             ("CONFLUENCE_URL", "CONFLUENCE_PERSONAL_TOKEN"),
         ),
         package="mcp-atlassian",
@@ -142,12 +142,36 @@ def _collect(
     if alternative is None:
         return None
     extra = (name for name in spec.optional if environ.get(name))
-    return {name: environ[name] for name in (*alternative, *extra)}
+    values = {name: environ[name] for name in (*alternative, *extra)}
+    if url := values.get("GITLAB_API_URL"):
+        # The server needs the REST root; accept a bare site URL.
+        url = url.rstrip("/")
+        values["GITLAB_API_URL"] = url if url.endswith("/api/v4") else f"{url}/api/v4"
+    return values
+
+
+def fill_missing(
+    names: Sequence[str], environ: Mapping[str, str], prompt: Prompt
+) -> dict[str, str]:
+    """A copy of ENVIRONMENT with every variable in NAMES asked for if unset."""
+    values = dict(environ)
+    for name in names:
+        if not values.get(name):
+            values[name] = prompt(name, _is_secret(name)).strip()
+    return values
+
+
+def _launch(argv: list[str]) -> list[str]:
+    """Native Windows cannot spawn `npx` (a .cmd shim) directly; Claude reports
+    `-32000 Connection closed` unless it goes through `cmd /c`."""
+    if os.name == "nt" and argv[0] == "npx":
+        return ["cmd", "/c", *argv]
+    return argv
 
 
 def build_command(spec: McpSpec, values: Mapping[str, str]) -> list[str]:
     """The `claude mcp add` argv; contains credentials, so never print it."""
-    launch = [spec.launcher, *spec.args]
+    launch = _launch([spec.launcher, *spec.args])
     pairs = [*spec.env, *values.items()]
     env = [arg for name, value in pairs for arg in ("-e", f"{name}={value}")]
     return ["claude", "mcp", "add", "--scope", "user", spec.server, *env, "--", *launch]
@@ -159,7 +183,7 @@ def _warm_up(spec: McpSpec, run: Callable) -> None:
         return
     try:
         run(
-            list(spec.warmup),
+            _launch(list(spec.warmup)),
             stdin=subprocess.DEVNULL,
             capture_output=True,
             timeout=120,
@@ -345,11 +369,11 @@ _EXAMPLES = {
 }
 
 
-def hidden_prompt(label: str, secret: bool) -> str:
-    """Ask on the terminal; secrets are not echoed."""
+def prompt_value(label: str, secret: bool) -> str:
+    """Ask on the terminal. Secrets are echoed too: a silent prompt gave no sign
+    that a pasted token arrived, and the user's own terminal is the only reader."""
     example = f" (e.g. {_EXAMPLES[label]})" if label in _EXAMPLES else ""
-    question = f"{label}{example}: "
-    return getpass.getpass(question) if secret else input(question)
+    return input(f"{label}{example}: ")
 
 
 def ask_to_install(package: str) -> bool:

@@ -17,11 +17,13 @@ from meow.installer.bun import (
 )
 from meow.project.claude_settings import path_key, register_checkout_plugin
 from meow.project.mcp_setup import (
+    CONFLUENCE_AUTH,
     always_install,
     ask_to_install,
     describe,
-    hidden_prompt,
+    fill_missing,
     parse_providers,
+    prompt_value,
     setup_provider,
     setup_providers,
 )
@@ -374,12 +376,24 @@ def _migrate_registered(onboarded: Sequence[Path] = ()) -> None:
     )
 
 
+def _wants_mcp(ask: Callable[[str], str], spec, environ: dict[str, str]) -> bool:
+    """Ask about SPEC; Confluence shares the Jira spec's Atlassian server."""
+    wanted = _yes(ask(f"  Set up {spec.label}? [y/N] "))
+    if spec.provider != "jira" or spec.custom:
+        return wanted
+    if not _yes(ask("  Set up Confluence (same server)? [y/N] ")):
+        return wanted
+    environ.update(fill_missing(CONFLUENCE_AUTH, environ, prompt_value))
+    if wanted:  # Jira's variables are asked too, so they outrank Confluence's
+        environ.update(fill_missing(spec.auth[0], environ, prompt_value))
+    return True
+
+
 def _offer_mcp(ask: Callable[[str], str], output: Callable[[str], None]) -> None:
     """Offer each supported MCP server at user scope; never installs launchers."""
+    question = "Set up Jira/Confluence/GitLab MCP servers for Claude (user scope)? "
     try:
-        if not _yes(
-            ask("Set up Jira/GitLab MCP servers for Claude (user scope)? [y/N] ")
-        ):
+        if not _yes(ask(question + "[y/N] ")):
             return
     except EOFError:
         output("\nNo input available; skipped MCP setup.")
@@ -389,10 +403,11 @@ def _offer_mcp(ask: Callable[[str], str], output: Callable[[str], None]) -> None
     except ValueError as exc:
         output(f"  MCP setup skipped: {exc}")
         return
+    environ = dict(os.environ)
     for spec in specs.values():
-        if _yes(ask(f"  Set up {spec.label}? [y/N] ")):
+        if _wants_mcp(ask, spec, environ):
             result = setup_provider(
-                spec, os.environ, prompt=hidden_prompt, allow_install=ask_to_install
+                spec, environ, prompt=prompt_value, allow_install=ask_to_install
             )
             output(f"  {describe(result)}")
 

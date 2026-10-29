@@ -50,7 +50,7 @@ def test_interactive_offer_declined_registers_nothing(monkeypatch):
 
 
 def test_interactive_offer_asks_per_provider(monkeypatch):
-    answers = iter(["y", "y", "n"])
+    answers = iter(["y", "y", "n", "n"])
     registered = []
 
     def fake(spec, environ, **_kwargs):
@@ -119,7 +119,7 @@ def test_prompts_show_examples_for_site_and_username(monkeypatch):
     asked = []
     monkeypatch.setattr("builtins.input", lambda text: asked.append(text) or "x")
     for name in ("JIRA_URL", "JIRA_USERNAME", "GITLAB_API_URL", "SOMETHING_ELSE"):
-        mcp_setup.hidden_prompt(name, False)
+        mcp_setup.prompt_value(name, False)
     assert "e.g. https://yourcompany.atlassian.net" in asked[0]
     assert "e.g. you@yourcompany.com" in asked[1]
     assert "e.g. https://gitlab.com/api/v4" in asked[2]
@@ -148,3 +148,46 @@ def test_mcp_offer_survives_a_closed_input():
 
     _runtime._offer_mcp(closed, lines.append)
     assert any("skipped MCP setup" in line for line in lines)
+
+
+def test_confluence_offer_prompts_for_its_variables_and_shares_the_server(monkeypatch):
+    answers = iter(["y", "n", "y", "n"])  # offer, Jira no, Confluence yes, GitLab no
+    seen = []
+    monkeypatch.setattr(
+        "builtins.input", lambda text: seen.append(text) or "https://x.example"
+    )
+
+    def fake(spec, environ, **_kwargs):
+        seen.append(environ["CONFLUENCE_API_TOKEN"])
+        return SetupResult(spec.provider, "registered", "done")
+
+    monkeypatch.setattr(_runtime, "setup_provider", fake)
+    for name in ("CONFLUENCE_URL", "CONFLUENCE_USERNAME", "CONFLUENCE_API_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    _runtime._offer_mcp(lambda _prompt: next(answers), lambda _line: None)
+    assert any(text.startswith("CONFLUENCE_API_TOKEN") for text in seen)
+    assert seen[-1] == "https://x.example"
+
+
+def test_secret_prompts_are_echoed_and_gitlab_url_gets_api_root(monkeypatch):
+    from meow.project import mcp_setup
+
+    monkeypatch.setattr(
+        "getpass.getpass", lambda *_: pytest.fail("secrets must be visible")
+    )
+    monkeypatch.setattr("builtins.input", lambda _text: "tok")
+    assert mcp_setup.prompt_value("GITLAB_PERSONAL_ACCESS_TOKEN", True) == "tok"
+    values = mcp_setup._collect(
+        mcp_setup.SPECS["gitlab"],
+        {"GITLAB_PERSONAL_ACCESS_TOKEN": "t", "GITLAB_API_URL": "https://gl.example/"},
+        None,
+    )
+    assert values["GITLAB_API_URL"] == "https://gl.example/api/v4"
+
+
+def test_windows_wraps_npx_in_cmd(monkeypatch):
+    from meow.project import mcp_setup
+
+    monkeypatch.setattr(mcp_setup.os, "name", "nt")
+    argv = mcp_setup.build_command(mcp_setup.SPECS["gitlab"], {})
+    assert argv[argv.index("--") + 1 : argv.index("--") + 4] == ["cmd", "/c", "npx"]

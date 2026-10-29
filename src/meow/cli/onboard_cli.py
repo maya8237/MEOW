@@ -10,8 +10,8 @@ from meow.project.mcp_setup import (
     FAILURES,
     always_install,
     ask_to_install,
-    hidden_prompt,
     parse_providers,
+    prompt_value,
     setup_providers,
 )
 from meow.project.mcp_setup_config import load_specs
@@ -157,7 +157,7 @@ def _mcp_results(args, root: Path) -> tuple[list[dict], list[str]]:
         specs, notes = load_specs(root)
     except ValueError as exc:
         return [{"provider": "mcp_setup", "status": "failed", "detail": str(exc)}], []
-    prompt = None if args.non_interactive else hidden_prompt
+    prompt = None if args.non_interactive else prompt_value
     if args.install_missing:
         allow = always_install
     else:
