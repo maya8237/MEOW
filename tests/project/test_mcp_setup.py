@@ -289,7 +289,10 @@ def test_gitlab_uses_zereight_package_and_its_own_variable_names(tmp_path):
     )
     assert result.status == "registered"
     add = run.calls[0]
-    assert add[-4:] == ["--", "npx", "-y", "@zereight/mcp-gitlab"]
+    launch = ["npx", "-y", "@zereight/mcp-gitlab"]
+    if os.name == "nt":  # native Windows spawns npx through cmd /c
+        launch = ["cmd", "/c", *launch]
+    assert add[-len(launch) - 1 :] == ["--", *launch]
     assert f"GITLAB_PERSONAL_ACCESS_TOKEN={SECRET}" in add
     assert "GITLAB_API_URL=https://gitlab.example.com/api/v4" in add
     assert SECRET not in json.dumps(result.to_dict())
