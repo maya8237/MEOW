@@ -46,8 +46,8 @@ export CONFLUENCE_USERNAME=me@example.com CONFLUENCE_API_TOKEN=...
                                      # or CONFLUENCE_PERSONAL_TOKEN (Server/Data Center)
 export JIRA_SSL_VERIFY=false CONFLUENCE_SSL_VERIFY=false  # optional TLS verification settings
 export GITLAB_PERSONAL_ACCESS_TOKEN=... GITLAB_API_URL=https://gitlab.example.com/api/v4
-meow mcp jira,gitlab              # registration only; safe to rerun
-meow onboard --mcp jira,gitlab   # registration plus project onboarding
+meow mcp atlassian,gitlab         # registration only; safe to rerun
+meow onboard --mcp atlassian,gitlab  # registration plus project onboarding
 ```
 
 The installer asks the same when run in a terminal; `--no-setup` and

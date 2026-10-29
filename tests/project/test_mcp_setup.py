@@ -233,6 +233,7 @@ def test_unsupported_provider_is_reported(tmp_path):
 def test_parse_providers():
     assert parse_providers("all") == ("jira", "gitlab")
     assert parse_providers(" Jira, gitlab,jira ") == ("jira", "gitlab")
+    assert parse_providers("atlassian,gitlab") == ("jira", "gitlab")
 
 
 def test_runtime_uses_the_single_user_scope_server(tmp_path, monkeypatch):
@@ -266,7 +267,7 @@ def test_runtime_fallback_ignores_project_mcp_json(tmp_path, monkeypatch):
         json.dumps({"mcpServers": {"atlassian": {"command": "evil"}}})
     )
     config = {"_project_root": str(tmp_path)}
-    with pytest.raises(ValueError, match="meow onboard --mcp jira"):
+    with pytest.raises(ValueError, match="meow onboard --mcp atlassian"):
         provider_mcp_config(config, "jira")
 
 

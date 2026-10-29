@@ -43,13 +43,13 @@ sh scripts/install.sh --non-interactive
 `--mcp` and `--bun`. `--non-interactive` skips the questions too.
 `--latest-pypi` (`-latest-pypi` in PowerShell) installs the newest stable wheel
 from PyPI instead of the release-channel version.
-`--mcp jira,gitlab` registers user-scope MCP servers without prompting, reading
+`--mcp atlassian,gitlab` registers user-scope MCP servers without prompting, reading
 the servers' own credential variables; see [MCP](MCP.md). `--install-missing` lets `--mcp` pip-install Jira's server. `--bun` enables the
 Bun shared store and migrates registered repos. Projects are set up with
 `meow onboard --non-interactive --work-dir PATH`.
 
 To rerun only MCP registration after installation or from a boot script, use
-`meow mcp jira,gitlab`; it does not refresh project configuration.
+`meow mcp atlassian,gitlab`; it does not refresh project configuration.
 
 The switch works even with a terminal attached. Installation still registers
 the Claude Code plugin and launcher. Configure projects separately with

@@ -99,8 +99,13 @@ class SetupResult:
 
 
 def parse_providers(raw: str, known: Mapping[str, McpSpec] = SPECS) -> tuple[str, ...]:
-    """`jira,gitlab` (or `all`) to provider names; unknown names are kept."""
-    names = [part.strip().lower() for part in raw.split(",") if part.strip()]
+    """`atlassian,gitlab` (or `all`) to provider names; old names still work."""
+    aliases = {"atlassian": "jira"}
+    names = [
+        aliases.get(part.strip().lower(), part.strip().lower())
+        for part in raw.split(",")
+        if part.strip()
+    ]
     return tuple(known) if names == ["all"] else tuple(dict.fromkeys(names))
 
 

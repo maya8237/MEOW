@@ -45,7 +45,7 @@ def add_onboard_parser(subparsers):
         "--mcp",
         metavar="PROVIDERS",
         help=(
-            "Register user-scope MCP servers (jira,gitlab or all). Credentials "
+            "Register user-scope MCP servers (atlassian,gitlab or all). Credentials "
             "come from the servers' own environment variables, e.g. JIRA_URL and "
             "JIRA_API_TOKEN, never from flags."
         ),

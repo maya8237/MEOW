@@ -20,7 +20,7 @@ def add_mcp_parser(subparsers):
     parser.add_argument(
         "providers",
         metavar="PROVIDERS",
-        help="Comma-separated providers (jira,gitlab or all).",
+        help="Comma-separated providers (atlassian,gitlab or all).",
     )
     parser.add_argument(
         "--install-missing",

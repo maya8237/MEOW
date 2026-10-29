@@ -479,7 +479,7 @@ _GUIDE = "docs/INTEGRATIONS.md"
 _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
     "jira": (
         ("jira",),
-        f"Run `meow onboard --mcp jira` once per user ({_GUIDE}), set [jira] "
+        f"Run `meow onboard --mcp atlassian` once per user ({_GUIDE}), set [jira] "
         "project_key, run `meow native verify`, then `meow run --jira ISSUE-KEY`.",
     ),
     "gitlab": (

@@ -187,7 +187,7 @@ def test_missing_provider_errors_offer_safe_reference_guidance(section, monkeypa
     with pytest.raises(ValueError) as error:
         provider_mcp_config(config, "jira")
     message = str(error.value)
-    assert "meow onboard --mcp jira" in message
+    assert "meow onboard --mcp atlassian" in message
     assert '[jira.mcp] from = "NAME"' in message
     assert "secret-name" not in message
 

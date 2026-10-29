@@ -190,7 +190,7 @@ def _parser() -> argparse.ArgumentParser:
         "--mcp",
         metavar="PROVIDERS",
         help=(
-            "Register user-scope MCP servers (jira,gitlab or all) without "
+            "Register user-scope MCP servers (atlassian,gitlab or all) without "
             "prompting; credentials come from the servers' own environment "
             "variables, e.g. JIRA_URL and JIRA_API_TOKEN."
         ),

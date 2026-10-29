@@ -158,8 +158,8 @@ def test_installer_forwards_bun_without_asking(tmp_path):
 @pytest.mark.parametrize(
     "flags,expected",
     [
-        (["--mcp", "jira,gitlab"], "mcp jira,gitlab"),
-        (["--mcp=jira"], "mcp jira"),
+        (["--mcp", "atlassian,gitlab"], "mcp atlassian,gitlab"),
+        (["--mcp=atlassian"], "mcp atlassian"),
         (["--setup", "--mcp", "gitlab"], "mcp gitlab"),
         ([], None),
     ],

@@ -34,7 +34,10 @@ def test_installer_flag_registers_without_prompting(
         _runtime, "_setup_projects", lambda: pytest.fail("project setup ran")
     )
     calls = stub_setup(monkeypatch, _runtime, status)
-    assert _runtime.main(["--repo-dir", str(tmp_path), "--mcp", "jira,gitlab"]) == code
+    assert (
+        _runtime.main(["--repo-dir", str(tmp_path), "--mcp", "atlassian,gitlab"])
+        == code
+    )
     assert calls == [["jira", "gitlab"]]
     assert "Jira: detail" in capsys.readouterr().out
 
@@ -104,7 +107,7 @@ def test_mcp_command_registers_without_project_onboarding(
 
     calls = stub_setup(monkeypatch, mcp_cli, "registered")
     with pytest.raises(SystemExit) as result:
-        cli_main(["mcp", "jira"])
+        cli_main(["mcp", "atlassian"])
     assert result.value.code == 0
     assert calls == [["jira"]]
     assert "Jira: detail" in capsys.readouterr().out

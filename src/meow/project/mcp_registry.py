@@ -228,8 +228,10 @@ def _resolve_provider(config: dict, provider: str) -> dict:
     Without an `[x.mcp]` table the user's single matching user-scope server is
     used, so shared project config need not describe how any one user runs it.
     """
+    command_provider = "atlassian" if provider == "jira" else provider
     hint = (
-        f"Run `meow onboard --mcp {provider}` to register one for your user, or "
+        f"Run `meow onboard --mcp {command_provider}` to register one for your "
+        "user, or "
         f'set [{provider}.mcp] from = "NAME" to use an existing registration. '
         "An inline stdio command is also supported."
     )
