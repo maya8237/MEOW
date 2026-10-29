@@ -184,6 +184,23 @@ def test_interactive_uninstall_only_changes_files_after_confirmation(
     )
 
 
+def test_non_interactive_uninstall_never_prompts_and_keeps_data(tmp_path, monkeypatch):
+    module = runpy.run_path(str(SCRIPT))
+    calls = []
+
+    def no_input(_prompt):
+        raise AssertionError("prompted")
+
+    monkeypatch.setattr("builtins.input", no_input)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    module["main"].__globals__.update(
+        uninstall=lambda home, **kw: calls.append(("uninstall", kw["purge"])),
+        find_scheduled=lambda: [],
+    )
+    assert module["main"](["--non-interactive"]) == 0
+    assert calls == [("uninstall", False)]
+
+
 @pytest.mark.parametrize("interruption", [EOFError, KeyboardInterrupt])
 def test_uninstall_cancellation_has_a_distinct_exit_code(
     monkeypatch, capsys, interruption

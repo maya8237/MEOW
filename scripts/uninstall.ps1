@@ -1,4 +1,7 @@
 # irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.ps1 | iex
+[CmdletBinding()]
+param([switch]${non-interactive})
+
 & {
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
@@ -50,7 +53,9 @@
             Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.py' -OutFile $temporary
             $script = $temporary
         }
-        & $python $script
+        $helperArgs = @()
+        if (${non-interactive}) { $helperArgs += '--non-interactive' }
+        & $python $script @helperArgs
         if ($LASTEXITCODE -eq 130) { return }
         if ($LASTEXITCODE -ne 0) { throw 'MEOW uninstall did not finish; see the error above.' }
     } catch {

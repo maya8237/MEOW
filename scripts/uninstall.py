@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Uninstall the managed MEOW release using only Python's standard library."""
 
+import argparse
 import contextlib
 import csv
 import ctypes
@@ -414,15 +415,25 @@ def ask_removal(home: Path) -> tuple[bool, list[Path], bool]:  # ruff: ignore[co
     return purge, projects, bun
 
 
-def main() -> int:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+def main(argv: list[str] = ()) -> int:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+    parser = argparse.ArgumentParser(description="Uninstall the managed MEOW release.")
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Never prompt: remove the release and keep ~/.meow data and projects.",
+    )
+    args = parser.parse_args(list(argv))
     home = Path.home()
     try:
         check_python_location(home.resolve() / ".meow")
-        purge, projects, bun = ask_removal(home)
+        if args.non_interactive:
+            purge, projects, bun = False, [], False
+        else:
+            purge, projects, bun = ask_removal(home)
         scheduled = find_scheduled()
         if scheduled:
             print(f"Will cancel {len(scheduled)} scheduled MEOW run(s) in the OS.")
-        if not confirmed("Uninstall MEOW now? [y/N]: "):
+        if not args.non_interactive and not confirmed("Uninstall MEOW now? [y/N]: "):
             print("Cancelled. No files changed.")
             return 0
         failures = 0
@@ -457,4 +468,4 @@ def main() -> int:  # ruff: ignore[complex-structure, too-many-branches, too-man
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

@@ -61,7 +61,7 @@ if [ -z "$script" ] || [ ! -f "$script" ]; then
     script=$temporary
 fi
 if [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
-    "$python" "$script" </dev/tty
+    "$python" "$script" "$@" </dev/tty
 else
-    "$python" "$script" </dev/null
+    "$python" "$script" "$@" </dev/null
 fi
