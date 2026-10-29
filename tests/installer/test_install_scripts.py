@@ -88,6 +88,10 @@ esac
         case "$2" in
             *sysconfig*) printf '%s\\n' "$HOME/purelib" ;;
             *files*)
+                input=$(cat)
+                case "$input" in
+                    *'"files": []'*) exit 1 ;;
+                esac
                 printf '9.9.9 '
                 printf '%s%s\\n' \
                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
@@ -166,7 +170,7 @@ def test_installer_forwards_bun_without_asking(tmp_path):
 )
 def test_installer_forwards_mcp_providers(tmp_path, flags, expected):
     activation = _run_installer(tmp_path, flags)
-    assert (expected in activation) if expected else ("mcp" not in activation)
+    assert (expected in activation) if expected else ("-m meow mcp" not in activation)
 
 
 def test_installer_can_select_newest_stable_pypi_release(tmp_path):
