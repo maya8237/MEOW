@@ -93,15 +93,26 @@ class _MeowParser(argparse.ArgumentParser):
             print(f"\ncat shortcuts:\n  {_format_shortcuts(_FUN_SHORTCUTS)}")
             self.exit()
         parsed, rest = super().parse_known_args(expand_shortcuts(argv), namespace)
-        if parsed.latest_pypi and not parsed.update:
-            self.error("--latest-pypi requires --update")
-        if (
-            parsed.update or parsed.check_update or parsed.latest_pypi
-        ) and parsed.command:
+        choices = [parsed.latest_pypi, parsed.beta, bool(parsed.version)]
+        if any(choices) and not parsed.update:
+            self.error("--latest-pypi, --beta and --version VERSION require --update")
+        if sum(choices) > 1:
+            self.error("--latest-pypi, --beta and --version are mutually exclusive")
+        if (parsed.update or parsed.check_update) and parsed.command:
             self.error("update options cannot be combined with a command")
         if not (parsed.update or parsed.check_update or parsed.command):
             self.error("a command or --update is required")
         return parsed, rest
+
+
+class _Version(argparse.Action):
+    """`--version` prints the version; `--version X` names a release to install."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        if values is None:
+            print(f"meow {version('meow-harness')}")
+            parser.exit()
+        setattr(namespace, self.dest, values)
 
 
 class _JiraSources(argparse.Action):
@@ -227,8 +238,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     )
     parser.add_argument(
         "--version",
-        action="version",
-        version=f"meow {version('meow-harness')}",
+        nargs="?",
+        action=_Version,
+        metavar="VERSION",
+        help=(
+            "Print the installed version; with --update, install exactly that "
+            "stable (X.Y.Z) or beta (X.Y.ZbN) version."
+        ),
     )
     updates = parser.add_mutually_exclusive_group()
     updates.add_argument(
@@ -247,9 +263,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
         "--latest-pypi",
         action="store_true",
         help=(
-            "With --update, use the newest stable PyPI release instead of "
-            "the release channel."
+            "With --update, install the newest PyPI release, whether beta or "
+            "stable (default: the newest stable)."
         ),
+    )
+    parser.add_argument(
+        "--beta",
+        action="store_true",
+        help="With --update, install the newest beta release.",
     )
     subparsers = parser.add_subparsers(
         parser_class=argparse.ArgumentParser,

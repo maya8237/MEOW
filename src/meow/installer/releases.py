@@ -142,7 +142,7 @@ def release_python(release: Path) -> Path:
 def activate(release: Path) -> None:
     """Register the plugin, then atomically select this immutable release."""
     release = release.resolve()
-    maintenance._version_parts(release.name)
+    maintenance._release_key(release.name)
     root = release.parent.parent
     if release.parent.name != "versions":
         raise ValueError("MEOW releases must be installed under .meow/versions")
@@ -340,7 +340,7 @@ def finish_bundle(bundle: Path, destination: Path) -> None:
 
 def install_release(tag: str, digest: str) -> Path:
     """Install TAG's wheel with the newest Python, activate it, return its path."""
-    maintenance._version_parts(tag)
+    maintenance._release_key(tag)
     with progress("Locating Python 3.12+"):
         python = find_python()
     print(f"Using {python}", flush=True)

@@ -2,13 +2,8 @@ name: Release
 
 on:
   push:
+    # X.Y.Z is stable; X.Y.ZbN is a beta. Both go to PyPI only.
     tags: ['[0-9]*.[0-9]*.[0-9]*']
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Published release tag to promote to the update channel
-        required: true
-        type: string
   pull_request:
     paths:
       - 'scripts/**'
@@ -68,7 +63,6 @@ jobs:
         if: matrix.shard == 1
 
   smoke:
-    if: github.event_name != 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
@@ -166,6 +160,8 @@ jobs:
           fi
           gh release edit "$TAG" --draft=false
       - name: Record the release on main
+        # Betas never stamp announcements or move the versions on main.
+        if: ${{ !contains(github.ref_name, 'b') }}
         run: |
           # Stamp only announcements this tag shipped; main may hold newer ones.
           git config user.name 'github-actions[bot]'
@@ -181,48 +177,3 @@ jobs:
             sleep $((attempt * 5))
           done
           exit 1
-
-  promote-channel:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    concurrency:
-      group: meow-release-channel
-      cancel-in-progress: false
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      TAG: ${{ inputs.tag }}
-    steps:
-      - name: Verify the published release and read its wheel checksum
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          gh release view "$TAG" --repo "$GH_REPO" >/dev/null
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            sha=$(curl -fsSL "https://pypi.org/pypi/meow-harness/$TAG/json" |
-              jq -r '[.urls[] | select(.packagetype == "bdist_wheel")][0].digests.sha256 // empty' || true)
-            [[ "$sha" =~ ^[0-9a-f]{64}$ ]] && break
-            sleep 15
-          done
-          [[ "$sha" =~ ^[0-9a-f]{64}$ ]]
-          echo "WHEEL_SHA256=$sha" >> "$GITHUB_ENV"
-      - name: Promote the tag to the raw-content release channel
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh auth setup-git
-          git init --initial-branch=release-channel channel
-          cd channel
-          git remote add origin "https://github.com/$GH_REPO.git"
-          git fetch origin release-channel
-          git checkout -B release-channel FETCH_HEAD
-          jq -n --arg tag "$TAG" --arg sha "$WHEEL_SHA256" \
-            '{tag_name: $tag, wheel_sha256: $sha}' > latest.json
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add latest.json
-          git diff --cached --quiet || git commit -m "Promote $TAG to release channel"
-          git push origin HEAD:release-channel

@@ -41,8 +41,9 @@ sh scripts/install.sh --non-interactive
 
 `--no-setup` (`-no-setup` in PowerShell) skips the questions but still honors
 `--mcp` and `--bun`. `--non-interactive` skips the questions too.
-`--latest-pypi` (`-latest-pypi` in PowerShell) installs the newest stable wheel
-from PyPI instead of the release-channel version.
+The installers read PyPI and pick the newest stable wheel. `--latest-pypi` takes
+the newest beta or stable, `--beta` the newest beta, `--version X.Y.Z[bN]` an exact
+version (single-dash in PowerShell).
 `--mcp atlassian,gitlab` registers user-scope MCP servers without prompting, reading
 the servers' own credential variables; see [MCP](MCP.md). `--install-missing` lets `--mcp` pip-install Jira's server. `--bun` enables the
 Bun shared store and migrates registered repos. Projects are set up with
@@ -68,7 +69,7 @@ Use `/meow:onboard` to inspect or override settings and enable optional features
 meow --update
 ```
 
-This installs the latest stable release. See the [CLI guide](CLI.md#common-options)
+This installs the newest stable release from PyPI (`meow --update --latest-pypi`, `--beta` or `--version X` select others). See the [CLI guide](CLI.md#common-options)
 for runtime handling, update checks, and editable-install migration.
 
 ## Uninstall

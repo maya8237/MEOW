@@ -12,7 +12,7 @@ from meow.cli.parser import _build_arg_parser
 from meow.installer import maintenance
 
 
-@pytest.mark.parametrize("tag", ["1.2.3", "2.0.0"])
+@pytest.mark.parametrize("tag", ["1.2.3", "2.0.0", "2.1.0b1"])
 def test_release_tag_sets_package_and_plugin_versions(tmp_path, monkeypatch, tag):
     root = Path(__file__).resolve().parents[2]
     script = runpy.run_path(str(root / "scripts/stamp_release.py"))
@@ -107,47 +107,42 @@ def test_update_flags_are_standalone():
     parser = _build_arg_parser()
     assert parser.parse_args(["--update"]).update
     assert parser.parse_args(["-u"]).update
+    assert parser.parse_args(["--update", "--beta"]).beta
     assert parser.parse_args(["--update", "--latest-pypi"]).latest_pypi
-    with pytest.raises(SystemExit):
-        parser.parse_args(["--latest-pypi"])
+    assert parser.parse_args(["--update", "--version", "0.2.0b1"]).version == "0.2.0b1"
+    for argv in (
+        ["--beta"],
+        ["--latest-pypi"],
+        ["--version", "0.2.0"],
+        ["--update", "--beta", "--latest-pypi"],
+        ["--update", "--beta", "--version", "0.2.0"],
+    ):
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
     with pytest.raises(SystemExit):
         parser.parse_args(["--update", "status", "run-1"])
 
 
-def test_latest_version_comes_from_published_release(monkeypatch):
-    urls = []
-
-    def fetch(url, **kwargs):
-        urls.append(url)
-        return io.BytesIO(json.dumps({"tag_name": "0.2.0"}).encode())
-
-    monkeypatch.setattr(maintenance, "urlopen", fetch)
-    assert maintenance.latest_version() == "0.2.0"
-    assert urls == [
-        "https://raw.githubusercontent.com/maya8237/MEOW/release-channel/latest.json"
-    ]
-
-
-def test_latest_pypi_release_selects_newest_stable_wheel_from_index(monkeypatch):
-    body = {
+def _index(*names):
+    return {
         "files": [
             {
-                "filename": "meow_harness-0.2.0-py3-none-any.whl",
-                "hashes": {"sha256": "a" * 64},
+                "filename": name,
+                "hashes": {"sha256": str(number) * 64},
                 "yanked": False,
-            },
-            {
-                "filename": "meow_harness-0.2.0.tar.gz",
-                "hashes": {"sha256": "s" * 64},
-                "yanked": False,
-            },
-            {
-                "filename": "meow_harness-0.3.0rc1-py3-none-any.whl",
-                "hashes": {"sha256": "r" * 64},
-                "yanked": False,
-            },
+            }
+            for number, name in enumerate(names)
         ]
     }
+
+
+def test_latest_release_selects_newest_stable_wheel_from_index(monkeypatch):
+    body = _index(
+        "meow_harness-0.2.0-py3-none-any.whl",
+        "meow_harness-0.2.0.tar.gz",
+        "meow_harness-0.3.0b1-py3-none-any.whl",
+        "meow_harness-0.3.0rc1-py3-none-any.whl",
+    )
     urls = []
 
     def fetch(request, **kwargs):
@@ -155,17 +150,52 @@ def test_latest_pypi_release_selects_newest_stable_wheel_from_index(monkeypatch)
         return io.BytesIO(json.dumps(body).encode())
 
     monkeypatch.setattr(maintenance, "urlopen", fetch)
-    assert maintenance.latest_pypi_release() == ("0.2.0", "a" * 64)
-    assert urls == [
-        (
-            "https://pypi.org/simple/meow-harness/",
-            "application/vnd.pypi.simple.v1+json",
-        )
-    ]
+    assert maintenance.latest_release() == ("0.2.0", "0" * 64)
+    assert maintenance.latest_version() == "0.2.0"
+    assert urls[0] == (
+        "https://pypi.org/simple/meow-harness/",
+        "application/vnd.pypi.simple.v1+json",
+    )
+
+
+def test_latest_release_channels_and_pins(monkeypatch):
+    body = _index(
+        "meow_harness-0.2.0-py3-none-any.whl",
+        "meow_harness-0.3.0b2-py3-none-any.whl",
+        "meow_harness-0.3.0b10-py3-none-any.whl",
+        "meow_harness-0.3.0rc1-py3-none-any.whl",
+    )
+    monkeypatch.setattr(
+        maintenance, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(body).encode())
+    )
+    assert maintenance.latest_release(channel="stable")[0] == "0.2.0"
+    assert maintenance.latest_release(channel="beta") == ("0.3.0b10", "2" * 64)
+    assert maintenance.latest_release(channel="any")[0] == "0.3.0b10"
+    assert maintenance.latest_release(pin="0.3.0b2") == ("0.3.0b2", "1" * 64)
+    assert maintenance.latest_release(pin="0.2.0")[0] == "0.2.0"
+    with pytest.raises(ValueError, match=r"0\.9\.0"):
+        maintenance.latest_release(pin="0.9.0")
+    with pytest.raises(ValueError):
+        maintenance.latest_release(pin="0.2")
+    body["files"].append(_index("meow_harness-0.3.0-py3-none-any.whl")["files"][0])
+    assert maintenance.latest_release(channel="any")[0] == "0.3.0"
+    assert maintenance.latest_release(channel="beta")[0] == "0.3.0b10"
+
+
+@pytest.mark.parametrize(
+    "kwargs", [{"channel": "beta"}, {"channel": "any"}, {"pin": "0.2.0"}]
+)
+def test_only_the_newest_stable_lookup_uses_legacy_json(monkeypatch, kwargs):
+    def fetch(request, **kw):
+        raise OSError("HTTP 406")
+
+    monkeypatch.setattr(maintenance, "urlopen", fetch)
+    with pytest.raises(OSError):
+        maintenance.latest_release(**kwargs)
 
 
 @pytest.mark.parametrize("primary", ["error", "empty"])
-def test_latest_pypi_release_falls_back_to_legacy_project_json(monkeypatch, primary):
+def test_latest_release_falls_back_to_legacy_project_json(monkeypatch, primary):
     legacy = {
         "info": {"version": "0.4.0"},
         "urls": [
@@ -200,26 +230,11 @@ def test_latest_pypi_release_falls_back_to_legacy_project_json(monkeypatch, prim
         return io.BytesIO(json.dumps(response).encode())
 
     monkeypatch.setattr(maintenance, "urlopen", fetch)
-    assert maintenance.latest_pypi_release() == ("0.4.0", "b" * 64)
+    assert maintenance.latest_release() == ("0.4.0", "b" * 64)
     assert urls == [
         "https://pypi.org/simple/meow-harness/",
         "https://pypi.org/pypi/meow-harness/json",
     ]
-
-
-def test_latest_release_requires_a_wheel_checksum(monkeypatch):
-    def serve(body):
-        monkeypatch.setattr(
-            maintenance,
-            "urlopen",
-            lambda url, **kw: io.BytesIO(json.dumps(body).encode()),
-        )
-
-    serve({"tag_name": "0.2.0", "wheel_sha256": "a" * 64})
-    assert maintenance.latest_release() == ("0.2.0", "a" * 64)
-    serve({"tag_name": "0.2.0"})
-    with pytest.raises(ValueError, match="checksum"):
-        maintenance.latest_release()
 
 
 def _fake_pythons(monkeypatch, versions):
