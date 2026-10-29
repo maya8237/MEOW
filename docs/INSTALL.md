@@ -86,7 +86,19 @@ Bash:
 curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.sh | sh
 ```
 
-It asks before changing anything. It removes the MEOW release, `meow`/`mw` on
+For unattended removal, pass `--non-interactive` (`-non-interactive` in
+PowerShell); it never prompts and keeps `~/.meow` data, project setup, and Bun
+settings:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.sh | sh -s -- --non-interactive
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.ps1))) -non-interactive
+```
+
+Otherwise it asks before changing anything. It removes the MEOW release, `meow`/`mw` on
 PATH, the Claude Code plugin and skill registrations, scheduled MEOW runs, and
 (optionally) `~/.meow` data, Bun shared-store settings, and each project's
 `.meow/`, and plugin entries.
