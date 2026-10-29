@@ -297,17 +297,65 @@ def test_swap_restores_the_old_version_when_the_new_one_cannot_move(
     destination.mkdir()
     (destination / "old").write_text("old")
     bundle = _bundle(tmp_path, "new")
-    original = Path.rename
+    original = os.replace
 
-    def rename(self, target):
-        if self == bundle:
+    def replace(source, target):
+        if Path(source) == bundle:
             raise PermissionError("locked")
-        return original(self, target)
+        return original(source, target)
 
-    monkeypatch.setattr(Path, "rename", rename)
-    with pytest.raises(PermissionError):
+    monkeypatch.setattr(os, "replace", replace)
+    monkeypatch.setattr("meow.common.atomic.time.sleep", lambda _: None)
+    monkeypatch.setattr("meow.common.atomic.shutil.copytree", _boom)
+    with pytest.raises(OSError, match="disk"):
         _swap(bundle, destination)
     assert (destination / "old").read_text() == "old"
+    assert not destination.joinpath("runtime").exists()
+
+
+def _boom(*args, **kwargs):
+    raise OSError("disk full")
+
+
+def test_swap_copies_when_windows_keeps_refusing_the_rename(tmp_path, monkeypatch):
+    from meow.installer.releases import _swap
+
+    destination = tmp_path / "0.2.0"
+    bundle = _bundle(tmp_path, "new")
+    original = os.replace
+    attempts = []
+
+    def replace(source, target):
+        if Path(source) == bundle:
+            attempts.append(1)
+            raise PermissionError(5, "Access is denied")
+        return original(source, target)
+
+    monkeypatch.setattr(os, "replace", replace)
+    monkeypatch.setattr("meow.common.atomic.time.sleep", lambda _: None)
+    _swap(bundle, destination)
+    assert len(attempts) > 1
+    assert (destination / "runtime" / "marker").read_text() == "new"
+    assert not bundle.exists()
+
+
+def test_swap_retries_a_transient_access_denied(tmp_path, monkeypatch):
+    from meow.installer.releases import _swap
+
+    destination = tmp_path / "0.2.0"
+    bundle = _bundle(tmp_path, "new")
+    original = os.replace
+    failures = [PermissionError(5, "Access is denied")] * 3
+
+    def replace(source, target):
+        if Path(source) == bundle and failures:
+            raise failures.pop()
+        return original(source, target)
+
+    monkeypatch.setattr(os, "replace", replace)
+    monkeypatch.setattr("meow.common.atomic.time.sleep", lambda _: None)
+    _swap(bundle, destination)
+    assert (destination / "runtime" / "marker").read_text() == "new"
 
 
 def test_swap_reports_a_version_in_use(tmp_path, monkeypatch):
@@ -315,14 +363,15 @@ def test_swap_reports_a_version_in_use(tmp_path, monkeypatch):
 
     destination = tmp_path / "0.2.0"
     destination.mkdir()
-    original = Path.rename
+    original = os.replace
 
-    def rename(self, target):
-        if self == destination:
+    def replace(source, target):
+        if Path(source) == destination:
             raise PermissionError("in use")
-        return original(self, target)
+        return original(source, target)
 
-    monkeypatch.setattr(Path, "rename", rename)
+    monkeypatch.setattr(os, "replace", replace)
+    monkeypatch.setattr("meow.common.atomic.time.sleep", lambda _: None)
     with pytest.raises(RuntimeError, match="in use"):
         _swap(_bundle(tmp_path, "new"), destination)
     assert destination.is_dir()

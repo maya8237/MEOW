@@ -12,6 +12,8 @@ import os
 import tempfile
 from pathlib import Path
 
+from meow.common.atomic import replace_with_retry
+
 PLUGIN_DIRS_ENV = "CLAUDE_CODE_PLUGIN_DIRS"
 
 
@@ -76,7 +78,7 @@ def _write_settings(settings_path: Path, data: dict[str, object]) -> None:
         ) as temporary:
             temporary_name = temporary.name
             temporary.write(payload)
-        os.replace(temporary_name, settings_path)
+        replace_with_retry(Path(temporary_name), settings_path)
     finally:
         if temporary_name and os.path.exists(temporary_name):
             os.unlink(temporary_name)
