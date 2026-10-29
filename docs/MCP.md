@@ -44,14 +44,19 @@ export JIRA_API_TOKEN=...            # or JIRA_PERSONAL_TOKEN (Server/Data Cente
 export CONFLUENCE_URL=https://acme.atlassian.net/wiki   # optional, same server
 export CONFLUENCE_USERNAME=me@example.com CONFLUENCE_API_TOKEN=...
                                      # or CONFLUENCE_PERSONAL_TOKEN (Server/Data Center)
+export JIRA_SSL_VERIFY=false CONFLUENCE_SSL_VERIFY=false  # optional TLS verification settings
 export GITLAB_PERSONAL_ACCESS_TOKEN=... GITLAB_API_URL=https://gitlab.example.com/api/v4
-meow onboard --mcp jira,gitlab   # or the installer's --mcp flag
+meow mcp jira,gitlab              # registration only; safe to rerun
+meow onboard --mcp jira,gitlab   # registration plus project onboarding
 ```
 
 The installer asks the same when run in a terminal; `--no-setup` and
 `--non-interactive` never ask.
 Confluence rides on the Atlassian server; Jira and Confluence are each optional
-(either alone is enough). Any `CONFLUENCE_*` variable set above is forwarded to it (a `[confluence] url` in project config prefills `CONFLUENCE_URL`).
+(either alone is enough). Any `CONFLUENCE_*` variable set above, plus the
+optional `JIRA_SSL_VERIFY` and `CONFLUENCE_SSL_VERIFY` settings, is forwarded to
+the Atlassian server (a `[confluence] url` in project config prefills
+`CONFLUENCE_URL`).
 Setup skips an already registered server, so to add Confluence to one, run
 `claude mcp remove atlassian --scope user` and rerun setup.
 Servers: Jira `mcp-atlassian` (pip), GitLab `npx -y @zereight/mcp-gitlab`;

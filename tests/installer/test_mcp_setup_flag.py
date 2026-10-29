@@ -97,6 +97,19 @@ def test_onboard_prefills_site_url_from_shared_config(tmp_path, monkeypatch):
     assert _setup_environment(tmp_path)["JIRA_URL"] == "https://acme.atlassian.net"
 
 
+def test_mcp_command_registers_without_project_onboarding(
+    tmp_path, monkeypatch, capsys
+):
+    from meow.cli import mcp_cli
+
+    calls = stub_setup(monkeypatch, mcp_cli, "registered")
+    with pytest.raises(SystemExit) as result:
+        cli_main(["mcp", "jira"])
+    assert result.value.code == 0
+    assert calls == [["jira"]]
+    assert "Jira: detail" in capsys.readouterr().out
+
+
 def test_prompts_show_examples_for_site_and_username(monkeypatch):
     from meow.project import mcp_setup
 

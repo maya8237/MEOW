@@ -202,6 +202,10 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         from meow.cli.onboard_cli import onboard_command
 
         raise SystemExit(onboard_command(args, working_dir))
+    if args.command == "mcp":
+        from meow.cli.mcp_cli import mcp_command
+
+        raise SystemExit(mcp_command(args, working_dir))
     if args.command in _RECONCILE_COMMANDS:
         reconcile_quietly(working_dir)
     if args.command == "cleanup":

@@ -48,6 +48,9 @@ the servers' own credential variables; see [MCP](MCP.md). `--install-missing` le
 Bun shared store and migrates registered repos. Projects are set up with
 `meow onboard --non-interactive --work-dir PATH`.
 
+To rerun only MCP registration after installation or from a boot script, use
+`meow mcp jira,gitlab`; it does not refresh project configuration.
+
 The switch works even with a terminal attached. Installation still registers
 the Claude Code plugin and launcher. Configure projects separately with
 `meow onboard --non-interactive --work-dir PATH`; see

@@ -180,9 +180,7 @@ printf '%s\n' 'Installing pinned dependencies and launcher (this can take minute
 PYTHONPATH=$purelib "$python" -m meow.installer.releases --finish "$destination" --bundle "$bundle"
 
 extra=
-[ -z "$mcp" ] || extra="--mcp $mcp"
 [ "$bun" = false ] || extra="$extra --bun"
-[ "$install_missing" = false ] || extra="$extra --install-missing"
 if [ "$setup" = false ] || [ "$non_interactive" = true ]; then
     "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" $extra
 elif [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
@@ -190,6 +188,13 @@ elif [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
 else
     "$destination/runtime/bin/python3" -m meow.installer.releases --activate "$destination" $extra
     printf '%s\n' 'No terminal available; skipped optional setup. Run `claude /meow:onboard` in a project, or rerun the installer in a terminal.'
+fi
+if [ -n "$mcp" ]; then
+    if [ "$install_missing" = true ]; then
+        "$destination/runtime/bin/python3" -m meow mcp "$mcp" --install-missing
+    else
+        "$destination/runtime/bin/python3" -m meow mcp "$mcp"
+    fi
 fi
 printf '\nMEOW is ready. Open a new terminal, or run:\n  export PATH="$HOME/.meow/bin:$PATH"\n'
 printf '%s\n' 'Restart Claude Code to load /meow:* skills. Update later with meow -u.'

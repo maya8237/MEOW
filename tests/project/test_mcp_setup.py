@@ -93,6 +93,21 @@ def test_confluence_variables_are_forwarded_only_when_set(tmp_path):
     assert "CONFLUENCE" not in " ".join(without_run.calls[0])
 
 
+def test_atlassian_ssl_verify_variables_are_forwarded_only_when_set(tmp_path):
+    environ = {
+        **JIRA_ENV,
+        "JIRA_SSL_VERIFY": "false",
+        "CONFLUENCE_SSL_VERIFY": "true",
+    }
+    with_run, without_run = Recorder(), Recorder()
+    which = found("claude", "mcp-atlassian")
+    setup_provider(SPECS["jira"], environ, home=tmp_path, run=with_run, which=which)
+    setup_provider(SPECS["jira"], JIRA_ENV, home=tmp_path, run=without_run, which=which)
+    assert "JIRA_SSL_VERIFY=false" in with_run.calls[0]
+    assert "CONFLUENCE_SSL_VERIFY=true" in with_run.calls[0]
+    assert "SSL_VERIFY" not in " ".join(without_run.calls[0])
+
+
 def test_confluence_alone_is_enough(tmp_path):
     environ = {
         "CONFLUENCE_URL": "https://acme.atlassian.net/wiki",

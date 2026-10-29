@@ -112,6 +112,8 @@ esac
                         cp "$0" "$4/runtime/bin/python3" ;;
                     --activate) printf '%s\\n' "$*" > "$HOME/activation" ;;
                 esac ;;
+            meow)
+                printf '%s\\n' "$*" > "$HOME/mcp" ;;
         esac ;;
 esac
 """,
@@ -125,7 +127,9 @@ esac
     argv = [shutil.which("sh"), str(ROOT / "scripts/install.sh"), *flags]
     result = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
-    return (tmp_path / "activation").read_text()
+    activation = (tmp_path / "activation").read_text()
+    mcp = (tmp_path / "mcp").read_text() if (tmp_path / "mcp").exists() else ""
+    return activation + mcp
 
 
 @pytest.mark.parametrize(
@@ -154,15 +158,15 @@ def test_installer_forwards_bun_without_asking(tmp_path):
 @pytest.mark.parametrize(
     "flags,expected",
     [
-        (["--mcp", "jira,gitlab"], "--mcp jira,gitlab"),
-        (["--mcp=jira"], "--mcp jira"),
-        (["--setup", "--mcp", "gitlab"], "--mcp gitlab"),
+        (["--mcp", "jira,gitlab"], "mcp jira,gitlab"),
+        (["--mcp=jira"], "mcp jira"),
+        (["--setup", "--mcp", "gitlab"], "mcp gitlab"),
         ([], None),
     ],
 )
 def test_installer_forwards_mcp_providers(tmp_path, flags, expected):
     activation = _run_installer(tmp_path, flags)
-    assert (expected in activation) if expected else ("--mcp" not in activation)
+    assert (expected in activation) if expected else ("mcp" not in activation)
 
 
 def test_installer_can_select_newest_stable_pypi_release(tmp_path):

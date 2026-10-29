@@ -19,11 +19,13 @@ from meow.project.mcp_registry import _provider_matches, user_scope_servers
 _SECRET_MARKERS = ("TOKEN", "PASSWORD", "SECRET")
 _GITLAB_PACKAGE = "@zereight/mcp-gitlab"
 # The Atlassian server also serves Confluence; Jira or Confluence alone suffices.
-_CONFLUENCE = (
+_ATLASSIAN_OPTIONAL = (
+    "JIRA_SSL_VERIFY",
     "CONFLUENCE_URL",
     "CONFLUENCE_USERNAME",
     "CONFLUENCE_API_TOKEN",
     "CONFLUENCE_PERSONAL_TOKEN",
+    "CONFLUENCE_SSL_VERIFY",
 )
 
 REGISTERED = "registered"
@@ -63,7 +65,7 @@ SPECS = {
             ("CONFLUENCE_URL", "CONFLUENCE_PERSONAL_TOKEN"),
         ),
         package="mcp-atlassian",
-        optional=_CONFLUENCE,
+        optional=_ATLASSIAN_OPTIONAL,
     ),
     "gitlab": McpSpec(
         "gitlab",

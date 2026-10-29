@@ -165,11 +165,15 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
         $interactive = -not ${non-interactive} -and -not ${no-setup} -and -not [Console]::IsInputRedirected
         if (($setup -or $interactive) -and -not ${non-interactive}) { $setupArgs += '--setup' }
         if ($bun) { $setupArgs += '--bun' }
-        if (${install-missing}) { $setupArgs += '--install-missing' }
-        if ($mcp) { $setupArgs += @('--mcp', $mcp) }
         & (Join-Path $destination 'runtime\Scripts\python.exe') -m meow.installer.releases @setupArgs
         if ($LASTEXITCODE -eq 130) { return }
         Invoke-Checked 'MEOW setup failed. Rerun the installer to retry.'
+        if ($mcp) {
+            $mcpArgs = @('mcp', $mcp)
+            if (${install-missing}) { $mcpArgs += '--install-missing' }
+            & (Join-Path $destination 'runtime\Scripts\python.exe') -m meow @mcpArgs
+            Invoke-Checked 'MCP setup failed. Rerun `meow mcp` to retry.'
+        }
         $bin = Join-Path $root 'bin'
         $env:Path = "$bin;$env:Path"
         Write-Host 'MEOW is ready. Restart Claude Code to load /meow:* skills. Update later with meow -u.'

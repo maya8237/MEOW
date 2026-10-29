@@ -22,6 +22,7 @@ Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](OR
 | `meow ui` | Read-only catalog, session history, and docs |
 | `meow schedule` | Add, list, edit, or cancel a one-shot trigger |
 | `meow onboard` | [Configure a project without prompts](ONBOARDING.md); optional integration/feature flags |
+| `meow mcp PROVIDERS` | Register user-scope MCP servers without changing project configuration |
 | `meow ipython` | Interactive command session |
 
 `mw` aliases `meow`. Shortcuts: `r` run, `p` plan,
