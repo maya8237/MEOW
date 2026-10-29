@@ -9,6 +9,7 @@ from pathlib import Path
 
 import tomlkit
 
+from meow.common.atomic import replace_with_retry
 from meow.project.config import _replace_mcp, load_config
 from meow.project.onboarding import LOCAL_CONFIG_RELPATH, feature_gaps, onboard_project
 from meow.project.repos import remember
@@ -65,7 +66,7 @@ def _atomic_write(path: Path, content: bytes):
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(content)
-        os.replace(temporary, path)
+        replace_with_retry(Path(temporary), path)
     finally:
         Path(temporary).unlink(missing_ok=True)
 

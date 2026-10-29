@@ -1,9 +1,9 @@
 """Everything an orchestrator tells a person: the report (also the pull request
 body), `status` output, the one-line rollup, and the process exit code."""
 
-import os
 from pathlib import Path
 
+from meow.common.atomic import replace_with_retry
 from meow.execution.orchestration.model import OrchestratorRecord, OrchestratorTask
 from meow.execution.orchestration.store import OrchestratorStore
 from meow.execution.run_state import RunStateError, RunStore
@@ -200,7 +200,7 @@ def write_report(repo: Path, record: OrchestratorRecord) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name("report.md.tmp")
     temporary.write_text(render_report(repo, record), encoding="utf-8")
-    os.replace(temporary, path)
+    replace_with_retry(temporary, path)
     return path
 
 

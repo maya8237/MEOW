@@ -13,6 +13,7 @@ from pathlib import Path
 
 from meow.agents.base import ProjectContext
 from meow.agents.reviewer import ReviewerAgent
+from meow.common.atomic import replace_with_retry
 
 MAX_DIFF = 250_000
 MAX_REPORT = 40_000
@@ -241,7 +242,7 @@ def _atomic_write(path: Path, content: str) -> None:
     ) as handle:
         handle.write(content)
         temporary = Path(handle.name)
-    temporary.replace(path)
+    replace_with_retry(temporary, path)
 
 
 def _safe_text(

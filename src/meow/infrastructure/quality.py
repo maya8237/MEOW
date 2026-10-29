@@ -7,6 +7,8 @@ import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from meow.common.atomic import replace_with_retry
+
 STORE = Path(".meow/quality-concerns.json")
 MAX_CONCERNS = 200
 MAX_EVIDENCE = 500
@@ -64,7 +66,7 @@ def _write(repo: Path, concerns: list[Concern]) -> None:
             )
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        replace_with_retry(temporary, path)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

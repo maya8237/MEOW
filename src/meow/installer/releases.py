@@ -13,6 +13,7 @@ import threading
 import uuid
 from pathlib import Path
 
+from meow.common.atomic import move_directory, replace_with_retry
 from meow.installer import maintenance
 from meow.project.claude_settings import register_checkout_plugin
 
@@ -164,7 +165,7 @@ def activate(release: Path) -> None:
     pointer = root / "current-version"
     with tempfile.NamedTemporaryFile(mode="w", dir=root, delete=False) as stream:
         stream.write(release.name + "\n")
-    Path(stream.name).replace(pointer)
+    replace_with_retry(Path(stream.name), pointer)
     print(f"Activated MEOW {release.name}")
 
 
@@ -181,8 +182,10 @@ def _install_launcher(source: Path, bin_dir: Path) -> None:
             # Windows cannot overwrite a running launcher (an update runs under
             # the old one) but can rename it, and older launchers expect a
             # different runtime layout, so they must always be replaced.
-            target.rename(target.with_name(f"{name}.old-{uuid.uuid4().hex[:8]}"))
-        temporary.replace(target)
+            replace_with_retry(
+                target, target.with_name(f"{name}.old-{uuid.uuid4().hex[:8]}")
+            )
+        replace_with_retry(temporary, target)
 
 
 def _add_to_path(bin_dir: Path) -> None:
@@ -300,19 +303,19 @@ def _build_launcher(bundle: Path) -> None:
 def _swap(bundle: Path, destination: Path) -> None:
     """Move BUNDLE into place, setting any previous build aside until it works."""
     if not destination.exists():
-        bundle.rename(destination)
+        move_directory(bundle, destination)
         return
     retired = destination.with_name(f".old-{destination.name}-{os.getpid()}")
     try:
-        destination.rename(retired)
+        replace_with_retry(destination, retired)
     except OSError as exc:
         raise RuntimeError(
             f"{destination} is in use. Stop running MEOW jobs, then rerun."
         ) from exc
     try:
-        bundle.rename(destination)
+        move_directory(bundle, destination)
     except OSError:
-        retired.rename(destination)
+        replace_with_retry(retired, destination)
         raise
     shutil.rmtree(retired, ignore_errors=True)
 
