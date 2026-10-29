@@ -58,10 +58,13 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
         Write-Host 'Fetching the latest release from PyPI...'
         $release = $null
         try {
-            # Windows PowerShell 5.1 leaves a +json response as text, so parse it here.
-            $pypi = (Invoke-WebRequest -UseBasicParsing `
+            # Windows PowerShell 5.1 leaves a +json response as text, so parse the raw
+            # bytes here (.Content is a byte array when the type is unrecognized).
+            $response = Invoke-WebRequest -UseBasicParsing `
                 -Headers @{ Accept = 'application/vnd.pypi.simple.v1+json' } `
-                $indexUrl).Content | ConvertFrom-Json
+                $indexUrl
+            $pypi = [Text.Encoding]::UTF8.GetString($response.RawContentStream.ToArray()) |
+                ConvertFrom-Json
             # A beta sorts before the stable release it precedes.
             $release = @(
                 $pypi.files |
