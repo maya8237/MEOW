@@ -85,7 +85,7 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
         actual = {path.parent.name for path in SKILLS_DIR.glob("*/SKILL.md")}
 
         self.assertEqual(
-            actual - {"integrate-ci-review", "onboard", "customize"},
+            actual - {"integrate-ci-review", "onboard", "customize", "test"},
             set(CLI_FALLBACKS),
         )
 

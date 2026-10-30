@@ -26,4 +26,5 @@ def test_marketplace_catalog_exposes_every_meow_skill():
         "review",
         "run",
         "schedule",
+        "test",
     ]
