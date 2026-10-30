@@ -96,3 +96,26 @@ def test_review_still_runs_tester_after_passing_review(tmp_path):
             run_sprint(tmp_path, None, "Audit API", use_worktree=False, test=True)
         )
     assert RunStore(tmp_path).latest().results["tester"] == "PASS"
+
+
+def test_force_disable_tests_skips_the_tester_in_a_real_run(tmp_path):
+    report = _project(tmp_path)
+    called = []
+
+    async def query(self, agent, prompt, *args):  # ruff: ignore[unused-async] -- SDK double
+        called.append(prompt)
+        report.write_text("SUMMARY: x\nSTATUS: PASS\n\n## Test plan\n- x", "utf-8")
+
+    with patch("meow.agents.tester.VerificationAgent.run_definition_query", new=query):
+        asyncio.run(
+            run_sprint(
+                tmp_path,
+                None,
+                "Audit API",
+                use_worktree=False,
+                test=True,
+                force_disable_tests=True,
+            )
+        )
+    assert called == []
+    assert RunStore(tmp_path).latest().results.get("tester") != "PASS"
