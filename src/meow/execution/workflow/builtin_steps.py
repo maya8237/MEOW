@@ -222,7 +222,7 @@ async def review(state, step):
             round=state.round or 1,
             results={"reviewer": status},
         )
-        if status == "PASS" and state.test:
+        if status == "PASS" and state.test and not state.has_test_step:
             status, verdict = await _tester_stage(state, status)
     state.gate_result(
         replace(step, blocks="loop" if state.pool else "delivery"), status, verdict

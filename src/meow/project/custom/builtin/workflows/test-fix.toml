@@ -1,0 +1,15 @@
+description = "Test existing code, fix failures, review, repeat until test and review pass."
+
+[[steps]]
+id = "rounds"
+max_rounds = 4
+loop = [
+  { id = "fix", uses = "builtin.generate", when = "round > 1" },
+  { id = "verify", uses = "builtin.verify", when = "checks_configured" },
+  { id = "test", uses = "builtin.test", when = "steps.verify.status != 'FAIL'" },
+  { id = "review", uses = "builtin.review", when = "steps.test.status != 'FAIL' and steps.verify.status != 'FAIL'" },
+]
+
+[[steps]]
+id = "checks"
+uses = "builtin.checks"

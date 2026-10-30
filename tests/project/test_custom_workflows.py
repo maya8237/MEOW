@@ -20,7 +20,7 @@ def catalog(tmp_path, text):
 
 def test_shipped_workflows_validate(tmp_path):
     definitions = discover(builtin_sources())
-    for name in ("default", "quick", "review-and-fix"):
+    for name in ("default", "quick", "review-and-fix", "test-fix"):
         assert validate(definitions.workflow(name), definitions) == []
 
 

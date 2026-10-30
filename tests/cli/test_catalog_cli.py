@@ -46,7 +46,9 @@ def command(tmp_path, *args):
 def test_catalog_lists_shipped_workflows_and_shows_resolved_override(tmp_path, capsys):
     command(tmp_path, "workflows", "list")
     output = capsys.readouterr().out
-    assert all(name in output for name in ("default", "quick", "review-and-fix"))
+    assert all(
+        name in output for name in ("default", "quick", "review-and-fix", "test-fix")
+    )
     directory = tmp_path / ".meow" / "workflows"
     directory.mkdir(parents=True)
     (directory / "quick.toml").write_text(

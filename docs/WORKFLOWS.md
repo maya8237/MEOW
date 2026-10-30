@@ -14,6 +14,7 @@ meow run "Audit the API" --workflow review-and-fix --no-worktree --input topic=A
   graph; configured tests don't enable the AI tester.
 - `review-and-fix`: verifies/reviews existing code first, fixes failures, final checks; no delivery.
   `--test` works without a plan, using the request as its basis.
+- `test-fix`: ≤4 rounds of fix → verify → tester → review on existing code; no delivery.
 
 Plan-based reviewers/testers also receive the original request, including on
 resume. They must verify every criterion from observed behavior; passing tests
@@ -173,7 +174,8 @@ policy; discovered agent names are valid roles, unknown names fail config.
 
 `plan` writes/claims the plan; `approve_plan` invokes manual approval;
 `tasks` integrates task worktrees; `generate` implements/fixes;
-`review` reviews/optionally tests; `verify` runs the checks inside a loop and
+`review` reviews/optionally tests; `test` always tests (not under `--force-disable-tests`;
+`review` then skips its own tester); `verify` runs the checks inside a loop and
 fails the round with their output; `checks` records current lint/test/build/browser
 evidence, reusing `verify` results only when source/config are unchanged (resume reruns).
 `deliver` performs verified delivery. Reviewer PASS is required by checks only if

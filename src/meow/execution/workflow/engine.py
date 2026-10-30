@@ -74,6 +74,7 @@ class RunState:
     round: int = 0
     pool: SessionPool | None = None
     has_review: bool = False
+    has_test_step: bool = False
     evidence: object = None
     checks_results: object = None
     checks_baseline: object = None
@@ -140,6 +141,9 @@ class WorkflowRun:
     async def run(self, steps):
         self.state.has_review = any(
             item.target == "builtin.review" for item in walk(steps)
+        )
+        self.state.has_test_step = any(
+            item.target == "builtin.test" for item in walk(steps)
         )
         for step in steps:
             if step.id in self.state.completed:
