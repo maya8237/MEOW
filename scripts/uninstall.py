@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+from collections.abc import Sequence
 from pathlib import Path
 
 TASK = re.compile(r"meow-([0-9a-f]{32})", re.IGNORECASE)
@@ -415,7 +416,7 @@ def ask_removal(home: Path) -> tuple[bool, list[Path], bool]:  # ruff: ignore[co
     return purge, projects, bun
 
 
-def main(argv: list[str] = ()) -> int:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
+def main(argv: Sequence[str] = ()) -> int:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]
     parser = argparse.ArgumentParser(description="Uninstall the managed MEOW release.")
     parser.add_argument(
         "--non-interactive",
