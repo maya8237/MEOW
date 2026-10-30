@@ -24,6 +24,7 @@ BUILTIN_STEPS = frozenset(
         "tasks",
         "generate",
         "review",
+        "test",
         "verify",
         "checks",
         "deliver",
@@ -48,6 +49,7 @@ BUILTIN_AGENTS = {
     "builtin.plan": ("planner",),
     "builtin.generate": ("generator", "review-fixer"),
     "builtin.review": ("reviewer", "tester"),
+    "builtin.test": ("tester",),
 }
 
 
@@ -221,7 +223,7 @@ def expand(workflow: WorkflowFile, catalog: "Customizations") -> tuple[Step, ...
 def _has_gate(step: Step) -> bool:
     return any(
         (item.kind == "gate" and item.blocks != "advise")
-        or (item.kind == "uses" and item.target == "builtin.review")
+        or (item.kind == "uses" and item.target in {"builtin.review", "builtin.test"})
         for item in walk(step.body)
     )
 

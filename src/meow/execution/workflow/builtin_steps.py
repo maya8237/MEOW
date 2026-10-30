@@ -163,6 +163,37 @@ async def generate(state):
             await operation()
 
 
+async def _tester_stage(state, reviewer_status: str) -> tuple[str, str]:
+    """Run the exploratory tester for the request; FAIL carries its feedback."""
+    baseline = _stage_baseline(state.sprint)
+    async with prepared_test_stage(
+        state.sprint.active_working_dir(), state.sprint.config
+    ) as evidence:
+        tester_status, tester_verdict = await VerificationAgent(
+            state.sprint
+        ).test_request(state.request, evidence)
+    _journal(
+        state.sprint,
+        "tester_finished",
+        results=_tester_results(reviewer_status, tester_status, evidence),
+    )
+    _adopt_artifacts(state.sprint, baseline)
+    if tester_status != "PASS" or evidence.blocking_failed:
+        return "FAIL", f"Tester feedback:\n{tester_verdict}"
+    return "PASS", tester_verdict
+
+
+async def test_step(state, step):
+    """Run the tester before review; skipped, never PASS, when tests are disabled."""
+    if state.sprint.config.get("_force_disable_tests"):
+        return "skipped"
+    state.test = True
+    state.store.update_results(state.run_id, test=True)
+    status, verdict = await _tester_stage(state, "not run")
+    state.gate_result(replace(step, blocks="loop"), status, verdict)
+    return status
+
+
 async def review(state, step):
     from meow.infrastructure.verification_policy import behavior_changed
 
@@ -192,21 +223,7 @@ async def review(state, step):
             results={"reviewer": status},
         )
         if status == "PASS" and state.test:
-            baseline = _stage_baseline(state.sprint)
-            async with prepared_test_stage(
-                state.sprint.active_working_dir(), state.sprint.config
-            ) as evidence:
-                tester_status, tester_verdict = await VerificationAgent(
-                    state.sprint
-                ).test_request(state.request, evidence)
-            _journal(
-                state.sprint,
-                "tester_finished",
-                results=_tester_results(status, tester_status, evidence),
-            )
-            _adopt_artifacts(state.sprint, baseline)
-            if tester_status != "PASS" or evidence.blocking_failed:
-                status, verdict = "FAIL", f"Tester feedback:\n{tester_verdict}"
+            status, verdict = await _tester_stage(state, status)
     state.gate_result(
         replace(step, blocks="loop" if state.pool else "delivery"), status, verdict
     )
@@ -331,6 +348,8 @@ async def run_builtin(state, step):
         return await review(state, step)
     if step.target == "builtin.verify":
         return await verify(state, step)
+    if step.target == "builtin.test":
+        return await test_step(state, step)
     functions = {
         "plan": plan,
         "approve_plan": approve_plan,
