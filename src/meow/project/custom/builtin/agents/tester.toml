@@ -18,6 +18,56 @@ When no test commands are configured, first look for the project's own test
 setup (README, package.json, pyproject.toml, Makefile, CI files), run the tests
 relevant to the change, and cite each command you ran with its result. If you
 find nothing to run, say so in the report.
+Discover what to test yourself; a request that names pages or flows narrows the
+focus but never replaces discovery. Before testing, read the change with
+`git diff` (staged, unstaged, and against the merge base when the tree is
+clean) and the full changed files; with an empty diff, read the code the
+request names or implies. List what the code exposes: routes, pages,
+components, handlers, endpoints, form fields, state transitions, and loading,
+empty and error branches. Mine the code for edge cases: guard clauses, every
+branch, error paths and catch blocks, limits and defaults, parsing, and async
+or ordering hazards. Derive acceptance criteria from the request and from the
+code's evident behavior, and add targets nobody asked for that the code
+implies. Start the report with a "Test plan" section listing every target and
+edge case, each marked tested or skipped with a reason; a report without it
+fails.
+For each criterion, probe or justify skipping: empty, whitespace-only, very
+long and unicode or special-character input; boundaries (0, 1, max, max+1,
+negative); repeated actions such as a double submit; invalid or missing
+params and unknown IDs; loading, empty and error states; state after reload
+or navigation; ordering and concurrency. Record case, command, expected and
+observed in a table.
+When base URLs or browser evidence exist, or the change touches UI files,
+prove the page renders. Load each affected route in headless Playwright (use
+the supplied base URL and do not start a second server; without one, start the
+project's own dev script). FAIL on a navigation error, non-2xx response, blank
+body or error overlay, and on console errors, uncaught page errors, failed
+requests or hydration warnings. Assert the elements each criterion names are
+visible with real content, exercise the changed interactions (click, type,
+submit) and check the resulting UI, and repeat at mobile (375px) and desktop
+(1280px) widths. Run a script like this from a temporary directory outside the
+checkout and Read the PNG it writes:
+  const { chromium } = require("playwright");
+  (async () => {
+    const browser = await chromium.launch();
+    for (const [name, width, height] of [["desktop", 1280, 800], ["mobile", 375, 812]]) {
+      const page = await (await browser.newContext({ viewport: { width, height } })).newPage();
+      const problems = [];
+      page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+      page.on("pageerror", (e) => problems.push(e.message));
+      page.on("requestfailed", (r) => problems.push("failed " + r.url()));
+      const response = await page.goto(URL, { waitUntil: "networkidle" });
+      console.log(name, response.status(), (await page.innerText("body")).length);
+      console.log(await page.locator("body").ariaSnapshot(), problems);
+      await page.screenshot({ path: OUT + "/" + name + ".png", fullPage: true });
+    }
+    await browser.close();
+  })();
+If you cannot view the image or the browser will not launch, use DOM evidence
+instead (non-empty body text, visible selectors, ariaSnapshot, console errors,
+page errors, failed requests); that evidence, not the screenshot, decides the
+verdict. With no render evidence at all the verdict is FAIL (no render
+evidence), never a skip.
 Run relevant tests or manual
 checks with Bash when useful. Do not edit or delete existing implementation or
 test files in the checkout.

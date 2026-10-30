@@ -10,6 +10,9 @@ from meow.infrastructure.test_runner import (
     VerificationStageEvidence,
 )
 from meow.project import prompts
+from meow.project.plan_files import stage_file
+
+TEST_PLAN = "\n\n## Test plan\n- covered"
 
 
 class Context:
@@ -41,7 +44,7 @@ class Context:
         return self.repo_dir
 
 
-class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
+class TesterAgentTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-many-public-methods] -- one fixture covers every tester verdict path
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -67,11 +70,42 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
         return status, text, run, plan
 
     async def test_reviewer_and_tester_verdicts_use_separate_files(self):
-        status, _, run, _ = await self._run_tester("SUMMARY: observed\nSTATUS: PASS")
+        status, _, run, _ = await self._run_tester(
+            "SUMMARY: observed\nSTATUS: PASS" + TEST_PLAN
+        )
         self.assertEqual(status, "PASS")
         self.assertTrue((self.root / "feature-test.md").exists())
         self.assertFalse((self.root / "feature-review.md").exists())
         self.assertIn("feature-test.md", run.await_args.args[1].system_prompt)
+
+    async def test_report_without_test_plan_fails_without_a_retry(self):
+        status, text, run, _ = await self._run_tester("SUMMARY: ok\nSTATUS: PASS")
+        self.assertEqual(status, "FAIL")
+        self.assertIn("Test plan", text)
+        self.assertEqual(run.await_count, 1)
+        saved = (self.root / "feature-test.md").read_text(encoding="utf-8")
+        self.assertEqual(saved, text)
+
+    async def test_report_with_test_plan_passes(self):
+        report = "SUMMARY: ok\nSTATUS: PASS\n\n## Test plan\n- home page: tested"
+        status, text, _, _ = await self._run_tester(report)
+        self.assertEqual((status, text), ("PASS", report))
+
+    async def test_request_basis_also_requires_a_test_plan(self):
+        active = self.root
+        report = stage_file(active / self.context.config["docs_dir"], "tester")
+
+        def write_report(prompt, options, role):
+            report.write_text("SUMMARY: ok\nSTATUS: PASS", encoding="utf-8")
+
+        with patch.object(
+            VerificationAgent, "run_query", new=AsyncMock(side_effect=write_report)
+        ):
+            status, text = await VerificationAgent(self.context).test_request(
+                "Audit page", VerificationStageEvidence()
+            )
+        self.assertEqual(status, "FAIL")
+        self.assertIn("Test plan", text)
 
     async def test_mandatory_test_failure_overrides_tester_pass(self):
         result = VerificationCommandEvidence(
@@ -105,7 +139,9 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(".meow/home.png", prompt)
 
     async def test_empty_test_list_still_launches_exploratory_tester(self):
-        status, _, run, _ = await self._run_tester("SUMMARY: explored\nSTATUS: PASS")
+        status, _, run, _ = await self._run_tester(
+            "SUMMARY: explored\nSTATUS: PASS" + TEST_PLAN
+        )
         self.assertEqual(status, "PASS")
         run.assert_awaited_once()
 
@@ -125,7 +161,7 @@ class TesterAgentTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(run.await_count, 2)
 
-        valid = "SUMMARY: all tests passed\nSTATUS: PASS"
+        valid = "SUMMARY: all tests passed\nSTATUS: PASS" + TEST_PLAN
         for malformed in ("## STATUS: PASS", "STATUS: **PASS**"):
             with self.subTest(malformed=malformed):
                 status, text, run, _ = await self._run_tester((malformed, valid))
@@ -238,3 +274,23 @@ def test_short_plan_prompt_is_opt_in():
     base = {"plan_file": Path("p.md")}
     assert "Keep this plan short" not in render_agent(planner, base)
     assert "Keep this plan short" in render_agent(planner, {**base, "short_plan": True})
+
+
+def test_tester_prompt_requires_discovery_rendering_and_edge_cases():
+    prompt = prompts.tester_prompt(Path("r.md"))
+    for phrase in (
+        "git diff",
+        "Test plan",
+        "console errors",
+        "ariaSnapshot",
+        "no render evidence",
+        "double submit",
+        "mobile",
+        "do not start a second server",
+    ):
+        assert phrase in prompt, phrase
+
+
+def test_tester_prompt_renders_in_both_write_modes():
+    for write_tests in (False, True):
+        assert prompts.tester_prompt(Path("r.md"), write_tests=write_tests)

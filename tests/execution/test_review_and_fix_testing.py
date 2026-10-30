@@ -16,7 +16,10 @@ def test_review_and_fix_supports_testing_without_a_plan(tmp_path):
 
     async def query(self, agent, prompt, *args):  # ruff: ignore[unused-async] -- SDK double
         assert "Audit API" in prompt
-        report.write_text("SUMMARY: Verified\nSTATUS: PASS", encoding="utf-8")
+        report.write_text(
+            "SUMMARY: Verified\nSTATUS: PASS\n\n## Test plan\n- covered",
+            encoding="utf-8",
+        )
 
     with (
         patch(

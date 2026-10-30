@@ -1,5 +1,6 @@
 """Exploratory tester role and project architecture context."""
 
+import re
 from contextlib import suppress
 from pathlib import Path
 
@@ -15,6 +16,8 @@ from meow.agents.reviewer import (
 from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.project.plan_files import plan_test_file, stage_file
 from meow.project.prompts import tester_prompt
+
+TEST_PLAN_SECTION = re.compile(r"^#*\s*Test plan\b", re.IGNORECASE | re.MULTILINE)
 
 
 def architecture_context(
@@ -227,6 +230,14 @@ class VerificationAgent(Agent):
                 "followed by STATUS: PASS or STATUS: FAIL without Markdown formatting.",
             )
             report_file.write_text(verdict, encoding="utf-8")
+        if not TEST_PLAN_SECTION.search(verdict):
+            verdict = force_fail(
+                verdict,
+                "Tester report is missing a 'Test plan' section listing discovered "
+                "targets and edge cases.",
+            )
+            report_file.write_text(verdict, encoding="utf-8")
+            status = _verdict_status(verdict)
         if evidence.blocking_failed:
             failures = [
                 f"{command.command} "
