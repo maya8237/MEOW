@@ -49,6 +49,7 @@ opens an MR into your configured target, and verifies its CI pipeline.
 - `/meow:plan` — think through a change before building.
 - `/meow:review` — review existing code and fix findings.
 - `/meow:lint` — fix your project’s lint findings.
+- `/meow:test` — test, fix, and review until both pass.
 - `/meow:schedule` — run a task later.
 
 [See all skills and examples](docs/SKILLS.md).

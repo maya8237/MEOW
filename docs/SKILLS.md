@@ -66,6 +66,12 @@ Example: `/meow:review`. [Reference](../skills/review/SKILL.md)
 Find and fix the configured lint findings in the current session.
 Example: `/meow:lint`. [Reference](../skills/lint/SKILL.md)
 
+## /meow:test
+
+Test existing code, fix what the tester finds, and review, until both pass. The tester
+discovers its own targets, checks that pages render, and probes edge cases.
+Example: `/meow:test Check the checkout page`. [Reference](../skills/test/SKILL.md)
+
 ## /meow:onboard
 
 Optional: inspect or change detected settings, skills, integrations, and optional
