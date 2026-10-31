@@ -6,8 +6,10 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from meow.agents.base import SessionAgent
+from meow.execution import round_memory
 from meow.execution.run_state import RunStore
 from meow.execution.sprint import Sprint
+from meow.execution.workflow.stall import StallTracker
 from meow.infrastructure.cancellation import cancellable, check_cancel
 from meow.infrastructure.usage import usage_scope
 from meow.project.custom.expressions import evaluate
@@ -18,6 +20,14 @@ from meow.project.plan_files import plan_review_file, plan_test_file
 
 class LoopExhausted(RuntimeError):
     """No round passed before its limit."""
+
+
+class LoopStalled(LoopExhausted):
+    """Rounds stopped early: another one would fail the same way."""
+
+    def __init__(self, message: str, *, reason: str, round: int):
+        super().__init__(message)
+        self.reason, self.round = reason, round
 
 
 class GateFailed(RuntimeError):
@@ -78,6 +88,7 @@ class RunState:
     evidence: object = None
     checks_results: object = None
     checks_baseline: object = None
+    generate_changed: bool | None = None  # did this round's generate edit code?
 
     def __post_init__(self):
         if self.request:
@@ -233,24 +244,22 @@ class WorkflowRun:
         if state.workflow:
             state.workflow["loop"] = step.id
             self.save_progress()
+        round_memory.reset(state.sprint)
+        tracker = StallTracker(state.sprint.config.get("stall_rounds", 2))
         try:
             for number in range(
                 1, (step.max_rounds or state.sprint.config["max_rounds"]) + 1
             ):
                 state.round, state.gates = number, {}
+                state.generate_changed = None
                 await self.body(step.body)
-                failed = [
-                    verdict
-                    for status, verdict, blocks in state.gates.values()
-                    if status != "PASS" and blocks != "advise"
-                ]
+                failed = self._blocking_failures()
                 if not failed:
-                    state.feedback = ""
-                    state.statuses[step.id] = {"status": "PASS"}
-                    if state.workflow:
-                        state.workflow["loop"] = None
-                        self.save_progress()
+                    self._loop_passed(step)
                     return
+                stall = tracker.check(number, failed, state.generate_changed)
+                if stall:
+                    raise self._stalled(step, number, *stall)
                 state.feedback = "\n\n".join(failed)
             raise LoopExhausted(self.exhausted_message(step))
         finally:
@@ -261,26 +270,66 @@ class WorkflowRun:
             else:
                 state.sprint.config["_workflow_pool"] = old_pool
 
+    def _blocking_failures(self):
+        return [
+            verdict
+            for status, verdict, blocks in self.state.gates.values()
+            if status != "PASS" and blocks != "advise"
+        ]
+
+    def _loop_passed(self, step):
+        state = self.state
+        state.feedback = ""
+        state.statuses[step.id] = {"status": "PASS"}
+        if state.workflow:
+            state.workflow["loop"] = None
+            self.save_progress()
+
+    def _stalled(self, step, number, reason, why):
+        state = self.state
+        state.store.update_results(
+            state.run_id,
+            loop_stalled={"loop": step.id, "round": number, "reason": reason},
+        )
+        return LoopStalled(
+            f"{_subject(state, step)} loop {step.id!r} stalled at round {number}: "
+            f"{why} -- stopping instead of repeating it. "
+            f"{_inspect_hint(state, step)}".rstrip(),
+            reason=reason,
+            round=number,
+        )
+
     def exhausted_message(self, step):
         state = self.state
         limit = step.max_rounds or state.sprint.config["max_rounds"]
-        label = state.flags.get("label_feature_name", state.feature_name)
-        if (
-            any(item.target == "builtin.review" for item in walk(step.body))
-            and state.plan_file
-        ):
+        if _reviews(state, step):
             return (
-                f"Sprint{f' {label!r}' if label else ''} did not pass "
-                f"after {limit} rounds -- stopping instead of looping forever. "
-                "Inspect the review "
-                f"file {plan_review_file(state.plan_file)}"
-                + (
-                    f" and tester file {plan_test_file(state.plan_file)}"
-                    if state.test
-                    else "."
-                )
+                f"{_subject(state, step)} did not pass after {limit} rounds -- "
+                f"stopping instead of looping forever. {_inspect_hint(state, step)}"
             )
         return f"Workflow loop {step.id!r} did not pass after {limit} rounds."
+
+
+def _reviews(state, step):
+    return bool(state.plan_file) and any(
+        item.target == "builtin.review" for item in walk(step.body)
+    )
+
+
+def _subject(state, step):
+    label = state.flags.get("label_feature_name", state.feature_name)
+    if not _reviews(state, step):
+        return "Workflow"
+    return f"Sprint{f' {label!r}' if label else ''}"
+
+
+def _inspect_hint(state, step):
+    if not _reviews(state, step):
+        return ""
+    hint = f"Inspect the review file {plan_review_file(state.plan_file)}"
+    if state.test:
+        return f"{hint} and tester file {plan_test_file(state.plan_file)}"
+    return f"{hint}."
 
 
 async def run_workflow(state: RunState, steps: tuple[Step, ...]) -> None:

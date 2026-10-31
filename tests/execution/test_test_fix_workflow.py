@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 from meow.execution.run_state import RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.execution.workflow import builtin_steps
+from meow.execution.workflow.engine import LoopStalled
 from meow.project.custom.definitions import discover
 from meow.project.custom.sources import builtin_sources
 from meow.project.custom.workflows import validate
@@ -13,17 +14,17 @@ ROUNDS = 4
 PLAN = "\n\n## Test plan\n- page: tested"
 
 
-def _project(tmp_path):
+def _project(tmp_path, extra=""):
     (tmp_path / ".meow").mkdir()
     (tmp_path / ".meow" / "config.toml").write_text(
-        '[workflow]\ndefault="test-fix"', encoding="utf-8"
+        f'{extra}[workflow]\ndefault="test-fix"', encoding="utf-8"
     )
     return stage_file(tmp_path / ".meow" / "plans", "tester")
 
 
-def _run(tmp_path, verdicts):
+def _run(tmp_path, verdicts, extra=""):
     """Run test-fix with scripted tester verdicts; return (generate calls, error)."""
-    report = _project(tmp_path)
+    report = _project(tmp_path, extra)
     queue = iter(verdicts)
     feedback = []
 
@@ -68,10 +69,20 @@ def test_tester_fail_triggers_fix_with_report_then_passes(tmp_path):
 
 
 def test_stops_failed_after_four_rounds(tmp_path):
-    feedback, error = _run(tmp_path, ["FAIL"] * ROUNDS)
+    feedback, error = _run(tmp_path, ["FAIL"] * ROUNDS, "stall_rounds = 0\n")
     assert error is not None
     assert len(feedback) == ROUNDS - 1
     assert RunStore(tmp_path).latest().phase != "complete"
+
+
+def test_identical_tester_failures_stall_the_loop_early(tmp_path):
+    feedback, error = _run(tmp_path, ["FAIL"] * ROUNDS)
+    assert isinstance(error, LoopStalled)
+    assert len(feedback) == 1  # round 2's fix ran once; round 2 then repeated round 1
+    run = RunStore(tmp_path).latest()
+    assert run.phase == "exhausted"
+    assert run.results["loop_stalled"]["reason"] == "repeated_findings"
+    assert "stalled at round 2" in run.last_failure
 
 
 def test_review_does_not_run_after_a_tester_failure(tmp_path):
