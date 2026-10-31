@@ -38,6 +38,7 @@ from meow.project.config_models import resolve_command_cwd
 from meow.project.custom.rendering import effective_models
 from meow.project.custom.sync import check_skill_registration
 from meow.project.onboarding import boundary_ok, feature_gaps, is_onboarded
+from meow.project.tester_setup import inferred_tester_lines
 
 __all__ = [
     "PROMPT_ROLES",
@@ -128,6 +129,7 @@ def verify(
         )
         result["preflight"] = [asdict(check) for check in checks]
         result["preflight_ok"] = all(check.status != "fail" for check in checks)
+        result["inferred"] = inferred_tester_lines(config)
     if run_lint:
         lint_result = lint(
             working_dir,

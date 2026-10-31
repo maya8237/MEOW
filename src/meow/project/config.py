@@ -212,6 +212,7 @@ def _load_config(working_dir: Path) -> dict:
     detected = command_defaults(Path(working_dir), user_config)
     user_config = _merge_config(detected.defaults, user_config)
     config = {**DEFAULT_CONFIG, **user_config}
+    config["_detected_origins"] = dict(detected.origins)
     config["_project_root"] = str(Path(working_dir).resolve())
     config["models"] = {**DEFAULT_CONFIG["models"], **user_config.get("models", {})}
     lint_configured = "lint" in user_config

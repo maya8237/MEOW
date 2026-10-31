@@ -56,6 +56,7 @@ from meow.project.plan_files import (
 )
 from meow.project.plan_state import PlanStore
 from meow.project.prompts import is_bug_request
+from meow.project.tester_setup import browser_selection_warning
 
 logger = get_logger(__name__)
 
@@ -209,6 +210,13 @@ async def run_sprint(  # ruff: ignore[too-many-arguments, too-many-statements, c
         store.set_driver(run_id)
         base = store.load(run_id).delivery.get("base", "none (not selected)")
         print(f"[run] MR target: {base} (saved for resume).", flush=True)
+        warning = (
+            None
+            if options.get("force_disable_tests")
+            else (browser_selection_warning(config))
+        )
+        if warning:
+            print(f"[run] {warning}", flush=True)
         await _drive_sprint(
             working_dir,
             feature_name,

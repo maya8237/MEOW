@@ -26,7 +26,8 @@ from meow.execution.run_state import (
 from meow.infrastructure.background import inspect_worker, reconcile_worker
 from meow.infrastructure.quality import Concern, QualityStoreError, concerns_for_run
 from meow.infrastructure.usage import usage_totals
-from meow.project.config import run_config
+from meow.project.config import load_config, run_config
+from meow.project.tester_setup import browser_selection_warning, inferred_tester_lines
 
 
 def recovery_command(record: RunRecord) -> str:
@@ -281,6 +282,16 @@ def status(
     return 0
 
 
+def _tester_lines(record: RunRecord) -> list[str]:
+    """The missing-browser warning and inferred tester values, if the config loads."""
+    try:
+        config = load_config(Path(record.repo))
+    except (OSError, ValueError):
+        return []
+    warning = browser_selection_warning(config)
+    return [*([warning] if warning else []), *inferred_tester_lines(config)]
+
+
 def _print_run(record: RunRecord, verbose: bool, rollups: list[str]) -> None:
     try:
         concerns = tuple(
@@ -292,6 +303,9 @@ def _print_run(record: RunRecord, verbose: bool, rollups: list[str]) -> None:
         concerns = ()
         print(f"Quality concerns unavailable: {exc}", file=sys.stderr)
     print(render(record, verbose=verbose, concerns=concerns))
+    tester = _tester_lines(record)
+    if tester:
+        print("\n".join(tester))
     if rollups:
         print("\n".join(rollups))
 
