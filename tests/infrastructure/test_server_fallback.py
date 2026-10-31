@@ -55,3 +55,36 @@ class ServerFallbackTests(unittest.IsolatedAsyncioTestCase):
                 ),
             )
         self.assertEqual(start.await_count, 1)
+
+
+class TakenFixedPortTests(unittest.IsolatedAsyncioTestCase):
+    async def test_taken_vite_port_is_relocated_with_the_framework_flag(self):
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "package.json").write_text(
+                json.dumps({"scripts": {"dev": "vite"}}), encoding="utf-8"
+            )
+            (root / "bun.lock").write_text("", encoding="utf-8")
+            server = DevServerCommand(
+                cwd=Path("."),
+                command="bun run dev",
+                ready_url="http://127.0.0.1:5173/",
+                startup_timeout=1,
+            )
+            seen = {}
+
+            def fake_spawn(*argv, **_):
+                seen["argv"] = argv
+                raise OSError("stop after launch")
+
+            with (
+                patch.object(runner, "_port_unavailable", return_value="in use"),
+                patch.object(runner, "_free_port", return_value=5999),
+                patch.object(runner.asyncio, "create_subprocess_exec", fake_spawn),
+                self.assertRaises(runner.VerificationSetupError),
+            ):
+                await runner._start_server(root, server)
+        self.assertEqual(list(seen["argv"][-2:]), ["--port", "5999"])

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from meow.common.process import WINDOWS_QUERY_TIMEOUT
 from meow.infrastructure.python_dependencies import python_environment
+from meow.project.command_detection import relocation_flags
 from meow.project.command_policy import split_command
 from meow.project.config_models import (
     DevServerCommand,
@@ -702,6 +703,17 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
                 f"readiness URL {server.ready_url} is already serving before launch",
             )
         # Never test against someone else's server, or one MEOW cannot bind.
+        # A known framework ignores PORT, so it also gets its own port flag.
+        extra = relocation_flags(cwd, server.command, server.args)
+        if extra:
+            server = DevServerCommand(
+                server.cwd,
+                server.command,
+                (*server.args, *extra),
+                server.env,
+                server.ready_url,
+                server.startup_timeout,
+            )
         server = _relocated(
             server,
             await asyncio.to_thread(_require_port, location[0], server.command, cwd),

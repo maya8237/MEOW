@@ -310,6 +310,50 @@ def _package_server(root: Path, notes: list[str]) -> tuple[dict, str] | None:
     return entry, f"package.json scripts.{name} ({framework})"
 
 
+_PORT_FLAG_NAMES = ("--port", "-p")
+
+
+def _framework_of(words: list[str], package: dict) -> str | None:
+    deps = {
+        **(package.get("dependencies") or {}),
+        **(package.get("devDependencies") or {}),
+    }
+    tokens = {Path(word).name for word in words}
+    return next(
+        (f for f in FRAMEWORK_PORT_FLAGS if f in tokens),
+        next((f for f in FRAMEWORK_PORT_FLAGS if f in deps), None),
+    )
+
+
+def relocation_flags(
+    root: Path, command: str, args: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Extra argv that moves a known dev server (vite, next) to ``{port}``.
+
+    Empty when the framework is unknown or the command already sets a port, so
+    unrecognized servers are left to the ``PORT`` variable alone.
+    """
+    words = [*command.split(), *args]
+    if any(word.split("=")[0] in _PORT_FLAG_NAMES for word in words):
+        return ()
+    package = _package(Path(root))
+    scripts = package.get("scripts")
+    scripts = scripts if isinstance(scripts, dict) else {}
+    script = next((w for w in words if w in scripts), None)
+    if script is not None:
+        words = [*words, *str(scripts[script]).split()]
+        if any(
+            w.split("=")[0] in _PORT_FLAG_NAMES for w in str(scripts[script]).split()
+        ):
+            return ()
+    framework = _framework_of(words, package)
+    if framework is None:
+        return ()
+    flag = tuple(FRAMEWORK_PORT_FLAGS[framework].split())
+    separator = ("--",) if words and words[0] == "npm" else ()
+    return (*separator, *flag)
+
+
 def dev_command_hint(root: Path) -> tuple[str, str] | None:
     """(folder, ``<manager> run dev``) of the first web project with a dev script."""
     for directory in frontend_roots(Path(root)):

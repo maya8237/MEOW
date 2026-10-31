@@ -81,6 +81,9 @@ Chrome installed the default fails the `browser` preflight check; set
 
 `{port}` in `command`, `args`, `env` or `ready_url` (only as the port of the URL) makes
 MEOW pick a free loopback port for every run, substitute it, and export `PORT`.
+A fixed port that is already in use is moved the same way: `PORT` is exported, and Vite
+or Next (found in the script or dependencies) also get `--port`/`-p`. Other servers
+must read `PORT` or use `{port}`.
 Pass it with your framework's flag; a server that ignores both times out with a hint.
 A fixed port that is taken, or that MEOW cannot bind (privileged, reserved), is
 relocated the same way. MEOW only binds `127.0.0.1`/`::1`.
