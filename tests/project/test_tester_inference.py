@@ -99,9 +99,9 @@ def test_explicit_values_win_per_key(tmp_path):
 @pytest.mark.parametrize(
     ("manager", "command"),
     [
-        ("npm@10", "npm run dev -- --port {port}"),
-        ("pnpm@9", "pnpm run dev --port {port}"),
-        ("bun@1", "bun run dev --port {port}"),
+        ("npm@10", "npm run dev -- --port {port} --host 127.0.0.1"),
+        ("pnpm@9", "pnpm run dev --port {port} --host 127.0.0.1"),
+        ("bun@1", "bun run dev --port {port} --host 127.0.0.1"),
     ],
 )
 def test_vite_script_gives_a_port_placeholder_entry(tmp_path, manager, command):

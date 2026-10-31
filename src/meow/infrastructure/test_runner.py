@@ -789,20 +789,22 @@ async def _start_server_with_fallback(active_dir: Path, server: DevServerCommand
     before reporting the tester stage as unavailable.
     """
     attempts = 3
+    template, current = server, server
     for attempt in range(1, attempts + 1):
         try:
-            return await _start_server(active_dir, server)
+            return await _start_server(active_dir, current)
         except VerificationSetupError:
-            location = _url_port(server.ready_url) or (
-                (_server_host(server), 0)
-                if _has_port_placeholder(server)
-                and _server_host(server) in _LOOPBACK_HOSTS
+            location = _url_port(current.ready_url) or (
+                (_server_host(template), 0)
+                if _has_port_placeholder(template)
+                and _server_host(template) in _LOOPBACK_HOSTS
                 else None
             )
             if attempt == attempts or location is None:
                 raise
-            server = _relocated(
-                server, _require_port(location[0], server.command, active_dir)
+            # Relocate from the original so {port} stays in step across retries.
+            current = _relocated(
+                template, _require_port(location[0], template.command, active_dir)
             )
     raise AssertionError("unreachable")
 

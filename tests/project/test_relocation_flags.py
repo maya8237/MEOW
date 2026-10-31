@@ -13,23 +13,44 @@ def web(tmp_path, scripts, deps=None, lock=None):
 
 def test_a_vite_script_gets_the_port_flag(tmp_path):
     web(tmp_path, {"dev": "vite"}, lock="bun.lock")
-    assert relocation_flags(tmp_path, "bun run dev", ()) == ("--port", "{port}")
+    assert relocation_flags(tmp_path, "bun run dev", ()) == (
+        "--port",
+        "{port}",
+        "--host",
+        "127.0.0.1",
+    )
 
 
 def test_npm_needs_the_argument_separator(tmp_path):
     web(tmp_path, {"dev": "vite --host"}, lock="package-lock.json")
-    assert relocation_flags(tmp_path, "npm run dev", ()) == ("--", "--port", "{port}")
+    assert relocation_flags(tmp_path, "npm run dev", ()) == (
+        "--",
+        "--port",
+        "{port}",
+        "--host",
+        "127.0.0.1",
+    )
 
 
 def test_next_uses_its_short_flag_and_a_direct_command_is_recognized(tmp_path):
     web(tmp_path, {"dev": "next dev"}, lock="pnpm-lock.yaml")
     assert relocation_flags(tmp_path, "pnpm dev", ()) == ("-p", "{port}")
-    assert relocation_flags(tmp_path, "npx vite", ()) == ("--port", "{port}")
+    assert relocation_flags(tmp_path, "npx vite", ()) == (
+        "--port",
+        "{port}",
+        "--host",
+        "127.0.0.1",
+    )
 
 
 def test_framework_from_dependencies_when_the_script_hides_it(tmp_path):
     web(tmp_path, {"dev": "node dev.js"}, deps={"vite": "^5"}, lock="bun.lock")
-    assert relocation_flags(tmp_path, "bun run dev", ()) == ("--port", "{port}")
+    assert relocation_flags(tmp_path, "bun run dev", ()) == (
+        "--port",
+        "{port}",
+        "--host",
+        "127.0.0.1",
+    )
 
 
 def test_unknown_servers_and_existing_flags_get_nothing(tmp_path):

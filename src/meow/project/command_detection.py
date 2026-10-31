@@ -223,7 +223,10 @@ _SKIP_DIRS = frozenset({
     "__pycache__",
 })
 MAX_FRONTEND_DIRS = 10
-FRAMEWORK_PORT_FLAGS = {"vite": "--port {port}", "next": "-p {port}"}
+FRAMEWORK_PORT_FLAGS = {
+    "vite": "--port {port} --host 127.0.0.1",
+    "next": "-p {port}",
+}
 _DEV_URL = "http://127.0.0.1:{port}/"
 _OWN_BROWSER_CHANNELS = frozenset({"chromium", "chromium-headless-shell"})
 _BROWSER_KEYS = frozenset({

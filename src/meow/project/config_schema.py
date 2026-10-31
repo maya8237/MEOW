@@ -180,7 +180,8 @@ def _browser_settings(raw: dict) -> dict:
     if channel is not None and channel not in BROWSER_CHANNELS:
         raise ValueError(
             f"{CONFIG_FILENAME}: [tester] 'browser_channel' must be one of "
-            f"{sorted(BROWSER_CHANNELS)}"
+            f"{sorted(BROWSER_CHANNELS)}; for example:\n"
+            '[tester]\nbrowser_channel = "chrome"'
         )
     executable = raw.get("browser_executable")
     if executable is not None and (
@@ -192,7 +193,10 @@ def _browser_settings(raw: dict) -> dict:
         )
     ):
         raise ValueError(
-            f"{CONFIG_FILENAME}: [tester] 'browser_executable' must be an absolute path"
+            f"{CONFIG_FILENAME}: [tester] 'browser_executable' must be an absolute "
+            "path; for example:\n[tester]\n"
+            'browser_executable = "C:\\\\Program Files\\\\Google\\\\Chrome\\\\'
+            'Application\\\\chrome.exe"'
         )
     playwright = raw.get("browser_playwright", False)
     if not isinstance(playwright, bool):

@@ -36,6 +36,21 @@ class ServerFallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(start.await_count, 2)
         self.assertIn("4567", start.await_args.args[1].ready_url)
 
+    async def test_every_retry_keeps_command_and_url_on_the_same_port(self):
+        start = AsyncMock(side_effect=_taken())
+        with (
+            patch.object(runner, "_start_server", start),
+            patch.object(runner, "_url_port", return_value=("127.0.0.1", 3000)),
+            patch.object(runner, "_free_port", side_effect=[4001, 4002]),
+            self.assertRaises(runner.VerificationSetupError),
+        ):
+            await runner._start_server_with_fallback(Path("."), _server())
+        for call in start.await_args_list[1:]:
+            relocated = call.args[1]
+            port = relocated.ready_url.split(":")[-1].rstrip("/")
+            self.assertEqual(relocated.args, ("--port", port))
+            self.assertEqual(relocated.env["PORT"], port)
+
     async def test_gives_up_after_three_attempts(self):
         start = AsyncMock(side_effect=_taken())
         with self.assertRaises(runner.VerificationSetupError):
@@ -80,11 +95,23 @@ class TakenFixedPortTests(unittest.IsolatedAsyncioTestCase):
                 seen["argv"] = argv
                 raise OSError("stop after launch")
 
+            def fake_windows_spawn(argv, *_, **__):
+                seen["argv"] = tuple(argv)
+                raise OSError("stop after launch")
+
             with (
                 patch.object(runner, "_port_unavailable", return_value="in use"),
                 patch.object(runner, "_free_port", return_value=5999),
                 patch.object(runner.asyncio, "create_subprocess_exec", fake_spawn),
+                patch.object(
+                    runner,
+                    "_spawn_windows_job_process",
+                    fake_windows_spawn,
+                    create=True,
+                ),
                 self.assertRaises(runner.VerificationSetupError),
             ):
                 await runner._start_server(root, server)
-        self.assertEqual(list(seen["argv"][-2:]), ["--port", "5999"])
+        self.assertEqual(
+            list(seen["argv"][-4:]), ["--port", "5999", "--host", "127.0.0.1"]
+        )

@@ -1,3 +1,4 @@
+import contextlib
 import json
 from pathlib import Path
 
@@ -28,7 +29,7 @@ def test_inner_bun_vite_project_gets_a_port_placeholder_server_in_its_cwd(tmp_pa
     tester, detected = infer(tmp_path)
     server = tester["dev_server"][0]
     assert server["cwd"] == "frontend"
-    assert server["command"] == "bun run dev --port {port}"
+    assert server["command"] == "bun run dev --port {port} --host 127.0.0.1"
     assert server["ready_url"] == "http://127.0.0.1:{port}/"
     assert "frontend/package.json" in detected.origins["tester.dev_server"]
 
@@ -75,7 +76,9 @@ def test_dependency_hidden_and_symlinked_folders_are_ignored(tmp_path):
     vite_project(tmp_path / ".cache")
     real = tmp_path.parent / (tmp_path.name + "-real")
     vite_project(real)
-    (tmp_path / "linked").symlink_to(real, target_is_directory=True)
+    # Symlinks need a Windows privilege; the other folders still count.
+    with contextlib.suppress(OSError):
+        (tmp_path / "linked").symlink_to(real, target_is_directory=True)
     tester, _ = infer(tmp_path)
     assert tester == {}
 

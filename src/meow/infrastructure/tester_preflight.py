@@ -239,7 +239,9 @@ def _browser_config(active_dir: Path, tester: dict) -> PreflightCheck:
             "browser_config",
             "fail",
             f"browser_executable {executable} does not exist or is not a file",
-            "Point browser_executable at the browser binary itself.",
+            "Point browser_executable at the browser binary itself, or select "
+            "an installed browser by channel.",
+            _selection_snippet(),
         )
     return PreflightCheck("browser_config", "ok", f"selected: {chosen[0]}", "")
 

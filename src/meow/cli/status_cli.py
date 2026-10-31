@@ -246,6 +246,17 @@ def saved_run_id(working_dir: Path, run_id: str | None) -> str | None:
     return max(candidates, key=lambda record: record.updated_at).id
 
 
+def _report_missing_run(
+    exc: RunStateError, working_dir: Path, run_id: str | None, as_json: bool
+) -> int:
+    if as_json:
+        print(json.dumps({"error": str(exc)}))
+    print(str(exc), file=sys.stderr)
+    if not (as_json or run_id):
+        _print_lines(_tester_lines(working_dir))
+    return 1
+
+
 def status(
     working_dir: Path,
     run_id: str | None = None,
@@ -264,10 +275,7 @@ def status(
             reconcile_worker(store, record.id)
             record = store.load(record.id)
     except RunStateError as exc:
-        if as_json:
-            print(json.dumps({"error": str(exc)}))
-        print(str(exc), file=sys.stderr)
-        return 1
+        return _report_missing_run(exc, working_dir, run_id, as_json)
     if as_json:
         # Imported here: run_contract builds on resume_cli, which imports us.
         from meow.cli.run_contract import status_payload
@@ -282,14 +290,19 @@ def status(
     return 0
 
 
-def _tester_lines(record: RunRecord) -> list[str]:
+def _tester_lines(repo: Path) -> list[str]:
     """The missing-browser warning and inferred tester values, if the config loads."""
     try:
-        config = load_config(Path(record.repo))
+        config = load_config(repo)
     except (OSError, ValueError):
         return []
     warning = browser_default_notice(config)
     return [*([warning] if warning else []), *inferred_tester_lines(config)]
+
+
+def _print_lines(lines: list[str]) -> None:
+    if lines:
+        print("\n".join(lines))
 
 
 def _print_run(record: RunRecord, verbose: bool, rollups: list[str]) -> None:
@@ -303,11 +316,8 @@ def _print_run(record: RunRecord, verbose: bool, rollups: list[str]) -> None:
         concerns = ()
         print(f"Quality concerns unavailable: {exc}", file=sys.stderr)
     print(render(record, verbose=verbose, concerns=concerns))
-    tester = _tester_lines(record)
-    if tester:
-        print("\n".join(tester))
-    if rollups:
-        print("\n".join(rollups))
+    _print_lines(_tester_lines(Path(record.repo)))
+    _print_lines(rollups)
 
 
 def orchestration_payload(record: OrchestratorRecord, config: dict) -> dict:

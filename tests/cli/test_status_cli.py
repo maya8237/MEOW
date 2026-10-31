@@ -391,3 +391,19 @@ def test_failed_orchestrator_without_a_classified_error_is_terminal(tmp_path, ca
     _, payload = _orchestrator_json(tmp_path, capsys, "failed", error=error)
     assert payload["retryable"] is False
     assert payload["next_command"] is None
+
+
+def test_status_without_runs_still_shows_the_inferred_tester_setup(tmp_path, capsys):
+    web = tmp_path / "frontend"
+    web.mkdir()
+    (web / "package.json").write_text(
+        '{"scripts": {"dev": "vite"}, "devDependencies": {"vite": "6"}}',
+        encoding="utf-8",
+    )
+    (web / "bun.lock").write_text("", encoding="utf-8")
+    assert status(tmp_path) == 1
+    captured = capsys.readouterr()
+    assert "No runs found" in captured.err
+    assert "bun run dev" in captured.out
+    assert status(tmp_path, as_json=True) == 1
+    assert "bun run dev" not in capsys.readouterr().out

@@ -101,7 +101,9 @@ def test_a_single_selection_passes(tmp_path, selection):
 
 def test_executable_must_exist_and_be_a_file(tmp_path):
     cfg = config(base_url="http://x:1", browser_executable=str(tmp_path / "nope"))
-    assert run(tmp_path, cfg)["browser_config"].status == "fail"
+    missing = run(tmp_path, cfg)["browser_config"]
+    assert missing.status == "fail"
+    assert missing.snippet.startswith("[tester]")
     cfg = config(base_url="http://x:1", browser_executable=str(tmp_path))
     assert run(tmp_path, cfg)["browser_config"].status == "fail"
     chrome = tmp_path / "chrome"

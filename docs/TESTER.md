@@ -31,7 +31,7 @@ Your own Chrome and a dev server in `frontend/` (MEOW picks the port):
 ```toml
 [[tester.dev_server]]
 cwd = "frontend"
-command = "bun run dev --port {port}"
+command = "bun run dev --port {port} --host 127.0.0.1"
 ready_url = "http://127.0.0.1:{port}/"
 
 [tester]
@@ -51,7 +51,7 @@ Read-only, never executed, never written to disk; explicit `[tester]` keys win p
 - **`playwright.config.{ts,js,mjs,cjs}`:** literal `webServer` (object or array:
   `command`, `url` or `port`, `cwd`, `timeout`), `use.baseURL`, `channel`,
   `executablePath`. A config that names no browser selects Playwright's own.
-- **`package.json`:** a `dev`/`start` script for Vite (`--port {port}`) or Next.js
+- **`package.json`:** a `dev`/`start` script for Vite (`--port {port} --host 127.0.0.1`, since Vite 6 can listen on `[::1]` only) or Next.js
   (`-p {port}`) under npm, pnpm, yarn or bun. Other frameworks are not guessed.
 - Anything computed (env interpolation, variables) is reported as `could not read`
   and left to you. A server `cwd` escaping the repo is dropped with a note.

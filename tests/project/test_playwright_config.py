@@ -130,9 +130,13 @@ export default { title: "channel: 'chrome' webServer: { command: 'x' }" };
 def test_symlink_oversize_and_malformed_files_are_ignored(tmp_path):
     real = tmp_path / "real.ts"
     real.write_text("export default { use: { baseURL: 'http://x:1' } }")
-    (tmp_path / "playwright.config.ts").symlink_to(real)
-    assert read_playwright_config(tmp_path).file is None
-    (tmp_path / "playwright.config.ts").unlink()
+    try:
+        (tmp_path / "playwright.config.ts").symlink_to(real)
+    except OSError:
+        pass  # symlinks need a Windows privilege; the other cases still run
+    else:
+        assert read_playwright_config(tmp_path).file is None
+        (tmp_path / "playwright.config.ts").unlink()
     write(tmp_path, "x" * (MAX_MANIFEST_BYTES + 1))
     assert read_playwright_config(tmp_path).file is None
     write(tmp_path, "export default { webServer: { command: 'x', port: 1 ")
