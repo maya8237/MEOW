@@ -1,6 +1,7 @@
 """Schema validation that turns raw config tables into typed command models."""
 
-from pathlib import Path, PurePosixPath
+import re
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from meow.project.config_files import CONFIG_FILENAME
 from meow.project.config_models import (
@@ -23,7 +24,30 @@ LINT_ENTRY_KEYS = frozenset({
 })
 
 
+BROWSER_CHANNELS = frozenset({
+    "chrome",
+    "chrome-beta",
+    "chrome-dev",
+    "chrome-canary",
+    "msedge",
+    "msedge-beta",
+    "msedge-dev",
+})
+_BROWSER_SELECTION_KEYS = (
+    "browser_channel",
+    "browser_executable",
+    "browser_playwright",
+)
+_PLAYWRIGHT_ENV_KEY = re.compile(r"PLAYWRIGHT_[A-Z0-9_]+")
+_PORT_PLACEHOLDER_URL = re.compile(
+    r"[A-Za-z][A-Za-z0-9+.-]*://[^/{}?#]*:\{port\}(?:[/?#][^{}]*)?"
+)
+
 TESTER_KEYS = frozenset({
+    "browser_channel",
+    "browser_executable",
+    "browser_playwright",
+    "browser_env",
     "auto_test",
     "tests",
     "dev_server",
@@ -150,6 +174,66 @@ def _command_fields(
     return cwd, command, args, env
 
 
+def _browser_settings(raw: dict) -> dict:
+    """Validate the explicit browser selection and the Playwright environment."""
+    channel = raw.get("browser_channel")
+    if channel is not None and channel not in BROWSER_CHANNELS:
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [tester] 'browser_channel' must be one of "
+            f"{sorted(BROWSER_CHANNELS)}"
+        )
+    executable = raw.get("browser_executable")
+    if executable is not None and (
+        not isinstance(executable, str)
+        or not executable
+        or not (
+            PurePosixPath(executable).is_absolute()
+            or PureWindowsPath(executable).is_absolute()
+        )
+    ):
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [tester] 'browser_executable' must be an absolute path"
+        )
+    playwright = raw.get("browser_playwright", False)
+    if not isinstance(playwright, bool):
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [tester] 'browser_playwright' must be a boolean"
+        )
+    selected = [
+        key
+        for key, value in (
+            ("browser_channel", channel),
+            ("browser_executable", executable),
+            ("browser_playwright", playwright or None),
+        )
+        if value is not None
+    ]
+    if len(selected) > 1:
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [tester] sets more than one browser selection "
+            f"({', '.join(selected)}); keep exactly one of {list(_BROWSER_SELECTION_KEYS)}"
+        )
+    env = raw.get("browser_env", {})
+    if not isinstance(env, dict) or any(
+        not isinstance(k, str) or not isinstance(v, str) for k, v in env.items()
+    ):
+        raise ValueError(
+            f"{CONFIG_FILENAME}: [tester] 'browser_env' must map strings to strings"
+        )
+    for key in env:
+        if not _PLAYWRIGHT_ENV_KEY.fullmatch(key):
+            raise ValueError(
+                f"{CONFIG_FILENAME}: [tester] 'browser_env' key {key!r} must match "
+                "PLAYWRIGHT_*"
+            )
+    return {
+        "browser_channel": channel,
+        "browser_executable": executable,
+        "browser_playwright": playwright,
+        "browser_env": dict(env),
+    }
+
+
 def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[too-many-locals]
     raw = user_config.get("tester", {})
     if not isinstance(raw, dict):
@@ -192,6 +276,13 @@ def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[too-man
             raise ValueError(
                 f"{CONFIG_FILENAME}: [[tester.dev_server]] entry {position} "
                 "must set 'ready_url'"
+            )
+        if (
+            "{" in ready_url or "}" in ready_url
+        ) and not _PORT_PLACEHOLDER_URL.fullmatch(ready_url):
+            raise ValueError(
+                f"{CONFIG_FILENAME}: [[tester.dev_server]] entry {position} "
+                "'ready_url' may contain {port} only as the port"
             )
         servers.append(
             DevServerCommand(
@@ -323,6 +414,7 @@ def _normalize_tester_config(user_config: dict) -> dict:  # ruff: ignore[too-man
         "architecture_files": architecture,
         "browser": browser,
         "write_tests": write_tests,
+        **_browser_settings(raw),
     }
 
 
