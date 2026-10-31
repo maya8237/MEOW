@@ -255,6 +255,7 @@ def test_feature_gaps_reports_configured_and_missing(repo):
         "tester_write_tests",
         "tester_mcp",
         "tester_browser",
+        "tester_browser_launch",
         "tester_dev_server",
         "build",
         "lint",

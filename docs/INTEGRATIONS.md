@@ -85,7 +85,7 @@ Path-scoped roles must deny both Bash and Agent.
 and `entrypoint`; `required` defaults false. Provider `inputs`, `outputs`,
 and `permissions` can be tables/lists. Commands also accept `args`, `cwd`,
 `env`, `timeout`, named `flows`, and repository-relative `artifacts`.
-Configure a dev server/readiness URL when needed; MEOW starts it for browser checks
+Configure a dev server/readiness URL ([setup guide](TESTER.md)); MEOW starts it for browser checks
 and stops it afterward. Required failures/unavailable providers block completion.
 Status separates lint/test/build/browser evidence. Keep generated artifacts under
 `.meow/` so checks do not alter the reviewed revision.

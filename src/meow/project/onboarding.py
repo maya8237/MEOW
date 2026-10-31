@@ -513,7 +513,15 @@ _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
     ),
     "tester_dev_server": (
         ("tester", "dev_server"),
-        f"Add [[tester.dev_server]] ({_GUIDE}), then verify accepted server commands.",
+        f"Add [[tester.dev_server]] ({_GUIDE}) with {{port}} in the command and "
+        "ready_url (MEOW picks a free port; pass it with your framework's port "
+        "flag), then run `meow native verify --preflight`.",
+    ),
+    "tester_browser_launch": (
+        ("tester", "browser_channel"),
+        "Select the tester's browser: browser_channel (e.g. chrome), "
+        "browser_executable, or browser_playwright = true, then run "
+        "`meow native verify --preflight`.",
     ),
     "build": (("build",), "Add [[build]] commands that must pass before delivery."),
     "lint": (
@@ -614,6 +622,10 @@ def feature_gaps(root: Path) -> dict[str, dict]:
         }
         for key, (path, enable) in _GAPS.items()
     }
+    gaps["tester_browser_launch"]["configured"] = any(
+        _present(config, ("tester", key))
+        for key in ("browser_channel", "browser_executable", "browser_playwright")
+    )
     # Runtime accumulates custom sources from every layer before merging config.
     gaps["custom"]["configured"] = any(_present(table, ("custom",)) for table in tables)
     return gaps

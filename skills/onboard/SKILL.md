@@ -177,7 +177,9 @@ When an optional feature is accepted, use the matching documented path:
   reject secret-like files and symlinks, and verify the setup in a disposable
   worktree before enabling it for runs.
 - Tester mode: inspect test/server/MCP readiness with `meow native verify`
-  (it starts none of them), then verify accepted commands before enabling tests.
+  (it starts none of them). For a frontend, follow the
+  [tester setup loop](../test/SKILL.md#tester-setup): infer, `--preflight`, then the
+  guided fix. Verify accepted commands before enabling tests.
 
 Keep documentation-only onboarding free of application code changes.
 

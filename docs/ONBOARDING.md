@@ -65,6 +65,12 @@ list for that type. Explicit test commands enable Tester mode on every run;
 detected tests run as deterministic checks. Set `[tester] auto_test = false`
 to run explicit checks without the AI tester. Onboarding executes neither.
 
+Tester setup is inferred, not asked for: MEOW reads a Playwright config or dev script
+at the root or in an inner `frontend/`-style folder and reports each value with its
+source (`inferred`), anything it could not read (`could_not_read`) and `tester_ready`.
+Nothing inferred is written to config. Check it with `meow native verify --preflight`;
+see [tester setup](TESTER.md).
+
 `--set KEY=TOML_VALUE` supports the remaining config fields, including arrays
 and inline tables. Quote the entire assignment so the shell preserves TOML:
 

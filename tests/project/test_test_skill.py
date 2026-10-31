@@ -14,8 +14,8 @@ def test_test_skill_documents_workflow_and_worktree_rule():
         "--workflow test-fix",
         "--no-worktree",
         "uncommitted",
-        "base_url",
-        "[tester.browser]",
+        "--preflight",
+        "## Tester setup",
         "meow status",
         "meow resume",
     ):

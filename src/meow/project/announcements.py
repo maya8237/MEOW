@@ -19,6 +19,11 @@ ANNOUNCED: dict[str, tuple[str, str]] = {
         "0.1.19",
         "Let the tester add new tests for the change ([tester] write_tests).",
     ),
+    "tester_browser_launch": (
+        "unreleased",
+        "Select the tester's browser ([tester] browser_channel, browser_executable "
+        "or browser_playwright) and check it with `meow native verify --preflight`.",
+    ),
 }
 
 # `_GAPS` keys added after 0.1.18 that announce nothing: they predate their gap

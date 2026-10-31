@@ -13,6 +13,7 @@ from meow.common.atomic import replace_with_retry
 from meow.project.config import _replace_mcp, load_config
 from meow.project.onboarding import LOCAL_CONFIG_RELPATH, feature_gaps, onboard_project
 from meow.project.repos import remember
+from meow.project.tester_setup import inferred_tester_lines
 
 
 def parse_setting(raw: str) -> tuple[str, object]:
@@ -132,6 +133,21 @@ def _requested_document(original, settings, config_file):
     return document, requested
 
 
+def _tester_report(root, report, gaps) -> dict:
+    """What the tester setup inferred, what could not be read, and if it is ready."""
+    try:
+        inferred = inferred_tester_lines(load_config(root))
+    except (OSError, ValueError):
+        inferred = []
+    unreadable = [n for n in report.ambiguous if n.startswith("could not read")]
+    ready = (
+        gaps["tester_browser_launch"]["configured"]
+        and gaps["tester_dev_server"]["configured"]
+        and not unreadable
+    )
+    return {"inferred": inferred, "could_not_read": unreadable, "tester_ready": ready}
+
+
 def configure_project(root, settings, *, config_file=None):
     """Refresh base setup, apply explicit flags, validate, and report no secrets."""
     root = Path(root)
@@ -154,5 +170,6 @@ def configure_project(root, settings, *, config_file=None):
         ),
         "configured": [key for key, gap in gaps.items() if gap["configured"]],
         "skipped": [key for key, gap in gaps.items() if not gap["configured"]],
+        **_tester_report(root, report, gaps),
         "connection_tested": False,
     }
