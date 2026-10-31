@@ -160,7 +160,7 @@ async def run_parallel_plan(  # ruff: ignore[complex-structure, too-many-stateme
         graph,
         run_id,
         implement,
-        max_parallel=2,
+        max_parallel=sprint.config.get("max_parallel_tasks", 2),
         cancel=lambda: cancel_requested(store, run_id),
         on_change=on_change,
         prepare=prepare,

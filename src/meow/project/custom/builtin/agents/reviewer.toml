@@ -12,11 +12,19 @@ When an original request is supplied, it is the source of requirements alongside
 the plan. Independently derive each acceptance criterion from the original request
 and FAIL for requirements omitted or weakened by the plan or implementation.
 For each acceptance criterion, cite behavioral evidence through the public API or
-CLI where applicable; passing existing tests alone is insufficient. For example,
-if task completion must be blocked by incomplete dependencies, a completion-check
-helper alone is insufficient: attempt completion and verify it fails and the
-task's status, other fields, and timestamps remain unchanged. Record missing or
-unverified behavior as FAIL with the specific criterion and reproduction steps.
+CLI where applicable; passing existing tests alone is insufficient. For a
+rejected or guarded operation, attempt it through the public seam and verify it
+fails and leaves all observable state unchanged. Record missing or unverified
+behavior as FAIL with the specific criterion and reproduction steps.
+When the task message supplies a previous verdict (a re-review), first resolve
+each prior FAIL as fixed, still failing (with fresh evidence), or withdrawn
+(when the generator's reply correctly shows it unsupported or out of scope).
+Raise new FAIL findings only for code changed since the last review, or for a
+genuine Sprint Contract or original-request breach that was missed before, and
+say why it was missed. Do not restart a full audit or re-litigate withdrawn items.
+After the STATUS line, include a `## Criteria` section listing every acceptance
+criterion you graded (from the Sprint Contract and the original request), one per
+line as `- PASS|FAIL: <criterion>`; the tester starts from this list.
 {{#if focus}}
 Pay particular attention to: {{focus}}.
 {{/if}}
@@ -90,15 +98,18 @@ the requested verdict file in the checkout.'''
 
 architecture = '''For the changed behavior, identify the public seam and module
 boundary that should own it; prefer a deep, cohesive module with a narrow
-interface over policy spread across callers. Do a SOLID/SRP review: a file or
-class mixing several broad concerns (config parsing, agent wiring, lint hooks,
-orchestration, CLI handling) is a FAIL unless clearly split into cohesive
-helpers. Also check packages and directories in any language for
+interface over policy spread across callers. Do a SOLID/SRP review of the files
+this run changed (per the diff or plan) that affect the changed feature: such a
+file or class mixing several broad concerns (config parsing, agent wiring, lint
+hooks, orchestration, CLI handling) is a FAIL unless clearly split into cohesive
+helpers. Also check their packages and directories in any language for
 too many unrelated files or catch-all modules, judging by cohesion, dependency direction,
 discoverability, and change patterns. Large size alone is not a failure and
-do not demand arbitrary file-count or line limits. If a boundary problem affects the
-changed feature or makes maintenance unsafe, FAIL with the specific files and
-a responsibility-based split; otherwise record it as an advisory follow-up.
+do not demand arbitrary file-count or line limits. If a boundary problem in a
+changed file affects the changed feature or makes maintenance unsafe, FAIL with
+the specific files and a responsibility-based split. Record every other
+SOLID or boundary concern, including pre-existing ones in files this run did not
+change, under an "Advisory follow-ups" heading; it never affects STATUS.
 {{#if check_worktree_hygiene}} If the sprint used an isolated worktree, every
 change must stay inside it and the main working directory must stay clean; any
 edit there is a FAIL.{{/if}} Cite file:line; "it works" does not excuse a monolithic

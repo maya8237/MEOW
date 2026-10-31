@@ -116,3 +116,43 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Write your verdict to branch-review.md", text)
         self.assertIn("FAIL criterion: `ruff check`", text)
         self.assertIn("worktree", text)
+
+
+def test_plan_review_prompt_resolves_prior_findings_before_new_ones():
+    text = prompts.plan_review_prompt(
+        Path("p.md"),
+        Path("p-review.md"),
+        [],
+        focus=None,
+        check_worktree_hygiene=False,
+    )
+
+    assert "previous verdict" in text
+    assert "fixed, still failing (with fresh evidence), or withdrawn" in text
+    assert "only for code changed since the last review" in text
+    assert "say why it was missed" in text
+    assert "STATUS: PASS" in text
+
+
+def test_plan_review_prompt_states_the_guarded_operation_rule_generally():
+    text = prompts.plan_review_prompt(
+        Path("p.md"),
+        Path("p-review.md"),
+        [],
+        focus=None,
+        check_worktree_hygiene=False,
+    )
+
+    assert "rejected or guarded operation" in text
+    assert "leaves all observable state unchanged" in text
+    assert "completion-check" not in text
+    assert "dependencies" not in text
+
+
+def test_architecture_fails_only_changed_files_and_defers_the_rest():
+    text = prompts.architecture_review_instructions(check_worktree_hygiene=True)
+
+    assert "files this run changed" in text
+    assert '"Advisory follow-ups"' in text
+    assert "never affects STATUS" in text
+    assert "worktree" in text

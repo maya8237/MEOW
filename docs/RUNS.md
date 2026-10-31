@@ -37,6 +37,12 @@ Built-in workflows implement, review, and fix until review passes or the
 configured round limit is reached. A passing review is followed by final checks
 before delivery. Custom workflows control their own loop stages.
 
+Each re-review (round 2 on) receives the prior verdict, the generator's reply,
+and the changes since the last review, so settled findings stay settled. A loop
+stops early as `exhausted` (`loop_stalled` in the journal results) when a fix
+round changes no code and still fails, or the same blocking findings repeat for
+`stall_rounds` rounds (top-level config, default 2, `0` disables).
+
 Completion requires an independent reviewer PASS, enabled tester PASS, and
 current required lint/test/build evidence. Advisory failures remain visible.
 Normal runs commit and push to `origin` from their worktree.

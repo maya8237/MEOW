@@ -15,8 +15,9 @@ from typing import Literal
 from meow.agents.base import ProjectContext
 from meow.agents.fixers import ReviewFixAgent
 from meow.agents.generator import Generator
-from meow.agents.reviewer import ReviewerAgent
+from meow.agents.reviewer import ReviewerAgent, criteria_section
 from meow.agents.tester import VerificationAgent
+from meow.execution import round_memory
 from meow.execution.sprint import Sprint, build_sprint
 from meow.infrastructure.checks import (
     StageBaseline,
@@ -119,7 +120,11 @@ async def _review_plan(
     sprint: Sprint, plan_file: Path, focus: str | None = None
 ) -> tuple[str, str]:
     kwargs: dict = {"focus": focus} if focus else {}
-    return await ReviewerAgent(sprint).review_plan(plan_file, **kwargs)
+    if prior := await round_memory.prior_for(sprint, plan_file):
+        kwargs["prior"] = prior
+    status, verdict = await ReviewerAgent(sprint).review_plan(plan_file, **kwargs)
+    await round_memory.remember(sprint, plan_file, verdict)
+    return status, verdict
 
 
 async def review_then_test(  # ruff: ignore[too-many-arguments]
@@ -136,6 +141,7 @@ async def review_then_test(  # ruff: ignore[too-many-arguments]
         review_status, verdict = await _review_plan(sprint, plan_file, focus)
     else:
         review_status, verdict = initial_verdict
+        await round_memory.remember(sprint, plan_file, verdict)
 
     _capture_quality(sprint, verdict)
     _journal(
@@ -149,18 +155,23 @@ async def review_then_test(  # ruff: ignore[too-many-arguments]
         return ReviewTestResult("FAIL", f"{label} feedback:\n{verdict}", review_status)
 
     baseline = _stage_baseline(sprint)
+    prior_test = await round_memory.prior_test_for(sprint, plan_file)
     try:
         async with prepared_test_stage(
             sprint.active_working_dir(), sprint.config
         ) as evidence:
             tester_status, tester_verdict = await VerificationAgent(sprint).test_plan(
-                plan_file, evidence
+                plan_file,
+                evidence,
+                criteria=criteria_section(verdict),
+                prior=prior_test,
             )
     except VerificationSetupError as exc:
         raise RuntimeError(
             f"Tester stage setup failed for {plan_file}: {exc}. "
             f"Tester report path: {plan_test_file(plan_file)}"
         ) from exc
+    await round_memory.remember_test(sprint, plan_file, tester_verdict)
     _journal(
         sprint,
         "tester_finished",
@@ -279,7 +290,7 @@ async def _generate(
     )
     _journal(sprint, "generator_started", round=round_num)
     try:
-        await generator.implement(instruction)
+        round_memory.note_reply(sprint, await generator.implement(instruction))
     except BaseException:
         _journal(sprint, "interrupted_mutation", round=round_num)
         raise
@@ -333,6 +344,7 @@ async def _run_review_rounds(  # ruff: ignore[too-many-arguments]
     if initial_verdict is not None and not test:
         status, verdict = initial_verdict
         _capture_quality(sprint, verdict)
+        await round_memory.remember(sprint, plan_file, verdict)
     else:
         status, verdict = await _review_round(
             sprint,

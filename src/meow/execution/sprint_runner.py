@@ -27,7 +27,12 @@ from meow.execution.run_state import (
     RunStore,
 )
 from meow.execution.sprint import Sprint
-from meow.execution.workflow.engine import LoopExhausted, RunState, run_workflow
+from meow.execution.workflow.engine import (
+    LoopExhausted,
+    LoopStalled,
+    RunState,
+    run_workflow,
+)
 from meow.infrastructure.cancellation import RunCancelled, check_cancel
 from meow.infrastructure.checks import (
     config_fingerprint,
@@ -545,14 +550,17 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     store.update_results(record.id, workflow=state.workflow)
     try:
         await run_workflow(state, steps)
-    except LoopExhausted:
+    except LoopExhausted as exc:
         logger.error(
             "sprint_did_not_pass",
             feature_name=feature_name,
             max_rounds=sprint.config["max_rounds"],
         )
+        stalled = isinstance(exc, LoopStalled)
         store.transition(
-            record.id, "exhausted", last_failure="maximum rounds exhausted"
+            record.id,
+            "exhausted",
+            last_failure=str(exc) if stalled else "maximum rounds exhausted",
         )
         raise
     check_cancel(store, record.id)

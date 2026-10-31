@@ -90,3 +90,25 @@ def test_absent_task_graph_does_not_call_planner(tmp_path):
     with patch("meow.agents.base.Agent.run_query", new=AsyncMock()) as query:
         asyncio.run(tasks(state))
     query.assert_not_awaited()
+
+
+def test_plan_revision_edits_existing_plan_with_feedback(tmp_path):
+    from meow.execution.workflow.builtin_steps import plan
+
+    state = state_for(tmp_path, plan=True)
+    state.round, state.feedback = 2, "SUMMARY: criterion untestable\nSTATUS: FAIL"
+    state.sprint.config["models"]["planner"] = "pinned-planner"
+    requests = []
+
+    async def query(prompt, options, role):  # ruff: ignore[unused-async] -- SDK boundary
+        requests.append((prompt, options, role))
+
+    with patch("meow.agents.base.Agent.run_query", side_effect=query):
+        asyncio.run(plan(state))
+
+    prompt, options, role = requests[0]
+    assert prompt == state.feedback
+    assert f"Revise the existing plan at {state.plan_file}" in options.system_prompt
+    assert "numbered task list" not in options.system_prompt
+    assert options.model == "pinned-planner"
+    assert role == "Planner"

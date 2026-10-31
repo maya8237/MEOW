@@ -29,7 +29,8 @@ Use **CLI mode** (bottom) only if the user explicitly asks for it. Dependency or
    As planner, write `plan_file` (inside `active_dir`) following the shared
    protocol's Planner row. Use an explorer subagent for any codebase research
    you don't need in full. Read the file back and confirm the task list and
-   `## Sprint Contract` exist. Record `planned --run-id <run_id> --plan
+   `## Sprint Contract` exist; run the plan self-check from the
+   shared protocol's Planner row and revise once if it finds a defect. Record `planned --run-id <run_id> --plan
    <plan_file>` with the same directory flags. Write no application code.
 4. Report the plan file's path and the worktree name (JSON `name`). If they
    want it built: `/meow:run` (full loop) -- tell it to continue that worktree

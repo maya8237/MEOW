@@ -25,6 +25,7 @@ from meow.infrastructure.cancellation import RunCancelled
 from meow.infrastructure.checks import (
     adopt_stage_artifacts,
     checks_current,
+    code_revision,
     completion_ready,
     configured_checks,
     reusable_results,
@@ -43,7 +44,22 @@ from meow.tasks.runner import run_parallel_plan
 logger = get_logger(__name__)
 
 
+async def _revise_plan(state):
+    """Edit the existing plan to address the failed plan-check feedback."""
+    state.journal("planning")
+    logger.info("plan_revision_started", round=state.round)
+    state.plan_file = require_plan_file(
+        await PlannerAgent(state.sprint).revise(state.plan_file, state.feedback)
+    )
+    logger.info("plan_revision_finished", plan_file=str(state.plan_file))
+    if state.plan_ready:
+        state.plan_ready(state.plan_file)
+
+
 async def plan(state):
+    if state.plan_file and state.round > 1 and state.feedback:
+        await _revise_plan(state)
+        return
     from meow.execution.sprint_runner import _owner_finished
 
     active = state.sprint.active_working_dir()
@@ -156,11 +172,22 @@ async def generate(state):
                 raise
             _journal(state.sprint, "generator_finished", round=state.round or 1)
 
+    await _run_turn(state, generator, operation)
+
+
+async def _run_turn(state, generator, operation):
+    """Run one generate turn; in a fix round, record whether code changed."""
+    active = state.sprint.active_working_dir()
+    watch = state.pool is not None and (state.round or 1) > 1
+    before = await asyncio.to_thread(code_revision, active) if watch else None
     if state.pool is not None and generator in state.pool.sessions.values():
         await operation()
     else:
         async with generator:
             await operation()
+    if watch:
+        after = await asyncio.to_thread(code_revision, active)
+        state.generate_changed = before != after
 
 
 async def _tester_stage(state, reviewer_status: str) -> tuple[str, str]:

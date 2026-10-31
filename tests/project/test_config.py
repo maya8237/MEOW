@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from meow.project.command_policy import (
     _os_mismatch,
     _program_name,
@@ -18,6 +20,7 @@ from meow.project.config_schema import (
     _normalize_lint_commands,
     _normalize_tester_config,
     _validate_max_rounds,
+    _validate_stall_rounds,
 )
 
 
@@ -731,3 +734,54 @@ class NormalizeLintCommandsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+DEFAULT_STALL_ROUNDS = 2
+
+
+def test_stall_rounds_default_is_two(tmp_path):
+    assert load_config(tmp_path)["stall_rounds"] == DEFAULT_STALL_ROUNDS
+
+
+@pytest.mark.parametrize("value", [0, 2, 3, 10])
+def test_stall_rounds_accepts_zero_and_two_or_more(value):
+    _validate_stall_rounds({"stall_rounds": value})  # no raise
+
+
+@pytest.mark.parametrize("value", [1, -1, True, False, "2", 2.0])
+def test_stall_rounds_rejects_one_negative_boolean_and_non_integer(value):
+    with pytest.raises(ValueError, match="stall_rounds"):
+        _validate_stall_rounds({"stall_rounds": value})
+
+
+def test_load_config_reads_and_validates_stall_rounds(tmp_path):
+    (tmp_path / ".meow").mkdir()
+    path = tmp_path / ".meow" / "config.toml"
+    path.write_text("stall_rounds = 0\n", encoding="utf-8")
+    assert load_config(tmp_path)["stall_rounds"] == 0
+    path.write_text("stall_rounds = 1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="stall_rounds"):
+        load_config(tmp_path)
+
+
+class MaxParallelTasksTests(unittest.TestCase):
+    def test_default_is_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(load_config(Path(tmp))["max_parallel_tasks"], 2)
+
+    def test_configured_value_is_loaded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".meow").mkdir()
+            (Path(tmp) / ".meow" / "config.toml").write_text(
+                "max_parallel_tasks = 4\n", encoding="utf-8"
+            )
+            self.assertEqual(load_config(Path(tmp))["max_parallel_tasks"], 4)
+
+    def test_rejects_non_positive_and_non_integers(self):
+        for bad in ("0", "-1", "true", '"2"', "1.5"):
+            with tempfile.TemporaryDirectory() as tmp:
+                (Path(tmp) / ".meow").mkdir()
+                (Path(tmp) / ".meow" / "config.toml").write_text(
+                    f"max_parallel_tasks = {bad}\n", encoding="utf-8"
+                )
+                with self.assertRaisesRegex(ValueError, "max_parallel_tasks"):
+                    load_config(Path(tmp))
