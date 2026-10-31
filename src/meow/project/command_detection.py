@@ -243,6 +243,16 @@ def _package_server(root: Path, notes: list[str]) -> tuple[dict, str] | None:
     return entry, f"package.json scripts.{name} ({framework})"
 
 
+def dev_command_hint(root: Path) -> str | None:
+    """``<manager> run dev`` when package.json has a usable dev/start script."""
+    package = _package(root)
+    scripts = package.get("scripts")
+    scripts = scripts if isinstance(scripts, dict) else {}
+    manager = _manager(root, package)
+    name = next((n for n in ("dev", "start") if _usable_script(scripts.get(n))), None)
+    return f"{_RUN[manager]} {name}" if manager and name else None
+
+
 def _usable_servers(entries: list[dict], origin: str, notes: list[str]) -> list[dict]:
     """Keep only entries the config schema accepts; inference must not break loading."""
     from meow.project.config_schema import _normalize_tester_config
