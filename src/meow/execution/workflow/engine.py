@@ -13,7 +13,11 @@ from meow.infrastructure.usage import usage_scope
 from meow.project.custom.expressions import evaluate
 from meow.project.custom.rendering import prompt_context
 from meow.project.custom.workflows import Step, walk
-from meow.project.plan_files import plan_review_file, plan_test_file
+from meow.project.plan_files import (
+    plan_review_file,
+    plan_stage_file,
+    plan_test_file,
+)
 
 
 class LoopExhausted(RuntimeError):
@@ -280,7 +284,15 @@ class WorkflowRun:
                     else "."
                 )
             )
-        return f"Workflow loop {step.id!r} did not pass after {limit} rounds."
+        message = f"Workflow loop {step.id!r} did not pass after {limit} rounds."
+        reports = [
+            str(plan_stage_file(state.plan_file, item.id))
+            for item in walk(step.body)
+            if item.kind == "gate" and state.plan_file
+        ]
+        if reports:
+            message += f" Inspect the report: {', '.join(reports)}."
+        return message
 
 
 async def run_workflow(state: RunState, steps: tuple[Step, ...]) -> None:

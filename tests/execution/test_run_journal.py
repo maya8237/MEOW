@@ -16,6 +16,7 @@ from meow.infrastructure.checks import code_revision
 from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.infrastructure.worktree import _ensure_clean_tree
 from meow.project.plan_state import PlanStore
+from tests.plan_check import plan_check_passes
 
 
 def test_interrupted_owner_releases_plan_for_orchestrator_retry(tmp_path):
@@ -104,6 +105,7 @@ def test_run_records_planning_and_completion(tmp_path):  # ruff: ignore[too-many
             return_value=(sprint, "x", tmp_path),
         ),
         patch("meow.execution.workflow.builtin_steps.PlannerAgent") as planner,
+        plan_check_passes(),
         patch("meow.execution.workflow.builtin_steps.generate", new=AsyncMock()),
         patch(
             "meow.execution.workflow.builtin_steps._review_round", side_effect=passed
@@ -177,6 +179,7 @@ def test_run_sprint_persists_delivery_policy(tmp_path, commit, push):
             return_value=(sprint, "x", tmp_path),
         ),
         patch("meow.execution.workflow.builtin_steps.PlannerAgent") as planner,
+        plan_check_passes(),
         patch("meow.execution.workflow.builtin_steps.generate", new=AsyncMock()),
         patch(
             "meow.execution.workflow.builtin_steps._review_round", side_effect=passed

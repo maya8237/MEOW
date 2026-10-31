@@ -226,7 +226,7 @@ def test_default_rounds_preserve_phase_sequence(tmp_path, review_first):
     steps = tuple(
         step
         for step in expand(workflow, state.sprint.config["customizations"])
-        if step.kind == "loop"
+        if step.id == "rounds"
     )
     generator = AsyncMock()
     generator.__aenter__.return_value = generator
@@ -411,6 +411,10 @@ def test_default_workflow_full_phase_order(tmp_path, mode):  # ruff: ignore[too-
     generator.__aenter__ = AsyncMock(return_value=generator)
     generator.__aexit__ = AsyncMock()
     generator.implement = AsyncMock()
+
+    async def pass_verdict(agent, task, values, pool):  # ruff: ignore[unused-async] -- SDK double
+        values["output_file"].write_text("SUMMARY: ok\nSTATUS: PASS", encoding="utf-8")
+
     kwargs = {}
     if mode in {"plan", "resume", "parallel"}:
         kwargs["plan_file"] = plan
@@ -439,6 +443,9 @@ def test_default_workflow_full_phase_order(tmp_path, mode):  # ruff: ignore[too-
             new=AsyncMock(return_value=("PASS", "STATUS: PASS")),
         ),
         patch(
+            "meow.execution.workflow.stages.StageAgent.run", side_effect=pass_verdict
+        ),
+        patch(
             "meow.execution.workflow.builtin_steps.run_parallel_plan", new=AsyncMock()
         ),
         patch("meow.execution.workflow.builtin_steps.deliver_verified_run"),
@@ -453,6 +460,9 @@ def test_default_workflow_full_phase_order(tmp_path, mode):  # ruff: ignore[too-
     if mode in {"fresh", "test"}:
         expected += ["planning"]
     expected += ["planned"]
+    # The plan-checker gate runs for fresh plans; a skipped gate still journals.
+    expected += ["stage_started"] if mode in {"fresh", "test"} else []
+    expected += ["stage_finished"]
     if mode not in {"resume", "parallel"}:
         expected += ["generator_started", "generator_finished"]
     expected += ["reviewer_started", "reviewer_finished"]
@@ -503,3 +513,100 @@ def test_quick_skips_review_while_checks_fail(tmp_path):
     assert reviews == [EXPECTED_ROUNDS]  # review waited for passing checks
     assert state.statuses["review"]["status"] == "PASS"
     assert state.statuses["verify"]["status"] == "PASS"
+
+
+def _plan_check_steps():
+    from meow.project.custom.definitions import discover
+    from meow.project.custom.sources import builtin_sources
+
+    catalog = discover(builtin_sources())
+    steps = expand(catalog.workflow("default"), catalog)
+    return tuple(step for step in steps if step.id == "plan-check")
+
+
+def test_default_workflow_plan_check_sits_between_plan_and_approve():
+    from meow.project.custom.definitions import discover
+    from meow.project.custom.sources import builtin_sources
+    from meow.project.custom.workflows import validate
+
+    catalog = discover(builtin_sources())
+    default = catalog.workflow("default")
+    ids = [step.id for step in default.steps]
+    assert ids[:3] == ["plan", "plan-check", "approve"]
+    assert validate(default, catalog) == []
+    loop = default.steps[1]
+    assert loop.max_rounds == EXPECTED_ROUNDS
+    assert [(item.id, item.kind) for item in loop.body] == [
+        ("revise-plan", "uses"),
+        ("plan-checker", "gate"),
+    ]
+    assert all("plan_given" in item.when for item in loop.body)
+    assert all("resume_review" in item.when for item in loop.body)
+
+
+def test_plan_check_revises_plan_then_passes(tmp_path):
+    state = state_for(tmp_path, plan=True)
+    state.flags["plan_given"] = False
+    verdicts = iter(["FAIL", "PASS"])
+    revisions = []
+
+    async def run(agent, task, values, pool):  # ruff: ignore[unused-async] -- SDK double
+        assert agent.name == "plan-checker"
+        assert values["output_file"] == plan_stage_file(state.plan_file, "plan-checker")
+        values["output_file"].write_text(
+            f"SUMMARY: s\nSTATUS: {next(verdicts)}", encoding="utf-8"
+        )
+
+    async def revise(self, plan_file, feedback):  # ruff: ignore[unused-async] -- SDK double
+        revisions.append((plan_file, feedback, state.round))
+        return plan_file
+
+    with (
+        patch("meow.execution.workflow.stages.StageAgent.run", side_effect=run),
+        patch("meow.execution.workflow.builtin_steps.PlannerAgent.revise", revise),
+        patch(
+            "meow.execution.workflow.builtin_steps.PlannerAgent.run",
+            new=AsyncMock(side_effect=AssertionError("must revise, not replan")),
+        ),
+    ):
+        asyncio.run(run_workflow(state, _plan_check_steps()))
+    assert len(revisions) == 1
+    assert revisions[0][0] == state.plan_file
+    assert "STATUS: FAIL" in revisions[0][1]
+    assert revisions[0][2] == EXPECTED_ROUNDS
+    assert "plan-check" in state.completed
+    assert stages(state)["plan-checker"]["status"] == "PASS"
+
+
+def test_plan_check_exhaustion_points_to_report(tmp_path):
+    state = state_for(tmp_path, plan=True)
+    state.flags["plan_given"] = False
+
+    async def run(agent, task, values, pool):  # ruff: ignore[unused-async] -- SDK double
+        values["output_file"].write_text("SUMMARY: s\nSTATUS: FAIL", encoding="utf-8")
+
+    with (
+        patch("meow.execution.workflow.stages.StageAgent.run", side_effect=run),
+        patch(
+            "meow.execution.workflow.builtin_steps.PlannerAgent.revise",
+            new=AsyncMock(return_value=state.plan_file),
+        ),
+        pytest.raises(LoopExhausted, match=r"plan-checker\.stage\.md") as caught,
+    ):
+        asyncio.run(run_workflow(state, _plan_check_steps()))
+    assert str(plan_stage_file(state.plan_file, "plan-checker")) in str(caught.value)
+    assert "plan-check" not in state.completed
+
+
+@pytest.mark.parametrize("flag", ["plan_given", "resume_review"])
+def test_plan_check_skipped_for_given_plan_or_review_resume(tmp_path, flag):
+    state = state_for(tmp_path, plan=True)
+    state.flags[flag] = True
+    run = AsyncMock()
+    with (
+        patch("meow.execution.workflow.stages.StageAgent.run", new=run),
+        patch("meow.execution.workflow.builtin_steps.PlannerAgent.revise", new=run),
+    ):
+        asyncio.run(run_workflow(state, _plan_check_steps()))
+    run.assert_not_awaited()
+    assert "plan-check" in state.completed

@@ -731,3 +731,27 @@ class NormalizeLintCommandsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MaxParallelTasksTests(unittest.TestCase):
+    def test_default_is_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(load_config(Path(tmp))["max_parallel_tasks"], 2)
+
+    def test_configured_value_is_loaded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".meow").mkdir()
+            (Path(tmp) / ".meow" / "config.toml").write_text(
+                "max_parallel_tasks = 4\n", encoding="utf-8"
+            )
+            self.assertEqual(load_config(Path(tmp))["max_parallel_tasks"], 4)
+
+    def test_rejects_non_positive_and_non_integers(self):
+        for bad in ("0", "-1", "true", '"2"', "1.5"):
+            with tempfile.TemporaryDirectory() as tmp:
+                (Path(tmp) / ".meow").mkdir()
+                (Path(tmp) / ".meow" / "config.toml").write_text(
+                    f"max_parallel_tasks = {bad}\n", encoding="utf-8"
+                )
+                with self.assertRaisesRegex(ValueError, "max_parallel_tasks"):
+                    load_config(Path(tmp))

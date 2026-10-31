@@ -546,6 +546,16 @@ def _validate_max_rounds(config: dict) -> None:
         )
 
 
+def _validate_max_parallel_tasks(config: dict) -> None:
+    """Reject a non-positive or non-integer `max_parallel_tasks` up front."""
+    value = config["max_parallel_tasks"]
+    if not (isinstance(value, int) and not isinstance(value, bool) and value >= 1):
+        raise ValueError(
+            f"{CONFIG_FILENAME}: max_parallel_tasks must be a positive integer, "
+            f"got {value!r}."
+        )
+
+
 # `[run]`: the bounded retry ladder for parked runs (seconds where timed).
 # auto_retries: supervisor relaunches per park without progress; retry_backoff:
 # waits between them; managed_resumes: resumes a managing session may run per

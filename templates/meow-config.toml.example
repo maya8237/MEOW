@@ -6,6 +6,8 @@
 # config instead of this shared file.
 
 max_rounds = 8
+# Task-graph worktrees implemented concurrently (positive integer).
+max_parallel_tasks = 2
 docs_dir = ".meow/plans"
 
 # Commands are launched without shell evaluation. `$NAME`, `${NAME}`, and

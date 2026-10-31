@@ -1,6 +1,6 @@
 # Workflows and agent definitions
 
-A run executes a named TOML workflow. MEOW retains preparation, worktree/setup,
+A run executes a named TOML workflow; MEOW keeps preparation, worktree/setup,
 onboarding, plan ownership, and terminal-state policy.
 
 ```bash
@@ -8,25 +8,31 @@ meow run "Add a dark mode toggle" --name dark-mode --workflow quick
 meow run "Audit the API" --workflow review-and-fix --no-worktree --input topic=API
 ```
 
-- `default`: plan/approval → tasks → loop{generate, verify, review} → checks → delivery.
+- `default`: plan → plan-check (≤2 rounds) → approval → tasks → loop{generate, verify, review} → checks → delivery.
 - `quick`: short plan (`-m` pauses to approve), then ≤3 rounds of generate → checks → review
   (review waits for passing checks), final checks, delivery. No task
   graph; configured tests don't enable the AI tester.
-- `review-and-fix`: verifies/reviews existing code first, fixes failures, final checks; no delivery.
+- `review-and-fix`: reviews existing code, fixes failures, final checks; no delivery.
   `--test` works without a plan, using the request as its basis.
 - `test-fix`: ≤4 rounds of fix → verify → tester → review on existing code; no delivery.
 
 Plan-based reviewers/testers also receive the original request, including on
-resume. They must verify every criterion from observed behavior; passing tests
-alone cannot excuse requirements lost/weakened in a plan. Ejected definitions
-replace this prose and need equivalent instructions.
+resume, and verify every criterion from observed behavior; passing tests alone
+cannot excuse requirements lost in a plan. Ejected definitions need equivalent prose.
 
-Invalid task dependencies/ownership get one `task_graph_repair` attempt, preserving
-the plan/contract. Failed repair journals the reason and uses sequential generation.
+`plan-check` runs a read-only `plan-checker` gate (skipped for given plans/resume):
+FAIL only for requirements lost in the Sprint Contract, untestable criteria, or
+graph overlap/prose verification. Round 2 first revises the plan (`builtin.plan`,
+planner `revise` fragment). Exhaustion stops before code, naming
+`<plan-stem>.plan-checker.stage.md`.
+
+Invalid task dependencies/ownership get one `task_graph_repair` attempt; failure
+journals the reason and generates sequentially. `max_parallel_tasks` (default 2)
+bounds concurrent task worktrees.
 
 `--workflow NAME` overrides `[workflow].default` (otherwise `"default"`).
-Repeated `--input name=value` supplies identifier-keyed strings; values may
-contain `=` or be empty, and last wins. Inputs persist with journal redaction.
+Repeated `--input name=value` supplies identifier-keyed strings (values may
+contain `=` or be empty; last wins), persisted with journal redaction.
 Workflow flags support Jira/background runs but reject lint-fix.
 See [verification](VERIFICATION.md) for `auto_test`, `short_plan`, and test selection.
 
@@ -44,7 +50,7 @@ Whole files resolve by name, highest priority first:
 Conventional folders need no config. Extra `[custom]` sources follow
 [CUSTOM.md](CUSTOM.md); workflow sources cannot restrict roles.
 Same-scope duplicates fail; overrides are reported. Resolution uses the run's
-config root even when tasks execute in other worktrees.
+config root even in task worktrees.
 
 `meow agents` supports list/show/eject/diff; `meow workflows` supports
 list/show/validate/eject. All accept `--work-dir PATH`. Eject copies the shipped
@@ -52,17 +58,16 @@ definition even when another scope overrides it, defaults to project scope,
 accepts local/user, and refuses overwrite. Copies record
 `ejected_from = "builtin:name@<sha256>"`; run startup and show/validate warn when
 that origin changes or disappears, with paths for inspecting the copy. Workflow
-diagnostics include called workflows and agents, and identify ejected agents the
-selected workflow does not use (another workflow may use them). Conditional steps,
-delegates, task workers, and delivery fixers count as possible uses. Valid copies
-continue unchanged across upgrades; missing references fail before agents start.
-Handwritten definitions without origin metadata have no drift/unused warning.
+diagnostics include called workflows and agents, and flag ejected agents the
+selected workflow does not use. Conditional steps, delegates, task workers, and
+delivery fixers count as possible uses. Valid copies continue unchanged across
+upgrades; missing references fail before agents start. Handwritten definitions
+have no drift/unused warning.
 
 ## Agents
 
-Create `<name>.toml`: lowercase letters/digits separated by single hyphens,
-at most 64 characters. Optional `name` must match the stem.
-`description` and `prompt` are required.
+Create `<name>.toml`: lowercase letters/digits separated by single hyphens, at
+most 64 characters; optional `name` must match. `description` and `prompt` are required.
 
 ```toml
 description = "Review API authorization"
@@ -79,20 +84,19 @@ Write findings to {{output_file}}.
 '''
 ```
 
-Hyphens map to underscores for roles. Model order: `[models].role`, agent, role/reviewer fallback.
-`inherit` supplies no explicit model; built-in explorer uses haiku.
-Installed default/role skill lists combine with definition and discovered skills.
+Hyphens map to underscores for roles. Model order: `[models].role`, agent,
+role/reviewer fallback; `inherit` supplies none (explorer uses haiku). Default
+and role skill lists combine with definition and discovered skills.
 
-`session = "persistent"` lazily retains a role session inside a loop and closes
-it at loop end, rendering current values each turn. Outside loops, invocations
-own sessions. `lint_on_edit` enables post-edit lint. Optional `[variants]`
-select alternate prompts (missing variants use main); `[fragments]` defines reusable text.
+`session = "persistent"` retains a role session inside a loop until it ends,
+rendering current values each turn; outside loops invocations own sessions.
+`lint_on_edit` enables post-edit lint. `[variants]` select alternate prompts
+(missing variants use main); `[fragments]` defines reusable text.
 
 Named `agents` delegates are capped to parent tools and exclude Agent.
 Configured custom agents retain planner/generator (or explicit role) compatibility;
-conventional definitions run only when named. Explorer is overridable.
-Claude Code Markdown agents remain a frontmatter/body import format; specify
-tools for standalone stages.
+conventional definitions run only when named. Explorer is overridable. Claude Code
+Markdown agents are a frontmatter/body import format; specify tools for stages.
 
 ## Templates and expressions
 
@@ -100,11 +104,11 @@ Syntax: `{{value}}`, `{{> fragment}}`, nested
 `{{#if expression}}...{{else}}...{{/if}}`, and `{{#unless expression}}...{{/unless}}`.
 Unknown variables/fragments fail before agents, naming the definition file;
 unavailable values or missing dotted keys on known values are empty.
-Substituted Windows paths retain spaces/backslashes. TOML newlines survive;
+Substituted Windows paths retain spaces/backslashes; TOML newlines survive and
 paragraph folding preserves substituted values, lists, and code.
 
 Conditions allow dotted identifiers, quoted strings, integers, booleans,
-`== != < <= > >=`, `and/or/not`, and parentheses; no calls or Python evaluation.
+`== != < <= > >=`, `and/or/not`, and parentheses; no calls.
 
 | Values | Meaning |
 |---|---|
@@ -167,32 +171,29 @@ Gate `blocks` defaults to loop inside loops, delivery outside:
 
 Loops require a blocking gate or builtin.review. Parallel branches must be
 agent/gate definitions without Edit/Bash/NotebookEdit and share the worktree;
-report paths remain distinct by step ID. Tools/prompts never bypass permission
-policy; discovered agent names are valid roles, unknown names fail config.
+report paths stay distinct by step ID. Tools/prompts never bypass permission policy.
 
 ## Built-in operations and recovery
 
-`plan` writes/claims the plan; `approve_plan` invokes manual approval;
-`tasks` integrates task worktrees; `generate` implements/fixes;
-`review` reviews/optionally tests; `test` always tests (not under `--force-disable-tests`;
-`review` then skips its own tester); `verify` runs the checks inside a loop and
-fails the round with their output; `checks` records current lint/test/build/browser
-evidence, reusing `verify` results only when source/config are unchanged (resume reruns).
-`deliver` performs verified delivery. Reviewer PASS is required by checks only if
+`plan` writes/claims the plan (revises it in a loop round > 1 with feedback);
+`approve_plan` invokes manual approval; `tasks` integrates task worktrees;
+`generate` implements/fixes; `review` reviews/optionally tests; `test` always
+tests (not under `--force-disable-tests`; `review` then skips its own tester);
+`verify` runs the checks inside a loop and fails the round with their output;
+`checks` records current lint/test/build/browser evidence, reusing `verify`
+results only when source/config are unchanged (resume reruns). `deliver` delivers. Reviewer PASS is required by checks only if
 builtin.review exists. Delivery gates must pass before checks/delivery.
 
 Builtins retain phase names. Custom stages journal stage_started/stage_finished
 with status/summary/file/round under results.stages. Reports are
-`<plan-stem>.<id>.stage.md`, otherwise `<docs_dir>/<id>.stage.md`;
-latest-plan lookup excludes them. All steps honor cancellation, accounting,
-and timeout. Only SDK crash recovery and explicit loops retry. Custom workflow
-steps run once per run, not once per task.
+`<plan-stem>.<id>.stage.md`, otherwise `<docs_dir>/<id>.stage.md`; latest-plan
+lookup excludes them. All steps honor cancellation, accounting, and timeout.
+Only SDK crash recovery and explicit loops retry. Custom steps run once per run.
 
-Status shows workflow and stages. Journals retain resolved fingerprints,
-completed top-level IDs, and active loop/step. Resume rejects changed
-definitions, skips completed top-level steps, and enters interrupted loops
-review-first. Evidence freshness/delivery guards still apply.
-Role session IDs remain transcript references owned by Claude.
+Status shows workflow and stages. Journals retain fingerprints, completed
+top-level IDs, and the active loop/step. Resume rejects changed definitions,
+skips completed top-level steps, and enters interrupted loops review-first. Evidence freshness/delivery guards still apply. Role session IDs
+remain transcript references owned by Claude.
 
 `meow native workflow NAME` inspects resolved JSON; `native prompt ROLE`
 renders resolved instructions/models. Native helpers do not drive custom
