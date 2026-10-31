@@ -15,7 +15,7 @@ The preflight starts the dev server and a headless browser, so plain `native ver
 | Check | Proves |
 |---|---|
 | `target` | a `base_url`, `[[tester.dev_server]]` or `[tester.browser]` exists |
-| `browser_config` | exactly one browser is selected; `browser_executable` is a file |
+| `browser_config` | a browser is selected (Chrome by default); `browser_executable` is a file |
 | `runtime`, `playwright` | node or bun is on PATH; `playwright` resolves |
 | `ports` | MEOW can listen on and connect to a loopback port |
 | `browser` | the selected browser launches headless |
@@ -58,7 +58,8 @@ Read-only, never executed, never written to disk; explicit `[tester]` keys win p
 
 ## Browser selection
 
-For a frontend (`base_url` or a dev server) set exactly one; more than one is an error.
+For a frontend (`base_url` or a dev server) set at most one; more than one is an error.
+With none, MEOW uses `browser_channel = "chrome"` and each run prints a notice.
 
 | Key | Meaning |
 |---|---|
@@ -69,9 +70,9 @@ For a frontend (`base_url` or a dev server) set exactly one; more than one is an
 `browser_env` sets Playwright variables for the tester; keys must match `PLAYWRIGHT_*`.
 Playwright 1.63 has no env var for the browser path: use the keys above.
 `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS` only skips the missing-system-library
-check; `PLAYWRIGHT_BROWSERS_PATH` relocates downloaded browsers. With no browser
-selected the tester FAILs UI changes ("browser not configured") and each run prints a
-warning; `browser_playwright = true` restores the previous behavior.
+check; `PLAYWRIGHT_BROWSERS_PATH` relocates downloaded browsers. Without Google
+Chrome installed the default fails the `browser` preflight check; set
+`browser_playwright = true` (the previous behavior) or another key.
 
 ## Dev-server ports
 

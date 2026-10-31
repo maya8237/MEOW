@@ -1,19 +1,30 @@
 """Readable tester setup facts: the no-browser warning and inferred values."""
 
 _SELECTION_KEYS = ("browser_channel", "browser_executable", "browser_playwright")
-_WARNING = (
-    '[tester] no browser selected; UI changes will FAIL ("browser not configured"). '
-    "Set browser_channel, browser_executable, or browser_playwright = true "
-    "(the previous behavior)."
+DEFAULT_CHANNEL = "chrome"
+DEFAULT_ORIGIN = "default"
+_NOTICE = (
+    "[tester] no browser selected; using Google Chrome "
+    '(browser_channel = "chrome"). Set browser_channel, browser_executable or '
+    "browser_playwright = true to choose another."
 )
 
 
-def browser_selection_warning(config: dict) -> str | None:
-    """The warning for a frontend tester with no browser selected, else None."""
+def apply_browser_default(config: dict) -> None:
+    """Select Chrome when a frontend is configured and no browser is chosen."""
     tester = config.get("tester", {})
     frontend = tester.get("base_url") or tester.get("dev_server")
     if frontend and not any(tester.get(key) for key in _SELECTION_KEYS):
-        return _WARNING
+        config["tester"] = {**tester, "browser_channel": DEFAULT_CHANNEL}
+        origins = config.setdefault("_detected_origins", {})
+        origins["tester.browser_channel"] = DEFAULT_ORIGIN
+
+
+def browser_default_notice(config: dict) -> str | None:
+    """The notice that Chrome was defaulted for a frontend tester, else None."""
+    origins = config.get("_detected_origins", {})
+    if origins.get("tester.browser_channel") == DEFAULT_ORIGIN:
+        return _NOTICE
     return None
 
 

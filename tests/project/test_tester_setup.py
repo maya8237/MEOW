@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, patch
 from meow.cli import status_cli
 from meow.execution import sprint_runner
 from meow.project.config import load_config
-from meow.project.tester_setup import browser_selection_warning, inferred_tester_lines
+from meow.project.tester_setup import browser_default_notice, inferred_tester_lines
 
-WARNING = (
-    '[tester] no browser selected; UI changes will FAIL ("browser not configured"). '
-    "Set browser_channel, browser_executable, or browser_playwright = true "
-    "(the previous behavior)."
+NOTICE = (
+    "[tester] no browser selected; using Google Chrome (browser_channel = "
+    '"chrome"). Set browser_channel, browser_executable or '
+    "browser_playwright = true to choose another."
 )
 WEB_SERVER = "export default { webServer: { command: 'npm run dev', port: 3000 } };"
 
@@ -24,23 +24,24 @@ def project(tmp_path, toml="", playwright=None):
     return load_config(tmp_path)
 
 
-def test_warns_for_a_base_url_or_dev_server_without_a_browser(tmp_path):
+def test_defaults_to_chrome_for_a_base_url_or_dev_server_without_a_browser(tmp_path):
     config = project(tmp_path, '[tester]\nbase_url = "http://127.0.0.1:3000"\n')
-    assert browser_selection_warning(config) == WARNING
+    assert config["tester"]["browser_channel"] == "chrome"
+    assert browser_default_notice(config) == NOTICE
 
 
 def test_no_warning_with_a_selection_or_without_a_frontend(tmp_path):
     chosen = project(
         tmp_path, '[tester]\nbase_url = "http://x:1"\nbrowser_channel = "chrome"\n'
     )
-    assert browser_selection_warning(chosen) is None
-    assert browser_selection_warning(project(tmp_path, "")) is None
+    assert browser_default_notice(chosen) is None
+    assert browser_default_notice(project(tmp_path, "")) is None
 
 
 def test_an_inferred_selection_counts_as_a_selection(tmp_path):
     config = project(tmp_path, "", playwright=WEB_SERVER)
     assert config["tester"]["browser_playwright"] is True
-    assert browser_selection_warning(config) is None
+    assert browser_default_notice(config) is None
 
 
 def test_inferred_lines_show_values_with_their_sources(tmp_path):
@@ -70,14 +71,14 @@ def run_start(tmp_path, capsys, **options):
 def test_run_start_prints_the_warning_once_and_does_not_fail(tmp_path, capsys):
     project(tmp_path, '[tester]\nbase_url = "http://127.0.0.1:3000"\n')
     out = run_start(tmp_path, capsys)
-    assert out.count(WARNING) == 1
+    assert out.count(NOTICE) == 1
 
 
 def test_run_start_is_quiet_when_configured_or_tests_are_disabled(tmp_path, capsys):
     project(tmp_path, '[tester]\nbase_url = "http://x:1"\nbrowser_playwright = true\n')
-    assert WARNING not in run_start(tmp_path, capsys)
+    assert NOTICE not in run_start(tmp_path, capsys)
     project(tmp_path, '[tester]\nbase_url = "http://127.0.0.1:3000"\n')
-    assert WARNING not in run_start(tmp_path, capsys, force_disable_tests=True)
+    assert NOTICE not in run_start(tmp_path, capsys, force_disable_tests=True)
 
 
 def test_status_prints_the_warning_and_inferred_values(tmp_path, capsys):
@@ -90,7 +91,7 @@ def test_status_prints_the_warning_and_inferred_values(tmp_path, capsys):
         status_cli._print_run(record, False, [])
     out = capsys.readouterr().out
     assert "RENDERED" in out
-    assert WARNING in out
+    assert NOTICE in out
     project(tmp_path, "", playwright=WEB_SERVER)
     with (
         patch.object(status_cli, "render", return_value="RENDERED"),
