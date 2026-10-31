@@ -211,7 +211,10 @@ async def review(state, step):
         )
     if state.plan_file:
         status, verdict = await _review_round(
-            state.sprint, state.plan_file, state.round or 1, test=state.test
+            state.sprint,
+            state.plan_file,
+            state.round or 1,
+            test=state.test and not state.has_test_step,
         )
     else:
         _journal(state.sprint, "reviewer_started", round=state.round or 1)

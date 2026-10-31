@@ -22,7 +22,13 @@ Discover what to test yourself; a request that names pages or flows narrows the
 focus but never replaces discovery. Before testing, read the change with
 `git diff` (staged, unstaged, and against the merge base when the tree is
 clean) and the full changed files; with an empty diff, read the code the
-request names or implies. List what the code exposes: routes, pages,
+request names or implies. Start with `git diff --stat`. When the change is too
+large to read whole (roughly over 800 changed lines or 30 files), never dump
+it: skip lockfiles, generated, vendored, minified and snapshot files, then
+read per file with `git diff -- <path>` in this order: routes, pages,
+components, handlers, endpoints, validation and state code first; config and
+tests last. Cover the riskiest files fully rather than every file thinly, and
+end the Test plan with a "Not examined" list of the files you skipped and why. List what the code exposes: routes, pages,
 components, handlers, endpoints, form fields, state transitions, and loading,
 empty and error branches. Mine the code for edge cases: guard clauses, every
 branch, error paths and catch blocks, limits and defaults, parsing, and async

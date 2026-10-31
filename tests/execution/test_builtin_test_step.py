@@ -7,6 +7,7 @@ import pytest
 from meow.execution.run_state import RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.execution.workflow import builtin_steps
+from meow.project.custom.workflows import Step
 from meow.project.plan_files import stage_file
 
 WORKFLOW = """description = "test only"
@@ -119,3 +120,23 @@ def test_force_disable_tests_skips_the_tester_in_a_real_run(tmp_path):
         )
     assert called == []
     assert RunStore(tmp_path).latest().results.get("tester") != "PASS"
+
+
+@pytest.mark.parametrize(("has_test_step", "expected"), [(True, False), (False, True)])
+def test_plan_review_runs_its_own_tester_only_without_a_test_step(
+    has_test_step, expected
+):
+    state = SimpleNamespace(
+        flags={},
+        test=True,
+        has_test_step=has_test_step,
+        plan_file="plan.md",
+        sprint=SimpleNamespace(),
+        round=1,
+        pool=None,
+        gate_result=MagicMock(),
+    )
+    round_ = AsyncMock(return_value=("PASS", "SUMMARY: ok\nSTATUS: PASS"))
+    with patch.object(builtin_steps, "_review_round", round_):
+        asyncio.run(builtin_steps.review(state, Step(kind="uses", id="review")))
+    assert round_.await_args.kwargs["test"] is expected

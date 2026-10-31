@@ -294,3 +294,15 @@ def test_tester_prompt_requires_discovery_rendering_and_edge_cases():
 def test_tester_prompt_renders_in_both_write_modes():
     for write_tests in (False, True):
         assert prompts.tester_prompt(Path("r.md"), write_tests=write_tests)
+
+
+def test_tester_prompt_handles_diffs_too_large_to_read_whole():
+    prompt = prompts.tester_prompt(Path("r.md"))
+    for phrase in (
+        "git diff --stat",
+        "too large",
+        "lockfiles",
+        "generated",
+        "Not examined",
+    ):
+        assert phrase in prompt, phrase
