@@ -2,6 +2,7 @@
 
 import configparser
 import json
+import posixpath
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -202,6 +203,26 @@ def detect_commands(root: Path) -> DetectedCommands:
     return DetectedCommands(defaults, origins, ambiguous)
 
 
+PLAYWRIGHT_CONFIG_NAMES = (
+    "playwright.config.ts",
+    "playwright.config.js",
+    "playwright.config.mjs",
+    "playwright.config.cjs",
+)
+_PREFERRED_DIRS = ("frontend", "web", "client", "app", "ui")
+_SKIP_DIRS = frozenset({
+    "node_modules",
+    "dist",
+    "build",
+    "out",
+    "coverage",
+    "vendor",
+    "venv",
+    "env",
+    "target",
+    "__pycache__",
+})
+MAX_FRONTEND_DIRS = 10
 FRAMEWORK_PORT_FLAGS = {"vite": "--port {port}", "next": "-p {port}"}
 _DEV_URL = "http://127.0.0.1:{port}/"
 _OWN_BROWSER_CHANNELS = frozenset({"chromium", "chromium-headless-shell"})
@@ -211,6 +232,52 @@ _BROWSER_KEYS = frozenset({
     "browser_playwright",
 })
 _RUN = {"npm": "npm run", "pnpm": "pnpm run", "yarn": "yarn", "bun": "bun run"}
+
+
+def _is_candidate(child: Path) -> bool:
+    if child.name.startswith(".") or child.name in _SKIP_DIRS:
+        return False
+    try:
+        if child.is_symlink() or not child.is_dir():
+            return False
+        return (child / "package.json").is_file() or any(
+            (child / name).is_file() for name in PLAYWRIGHT_CONFIG_NAMES
+        )
+    except OSError:
+        return False
+
+
+def frontend_roots(root: Path) -> tuple[Path, ...]:
+    """The repo root plus its immediate subfolders that look like a web project.
+
+    One level only, bounded, no symlinks or dependency folders; conventional names
+    (frontend, web, client, app, ui) come first, then alphabetical.
+    """
+    try:
+        children = sorted(root.iterdir())
+    except OSError:
+        return (root,)
+    found = [child for child in children if _is_candidate(child)]
+
+    def rank(directory: Path) -> tuple[int, str]:
+        name = directory.name
+        return (
+            _PREFERRED_DIRS.index(name)
+            if name in _PREFERRED_DIRS
+            else len(_PREFERRED_DIRS),
+            name,
+        )
+
+    return (root, *sorted(found, key=rank)[:MAX_FRONTEND_DIRS])
+
+
+def _relative(root: Path, directory: Path) -> str:
+    return directory.relative_to(root).as_posix()
+
+
+def _label(root: Path, directory: Path, name: str) -> str:
+    rel = _relative(root, directory)
+    return name if rel == "." else f"{rel}/{name}"
 
 
 def _package_server(root: Path, notes: list[str]) -> tuple[dict, str] | None:
@@ -243,14 +310,19 @@ def _package_server(root: Path, notes: list[str]) -> tuple[dict, str] | None:
     return entry, f"package.json scripts.{name} ({framework})"
 
 
-def dev_command_hint(root: Path) -> str | None:
-    """``<manager> run dev`` when package.json has a usable dev/start script."""
-    package = _package(root)
-    scripts = package.get("scripts")
-    scripts = scripts if isinstance(scripts, dict) else {}
-    manager = _manager(root, package)
-    name = next((n for n in ("dev", "start") if _usable_script(scripts.get(n))), None)
-    return f"{_RUN[manager]} {name}" if manager and name else None
+def dev_command_hint(root: Path) -> tuple[str, str] | None:
+    """(folder, ``<manager> run dev``) of the first web project with a dev script."""
+    for directory in frontend_roots(Path(root)):
+        package = _package(directory)
+        scripts = package.get("scripts")
+        scripts = scripts if isinstance(scripts, dict) else {}
+        manager = _manager(directory, package)
+        name = next(
+            (n for n in ("dev", "start") if _usable_script(scripts.get(n))), None
+        )
+        if manager and name:
+            return _relative(Path(root), directory), f"{_RUN[manager]} {name}"
+    return None
 
 
 def _usable_servers(entries: list[dict], origin: str, notes: list[str]) -> list[dict]:
@@ -304,23 +376,48 @@ def _inferred_browser(pw, notes: list[str]) -> dict:
     return dict(chosen) if len(chosen) == 1 else {}
 
 
-def _inferred_servers(root: Path, pw, explicit: dict, notes: list[str]):
-    """Dev-server entries and their origin, from webServer or package.json."""
+def _inferred_servers(root: Path, directory: Path, pw, explicit: dict, notes):  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- one folder's scan context
+    """Dev-server entries and their origin for one folder, with composed cwds."""
+    rel = _relative(root, directory)
+    label = _label(root, directory, pw.file) if pw.file else ""
     entries = [
         {
             "command": server.command,
             "ready_url": server.url or f"http://127.0.0.1:{server.port}/",
-            "cwd": server.cwd,
+            "cwd": posixpath.normpath(posixpath.join(rel, server.cwd)),
             **({"startup_timeout": server.timeout} if server.timeout else {}),
         }
         for server in pw.servers
     ]
     if entries:
-        return _usable_servers(entries, pw.file or "", notes), pw.file or ""
+        return _usable_servers(entries, label, notes), label
     if "base_url" in explicit:
         return [], ""
-    found = _package_server(root, notes)
-    return ([found[0]], found[1]) if found else ([], "")
+    found = _package_server(directory, notes)
+    if not found:
+        return [], ""
+    origin = _label(root, directory, found[1])
+    entry = {**found[0], "cwd": rel}
+    return _usable_servers([entry], origin, notes), origin
+
+
+def _scan_servers(root: Path, scans: list, explicit: dict, notes: list[str]):
+    """(directory, config, servers, origin) of the first folder with a server."""
+    chosen, others = None, []
+    for directory, pw in scans:
+        servers, origin = _inferred_servers(root, directory, pw, explicit, notes)
+        if not servers:
+            continue
+        if chosen is None:
+            chosen = (directory, pw, servers, origin)
+        else:
+            others.append(_relative(root, directory))
+    if others and chosen:
+        notes.append(
+            f"also found a frontend setup in {', '.join(others)}; using "
+            f"{_relative(root, chosen[0])}; set [[tester.dev_server]] to choose"
+        )
+    return chosen
 
 
 def _tester_inference(
@@ -329,27 +426,34 @@ def _tester_inference(
     """``[tester]`` defaults read from the project's own test setup; reads only."""
     from meow.project.playwright_config import read_playwright_config
 
-    pw = read_playwright_config(root)
+    scans = [(d, read_playwright_config(d)) for d in frontend_roots(root)]
+    notes = [
+        f"could not read {item}" for directory, pw in scans for item in pw.unreadable
+    ]
     inferred: dict = {}
     origins: dict[str, str] = {}
-    notes = [f"could not read {item}" for item in pw.unreadable]
-    servers, origin = (
-        ([], "")
+    chosen = (
+        None
         if "dev_server" in explicit
-        else _inferred_servers(root, pw, explicit, notes)
+        else _scan_servers(root, scans, explicit, notes)
     )
-    if servers:
-        inferred["dev_server"] = servers
-        origins["tester.dev_server"] = origin
-    has_server = bool(explicit.get("dev_server") or servers)
+    directory, pw = (
+        (chosen[0], chosen[1])
+        if chosen
+        else (next(((d, p) for d, p in scans if p.file and p.base_url), scans[0]))
+    )
+    if chosen:
+        inferred["dev_server"], origins["tester.dev_server"] = chosen[2], chosen[3]
+    has_server = bool(explicit.get("dev_server") or inferred.get("dev_server"))
+    file_label = _label(root, directory, pw.file) if pw.file else ""
     if not has_server and "base_url" not in explicit and pw.base_url:
         inferred["base_url"] = pw.base_url
-        origins["tester.base_url"] = pw.file or ""
+        origins["tester.base_url"] = file_label
     frontend = has_server or "base_url" in explicit or "base_url" in inferred
     if pw.file and frontend and not _BROWSER_KEYS & set(explicit):
         browser = _inferred_browser(pw, notes)
         inferred.update(browser)
-        origins.update({f"tester.{key}": pw.file for key in browser})
+        origins.update({f"tester.{key}": file_label for key in browser})
     return inferred, origins, notes
 
 

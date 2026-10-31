@@ -112,6 +112,14 @@ def _add_verify(sub) -> None:
         action="store_true",
         help="Validate configuration only; skip the configured lint checks.",
     )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help=(
+            "Also prove the tester can load the page: starts the dev server and "
+            "a headless browser, then reports ok/fail/skipped per check."
+        ),
+    )
 
 
 def _add_lookups(sub) -> None:
@@ -435,7 +443,9 @@ def _prepare(args, working_dir: Path, _active: Path) -> dict:
 
 
 def _verify(args, working_dir: Path, active: Path) -> dict:
-    return native.verify(working_dir, active, run_lint=not args.no_lint)
+    return native.verify(
+        working_dir, active, run_lint=not args.no_lint, preflight=args.preflight
+    )
 
 
 def _lint(args, working_dir: Path, active: Path) -> dict:

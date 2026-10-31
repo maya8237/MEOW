@@ -7,8 +7,10 @@ checkpoints and role prompts. `native_cli` prints their results as JSON.
 Nothing here starts the Agent SDK.
 """
 
+import asyncio
 import os
 import shutil
+from dataclasses import asdict
 from pathlib import Path
 
 from meow.infrastructure.worktree import _push_branch
@@ -80,8 +82,13 @@ def verify(
     active_dir: Path | None = None,
     *,
     run_lint: bool = True,
+    preflight: bool = False,
 ) -> dict:
-    """Validate all supported config sections and their local prerequisites."""
+    """Validate all supported config sections and their local prerequisites.
+
+    With ``preflight`` the tester setup is also exercised: it starts the dev
+    server and a headless browser, which plain verification never does.
+    """
     root = config_root(working_dir, active_dir)
     config = load_config(root)
     integrations = {
@@ -113,6 +120,14 @@ def verify(
             config["customizations"].skills, working_dir, user_config_path().parent
         ),
     }
+    if preflight:
+        from meow.infrastructure import tester_preflight
+
+        checks = asyncio.run(
+            tester_preflight.run_preflight(active_dir or working_dir, config)
+        )
+        result["preflight"] = [asdict(check) for check in checks]
+        result["preflight_ok"] = all(check.status != "fail" for check in checks)
     if run_lint:
         lint_result = lint(
             working_dir,

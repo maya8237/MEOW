@@ -4,14 +4,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from meow.project.command_detection import _read
+from meow.project.command_detection import PLAYWRIGHT_CONFIG_NAMES, _read
 
-_NAMES = (
-    "playwright.config.ts",
-    "playwright.config.js",
-    "playwright.config.mjs",
-    "playwright.config.cjs",
-)
+_NAMES = PLAYWRIGHT_CONFIG_NAMES
 _NUMBER = re.compile(r"[0-9][0-9_]*(?:\.[0-9_]+)?")
 _IDENT = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 _OPENERS, _CLOSERS = "{[", "}]"
