@@ -16,11 +16,13 @@ from meow.project.plan_files import plan_review_file, plan_test_file
 REPLY_KEY = "_workflow_generator_reply"
 VERDICT_KEY = "_workflow_prior_verdict"
 TREE_KEY = "_workflow_reviewed_tree"
+TEST_VERDICT_KEY = "_workflow_prior_test_verdict"
+TEST_TREE_KEY = "_workflow_tested_tree"
 
 
 def reset(sprint: Sprint) -> None:
     """Forget the previous loop's rounds; a new loop starts at round 1."""
-    for key in (REPLY_KEY, VERDICT_KEY, TREE_KEY):
+    for key in (REPLY_KEY, VERDICT_KEY, TREE_KEY, TEST_VERDICT_KEY, TEST_TREE_KEY):
         sprint.config.pop(key, None)
 
 
@@ -59,3 +61,26 @@ async def remember(sprint: Sprint, plan_file: Path, verdict: str) -> None:
         snapshot_tree, sprint.active_working_dir(), _reports(plan_file)
     )
     sprint.config.pop(REPLY_KEY, None)
+
+
+async def prior_test_for(sprint: Sprint, plan_file: Path) -> PriorReview | None:
+    """The previous tester verdict and the changes since that tree, if any."""
+    verdict = sprint.config.get(TEST_VERDICT_KEY)
+    if not verdict:
+        return None
+    delta = await asyncio.to_thread(
+        changes_since,
+        sprint.active_working_dir(),
+        sprint.config.get(TEST_TREE_KEY),
+        _reports(plan_file),
+    )
+    since = "previous test" if delta.since != "HEAD" else "HEAD"
+    return PriorReview(verdict, "", delta.stat, "", since)
+
+
+async def remember_test(sprint: Sprint, plan_file: Path, verdict: str) -> None:
+    """Record the tester's verdict and the tree it tested."""
+    sprint.config[TEST_VERDICT_KEY] = verdict
+    sprint.config[TEST_TREE_KEY] = await asyncio.to_thread(
+        snapshot_tree, sprint.active_working_dir(), _reports(plan_file)
+    )

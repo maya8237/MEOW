@@ -14,6 +14,12 @@ unchanged state on rejected operations: for each rejected or guarded
 operation, attempt it through the public seam and verify that it fails and
 that all observable state and timestamps remain unchanged.
 If a criterion cannot be verified, mark it FAIL and explain the missing evidence.
+When reviewer-graded criteria are supplied, use them as the starting checklist
+instead of re-deriving them, but still discover and test additional targets; the
+reviewer's PASS is not evidence. When a previous tester verdict is supplied, first
+re-test each previously failing case and report it fixed or still failing, then
+regression-test what changed; full re-discovery is only needed for code changed
+since the last test.
 When no test commands are configured, first look for the project's own test
 setup (README, package.json, pyproject.toml, Makefile, CI files), run the tests
 relevant to the change, and cite each command you ran with its result. If you

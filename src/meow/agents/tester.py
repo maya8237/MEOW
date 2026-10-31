@@ -9,9 +9,12 @@ from claude_agent_sdk import ClaudeAgentOptions
 
 from meow.agents.base import Agent
 from meow.agents.reviewer import (
+    MAX_MEMORY_CHARS,
     PLAIN_STATUS_LINE,
+    PriorReview,
     _run_git_retrying,
     _verdict_status,
+    clip_context,
     force_fail,
 )
 from meow.infrastructure.test_runner import VerificationStageEvidence
@@ -89,6 +92,25 @@ def changed_files(active_dir: Path, limit: int = 200) -> str:
     return shown + (f"\n... and {extra} more" if extra > 0 else "")
 
 
+def handoff_section(criteria: str, prior: PriorReview | None) -> str:
+    """Reviewer criteria and the previous tester round, for the task message."""
+    parts = []
+    if criteria.strip():
+        parts.append(
+            "Reviewer-graded criteria (verify each by observed behavior; still add "
+            f"your own discovered targets):\n{criteria.strip()}\n\n"
+        )
+    if prior is not None:
+        parts.append(
+            "Previous tester verdict (re-test each failing case first):\n"
+            + clip_context(prior.verdict, "previous tester verdict", MAX_MEMORY_CHARS)
+            + f"\n\nFiles changed since {prior.since} (git diff --stat):\n"
+            + (prior.stat or "(no file changes)")
+            + "\n\n"
+        )
+    return "".join(parts)
+
+
 class VerificationAgent(Agent):
     """Tests a reviewed plan using configured evidence and normal tools."""
 
@@ -124,7 +146,12 @@ class VerificationAgent(Agent):
         )
 
     async def test_plan(
-        self, plan_file: Path, evidence: VerificationStageEvidence
+        self,
+        plan_file: Path,
+        evidence: VerificationStageEvidence,
+        *,
+        criteria: str = "",
+        prior: PriorReview | None = None,
     ) -> tuple[str, str]:
         report_file = plan_test_file(plan_file)
         try:
@@ -139,7 +166,8 @@ class VerificationAgent(Agent):
                 if getattr(self.context, "original_request", "")
                 else ""
             )
-            + f"Plan file: {plan_file}\nPlan content:\n{plan}\n\n",
+            + f"Plan file: {plan_file}\nPlan content:\n{plan}\n\n"
+            + handoff_section(criteria, prior),
             report_file,
             evidence,
         )

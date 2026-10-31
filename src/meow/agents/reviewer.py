@@ -205,6 +205,20 @@ def _verdict_status(verdict_text: str) -> str:
     return "PASS" if passed else "FAIL"
 
 
+_CRITERIA_HEADING = re.compile(r"^#{1,6}\s*Criteria\s*$", re.IGNORECASE | re.MULTILINE)
+_NEXT_HEADING = re.compile(r"^#{1,6}\s", re.MULTILINE)
+
+
+def criteria_section(verdict: str) -> str:
+    """Body of a verdict's `## Criteria` section; empty when it has none."""
+    heading = _CRITERIA_HEADING.search(verdict)
+    if heading is None:
+        return ""
+    rest = verdict[heading.end() :]
+    following = _NEXT_HEADING.search(rest)
+    return (rest[: following.start()] if following else rest).strip()
+
+
 def force_fail(verdict: str, appendix: str) -> str:
     """`verdict` with its first STATUS line rewritten to FAIL, plus `appendix`.
 

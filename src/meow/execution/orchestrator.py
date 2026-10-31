@@ -15,7 +15,7 @@ from typing import Literal
 from meow.agents.base import ProjectContext
 from meow.agents.fixers import ReviewFixAgent
 from meow.agents.generator import Generator
-from meow.agents.reviewer import ReviewerAgent
+from meow.agents.reviewer import ReviewerAgent, criteria_section
 from meow.agents.tester import VerificationAgent
 from meow.execution import round_memory
 from meow.execution.sprint import Sprint, build_sprint
@@ -155,18 +155,23 @@ async def review_then_test(  # ruff: ignore[too-many-arguments]
         return ReviewTestResult("FAIL", f"{label} feedback:\n{verdict}", review_status)
 
     baseline = _stage_baseline(sprint)
+    prior_test = await round_memory.prior_test_for(sprint, plan_file)
     try:
         async with prepared_test_stage(
             sprint.active_working_dir(), sprint.config
         ) as evidence:
             tester_status, tester_verdict = await VerificationAgent(sprint).test_plan(
-                plan_file, evidence
+                plan_file,
+                evidence,
+                criteria=criteria_section(verdict),
+                prior=prior_test,
             )
     except VerificationSetupError as exc:
         raise RuntimeError(
             f"Tester stage setup failed for {plan_file}: {exc}. "
             f"Tester report path: {plan_test_file(plan_file)}"
         ) from exc
+    await round_memory.remember_test(sprint, plan_file, tester_verdict)
     _journal(
         sprint,
         "tester_finished",

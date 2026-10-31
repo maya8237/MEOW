@@ -4,7 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from meow.agents.reviewer import MAX_MEMORY_CHARS, PriorReview, plan_review_query
+from meow.agents.reviewer import (
+    MAX_MEMORY_CHARS,
+    PriorReview,
+    criteria_section,
+    plan_review_query,
+)
+from meow.agents.tester import handoff_section
 from meow.execution import orchestrator, round_memory
 from meow.execution.sprint import Sprint
 from meow.project.config import load_config
@@ -145,3 +151,73 @@ def test_initial_review_file_verdict_seeds_the_memory(sprint, tmp_path):
             )
         )
     assert review.await_args.kwargs["prior"].verdict == FAIL
+
+
+CRITERIA_VERDICT = (
+    "SUMMARY: ok\nSTATUS: PASS\n\n## Criteria\n- PASS: adds flag\n- FAIL: no crash\n\n"
+    "## Notes\nlater"
+)
+TESTER_FAIL = "SUMMARY: broke\nSTATUS: FAIL\n\n## Test plan\n- case A: FAIL"
+
+
+def _gate(sprint, tmp_path, reviews, testers):
+    plan = tmp_path / "plan.md"
+    test = AsyncMock(side_effect=testers)
+    with (
+        patch(
+            "meow.execution.orchestrator.ReviewerAgent.review_plan",
+            new=AsyncMock(side_effect=reviews),
+        ),
+        patch("meow.execution.orchestrator.VerificationAgent.test_plan", new=test),
+        patch("meow.execution.orchestrator.prepared_test_stage") as stage,
+    ):
+        stage.return_value.__aenter__.return_value = MagicMock(
+            commands=[], browser=[], blocking_failed=False
+        )
+        for round_num in (1, 2):
+            if round_num == SECOND_ROUND:
+                (tmp_path / "code.py").write_text("x = 2\n", encoding="utf-8")
+            asyncio.run(orchestrator.review_then_test(sprint, plan, round_num))
+    return test
+
+
+def test_criteria_section_is_tolerant():
+    assert criteria_section(CRITERIA_VERDICT) == "- PASS: adds flag\n- FAIL: no crash"
+    assert criteria_section("SUMMARY: x\nSTATUS: PASS\n## Criteria\n- PASS: a") == (
+        "- PASS: a"
+    )
+    assert criteria_section(PASS) == ""
+
+
+def test_tester_gets_criteria_and_then_its_prior_verdict(sprint, tmp_path):
+    test = _gate(
+        sprint,
+        tmp_path,
+        [("PASS", CRITERIA_VERDICT)] * 2,
+        [("FAIL", TESTER_FAIL), ("PASS", PASS)],
+    )
+    first, second = (call.kwargs for call in test.await_args_list)
+    assert first["criteria"] == "- PASS: adds flag\n- FAIL: no crash"
+    assert first["prior"] is None
+    assert second["prior"].verdict == TESTER_FAIL
+    assert second["prior"].since == "previous test"
+    assert "code.py" in second["prior"].stat
+
+
+def test_reset_forgets_the_tester_round(sprint, tmp_path):
+    asyncio.run(round_memory.remember_test(sprint, tmp_path / "plan.md", TESTER_FAIL))
+    round_memory.reset(sprint)
+    assert (
+        asyncio.run(round_memory.prior_test_for(sprint, tmp_path / "plan.md")) is None
+    )
+
+
+def test_tester_message_carries_the_handoff():
+    text = handoff_section(
+        "- PASS: a", PriorReview(TESTER_FAIL, "", " code.py | 2", "")
+    )
+    assert "Reviewer-graded criteria (verify each by observed behavior" in text
+    assert "- PASS: a" in text
+    assert "Previous tester verdict" in text
+    assert "code.py" in text
+    assert handoff_section("", None) == ""

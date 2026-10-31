@@ -22,6 +22,9 @@ each prior FAIL as fixed, still failing (with fresh evidence), or withdrawn
 Raise new FAIL findings only for code changed since the last review, or for a
 genuine Sprint Contract or original-request breach that was missed before, and
 say why it was missed. Do not restart a full audit or re-litigate withdrawn items.
+After the STATUS line, include a `## Criteria` section listing every acceptance
+criterion you graded (from the Sprint Contract and the original request), one per
+line as `- PASS|FAIL: <criterion>`; the tester starts from this list.
 {{#if focus}}
 Pay particular attention to: {{focus}}.
 {{/if}}
