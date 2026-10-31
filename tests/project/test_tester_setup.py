@@ -112,3 +112,30 @@ def test_status_survives_an_invalid_config(tmp_path, capsys):
         status_cli._print_run(record, False, [])
     assert "RENDERED" in capsys.readouterr().out
     assert Path(tmp_path).exists()
+
+
+SKIP = "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS"
+
+
+def test_real_browsers_skip_playwrights_library_check_by_default():
+    from meow.project.tester_setup import effective_browser_env
+
+    assert effective_browser_env({"browser_channel": "chrome"}) == {SKIP: "true"}
+    assert effective_browser_env({"browser_executable": "/x/chrome"}) == {SKIP: "true"}
+
+
+def test_playwrights_own_browser_keeps_the_library_check():
+    from meow.project.tester_setup import effective_browser_env
+
+    assert effective_browser_env({"browser_playwright": True}) == {}
+    assert effective_browser_env({}) == {}
+
+
+def test_a_configured_value_overrides_the_default():
+    from meow.project.tester_setup import effective_browser_env
+
+    tester = {
+        "browser_channel": "chrome",
+        "browser_env": {SKIP: "false", "PLAYWRIGHT_A": "1"},
+    }
+    assert effective_browser_env(tester) == {SKIP: "false", "PLAYWRIGHT_A": "1"}

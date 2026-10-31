@@ -28,6 +28,21 @@ def browser_default_notice(config: dict) -> str | None:
     return None
 
 
+_SKIP_HOST_CHECK = "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS"
+
+
+def effective_browser_env(tester: dict) -> dict:
+    """``browser_env`` plus the host-library check skip for a real installed browser.
+
+    The check only covers Playwright's bundled browsers, so it is skipped for
+    ``browser_channel`` and ``browser_executable``; configured values win.
+    """
+    defaults = {}
+    if tester.get("browser_channel") or tester.get("browser_executable"):
+        defaults[_SKIP_HOST_CHECK] = "true"
+    return {**defaults, **tester.get("browser_env", {})}
+
+
 def _shown(value: object) -> str:
     if isinstance(value, list):
         return ", ".join(_shown(item) for item in value)

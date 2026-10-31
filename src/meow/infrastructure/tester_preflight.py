@@ -14,6 +14,7 @@ from pathlib import Path
 from meow.agents.tester import browser_launch_options
 from meow.infrastructure import test_runner as runner
 from meow.project.command_detection import dev_command_hint
+from meow.project.tester_setup import effective_browser_env
 
 _BROWSERS = (
     (
@@ -157,7 +158,7 @@ _LOAD_JS = (
 def _browser_env(tester: dict, **extra: str) -> dict:
     options = browser_launch_options(tester) or {}
     return {
-        **tester.get("browser_env", {}),
+        **effective_browser_env(tester),
         "MEOW_LAUNCH": json.dumps(options),
         **extra,
     }

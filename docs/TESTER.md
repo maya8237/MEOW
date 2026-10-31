@@ -68,6 +68,9 @@ With none, MEOW uses `browser_channel = "chrome"` and each run prints a notice.
 | `browser_playwright` | `true`: Playwright's own Chromium (`bunx playwright install chromium`) |
 
 `browser_env` sets Playwright variables for the tester; keys must match `PLAYWRIGHT_*`.
+For `browser_channel` and `browser_executable` MEOW also sets
+`PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true` (the check only covers Playwright's
+bundled browsers); a `browser_env` value overrides it.
 Playwright 1.63 has no env var for the browser path: use the keys above.
 `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS` only skips the missing-system-library
 check; `PLAYWRIGHT_BROWSERS_PATH` relocates downloaded browsers. Without Google

@@ -17,6 +17,7 @@ from meow.agents.reviewer import (
 from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.project.plan_files import plan_test_file, stage_file
 from meow.project.prompts import tester_prompt
+from meow.project.tester_setup import effective_browser_env
 
 
 def browser_launch_options(tester: dict) -> dict | None:
@@ -182,7 +183,7 @@ class VerificationAgent(Agent):
             launch = "(none; no frontend configured)"
         playwright_env = (
             "; ".join(
-                f"{k}={v}" for k, v in tester_config.get("browser_env", {}).items()
+                f"{k}={v}" for k, v in effective_browser_env(tester_config).items()
             )
             or "(none)"
         )
