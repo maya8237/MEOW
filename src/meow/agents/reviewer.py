@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import time
 from contextlib import aclosing, suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -249,10 +250,43 @@ def prompt_review_query(  # ruff: ignore[too-many-arguments] -- pure builder
     )
 
 
-def plan_review_query(plan_file: Path, lint_report: str) -> str:
+@dataclass(frozen=True)
+class PriorReview:
+    """What the previous round's reviewer and generator left behind."""
+
+    verdict: str
+    reply: str = ""
+    stat: str = ""
+    diff: str = ""
+    since: str = "previous review"
+
+
+MAX_MEMORY_CHARS = 30_000
+
+
+def prior_review_section(prior: PriorReview) -> str:
+    """Round memory appended to a plan review's task message."""
+    changes = clip_context(prior.diff, f"diff since {prior.since}", MAX_MEMORY_CHARS)
+    reply = clip_context(prior.reply, "generator reply", MAX_MEMORY_CHARS)
+    return (
+        "\n\nThis is a re-review. Previous verdict (resolve each of its FAIL "
+        "findings first):\n"
+        + clip_context(prior.verdict, "previous verdict", MAX_MEMORY_CHARS)
+        + "\n\nGenerator's reply to that verdict:\n"
+        + (reply or "(no reply captured)")
+        + f"\n\nChanges since {prior.since} (git diff --stat, then diff):\n"
+        + (prior.stat or "(no file changes)")
+        + (f"\n\n{changes}" if changes.strip() else "")
+    )
+
+
+def plan_review_query(
+    plan_file: Path, lint_report: str, prior: PriorReview | None = None
+) -> str:
     return (
         f"Review {plan_file}\n\n"
         f"Harness lint evidence:\n{clip_context(lint_report, 'lint report')}"
+        + (prior_review_section(prior) if prior is not None else "")
     )
 
 
@@ -563,8 +597,13 @@ class ReviewerAgent(Agent):
         plan_file: Path,
         *,
         focus: str | None = None,
+        prior: PriorReview | None = None,
     ) -> tuple[str, str]:
         """Grade a sprint plan against its contract and the current code.
+
+        `prior`, on a re-review, carries the previous verdict, the generator's
+        reply and the changes since, so the reviewer converges instead of
+        starting over.
 
         `focus`, when given, is appended as an extra instruction so the
         reviewer pays particular attention to it in addition to the Sprint
@@ -588,7 +627,7 @@ class ReviewerAgent(Agent):
         )
         await self.run_definition_query(
             agent,
-            plan_review_query(plan_file, lint_evidence.report())
+            plan_review_query(plan_file, lint_evidence.report(), prior)
             + (
                 f"\n\nOriginal request:\n{self.context.original_request}"
                 if getattr(self.context, "original_request", "")

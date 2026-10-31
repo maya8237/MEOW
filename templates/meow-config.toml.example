@@ -6,6 +6,9 @@
 # config instead of this shared file.
 
 max_rounds = 8
+# Stop a loop early after this many consecutive rounds with identical blocking
+# findings, or when a fix round changes no code. 0 disables; otherwise >= 2.
+stall_rounds = 2
 docs_dir = ".meow/plans"
 
 # Commands are launched without shell evaluation. `$NAME`, `${NAME}`, and

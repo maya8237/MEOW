@@ -140,8 +140,9 @@ Steps accept `id`, `when`, positive timeout seconds; agents/gates also accept
 a task template. IDs use lowercase letters/digits/hyphens/underscores, must be
 unique after expansion, and are required for agent/gate/loop/parallel.
 Builtin/call IDs default to the target. Loops use positive `max_rounds` or
-the run limit. Calls preserve condition/timeout as resolved sequence groups;
-cycles or duplicate expanded IDs fail.
+the run limit and stop early on a stall ([runs](RUNS.md#verification-and-delivery)).
+Calls preserve condition/timeout as resolved sequence groups; cycles or
+duplicate expanded IDs fail.
 
 ```toml
 description = "Review API security, then check"
@@ -185,14 +186,13 @@ Builtins retain phase names. Custom stages journal stage_started/stage_finished
 with status/summary/file/round under results.stages. Reports are
 `<plan-stem>.<id>.stage.md`, otherwise `<docs_dir>/<id>.stage.md`;
 latest-plan lookup excludes them. All steps honor cancellation, accounting,
-and timeout. Only SDK crash recovery and explicit loops retry. Custom workflow
-steps run once per run, not once per task.
+and timeout. Only SDK crash recovery and explicit loops retry. Custom steps run
+once per run, not per task. Status shows workflow and stages.
 
-Status shows workflow and stages. Journals retain resolved fingerprints,
-completed top-level IDs, and active loop/step. Resume rejects changed
-definitions, skips completed top-level steps, and enters interrupted loops
-review-first. Evidence freshness/delivery guards still apply.
-Role session IDs remain transcript references owned by Claude.
+Journals retain resolved fingerprints, completed top-level IDs, and the active
+loop/step. Resume rejects changed definitions, skips completed top-level steps,
+and enters interrupted loops review-first. Evidence freshness/delivery guards
+still apply. Role session IDs remain Claude-owned transcript references.
 
 `meow native workflow NAME` inspects resolved JSON; `native prompt ROLE`
 renders resolved instructions/models. Native helpers do not drive custom

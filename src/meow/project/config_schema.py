@@ -638,6 +638,28 @@ def _validate_max_rounds(config: dict) -> None:
         )
 
 
+MIN_STALL_ROUNDS = 2
+
+
+def _validate_stall_rounds(config: dict) -> None:
+    """Reject a `stall_rounds` that is neither 0 (off) nor an integer >= 2.
+
+    One identical failed round is not yet a pattern, so 1 would stop every
+    loop at its first failure.
+    """
+    stall_rounds = config["stall_rounds"]
+    is_valid = (
+        isinstance(stall_rounds, int)
+        and not isinstance(stall_rounds, bool)
+        and (stall_rounds == 0 or stall_rounds >= MIN_STALL_ROUNDS)
+    )
+    if not is_valid:
+        raise ValueError(
+            f"{CONFIG_FILENAME}: stall_rounds must be 0 (off) or an integer "
+            f"of at least 2, got {stall_rounds!r}."
+        )
+
+
 # `[run]`: the bounded retry ladder for parked runs (seconds where timed).
 # auto_retries: supervisor relaunches per park without progress; retry_backoff:
 # waits between them; managed_resumes: resumes a managing session may run per

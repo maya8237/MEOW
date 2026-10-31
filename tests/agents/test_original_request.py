@@ -33,6 +33,13 @@ def saved_completion_run(tmp_path):
     )
 
 
+# Each role words "attempt the guarded operation, check nothing changed" itself.
+BEHAVIOR_RULE = {
+    "reviewer": ("rejected or guarded operation", "public seam", "observable state"),
+    "tester": ("remain unchanged", "helper"),
+}
+
+
 @pytest.mark.parametrize("role", ["reviewer", "tester"])
 def test_weakened_plan_does_not_hide_original_completion_requirement(tmp_path, role):
     state = saved_completion_run(tmp_path)
@@ -59,5 +66,5 @@ def test_weakened_plan_does_not_hide_original_completion_requirement(tmp_path, r
     assert "original request" in instructions.lower()
     assert "omitted or weakened" in instructions
     assert "each acceptance criterion" in instructions
-    assert "remain unchanged" in instructions
-    assert "helper" in instructions
+    for phrase in BEHAVIOR_RULE[role]:
+        assert phrase in instructions
