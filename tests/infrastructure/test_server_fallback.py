@@ -19,13 +19,13 @@ def _taken(reason="port taken"):
     return runner.VerificationSetupError("serve", Path("."), reason)
 
 
-async def _run(start, location=("127.0.0.1", 3000)):
+async def _run(start, location=("127.0.0.1", 3000), server=None):
     with (
         patch.object(runner, "_start_server", start),
         patch.object(runner, "_url_port", return_value=location),
         patch.object(runner, "_free_port", return_value=4567),
     ):
-        return await runner._start_server_with_fallback(Path("."), _server())
+        return await runner._start_server_with_fallback(Path("."), server or _server())
 
 
 class ServerFallbackTests(unittest.IsolatedAsyncioTestCase):
@@ -45,5 +45,13 @@ class ServerFallbackTests(unittest.IsolatedAsyncioTestCase):
     async def test_non_loopback_url_is_not_retried(self):
         start = AsyncMock(side_effect=_taken())
         with self.assertRaises(runner.VerificationSetupError):
-            await _run(start, location=None)
+            await _run(
+                start,
+                location=None,
+                server=DevServerCommand(
+                    cwd=Path("."),
+                    command="serve",
+                    ready_url="http://example.test:3000/",
+                ),
+            )
         self.assertEqual(start.await_count, 1)

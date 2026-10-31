@@ -1,6 +1,7 @@
 """Configured command execution and owned dev-server lifecycle."""
 
 import asyncio
+import http.client
 import os
 import shutil
 import signal
@@ -516,7 +517,7 @@ def _probe(url: str) -> str | None:
             return None
     except urllib.error.HTTPError:
         return None
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, http.client.HTTPException) as exc:
         return f"{type(exc).__name__}: {exc}"
 
 
@@ -540,21 +541,107 @@ def _url_port(url: str) -> tuple[str, int] | None:
     return host, port or (443 if parts.scheme == "https" else 80)
 
 
+PORT_HINT = (
+    "On Windows, ports can be reserved by the system: run "
+    "`netsh int ipv4 show excludedportrange protocol=tcp`, or check whether "
+    "security software blocks local sockets. Let MEOW choose the port with "
+    "{port} or PORT in the server command."
+)
+
+
+def _loopback(host: str) -> str:
+    return host if host == "::1" else "127.0.0.1"
+
+
+def _describe(exc: OSError) -> str:
+    code = getattr(exc, "winerror", None) or exc.errno
+    return f"{type(exc).__name__} [{code}]: {exc.strerror or exc}"
+
+
 def _port_in_use(host: str, port: int) -> bool:
-    """True when something already listens on the loopback port (any protocol)."""
-    target = "127.0.0.1" if host in {"", "0.0.0.0", "localhost"} else host
+    """True when something may listen on the loopback port (any protocol).
+
+    Never raises: a socket that cannot even be created or probed (permissions,
+    exhausted descriptors) is treated as unavailable.
+    """
+    target = _loopback("127.0.0.1" if host in {"", "0.0.0.0", "localhost"} else host)
     family = socket.AF_INET6 if ":" in target else socket.AF_INET
-    with socket.socket(family, socket.SOCK_STREAM) as probe:
-        probe.settimeout(0.5)
-        return probe.connect_ex((target, port)) == 0
+    try:
+        with socket.socket(family, socket.SOCK_STREAM) as probe:
+            probe.settimeout(0.5)
+            return probe.connect_ex((target, port)) == 0
+    except OSError:
+        return True
 
 
-def _free_port(host: str) -> int:
-    target = host if host in {"::1"} else "127.0.0.1"
+def _bindable(host: str, port: int) -> str | None:
+    """None when MEOW could listen on the loopback port, else why it could not.
+
+    A port can look free to a connect probe yet be unusable, such as one in a
+    Windows excluded range or a privileged port; only binding proves access.
+    """
+    target = _loopback(host)
     family = socket.AF_INET6 if ":" in target else socket.AF_INET
-    with socket.socket(family, socket.SOCK_STREAM) as probe:
-        probe.bind((target, 0))
-        return probe.getsockname()[1]
+    try:
+        with socket.socket(family, socket.SOCK_STREAM) as probe:
+            exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+            if exclusive is not None:
+                probe.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+            probe.bind((target, port))
+            probe.listen(1)
+    except OSError as exc:
+        return _describe(exc)
+    return None
+
+
+def _free_port(host: str) -> int | None:
+    """A loopback port MEOW can listen on, or None after 10 failed attempts.
+
+    ``::1`` falls back to IPv4 when IPv6 sockets are unavailable.
+    """
+    for target in dict.fromkeys((_loopback(host), "127.0.0.1")):
+        family = socket.AF_INET6 if ":" in target else socket.AF_INET
+        for _ in range(10):
+            try:
+                with socket.socket(family, socket.SOCK_STREAM) as probe:
+                    probe.bind((target, 0))
+                    port = probe.getsockname()[1]
+            except OSError:
+                continue
+            if _bindable(target, port) is None:
+                return port
+    return None
+
+
+def _port_unavailable(host: str, port: int) -> bool:
+    return _port_in_use(host, port) or _bindable(host, port) is not None
+
+
+def _require_port(host: str, command: str, cwd: Path) -> int:
+    port = _free_port(host)
+    if port is None:
+        reason = _bindable(host, 0) or "no candidate port could be bound"
+        raise VerificationSetupError(
+            command, cwd, f"no usable loopback port ({reason}). {PORT_HINT}"
+        )
+    return port
+
+
+def _has_port_placeholder(server: DevServerCommand) -> bool:
+    token = "{" + "port}"
+    return any(
+        token in text
+        for text in (
+            server.command,
+            server.ready_url,
+            *server.args,
+            *(server.env or {}).values(),
+        )
+    )
+
+
+def _server_host(server: DevServerCommand) -> str:
+    return urllib.parse.urlsplit(server.ready_url).hostname or "127.0.0.1"
 
 
 def _with_port(url: str, port: int) -> str:
@@ -592,21 +679,34 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
         raise VerificationSetupError(
             server.command, active_dir / server.cwd, exc
         ) from exc
+    allocated = _has_port_placeholder(server)
+    if allocated:
+        # {port} means MEOW owns the port: pick a free one before every launch.
+        server = _relocated(
+            server,
+            await asyncio.to_thread(
+                _require_port, _server_host(server), server.command, cwd
+            ),
+        )
     location = _url_port(server.ready_url)
     taken = (
-        await asyncio.to_thread(_port_in_use, *location)
+        await asyncio.to_thread(_port_unavailable, *location)
         if location
         else await asyncio.to_thread(_reachable, server.ready_url)
     )
-    if taken:
+    if taken and not allocated:
         if location is None:
             raise VerificationSetupError(
                 server.command,
                 cwd,
                 f"readiness URL {server.ready_url} is already serving before launch",
             )
-        # Never test against someone else's server: move to a free port.
-        server = _relocated(server, _free_port(location[0]))
+        # Never test against someone else's server, or one MEOW cannot bind.
+        server = _relocated(
+            server,
+            await asyncio.to_thread(_require_port, location[0], server.command, cwd),
+        )
+        allocated = True
     try:
         argv = _launch_argv(
             server.command, server.args, python_environment(active_dir, server.env)
@@ -653,11 +753,16 @@ async def _start_server(  # ruff: ignore[complex-structure, too-many-statements,
             if last_error is None:
                 return owned, server.ready_url
             await asyncio.sleep(0.1)
+        hint = (
+            "; if the server ignores {port}/PORT, pass the port with its port flag"
+            if allocated
+            else ""
+        )
         raise VerificationSetupError(
             server.command,
             cwd,
             f"timed out after {server.startup_timeout}s waiting for "
-            f"{server.ready_url} (last probe: {last_error})",
+            f"{server.ready_url} (last probe: {last_error}){hint}",
         )
     except BaseException:
         await _terminate(owned)
@@ -676,10 +781,17 @@ async def _start_server_with_fallback(active_dir: Path, server: DevServerCommand
         try:
             return await _start_server(active_dir, server)
         except VerificationSetupError:
-            location = _url_port(server.ready_url)
+            location = _url_port(server.ready_url) or (
+                (_server_host(server), 0)
+                if _has_port_placeholder(server)
+                and _server_host(server) in _LOOPBACK_HOSTS
+                else None
+            )
             if attempt == attempts or location is None:
                 raise
-            server = _relocated(server, _free_port(location[0]))
+            server = _relocated(
+                server, _require_port(location[0], server.command, active_dir)
+            )
     raise AssertionError("unreachable")
 
 
