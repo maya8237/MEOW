@@ -202,12 +202,11 @@ def planner_prompt(
     )
 
 
-def task_graph_repair_prompt(
-    plan_file: Path, *, agent: CustomAgent | None = None
+def _planner_fragment_prompt(
+    name: str, plan_file: Path, agent: CustomAgent | None
 ) -> str:
-    """Render repair instructions, using an optional planner fragment override."""
+    """Render a planner fragment, preferring an override on the resolved agent."""
     planner = _agent(agent, "planner")
-    name = "task_graph_repair"
     fragments = (
         planner.fragments
         if name in planner.fragments
@@ -219,6 +218,18 @@ def task_graph_repair_prompt(
         fragments=fragments,
         where=str(planner.file),
     )
+
+
+def task_graph_repair_prompt(
+    plan_file: Path, *, agent: CustomAgent | None = None
+) -> str:
+    """Render repair instructions, using an optional planner fragment override."""
+    return _planner_fragment_prompt("task_graph_repair", plan_file, agent)
+
+
+def plan_revision_prompt(plan_file: Path, *, agent: CustomAgent | None = None) -> str:
+    """Render plan-revision instructions, using an optional fragment override."""
+    return _planner_fragment_prompt("revise", plan_file, agent)
 
 
 def tasks_format() -> str:

@@ -29,10 +29,8 @@ unclear ownership, and say why in the plan.
 Verification commands must run on the project's host platform without shell
 pipes or redirection (these are rejected on Windows). Inspect existing tests
 before selecting pytest node ids; use a test file and -k when the exact node
-does not exist yet. Compare CSV records with csv.reader or splitlines(), not
-raw newline splitting: CSV may use CRLF even when Python source uses LF.
-Avoid builtin names for new APIs when they would shadow annotation types;
-use builtins.list or postponed annotations where an existing list method is needed.
+does not exist yet. Verify data formats and APIs against real fixtures and
+existing code before specifying them.
 Identify the public seam being changed, the module boundary that owns it, and
 why the placement keeps a deep, cohesive interface, citing observations. Do
 not suggest doc edits.
@@ -63,4 +61,13 @@ letters, digits, '-' or '_'), depends_on, owned_paths, and verification.
 The last three fields are arrays of strings. Use project-relative owned_paths
 and shell commands for verification. Dependencies must name existing tasks
 and must not form cycles. Independent tasks must not own overlapping paths.
+'''
+revise = '''
+Revise the existing plan at {{plan_file}} to address the plan-check feedback in
+the task message. Read {{plan_file}} and its {{plan_file}}.tasks.json graph (if
+present) first. Edit only those files. Preserve the original scope: restore any
+requirement the feedback says is missing or weakened, make Sprint Contract
+criteria concretely testable, and fix overlapping owned_paths or prose
+verification entries (verification must be shell commands). Do not implement
+anything, edit source files, or drop work to satisfy the feedback.
 '''

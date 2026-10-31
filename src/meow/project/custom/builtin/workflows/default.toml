@@ -6,6 +6,14 @@ uses = "builtin.plan"
 when = "not plan_given and not resume_review"
 
 [[steps]]
+id = "plan-check"
+loop = [
+  { id = "revise-plan", uses = "builtin.plan", when = "round > 1 and not plan_given and not resume_review" },
+  { id = "plan-checker", gate = "plan-checker", when = "not plan_given and not resume_review" },
+]
+max_rounds = 2
+
+[[steps]]
 id = "approve"
 uses = "builtin.approve_plan"
 

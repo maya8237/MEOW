@@ -26,6 +26,7 @@ from meow.project.prompts import (
     architecture_review_instructions,
     no_prompt_review_instructions,
 )
+from tests.plan_check import plan_check_passes
 
 
 class CliCommandTests(  # ruff: ignore[too-many-public-methods]
@@ -267,6 +268,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                     "meow.execution.workflow.builtin_steps.Generator",
                     return_value=mock_generator,
                 ),
+                plan_check_passes(),
                 patch.object(
                     PlannerAgent, "run", new_callable=AsyncMock
                 ) as mock_planner_run,
@@ -319,6 +321,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                     "meow.execution.workflow.builtin_steps.Generator",
                     return_value=mock_generator,
                 ) as mock_generator_cls,
+                plan_check_passes(),
                 patch.object(
                     PlannerAgent, "run", new_callable=AsyncMock
                 ) as mock_planner_run,
@@ -365,6 +368,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
 
             with (
                 patch("meow.execution.orchestrator.load_config", return_value=config),
+                plan_check_passes(),
                 patch.object(
                     PlannerAgent, "run", new_callable=AsyncMock
                 ) as mock_planner_run,
@@ -411,6 +415,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 patch(
                     "meow.execution.workflow.builtin_steps.Generator"
                 ) as mock_generator_cls,
+                plan_check_passes(),
                 patch.object(
                     PlannerAgent, "run", new_callable=AsyncMock
                 ) as mock_planner_run,
@@ -467,6 +472,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                     "meow.execution.workflow.builtin_steps.Generator",
                     return_value=mock_generator,
                 ),
+                plan_check_passes(),
                 patch.object(
                     PlannerAgent, "run", new_callable=AsyncMock
                 ) as mock_planner_run,
@@ -521,6 +527,7 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
                 patch.object(
                     ReviewerAgent, "review_plan", new_callable=AsyncMock
                 ) as mock_review_plan,
+                plan_check_passes(),
                 patch.object(
                     PlannerAgent, "run", new_callable=AsyncMock
                 ) as mock_planner_run,

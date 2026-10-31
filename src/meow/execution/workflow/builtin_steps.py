@@ -44,7 +44,22 @@ from meow.tasks.runner import run_parallel_plan
 logger = get_logger(__name__)
 
 
+async def _revise_plan(state):
+    """Edit the existing plan to address the failed plan-check feedback."""
+    state.journal("planning")
+    logger.info("plan_revision_started", round=state.round)
+    state.plan_file = require_plan_file(
+        await PlannerAgent(state.sprint).revise(state.plan_file, state.feedback)
+    )
+    logger.info("plan_revision_finished", plan_file=str(state.plan_file))
+    if state.plan_ready:
+        state.plan_ready(state.plan_file)
+
+
 async def plan(state):
+    if state.plan_file and state.round > 1 and state.feedback:
+        await _revise_plan(state)
+        return
     from meow.execution.sprint_runner import _owner_finished
 
     active = state.sprint.active_working_dir()

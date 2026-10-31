@@ -36,7 +36,7 @@ def saved_completion_run(tmp_path):
 # Each role words "attempt the guarded operation, check nothing changed" itself.
 BEHAVIOR_RULE = {
     "reviewer": ("rejected or guarded operation", "public seam", "observable state"),
-    "tester": ("remain unchanged", "helper"),
+    "tester": ("rejected or guarded", "public seam", "remain unchanged"),
 }
 
 

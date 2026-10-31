@@ -4,7 +4,11 @@ from pathlib import Path
 
 from meow.agents.base import Agent
 from meow.project.plan_files import planned_plan_file
-from meow.project.prompts import planner_prompt, task_graph_repair_prompt
+from meow.project.prompts import (
+    plan_revision_prompt,
+    planner_prompt,
+    task_graph_repair_prompt,
+)
 
 
 def require_plan_file(plan_file: Path) -> Path:
@@ -30,6 +34,15 @@ class PlannerAgent(Agent):
             agent, system_prompt=task_graph_repair_prompt(plan_file, agent=agent)
         )
         await self.run_definition_query(agent, reason, options, "Planner")
+
+    async def revise(self, plan_file: Path, feedback: str) -> Path:
+        """Edit the existing plan (and graph) to address plan-check feedback."""
+        agent = self.definition("planner")
+        options = self.definition_options(
+            agent, system_prompt=plan_revision_prompt(plan_file, agent=agent)
+        )
+        await self.run_definition_query(agent, feedback, options, "Planner")
+        return require_plan_file(plan_file)
 
     async def run(self, feature_name: str | None, request: str) -> Path:
         docs_dir = self.context.active_working_dir() / self.context.config["docs_dir"]

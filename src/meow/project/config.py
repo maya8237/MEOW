@@ -27,6 +27,7 @@ from meow.project.config_schema import (
     _normalize_pipeline_config,
     _normalize_run_config,
     _normalize_tester_config,
+    _validate_max_parallel_tasks,
     _validate_max_rounds,
     _validate_stall_rounds,
 )
@@ -51,6 +52,7 @@ __all__ = [
 DEFAULT_CONFIG = {
     "max_rounds": 8,
     "stall_rounds": 2,  # identical failed rounds before a loop stops early; 0 = off
+    "max_parallel_tasks": 2,  # task-graph worktrees implemented at once
     "lint_timeout": 60,  # seconds before a per-file lint command is killed
     "docs_dir": ".meow/plans",
     "models": {
@@ -260,6 +262,7 @@ def _load_config(working_dir: Path) -> dict:
                 )
     _validate_max_rounds(config)
     _validate_stall_rounds(config)
+    _validate_max_parallel_tasks(config)
     config["customizations"] = discover([
         *custom_sources,
         *conventional_sources(working_dir, user_config_path().parent),

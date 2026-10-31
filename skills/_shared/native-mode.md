@@ -70,7 +70,7 @@ mappings. Use the host's subagent API when tool names differ.
 
 | Role | Native execution |
 |---|---|
-| Planner (`planner`) | You. Use `superpowers:writing-plans`, but write to returned `plan_file`, include numbered tasks and a `## Sprint Contract` with concrete pass/fail criteria, and skip its execution-method handoff. |
+| Planner (`planner`) | You. Use `superpowers:writing-plans`, but write to returned `plan_file`, include numbered tasks and a `## Sprint Contract` with concrete pass/fail criteria, and skip its execution-method handoff. Then self-check the plan like the CLI `plan-checker`: FAIL only for a request requirement missing or weakened in the contract, a criterion that is not concretely testable, or task-graph path overlap/prose verification; revise once, preserving scope. |
 | Generator (`generator`) | You. Use `superpowers:executing-plans`, `superpowers:test-driven-development`, `superpowers:verification-before-completion`; use `superpowers:systematic-debugging` on failures and `superpowers:receiving-code-review` before fixes. Stay within the contract; do not commit or grade your work. |
 | Reviewer | Fresh subagent every round; use `reviewer-plan`, `reviewer-prompt`, `reviewer-mr`, or `reviewer-branch` as the skill directs. |
 | Explorer (`explorer`) | Optional read-only subagent; use resolved prompt/model, never raw `prepare.models.explorer`. |

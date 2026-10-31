@@ -52,7 +52,9 @@ def test_failed_checks_skip_review_and_passing_checks_are_reused(tmp_path, workf
     steps = expand(
         config["customizations"].workflow(workflow), config["customizations"]
     )
-    loop = next(step for step in steps if step.kind == "loop")
+    loop = next(
+        step for step in steps if step.kind == "loop" and step.id != "plan-check"
+    )
     final = next(step for step in steps if step.target == "builtin.checks")
     reviewed = []
 
