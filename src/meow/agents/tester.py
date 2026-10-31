@@ -1,5 +1,6 @@
 """Exploratory tester role and project architecture context."""
 
+import json
 import re
 from contextlib import suppress
 from pathlib import Path
@@ -16,6 +17,18 @@ from meow.agents.reviewer import (
 from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.project.plan_files import plan_test_file, stage_file
 from meow.project.prompts import tester_prompt
+
+
+def browser_launch_options(tester: dict) -> dict | None:
+    """Playwright launch options for the configured browser; None when unset."""
+    if tester.get("browser_channel"):
+        return {"channel": tester["browser_channel"]}
+    if tester.get("browser_executable"):
+        return {"executablePath": tester["browser_executable"]}
+    if tester.get("browser_playwright"):
+        return {}
+    return None
+
 
 TEST_PLAN_SECTION = re.compile(r"^#*\s*Test plan\b", re.IGNORECASE | re.MULTILINE)
 
@@ -160,6 +173,19 @@ class VerificationAgent(Agent):
         base_urls = [*evidence.server_urls]
         if tester_config.get("base_url"):
             base_urls.append(tester_config["base_url"])
+        options = browser_launch_options(tester_config)
+        if options is not None:
+            launch = json.dumps(options)
+        elif base_urls or tester_config.get("dev_server"):
+            launch = "NOT CONFIGURED"
+        else:
+            launch = "(none; no frontend configured)"
+        playwright_env = (
+            "; ".join(
+                f"{k}={v}" for k, v in tester_config.get("browser_env", {}).items()
+            )
+            or "(none)"
+        )
         browser = (
             "\n".join(
                 f"provider: {item.provider} ({item.kind})\nstatus: {item.status}\n"
@@ -177,7 +203,9 @@ class VerificationAgent(Agent):
             f"Changed files (git status):\n{changed_files(active_dir)}\n\n"
             f"Configured test directories: "
             f"{', '.join(map(str, configured_dirs)) or '(none)'}\n"
-            f"Base URLs: {', '.join(base_urls) or '(none)'}\n\n"
+            f"Base URLs: {', '.join(base_urls) or '(none)'}\n"
+            f"Browser launch options: {launch}\n"
+            f"Environment for Playwright: {playwright_env}\n\n"
             f"Browser provider results:\n{browser}\n\n"
             "Configured test command results:\n"
             + ("\n\n".join(results) if results else "(no configured test commands)")

@@ -51,11 +51,16 @@ body or error overlay, and on console errors, uncaught page errors, failed
 requests or hydration warnings. Assert the elements each criterion names are
 visible with real content, exercise the changed interactions (click, type,
 submit) and check the resulting UI, and repeat at mobile (375px) and desktop
-(1280px) widths. Run a script like this from a temporary directory outside the
-checkout and Read the PNG it writes:
+(1280px) widths. Use the supplied "Browser launch options" and "Environment for Playwright"
+lines: export that environment first, pass the options verbatim as LAUNCH, and
+never try another browser. When the options line says NOT CONFIGURED and the
+change touches UI, launch nothing and FAIL (browser not configured), naming the
+keys to set under [tester]: browser_channel, browser_executable or
+browser_playwright = true. Run a script like this from a temporary directory
+outside the checkout and Read the PNG it writes:
   const { chromium } = require("playwright");
   (async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ headless: true, ...LAUNCH });
     for (const [name, width, height] of [["desktop", 1280, 800], ["mobile", 375, 812]]) {
       const page = await (await browser.newContext({ viewport: { width, height } })).newPage();
       const problems = [];
