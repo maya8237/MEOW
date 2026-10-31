@@ -4,7 +4,7 @@ import configparser
 import json
 import tomllib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 MAX_MANIFEST_BYTES = 256 * 1024
 _LOCKS = {
@@ -202,25 +202,176 @@ def detect_commands(root: Path) -> DetectedCommands:
     return DetectedCommands(defaults, origins, ambiguous)
 
 
+FRAMEWORK_PORT_FLAGS = {"vite": "--port {port}", "next": "-p {port}"}
+_DEV_URL = "http://127.0.0.1:{port}/"
+_OWN_BROWSER_CHANNELS = frozenset({"chromium", "chromium-headless-shell"})
+_BROWSER_KEYS = frozenset({
+    "browser_channel",
+    "browser_executable",
+    "browser_playwright",
+})
+_RUN = {"npm": "npm run", "pnpm": "pnpm run", "yarn": "yarn", "bun": "bun run"}
+
+
+def _package_server(root: Path, notes: list[str]) -> tuple[dict, str] | None:
+    """A ``{port}`` dev-server entry for a confirmed framework's dev script."""
+    package = _package(root)
+    scripts = package.get("scripts")
+    scripts = scripts if isinstance(scripts, dict) else {}
+    name = next((n for n in ("dev", "start") if _usable_script(scripts.get(n))), None)
+    if name is None:
+        return None
+    deps = {
+        **(package.get("dependencies") or {}),
+        **(package.get("devDependencies") or {}),
+    }
+    words = str(scripts[name]).split()
+    framework = next(
+        (f for f in FRAMEWORK_PORT_FLAGS if f in words),
+        next((f for f in FRAMEWORK_PORT_FLAGS if f in deps), None),
+    )
+    manager = _manager(root, package)
+    if framework is None or manager is None:
+        notes.append(
+            f"package.json scripts.{name}: no confirmed port flag for this framework "
+            "or package manager; add [[tester.dev_server]] with {port} yourself"
+        )
+        return None
+    separator = " --" if manager == "npm" else ""
+    command = f"{_RUN[manager]} {name}{separator} {FRAMEWORK_PORT_FLAGS[framework]}"
+    entry = {"command": command, "ready_url": _DEV_URL, "cwd": "."}
+    return entry, f"package.json scripts.{name} ({framework})"
+
+
+def _usable_servers(entries: list[dict], origin: str, notes: list[str]) -> list[dict]:
+    """Keep only entries the config schema accepts; inference must not break loading."""
+    from meow.project.config_schema import _normalize_tester_config
+
+    usable = []
+    for entry in entries:
+        try:
+            _normalize_tester_config({"tester": {"dev_server": [entry]}})
+        except ValueError as exc:
+            notes.append(f"webServer in {origin} not used: {exc}")
+        else:
+            usable.append(entry)
+    return usable
+
+
+def _is_absolute(path: str) -> bool:
+    return PurePosixPath(path).is_absolute() or PureWindowsPath(path).is_absolute()
+
+
+def _browser_choices(pw, notes: list[str]) -> set[tuple[str, object]]:
+    from meow.project.config_schema import BROWSER_CHANNELS
+
+    chosen: set[tuple[str, object]] = set()
+    for channel in pw.channels:
+        if channel in BROWSER_CHANNELS:
+            chosen.add(("browser_channel", channel))
+        elif channel in _OWN_BROWSER_CHANNELS:
+            chosen.add(("browser_playwright", True))
+        else:
+            notes.append(f"channel {channel!r} in {pw.file} is not a supported channel")
+    if pw.executable and _is_absolute(pw.executable):
+        chosen.add(("browser_executable", pw.executable))
+    elif pw.executable:
+        notes.append(f"executablePath in {pw.file} is not an absolute path")
+    return chosen
+
+
+def _inferred_browser(pw, notes: list[str]) -> dict:
+    """The one browser selection the project's Playwright config makes, if any."""
+    chosen = _browser_choices(pw, notes)
+    unreadable = any("channel" in i or "executablePath" in i for i in pw.unreadable)
+    if not pw.channels and not pw.executable and not unreadable:
+        chosen.add(("browser_playwright", True))
+    if len(chosen) > 1:
+        notes.append(
+            f"browser: {pw.file} selects several browsers; set exactly one of "
+            "browser_channel, browser_executable or browser_playwright in [tester]"
+        )
+    return dict(chosen) if len(chosen) == 1 else {}
+
+
+def _inferred_servers(root: Path, pw, explicit: dict, notes: list[str]):
+    """Dev-server entries and their origin, from webServer or package.json."""
+    entries = [
+        {
+            "command": server.command,
+            "ready_url": server.url or f"http://127.0.0.1:{server.port}/",
+            "cwd": server.cwd,
+            **({"startup_timeout": server.timeout} if server.timeout else {}),
+        }
+        for server in pw.servers
+    ]
+    if entries:
+        return _usable_servers(entries, pw.file or "", notes), pw.file or ""
+    if "base_url" in explicit:
+        return [], ""
+    found = _package_server(root, notes)
+    return ([found[0]], found[1]) if found else ([], "")
+
+
+def _tester_inference(
+    root: Path, explicit: dict
+) -> tuple[dict, dict[str, str], list[str]]:
+    """``[tester]`` defaults read from the project's own test setup; reads only."""
+    from meow.project.playwright_config import read_playwright_config
+
+    pw = read_playwright_config(root)
+    inferred: dict = {}
+    origins: dict[str, str] = {}
+    notes = [f"could not read {item}" for item in pw.unreadable]
+    servers, origin = (
+        ([], "")
+        if "dev_server" in explicit
+        else _inferred_servers(root, pw, explicit, notes)
+    )
+    if servers:
+        inferred["dev_server"] = servers
+        origins["tester.dev_server"] = origin
+    has_server = bool(explicit.get("dev_server") or servers)
+    if not has_server and "base_url" not in explicit and pw.base_url:
+        inferred["base_url"] = pw.base_url
+        origins["tester.base_url"] = pw.file or ""
+    frontend = has_server or "base_url" in explicit or "base_url" in inferred
+    if pw.file and frontend and not _BROWSER_KEYS & set(explicit):
+        browser = _inferred_browser(pw, notes)
+        inferred.update(browser)
+        origins.update({f"tester.{key}": pw.file for key in browser})
+    return inferred, origins, notes
+
+
 def command_defaults(root: Path, explicit: dict) -> DetectedCommands:
     """Supply only missing keys; explicit empty lists and tester opts win."""
     detected = detect_commands(root)
     defaults = {
-        key: value for key, value in detected.defaults.items() if key not in explicit
+        key: value
+        for key, value in detected.defaults.items()
+        if key not in explicit and key != "tester"
     }
     tester = explicit.get("tester", {})
-    if (
-        isinstance(tester, dict)
-        and "tests" not in tester
-        and "tester" in detected.defaults
-    ):
-        defaults["tester"] = detected.defaults["tester"]
+    explicit_tester = tester if isinstance(tester, dict) else {}
+    inferred, inferred_origins, notes = _tester_inference(Path(root), explicit_tester)
+    merged = {
+        **(
+            detected.defaults.get("tester", {})
+            if "tests" not in explicit_tester
+            else {}
+        ),
+        **inferred,
+    }
+    if merged and (isinstance(tester, dict) or "tester" not in explicit):
+        defaults["tester"] = merged
     origins = {
         key: value
         for key, value in detected.origins.items()
-        if ("tester" if key == "tester.tests" else key) in defaults
+        if key != "tester.tests" or "tests" in merged
+        if key.partition(".")[0] in defaults
     }
-    return DetectedCommands(defaults, origins, detected.ambiguous)
+    origins.update(inferred_origins)
+    return DetectedCommands(defaults, origins, (*detected.ambiguous, *notes))
 
 
 def setup_defaults(root: Path, explicit: dict) -> DetectedCommands:
