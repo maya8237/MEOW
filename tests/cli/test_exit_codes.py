@@ -38,7 +38,13 @@ def _repo(tmp_path):
             subprocess.run(["git", "config", key, value], cwd=template, check=True)
         subprocess.run(["git", "add", "."], cwd=template, check=True)
         subprocess.run(["git", "commit", "-qm", "init"], cwd=template, check=True)
-    shutil.copytree(template, tmp_path, dirs_exist_ok=True)
+
+    def ignore_git_locks(directory, names):
+        if Path(directory).name == "objects":
+            return {name for name in names if name.endswith(".lock")}
+        return set()
+
+    shutil.copytree(template, tmp_path, dirs_exist_ok=True, ignore=ignore_git_locks)
     return tmp_path
 
 

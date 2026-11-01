@@ -1,6 +1,7 @@
 """Keeping every customization kind working at every scope, automatically."""
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -17,6 +18,14 @@ from meow.project.onboarding import BOUNDARY
 
 ROOT = Path(__file__).resolve().parents[2]
 HOOK = 'description = "Guard"\nevent = "PreToolUse"\ncommand = "true"\n'
+
+
+def _shell_path(path: Path) -> str:
+    value = str(path).replace("\\", "/")
+    drive, tail = os.path.splitdrive(value)
+    if os.name == "nt" and drive:
+        value = f"/{drive[0].lower()}{tail}"
+    return value
 
 
 @pytest.fixture
@@ -214,13 +223,16 @@ def plugin_edit_hook(stdin: str, tmp_path: Path) -> str:
     assert entry["matcher"] == "^(?:Write|Edit|MultiEdit)$"
     bin_dir = tmp_path / "bin"
     log = tmp_path / "calls"
-    write(bin_dir / "meow", f'#!/bin/sh\necho "$@" >> {log}\n')
+    write(bin_dir / "meow", f'#!/bin/sh\necho "$@" >> {_shell_path(log)}\n')
     (bin_dir / "meow").chmod(0o755)
     result = subprocess.run(
         ["sh", "-c", entry["hooks"][0]["command"]],
         input=stdin,
         text=True,
-        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "CLAUDE_PROJECT_DIR": str(tmp_path)},
+        env={
+            "PATH": f"{_shell_path(bin_dir)}:/usr/bin:/bin",
+            "CLAUDE_PROJECT_DIR": str(tmp_path),
+        },
         check=False,
     )
     assert result.returncode == 0
