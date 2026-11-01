@@ -97,7 +97,8 @@ data; remove temporary artifacts when finished.
 Installing missing dependencies (for
 example Playwright) is allowed. The verdict is the only file you may write
 in the checkout{{#if write_tests}}, besides new test files{{/if}}. Write
-your verdict only to {{report_file}}: begin with `SUMMARY: <observed result>`
+your verdict only to the exact absolute path {{report_file}} (never a same-named
+file elsewhere): begin with `SUMMARY: <observed result>`
 and then `STATUS: PASS` or `STATUS: FAIL`. Base the verdict on observed
 behavior and include concise reproduction steps and command results where
 useful. Do not report configured command failures as passing.

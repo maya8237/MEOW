@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import os
+import signal
 import subprocess
 import sys
 from ctypes import wintypes
@@ -24,6 +26,21 @@ def run_windows_tool(
         return subprocess.run(argv, capture_output=True, check=False, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired):
         return None
+
+
+def kill_process_tree(pid: int) -> None:
+    """Best-effort kill of `pid` and its descendants; never raises."""
+    if sys.platform == "win32":
+        run_windows_tool(["taskkill", "/T", "/F", "/PID", str(pid)])
+        return
+    try:
+        group = os.getpgid(pid)
+        if group == pid and group != os.getpgrp():  # its own group: take the tree
+            os.killpg(group, signal.SIGKILL)
+        else:
+            os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
 
 
 def process_identity(  # ruff: ignore[too-many-return-statements, complex-structure, too-many-branches, too-many-statements]

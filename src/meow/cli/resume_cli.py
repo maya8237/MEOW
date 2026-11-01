@@ -201,14 +201,43 @@ def _repair(  # ruff: ignore[complex-structure, too-many-branches, too-many-stat
     return patch, actions
 
 
+def _interrupted(phases: list, started: str, finished: str) -> bool:
+    """Whether the last `started` phase has no `finished` phase after it."""
+    last = {name: -1 for name in (started, finished)}
+    for index, phase in enumerate(phases):
+        if phase in last:
+            last[phase] = index
+    return last[started] > last[finished]
+
+
 def _required_session_roles(record: RunRecord, resume_at: str) -> set[str]:
-    phases = {step.get("phase") for step in record.transitions}
+    """Roles whose saved Claude session the resumed run would continue.
+
+    Only the persistent fixer keeps a session across rounds. The reviewer runs
+    one-shot queries, so its session matters only when a kill landed mid-review.
+    """
+    phases = [step.get("phase") for step in record.transitions]
     required = set()
     if "generator_started" in phases:
-        required.add("generator")
-    if "reviewer_started" in phases:
+        required.add("generator" if record.plan_file else "review_fixer")
+    if resume_at == "review" and _interrupted(
+        phases, "reviewer_started", "reviewer_finished"
+    ):
         required.add("reviewer")
-    return required if resume_at == "review" else {"generator"} & required
+    return required
+
+
+def _session_plan(record: RunRecord, resume_at: str) -> tuple[set[str], list[str]]:
+    """Required roles that have a saved session, and those that do not.
+
+    The missing ones restart fresh from the plan and on-disk verdicts. Session
+    IDs are not recovered from Claude transcripts: a transcript carries no role,
+    and generator, reviewer and tester sessions share one worktree and time
+    window, so no match is reliable.
+    """
+    required = _required_session_roles(record, resume_at)
+    missing = sorted(required - set(record.sessions))
+    return required - set(missing), missing
 
 
 def _tasks_unfinished(record: RunRecord) -> bool:
@@ -662,27 +691,20 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
         )
     saved_workflow = record.results.get("workflow")
     resume_at = _resume_at(record)
-    required_sessions = _required_session_roles(record, resume_at)
-    missing_sessions = sorted(required_sessions - set(record.sessions))
-    if missing_sessions and repair:
-        print(
-            "Repair: no Claude session for "
-            f"{', '.join(missing_sessions)}; starting fresh session(s) from the plan."
-        )
-        required_sessions -= set(missing_sessions)
-        missing_sessions = []
-    if missing_sessions:
-        return _refuse(
-            store,
-            record,
-            "Cannot resume: missing Claude session reference(s) for "
-            f"{', '.join(missing_sessions)}. Inspect with meow status "
-            f"{record.id} and start a new run if the transcript is unavailable.",
-            permanent=True,
-        )
+    required_sessions, missing_sessions = _session_plan(record, resume_at)
     clear_cancel(store, record.id)
     if (record := _claim(store, record)) is None:
         return 1
+    if missing_sessions:
+        print(
+            "Notice: no saved Claude session for "
+            f"{', '.join(missing_sessions)}; continuing with fresh session(s) "
+            "from the plan and on-disk verdicts."
+        )
+        store.update_results(
+            record.id,
+            session_fallback={"roles": missing_sessions, "resume_at": resume_at},
+        )
     await run_sprint(
         Path(record.worktree),
         record.results.get("feature_name"),

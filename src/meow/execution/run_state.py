@@ -496,6 +496,12 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
         """Stamp `results.heartbeat_at`: a driverless (native) run is alive."""
         return self.update_results(run_id, heartbeat_at=time.time())
 
+    def record_activity(self, run_id: str, role: str, event: str) -> RunRecord:
+        """Stamp `results.activity`: the newest SDK message an agent produced."""
+        return self.update_results(
+            run_id, activity={"at": time.time(), "role": role, "event": event}
+        )
+
     def update_results(self, run_id: str, **patch: object) -> RunRecord:
         """Persist workflow progress without adding a phase transition."""
         record = self.load(run_id)

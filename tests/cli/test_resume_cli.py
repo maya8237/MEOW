@@ -242,13 +242,64 @@ def test_validate_reads_repository_config_when_worktree_is_linked(tmp_path):
     assert problem is None
 
 
-def test_missing_session_reference_refuses_resume(tmp_path, capsys):
+def test_missing_generator_session_falls_back_to_fresh_session(tmp_path, capsys):
     store, record = _record(tmp_path)
     store.transition(record.id, "generator_started")
     with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
-        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
-    run.assert_not_awaited()
-    assert "missing claude session" in capsys.readouterr().err.lower()
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    assert run.await_args.kwargs["required_session_roles"] == set()
+    assert "fresh session" in capsys.readouterr().out
+    fallback = store.load(record.id).results["session_fallback"]
+    assert fallback["roles"] == ["generator"]
+
+
+def test_missing_reviewer_session_falls_back_only_when_review_was_interrupted(
+    tmp_path,
+):
+    store, record = _record(tmp_path)
+    store.transition(record.id, "generator_started")
+    store.set_session(record.id, "generator", "gen-session")
+    store.transition(record.id, "reviewer_started")
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    assert run.await_args.kwargs["required_session_roles"] == {"generator"}
+    assert store.load(record.id).results["session_fallback"]["roles"] == ["reviewer"]
+
+
+def test_finished_review_does_not_require_a_reviewer_session(tmp_path):
+    store, record = _record(tmp_path)
+    store.transition(record.id, "generator_started")
+    store.set_session(record.id, "generator", "gen-session")
+    store.transition(record.id, "reviewer_started")
+    store.transition(record.id, "reviewer_finished")
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    assert run.await_args.kwargs["required_session_roles"] == {"generator"}
+    assert "session_fallback" not in store.load(record.id).results
+
+
+def test_planless_run_requires_the_review_fixer_session(tmp_path):
+    store, record = _record(tmp_path)
+    store.transition(record.id, "generator_started", plan_file=None)
+    store.set_session(record.id, "review_fixer", "fixer-session")
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    assert run.await_args.kwargs["required_session_roles"] == {"review_fixer"}
+    assert "session_fallback" not in store.load(record.id).results
+
+
+def test_resume_after_manual_verdict_edit_keeps_the_edited_verdict(tmp_path):
+    store, record = _record(tmp_path)
+    verdict = tmp_path / "plan-test.md"
+    verdict.write_text("SUMMARY: ok\nSTATUS: PASS\n", encoding="utf-8")
+    store.transition(record.id, "generator_started")
+    store.transition(record.id, "tester_finished")
+    verdict.write_text("SUMMARY: ok\nSTATUS: FAIL\n", encoding="utf-8")
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    assert run.await_args.kwargs["resume_at"] == "review"
+    assert run.await_args.kwargs["plan_file"] == tmp_path / "plan.md"
+    assert "STATUS: FAIL" in verdict.read_text(encoding="utf-8")
 
 
 def test_repair_rebaselines_a_changed_plan(tmp_path, capsys):

@@ -2,6 +2,7 @@
 
 import json
 import re
+import time
 from contextlib import suppress
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from meow.agents.reviewer import (
 from meow.infrastructure.test_runner import VerificationStageEvidence
 from meow.project.plan_files import plan_test_file, stage_file
 from meow.project.prompts import tester_prompt
+from meow.project.stray_verdicts import clear_untracked_strays, read_verdict
 from meow.project.tester_setup import effective_browser_env
 
 
@@ -180,7 +182,7 @@ class VerificationAgent(Agent):
             f"Review request:\n{request}\n\n", report, evidence
         )
 
-    async def _test_basis(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches]
+    async def _test_basis(  # ruff: ignore[too-many-statements, complex-structure, too-many-branches, too-many-locals]
         self, basis: str, report_file: Path, evidence: VerificationStageEvidence
     ):
         active_dir = self.context.active_working_dir()
@@ -245,8 +247,10 @@ class VerificationAgent(Agent):
             previous_report = None
         except OSError as exc:
             return "FAIL", f"Could not prepare tester verdict at {report_file}: {exc}"
+        started = time.time()
         try:
             report_file.unlink(missing_ok=True)
+            clear_untracked_strays(active_dir, report_file)
             await self.run_definition_query(
                 self.definition("tester"), prompt, self._options(report_file), "Tester"
             )
@@ -254,9 +258,8 @@ class VerificationAgent(Agent):
             if previous_report is not None and not report_file.exists():
                 report_file.write_bytes(previous_report)
             raise
-        try:
-            verdict = report_file.read_text(encoding="utf-8")
-        except (OSError, UnicodeError):
+        verdict = read_verdict(active_dir, report_file, started)[0]
+        if verdict is None:
             if previous_report is not None and not report_file.exists():
                 report_file.write_bytes(previous_report)
             return (

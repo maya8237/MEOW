@@ -9,6 +9,7 @@ from meow.agents.base import SessionAgent
 from meow.execution import round_memory
 from meow.execution.run_state import RunStore
 from meow.execution.sprint import Sprint
+from meow.execution.workflow import hot_reload
 from meow.execution.workflow.stall import StallTracker
 from meow.infrastructure.cancellation import cancellable, check_cancel
 from meow.infrastructure.usage import usage_scope
@@ -160,6 +161,7 @@ class WorkflowRun:
         self.state.has_test_step = any(
             item.target == "builtin.test" for item in walk(steps)
         )
+        hot_reload.warn_haiku_verdicts(self.state.sprint, steps, source="start")
         for step in steps:
             if step.id in self.state.completed:
                 continue
@@ -256,6 +258,7 @@ class WorkflowRun:
             ):
                 state.round, state.gates = number, {}
                 state.generate_changed = None
+                hot_reload.reload_config(state, step.body)
                 await self.body(step.body)
                 failed = self._blocking_failures()
                 if not failed:

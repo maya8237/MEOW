@@ -1,10 +1,13 @@
 """Agent and verdict-gate steps; artifact names are owned by plan_files."""
 
+import time
+
 from meow.agents.reviewer import _verdict_status
 from meow.agents.stage import StageAgent
 from meow.project.custom.templates import render
 from meow.project.plan_files import plan_stage_file, stage_file
 from meow.project.prompts import lint_instructions, verdict_format
+from meow.project.stray_verdicts import clear_untracked_strays, read_verdict
 
 
 def record_stage(state, step, status, summary, output):  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
@@ -50,17 +53,24 @@ async def run_stage(state, step):
     values = stage_values(state, step)
     output = values["output_file"]
     output.unlink(missing_ok=True)
+    active = values["active_dir"]
+    clear_untracked_strays(active, output)
     state.journal("stage_started", round=state.round)
     task = render(
         step.task
-        or "Perform this stage for {{request}}. Write your report to {{output_file}}.",
+        or "Perform this stage for {{request}}. Write your report only to the "
+        "exact path {{output_file}}.",
         values,
         where=str(agent.file),
     )
+    started = time.time()
     response = await StageAgent(state.sprint).run(agent, task, values, state.pool)
-    try:
-        text = output.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
+    text, stray = read_verdict(active, output, started)
+    if stray is not None:
+        state.store.update_results(
+            state.run_id, stray_verdict={"stage": step.id, "from": str(stray)}
+        )
+    if text is None:
         text = (
             "SUMMARY: Stage did not produce a readable verdict.\nSTATUS: FAIL"
             if step.kind == "gate"

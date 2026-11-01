@@ -101,7 +101,8 @@ otherwise `master`; it also supplies the CI target unless `--target-ref` is give
 ## Custom skills and agents
 
 [CUSTOM.md](CUSTOM.md): `[custom]` paths, roles, scopes, validation, permissions;
-[WORKFLOWS.md](WORKFLOWS.md): definition formats. Sources reload each run.
+[WORKFLOWS.md](WORKFLOWS.md): definition formats. Sources reload each run; each loop
+round re-reads `[models]` and agents (invalid files keep old values; Haiku verdict roles warn).
 
 ## Reviewer architecture check
 
@@ -115,9 +116,8 @@ issues; otherwise record an advisory follow-up. `AGENTS.md` is guidance only.
 `[jira].project_key` is optional for an explicit issue key; omitted issue keys select
 the latest issue in the configured project, or the only accessible project.
 Multiple projects require an explicit choice. `branch_prefix` defaults to `"issue/"`
-for builds; reviews create no branch.
-Without `[jira.mcp]`, your single user-scope Jira server is used; see
-[MCP](MCP.md). `[jira].url` (not secret) prefills setup. Legacy inline
+for builds; reviews create no branch. Without `[jira.mcp]`, your single user-scope
+Jira server is used; see [MCP](MCP.md). `[jira].url` (not secret) prefills setup. Legacy inline
 `[jira.mcp].command`/`args` still work. Credentials use the server's own names:
 `JIRA_URL` with `JIRA_USERNAME`/`JIRA_API_TOKEN` (Cloud) or `JIRA_PERSONAL_TOKEN`
 (Server/Data Center). Native skills use session-connected tools.
