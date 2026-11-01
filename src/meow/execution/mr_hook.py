@@ -1,11 +1,12 @@
 """The `mr_end` lifecycle hook: fired once a workflow has put its MR.
 
-`fire_mr_end` runs the user's `mr_end` hooks with the MR and pipeline outcome;
-a hook that exits 2 has its stderr shown (advisory, the run is unchanged).
-`python -m meow.execution.mr_hook` is a ready-made hook command that checks the
-MR was posted and the pipeline was verified the way MEOW verifies it.
+`fire_mr_end` always runs the built-in check (MR posted, pipeline verified the
+way MEOW verifies it), then the user's `mr_end` hooks; problems and hook exit-2
+stderr are shown (advisory, the run is unchanged). `python -m
+meow.execution.mr_hook` runs the same check as a hook command.
 """
 
+import asyncio
 import json
 import os
 import sys
@@ -33,10 +34,37 @@ def mr_payload(kind: str, delivery: dict, **fields: object) -> dict:
 async def fire_mr_end(
     config: dict, payload: dict, cwd: Path, announce: Callable[[str], None]
 ) -> None:
+    # Plain runs already verified the pipeline and printed the outcome.
+    if payload["kind"] != "run":
+        for found in await asyncio.to_thread(_builtin_problems, payload, cwd):
+            announce(f"MR check: {found}")
     custom = config.get("customizations")
     hooks = custom.hooks if custom else ()
     for note in await run_lifecycle(hooks, "mr_end", payload, cwd):
         announce(f"mr_end hook {note}")
+
+
+def _builtin_problems(payload: dict, cwd: Path) -> list[str]:
+    try:
+        return problems(payload, cwd)
+    except Exception as exc:  # the built-in check must never fail a delivered run
+        return [f"check failed: {exc}"]
+
+
+def _judge(snap, judged, fix_non_meow: bool) -> dict:
+    """Outcome like `verify_pipeline`: meow-review must pass; other failing jobs
+    count too, worded by `fix_non_meow_jobs` (deploy-like jobs are never fixed)."""
+    failing = [j.name for j in snap.jobs if j.status == "failed"]
+    out = {"status": "verified", "failing": failing, "url": snap.url, "detail": ""}
+    if judged.review_failed:
+        out.update(status="not_verified", detail="meow review job failed")
+    elif judged.other_failed:
+        fixable = fix_non_meow and judged.fixable_other
+        out.update(
+            status="not_verified",
+            detail="failing jobs not fixed" if fixable else "failing jobs left",
+        )
+    return out
 
 
 def _live_pipeline(payload: dict, cwd: Path) -> dict | None:
@@ -58,9 +86,7 @@ def _live_pipeline(payload: dict, cwd: Path) -> dict | None:
             classify(snap, fix_non_meow=settings["fix_non_meow_jobs"]) if snap else None
         )
         if snap and snap.jobs and not judged.running:
-            failed = [j.name for j in snap.jobs if j.status == "failed"]
-            status = "not_verified" if failed else "verified"
-            return {"status": status, "failing": failed, "url": snap.url}
+            return _judge(snap, judged, bool(settings["fix_non_meow_jobs"]))
         time.sleep(float(settings["poll_seconds"]))
     return None
 
