@@ -8,6 +8,7 @@ from meow.project.custom.registration import (
     auto_sync_message,
     check_registration,
     hook_output,
+    old_layout,
     sync_registration,
 )
 from meow.project.custom.sync import SYNC_SCOPES
@@ -16,8 +17,11 @@ from meow.project.custom.sync import SYNC_SCOPES
 def _auto(project_dir: Path, event: str) -> None:
     """Never fails: a broken config must not break Claude Code's startup."""
     try:
+        migrated = old_layout(project_dir, apply=True)
         custom = load_config(project_dir)["customizations"]
-        message = auto_sync_message(custom, project_dir, user_config_path().parent)
+        message = auto_sync_message(
+            custom, project_dir, user_config_path().parent, migrated
+        )
     except Exception as exc:  # reported, never raised: startup must go on
         message = f"MEOW could not sync customizations: {exc}"
     output = hook_output(message, event)
@@ -29,6 +33,7 @@ def sync_command(args, project_dir: Path) -> None:
     if getattr(args, "auto", None):
         _auto(project_dir, args.auto)
         return
+    migrated = [] if args.check else old_layout(project_dir, apply=True)
     custom = load_config(project_dir)["customizations"]
     user_dir = user_config_path().parent
     if args.check:
@@ -40,7 +45,7 @@ def sync_command(args, project_dir: Path) -> None:
         print("Custom skills and hooks are registered with Claude Code.")
         return
     scopes = SYNC_SCOPES if args.scope == "all" else (args.scope,)
-    fixed = sync_registration(custom, project_dir, user_dir, scopes)
+    fixed = [*migrated, *sync_registration(custom, project_dir, user_dir, scopes)]
     for line in fixed:
         print(line)
     print(

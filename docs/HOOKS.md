@@ -45,7 +45,7 @@ Like custom skills, hooks are registered with Claude Code so they run as
 regular hooks in every session, not only inside MEOW's SDK agents:
 
 ```bash
-meow hooks sync          # writes <scope>/plugin/hooks/hooks.json, enables the plugin
+meow hooks sync          # writes hooks/hooks.json in each scope's plugin folder
 meow hooks sync --check  # report what is missing; changes nothing
 meow sync                # skills and hooks together
 ```

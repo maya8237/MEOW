@@ -55,14 +55,17 @@ def test_sync_writes_hooks_json_and_registers_the_plugin(project, home):
     assert check(project, home)
     sync(project, home)
 
-    config = json.loads((project / ".meow/plugin/hooks/hooks.json").read_text())
+    config = json.loads(
+        (project / ".claude/skills/meow-project/hooks/hooks.json").read_text()
+    )
     (entry,) = config["hooks"]["PreToolUse"]
     command = entry["hooks"][0]
     assert entry["matcher"] == "^(?:Write|Edit)$"
     assert "MEOW_HOOK=guard MEOW_EVENT=PreToolUse" in command["command"]
     assert "meow native" not in command["command"]
     assert command["timeout"] == math.ceil(12.5)
-    assert "meow-project" in (project / ".claude/settings.json").read_text()
+    manifest = project / ".claude/skills/meow-project/.claude-plugin/plugin.json"
+    assert json.loads(manifest.read_text())["name"] == "meow-project"
     assert check(project, home) == []
     assert sync(project, home) == []
 
@@ -75,7 +78,7 @@ def test_role_limited_and_lifecycle_hooks_stay_with_meow(project, home):
     )
 
     assert sync(project, home) == []
-    assert not (project / ".meow/plugin/hooks/hooks.json").exists()
+    assert not (project / ".claude/skills/meow-project/hooks/hooks.json").exists()
 
 
 def test_removed_definition_removes_hooks_json(project, home):
@@ -85,7 +88,7 @@ def test_removed_definition_removes_hooks_json(project, home):
     hook.unlink()
 
     assert any("removed" in line for line in sync(project, home))
-    assert not (project / ".meow/plugin/hooks/hooks.json").exists()
+    assert not (project / ".claude/skills/meow-project/hooks/hooks.json").exists()
 
 
 def test_only_the_winning_scope_is_synced(project, home):
@@ -94,8 +97,8 @@ def test_only_the_winning_scope_is_synced(project, home):
 
     sync(project, home)
 
-    assert (project / ".meow/local/plugin/hooks/hooks.json").is_file()
-    assert not (project / ".meow/plugin/hooks/hooks.json").exists()
+    assert (project / ".claude/skills/meow-local/hooks/hooks.json").is_file()
+    assert not (project / ".claude/skills/meow-project/hooks/hooks.json").exists()
 
 
 def test_hooks_and_sync_commands(project, home, capsys):
@@ -105,7 +108,7 @@ def test_hooks_and_sync_commands(project, home, capsys):
 
     write(project / ".meow/hooks/guard.toml", HOOK)
     write(
-        project / ".meow/local/plugin/skills/mine/SKILL.md",
+        project / ".claude/skills/meow-local/skills/mine/SKILL.md",
         "---\nname: mine\ndescription: Does mine.\n---\n\nBody.\n",
     )
     parse = _build_arg_parser().parse_args
@@ -117,8 +120,8 @@ def test_hooks_and_sync_commands(project, home, capsys):
 
     sync_command(parse(["sync"]), project)
     assert "restart Claude Code" in capsys.readouterr().out
-    assert (project / ".meow/plugin/hooks/hooks.json").is_file()
-    assert (project / ".meow/local/plugin/skills/mine").is_dir()
+    assert (project / ".claude/skills/meow-project/hooks/hooks.json").is_file()
+    assert (project / ".claude/skills/meow-local/skills/mine").is_dir()
 
     hooks_command(parse(["hooks", "sync", "--check"]), project)
     sync_command(parse(["sync", "--check"]), project)
@@ -126,7 +129,7 @@ def test_hooks_and_sync_commands(project, home, capsys):
 
 
 def test_hand_written_entries_are_kept_beside_generated_ones(project, home):
-    own = project / ".meow/plugin/hooks/hooks.json"
+    own = project / ".claude/skills/meow-project/hooks/hooks.json"
     mine = {"hooks": [{"type": "command", "command": "echo mine"}]}
     write(own, json.dumps({"description": "Mine", "hooks": {"Stop": [mine]}}))
 
@@ -145,7 +148,7 @@ def test_hand_written_entries_are_kept_beside_generated_ones(project, home):
 
 
 def test_entries_from_earlier_versions_are_replaced(project, home):
-    own = project / ".meow/plugin/hooks/hooks.json"
+    own = project / ".claude/skills/meow-project/hooks/hooks.json"
     old = {"hooks": [{"type": "command", "command": "meow native hook Stop --name x"}]}
     write(own, json.dumps({"hooks": {"Stop": [old]}}))
     write(project / ".meow/hooks/guard.toml", HOOK)
@@ -156,7 +159,7 @@ def test_entries_from_earlier_versions_are_replaced(project, home):
 
 
 def test_malformed_hooks_json_is_reported_not_overwritten(project, home):
-    own = project / ".meow/plugin/hooks/hooks.json"
+    own = project / ".claude/skills/meow-project/hooks/hooks.json"
     write(own, "{nope")
     write(project / ".meow/hooks/guard.toml", HOOK)
 

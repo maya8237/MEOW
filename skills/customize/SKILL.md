@@ -23,11 +23,11 @@ Use a skill for reusable instructions, an agent definition for a role with its
 own prompt/tools/model, and a workflow for a different sequence of operations.
 Ask only for choices the request leaves open; use clear defaults when possible.
 
-| Scope | Base (`agents/`, `workflows/`, `hooks/`, `plugin/skills/`) | Config |
-|---|---|---|
-| Project | `.meow/` | `.meow/config.toml` |
-| Local project | `.meow/local/` | `.meow/config.local.toml` |
-| User | `~/.meow/` | `~/.meow/config.toml` |
+| Scope | `agents/`, `workflows/`, `hooks/` in | Skills in | Config |
+|---|---|---|---|
+| Project | `.meow/` | `.claude/skills/meow-project/skills/` | `.meow/config.toml` |
+| Local project | `.meow/local/` | `.claude/skills/meow-local/skills/` | `.meow/config.local.toml` |
+| User | `~/.meow/` | `~/.meow/plugin/skills/` | `~/.meow/config.toml` |
 
 These conventional directories need no `[custom]` entry; skills and hooks also
 need the Claude Code sync below. Higher scopes replace
@@ -110,9 +110,9 @@ the contract even if an override omits it. Conditions can use run flags,
 `--input name=value`, or set `[workflow].default = "NAME"`. Custom workflow
 execution uses CLI mode in `/meow:run`.
 
-**Skill:** `<scope>/plugin/skills/<name>/SKILL.md` (`.meow/local/`, `.meow/`,
-`~/.meow/`), with frontmatter `name` matching its directory and `description`
-explaining when it applies. Supporting files may sit beside it. Use
+**Skill:** `<name>/SKILL.md` in the scope's skills folder (table above), with
+frontmatter `name` matching its directory and `description` explaining when it
+applies. Supporting files may sit beside it. Use
 `[custom].skills` only for an existing directory elsewhere or to limit `roles`.
 Definition `skills` and `[agent_skills]` can also name installed skills.
 

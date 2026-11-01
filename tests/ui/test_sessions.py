@@ -299,7 +299,9 @@ def test_command_for_rejects_unsupported_claude_fields(tmp_path, monkeypatch):
 def test_claude_recipe_resolves_slash_skill_from_selected_repository(
     tmp_path, monkeypatch
 ):
-    skill_dir = tmp_path / ".meow" / "plugin" / "skills" / "api-check"
+    skill_dir = (
+        tmp_path / ".claude" / "skills" / "meow-project" / "skills" / "api-check"
+    )
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
         "---\nname: api-check\ndescription: Check API behavior.\n---\n",

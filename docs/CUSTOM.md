@@ -45,23 +45,37 @@ and resolved built-in skills.
 ### Claude Code registration
 
 Custom skills also load in Claude Code as namespaced plugin skills
-(`/meow-local:NAME`, `/meow-project:NAME`, `/meow-user:NAME`). `<scope>/plugin/skills/`
-(`.meow/local/`, `.meow/`, `~/.meow/`) is that scope's plugin; put new skills there.
-Skills from other `[custom].skills` directories are copied into a generated
-`<scope>/linked/plugin` (`meow-<scope>-linked`), kept apart so rebuilding the
-copies never touches hand-made skills. Copies are per user: git-ignored and
-enabled in `settings.local.json`. Agents and workflows need no registration.
+(`/meow-local:NAME`, `/meow-project:NAME`, `/meow-user:NAME`). Each scope has
+one plugin folder; put new skills in its `skills/`:
 
-`meow sync` (or `skills sync`) writes the manifests and enables them in
-`.claude/settings.local.json`, `.claude/settings.json`, or `~/.claude/settings.json`
-without touching other settings. The MEOW plugin runs the same sync as
-`meow sync --auto` when Claude Code starts and right after Claude edits a
-`.meow/`, `SKILL.md`, or `.toml` file; it also restores MEOW's `.gitignore`
-rules in an onboarded project, and reports what it cannot fix. Commit the
-project changes it makes; restart Claude Code to load new skills and hooks.
-`meow native verify` reports `skill_registration`, `hook_registration`, and
-`unshared_definitions` (project definition folders git ignores). Onboarding
-keeps `.meow/{agents,workflows,hooks,plugin}` trackable.
+| Scope | Plugin folder | How Claude Code loads it |
+|---|---|---|
+| Project | `.claude/skills/meow-project/` (tracked) | In place from the project's `.claude/skills/` |
+| Local | `.claude/skills/meow-local/` (git-ignored) | In place, as above |
+| User | `~/.meow/plugin/` | `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json` |
+
+Project and local plugins need no marketplace or settings entry, so checkouts
+and worktrees cannot collide; start Claude Code from the repository root.
+Skills from other `[custom].skills` directories are copied into a generated,
+git-ignored `meow-<scope>-linked` folder beside the plugin (`~/.meow/linked/plugin`
+for the user), kept apart so rebuilding never touches hand-made skills.
+Agents and workflows need no registration.
+
+`meow sync` writes the manifests (and the user's plugin-dir entry). The MEOW
+plugin runs the same sync as `meow sync --auto` when Claude Code starts and
+right after Claude edits a `.meow/`, `SKILL.md`, or `.toml` file; it also
+restores MEOW's `.gitignore` rules in an onboarded project and reports what it
+cannot fix. Run `/reload-plugins` (or restart) to load changes; commit project
+changes. `meow native verify` reports `skill_registration`,
+`hook_registration`, `unshared_definitions` (project folders git ignores), and
+`old_layout`.
+
+Earlier versions used `.meow/plugin/`, `.meow/local/plugin/`, and `meow-*`
+directory marketplaces, which clashed across checkouts ("Marketplace file not
+found"). Any MEOW command, `meow sync`, or the startup sync migrates them: it
+moves the plugins, rewrites `[custom].skills` entries naming the old folders,
+and removes the old marketplaces from `.claude/settings*.json`. If Claude Code
+still lists one, run `claude plugin marketplace remove NAME` once.
 
 Agent TOML fields, model/session semantics, delegates, and Claude Code imports
 are defined in [WORKFLOWS.md](WORKFLOWS.md#agents).

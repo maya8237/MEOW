@@ -22,6 +22,7 @@ from meow.project.command_detection import (
     setup_defaults,
 )
 from meow.project.config import _merge_config, config_paths
+from meow.project.custom.legacy import legacy_layout
 from meow.project.repos import remember
 
 BOUNDARY = (
@@ -29,13 +30,17 @@ BOUNDARY = (
     "!.meow/",
     "!.meow/config.toml",
     "!.meow/skills/",
-    "!.meow/plugin/",
-    "!.meow/.claude-plugin/",
     "!.meow/agents/",
     "!.meow/workflows/",
     "!.meow/hooks/",
     ".claude/settings.local.json",
+    ".claude/skills/meow-local/",
+    ".claude/skills/meow-project-linked/",
+    ".claude/skills/meow-local-linked/",
 )
+# Rules earlier versions wrote; dropped when the boundary is repaired (their
+# folders are migrated by `custom.legacy`).
+_LEGACY_RULES = ("!.meow/plugin/", "!.meow/.claude-plugin/", "!.meow/linked/")
 
 CONFIG_RELPATH = ".meow/config.toml"
 LOCAL_CONFIG_RELPATH = ".meow/config.local.toml"
@@ -49,18 +54,18 @@ SKIPPED_FEATURES = (
 )
 
 _BROAD = frozenset({".meow", ".meow/", "/.meow", "/.meow/"})
-_STALE = _BROAD | frozenset(BOUNDARY)
+_STALE = _BROAD | frozenset(BOUNDARY) | frozenset(_LEGACY_RULES)
 _EXPECTED_IGNORED = {
     ".meow/config.toml": False,
     ".meow/config.local.toml": True,
     ".meow/skills/x/SKILL.md": False,
-    ".meow/plugin/skills/x/SKILL.md": False,
-    ".meow/.claude-plugin/marketplace.json": False,
-    ".meow/local/plugin/skills/x/SKILL.md": True,
+    ".claude/skills/meow-project/skills/x/SKILL.md": False,
+    ".claude/skills/meow-local/skills/x/SKILL.md": True,
+    ".claude/skills/meow-project-linked/skills/x/SKILL.md": True,
+    ".claude/skills/meow-local-linked/skills/x/SKILL.md": True,
     ".meow/agents/x.toml": False,
     ".meow/workflows/x.toml": False,
     ".meow/hooks/x.toml": False,
-    ".meow/linked/plugin/skills/x/SKILL.md": True,
     ".meow/local/hooks/x.toml": True,
     ".meow/runs/x.json": True,
     ".claude/settings.local.json": True,
@@ -254,6 +259,8 @@ def _apply(
     _ignore_python_metadata(root)
     if repair_boundary(root):
         files.append(".gitignore")
+    if legacy_layout(root, apply=True):
+        files.append(".claude/skills")
     error = _verify(root)
     config = root / CONFIG_RELPATH
     if error is None and write_config and not config.is_file():

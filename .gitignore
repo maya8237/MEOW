@@ -232,12 +232,13 @@ __marimo__/
 !.meow/
 !.meow/config.toml
 !.meow/skills/
-!.meow/plugin/
-!.meow/.claude-plugin/
 !.meow/agents/
 !.meow/workflows/
 !.meow/hooks/
 .claude/settings.local.json
+.claude/skills/meow-local/
+.claude/skills/meow-project-linked/
+.claude/skills/meow-local-linked/
 
 # Hosted docs site build output
 /frontend/docs-site/public/docs.json

@@ -11,7 +11,6 @@ from meow.project.custom.registration import (
     auto_sync_message,
     check_registration,
     hook_output,
-    sync_registration,
 )
 from meow.project.custom.sources import unshared_project_dirs
 from meow.project.onboarding import BOUNDARY
@@ -50,6 +49,16 @@ def skill(folder: Path, name: str) -> None:
     )
 
 
+def plugins(project: Path, home: Path) -> dict[str, Path]:
+    """Each scope's plugin root."""
+    skills = project / ".claude" / "skills"
+    return {
+        "local": skills / "meow-local",
+        "project": skills / "meow-project",
+        "user": home / ".meow" / "plugin",
+    }
+
+
 def every_scope(project: Path, home: Path) -> None:
     """A skill and a hook at local, project, and user scope, plus a linked skill."""
     bases = {
@@ -58,7 +67,7 @@ def every_scope(project: Path, home: Path) -> None:
         "user": home / ".meow",
     }
     for scope, base in bases.items():
-        skill(base / "plugin" / "skills", f"s-{scope}")
+        skill(plugins(project, home)[scope] / "skills", f"s-{scope}")
         write(base / "hooks" / f"guard-{scope}.toml", HOOK.replace("Guard", scope))
     skill(project / "tools" / "skills", "linked-one")
     write(project / ".meow" / "config.toml", '[custom]\nskills = ["tools/skills"]\n')
@@ -77,21 +86,18 @@ def test_auto_sync_fixes_every_scope(project, home):
 
     message = auto_sync_message(custom(project), project, home / ".meow")
 
-    assert message and "Restart Claude Code" in message
-    assert "Commit the .meow/" in message
+    assert message and "/reload-plugins" in message
+    assert "Commit the .claude/skills/meow-project/" in message
     assert "need attention" not in message
-    shared = settings(project / ".claude" / "settings.json")["enabledPlugins"]
-    assert shared == {"meow-project@meow-project": True}
-    local = settings(project / ".claude" / "settings.local.json")["enabledPlugins"]
-    assert local == {
-        "meow-local@meow-local": True,
-        "meow-project-linked@meow-project-linked": True,
-    }
+    # Project and local plugins load from `.claude/skills/`: no marketplaces.
+    assert not (project / ".claude" / "settings.json").exists()
+    assert not (project / ".claude" / "settings.local.json").exists()
     user = settings(home / ".claude" / "settings.json")["env"]
     assert str((home / ".meow" / "plugin").resolve()) in user["CLAUDE_CODE_PLUGIN_DIRS"]
-    for base in (project / ".meow" / "local", project / ".meow", home / ".meow"):
-        assert (base / "plugin" / "hooks" / "hooks.json").is_file()
-    linked = project / ".meow" / "linked" / "plugin" / "skills" / "linked-one"
+    for root in plugins(project, home).values():
+        assert (root / ".claude-plugin" / "plugin.json").is_file()
+        assert (root / "hooks" / "hooks.json").is_file()
+    linked = project / ".claude/skills/meow-project-linked/skills/linked-one"
     assert (linked / "SKILL.md").is_file()
     assert check_registration(custom(project), project, home / ".meow") == []
     assert auto_sync_message(custom(project), project, home / ".meow") is None
@@ -110,28 +116,9 @@ def test_auto_sync_picks_up_later_edits(project, home):
     message = auto_sync_message(custom(project), project, home / ".meow")
 
     assert message and "out of date" in message
-    hooks = (project / ".meow" / "plugin" / "hooks" / "hooks.json").read_text()
+    hooks = (plugins(project, home)["project"] / "hooks" / "hooks.json").read_text()
     assert '"matcher": "^(?:Bash)$"' in hooks
-    assert (project / ".meow" / "linked" / "plugin" / "skills" / "linked-two").is_dir()
-
-
-def test_sync_shares_a_project_plugin_enabled_only_locally(project, home):
-    skill(project / ".meow" / "plugin" / "skills", "team")
-    write(
-        project / ".claude" / "settings.local.json",
-        json.dumps({
-            "extraKnownMarketplaces": {
-                "meow-project": {"source": {"source": "directory", "path": "./.meow"}}
-            },
-            "enabledPlugins": {"meow-project@meow-project": True},
-        }),
-    )
-
-    assert sync_registration(custom(project), project, home / ".meow")
-
-    shared = settings(project / ".claude" / "settings.json")
-    assert shared["enabledPlugins"] == {"meow-project@meow-project": True}
-    assert sync_registration(custom(project), project, home / ".meow") == []
+    assert (project / ".claude/skills/meow-project-linked/skills/linked-two").is_dir()
 
 
 def test_auto_sync_restores_the_gitignore_boundary(project, home):
@@ -149,14 +136,15 @@ def test_auto_sync_restores_the_gitignore_boundary(project, home):
 
 
 def test_one_broken_scope_does_not_stop_the_others(project, home):
-    skill(project / ".meow" / "plugin" / "skills", "team")
+    skill(plugins(project, home)["project"] / "skills", "team")
     skill(home / ".meow" / "plugin" / "skills", "mine")
-    write(project / ".claude" / "settings.json", "{not json")
+    write(home / ".claude" / "settings.json", "{not json")
 
     message = auto_sync_message(custom(project), project, home / ".meow")
 
     assert message and "not valid JSON" in message
-    assert (home / ".claude" / "settings.json").is_file()
+    manifest = plugins(project, home)["project"] / ".claude-plugin" / "plugin.json"
+    assert manifest.is_file()
 
 
 def test_ignored_project_definitions_are_reported(project, home):
@@ -177,8 +165,7 @@ def test_auto_sync_reports_what_it_cannot_fix(project, home):
     message = auto_sync_message(custom(project), project, home / ".meow")
 
     assert message and "need attention" in message
-    assert "Restart" not in message
-    assert not (project / ".claude").exists()
+    assert "project hooks" in message and "ignored by git" in message
 
 
 def test_sync_auto_command_prints_hook_json_and_never_fails(project, home, capsys):
@@ -186,10 +173,10 @@ def test_sync_auto_command_prints_hook_json_and_never_fails(project, home, capsy
     from meow.cli.sync_cli import sync_command
 
     args = _build_arg_parser().parse_args(["sync", "--auto"])
-    skill(project / ".meow" / "plugin" / "skills", "team")
+    skill(plugins(project, home)["project"] / "skills", "team")
     sync_command(args, project)
     output = json.loads(capsys.readouterr().out)
-    assert "Restart" in output["systemMessage"]
+    assert "/reload-plugins" in output["systemMessage"]
     assert output["hookSpecificOutput"] == {
         "hookEventName": "SessionStart",
         "reloadSkills": True,
@@ -257,7 +244,7 @@ def test_auto_sync_serves_hooks_from_configured_directories(project, home):
     auto_sync_message(custom(project), project, home / ".meow")
 
     hooks = json.loads(
-        (project / ".meow" / "plugin" / "hooks" / "hooks.json").read_text()
+        (plugins(project, home)["project"] / "hooks" / "hooks.json").read_text()
     )
     (entry,) = hooks["hooks"]["PreToolUse"]
     assert entry["matcher"] == "^(?:Bash)$"

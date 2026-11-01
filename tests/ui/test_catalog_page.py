@@ -314,22 +314,12 @@ def test_create_skill_lands_in_project_plugin_and_registers_it(running, project)
     )
 
     assert status == HTTPStatus.CREATED
-    plugin = project / ".meow" / "plugin"
+    plugin = project / ".claude" / "skills" / "meow-project"
     assert Path(body["file"]) == plugin / "skills" / "journal" / "SKILL.md"
     manifest = json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())
     assert manifest["name"] == "meow-project"
-    assert (
-        json.loads((plugin.parent / ".claude-plugin" / "marketplace.json").read_text())[
-            "name"
-        ]
-        == "meow-project"
-    )
-    settings = json.loads((project / ".claude" / "settings.json").read_text())
-    assert settings["extraKnownMarketplaces"]["meow-project"]["source"] == {
-        "source": "directory",
-        "path": "./.meow",
-    }
-    assert settings["enabledPlugins"]["meow-project@meow-project"] is True
+    # Claude Code loads `.claude/skills/` plugins in place: no settings entry.
+    assert not (project / ".claude" / "settings.json").exists()
     skills = {item["name"]: item for item in build_catalog(project)["skills"]}
     assert skills["journal"]["description"] == "Keeps a journal."
 
@@ -342,7 +332,7 @@ def test_create_skill_copies_existing_skill(running, project):
     )
 
     assert status == HTTPStatus.CREATED
-    copied = project / ".meow" / "plugin" / "skills" / "notes-copy" / "SKILL.md"
+    copied = project / ".claude/skills/meow-project/skills/notes-copy/SKILL.md"
     assert copied.read_text(encoding="utf-8").startswith("---\nname: notes-copy\n")
     assert "Body." in copied.read_text(encoding="utf-8")
 
@@ -351,7 +341,7 @@ def test_create_skill_without_any_config_needs_no_custom_table(tmp_path):
     status, _ = _create(tmp_path, "skills", {"name": "fresh", "description": "New."})
 
     assert status == HTTPStatus.CREATED
-    assert (tmp_path / ".meow" / "plugin" / "skills" / "fresh" / "SKILL.md").is_file()
+    assert (tmp_path / ".claude/skills/meow-project/skills/fresh/SKILL.md").is_file()
     assert not (tmp_path / ".meow" / "config.toml").exists()
     assert "fresh" in {item["name"] for item in build_catalog(tmp_path)["skills"]}
 
@@ -554,7 +544,7 @@ def test_page_load_rebuilds_catalog(running, monkeypatch):
 
 def test_project_skill_in_git_ignored_folder_is_refused(tmp_path):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    (tmp_path / ".gitignore").write_text(".meow/\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text(".claude/\n", encoding="utf-8")
 
     status, body = _create(
         tmp_path,

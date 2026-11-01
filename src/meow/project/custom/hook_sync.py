@@ -167,7 +167,7 @@ def _update(
     found = []
     if not path.is_file() or path.read_text(encoding="utf-8") != text:
         found.append(f"{label}: out of date")
-    if register and not scope_plugin_registered(target, mode):
+    if register and not scope_plugin_registered(target):
         found.append(f"{label}: not registered with Claude Code")
     if mode != CHECK and found:
         if register:

@@ -9,12 +9,13 @@ Preserve unrelated rules and remove obsolete broad MEOW rules when safe.
 !.meow/
 !.meow/config.toml
 !.meow/skills/
-!.meow/plugin/
-!.meow/.claude-plugin/
 !.meow/agents/
 !.meow/workflows/
 !.meow/hooks/
 .claude/settings.local.json
+.claude/skills/meow-local/
+.claude/skills/meow-project-linked/
+.claude/skills/meow-local-linked/
 ```
 
 Verify with `git check-ignore`: shared `.meow/config.toml` must be trackable;
