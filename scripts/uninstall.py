@@ -147,8 +147,18 @@ def un_onboard(project: Path) -> None:
     for settings, data in updates:
         write_settings(settings, data, delete_empty=True)
     remove_install(root, root)
+    remove_project_plugins(project)
     remove_project_ignores(project)
     print(f"Removed MEOW onboarding and project data: {project}")
+
+
+def remove_project_plugins(project: Path) -> None:
+    """The project and local plugins MEOW keeps in `.claude/skills/`."""
+    for scope in ("project", "local"):
+        for name in (f"meow-{scope}", f"meow-{scope}-linked"):
+            plugin = project / ".claude" / "skills" / name
+            if plugin.is_dir() and not plugin.is_symlink():
+                shutil.rmtree(plugin)
 
 
 def remove_project_ignores(project: Path) -> None:
@@ -159,7 +169,7 @@ def remove_project_ignores(project: Path) -> None:
     kept = "".join(
         line
         for line in raw.splitlines(True)
-        if not line.strip().lstrip("!/").startswith(".meow/")
+        if not line.strip().lstrip("!/").startswith((".meow/", ".claude/skills/meow-"))
         and line.strip().lstrip("!/") != ".meow"
     )
     if kept != raw:

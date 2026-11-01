@@ -89,14 +89,34 @@ def conventional_sources(project_dir: Path, user_dir: Path) -> list[CustomSource
     ]
 
 
+# Claude Code loads a plugin folder under the project's `.claude/skills/` in
+# place, with no marketplace: nothing in its per-user registry for checkouts
+# and worktrees to fight over, no relative path, no settings entry.
+CLAUDE_SKILLS = Path(".claude") / "skills"
+
+
 def scope_plugin_dir(scope: str, project_dir: Path, user_dir: Path) -> Path:
-    """The scope's Claude plugin root; its `skills/` folder holds custom skills."""
-    return _scope_base(scope, project_dir, user_dir) / _PLUGIN_DIR
+    """The scope's Claude plugin root; its `skills/` folder holds custom skills.
+
+    Project and local plugins live in `.claude/skills/meow-<scope>/`; the user
+    plugin in `~/.meow/plugin/`, loaded through `CLAUDE_CODE_PLUGIN_DIRS`.
+    """
+    if scope == "user":
+        return Path(user_dir) / _PLUGIN_DIR
+    return Path(project_dir) / CLAUDE_SKILLS / f"meow-{scope}"
 
 
 def linked_plugin_dir(scope: str, project_dir: Path, user_dir: Path) -> Path:
     """Generated plugin root holding copies of `[custom].skills` directories."""
-    return _scope_base(scope, project_dir, user_dir) / "linked" / _PLUGIN_DIR
+    if scope == "user":
+        return Path(user_dir) / "linked" / _PLUGIN_DIR
+    return Path(project_dir) / CLAUDE_SKILLS / f"meow-{scope}-linked"
+
+
+def legacy_plugin_dir(scope: str, project_dir: Path, linked: bool = False) -> Path:
+    """Where earlier versions kept a project or local plugin (a marketplace)."""
+    base = Path(project_dir) / _CONVENTIONAL[scope]
+    return base / "linked" / _PLUGIN_DIR if linked else base / _PLUGIN_DIR
 
 
 def conventional_dir(scope: str, kind: str, project_dir: Path, user_dir: Path) -> Path:
@@ -124,6 +144,20 @@ def git_ignored(project_dir: Path, path: Path) -> bool:
     except (OSError, subprocess.SubprocessError):
         return False
     return result.returncode == 0
+
+
+def unshared_project_dirs(project_dir: Path) -> list[str]:
+    """Project definition folders git ignores, so teammates would never get them."""
+    project_dir = Path(project_dir)
+    return [
+        f"project {kind} ({folder}): ignored by git, so it would not be shared; "
+        "run `meow onboard` to repair .gitignore"
+        for kind in KINDS
+        if (
+            folder := conventional_dir("project", kind, project_dir, project_dir)
+        ).is_dir()
+        and git_ignored(project_dir, folder)
+    ]
 
 
 def _resolve(raw: str, scope: str, base: Path, where: str) -> Path:

@@ -1,9 +1,12 @@
 """Register custom skills with Claude Code so they load as normal plugin skills.
 
-Each scope's conventional `plugin/skills/` folder is a Claude plugin. Skills
+Each scope's plugin folder (`scope_plugin_dir`) is a Claude plugin. Skills
 from `[custom].skills` directories live anywhere, so they are copied into a
-generated `linked` plugin beside it. Both are enabled in the scope's Claude
-settings file; Claude Code picks them up on its next launch.
+generated `linked` plugin beside it (git-ignored, rebuilt per user). Project
+and local plugins sit in the project's `.claude/skills/`, which Claude Code
+loads in place, so they need only their manifest; the user plugin is listed in
+`CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`. Claude Code loads
+changes at its next start or `/reload-plugins`.
 """
 
 import shutil
@@ -13,14 +16,9 @@ from meow.project.claude_settings import (
     append_plugin_dir,
     marketplace_registered,
     plugin_dir_registered,
-    register_marketplace,
 )
 from meow.project.custom.definitions import CustomSkill
-from meow.project.custom.plugin import (
-    ensure_marketplace,
-    ensure_plugin_root,
-    plugin_name,
-)
+from meow.project.custom.plugin import ensure_plugin_root, plugin_name
 from meow.project.custom.sources import (
     git_ignored,
     linked_plugin_dir,
@@ -29,13 +27,15 @@ from meow.project.custom.sources import (
 )
 
 SYNC_SCOPES = ("local", "project", "user")
-_SETTINGS = {"project": "settings.json", "local": "settings.local.json"}
+_MANIFEST = Path(".claude-plugin") / "plugin.json"
+
+# Sync modes: report only, or fix.
+CHECK, SHARED = "check", "shared"
+Target = tuple[str, Path, Path]  # scope, project_dir, user_dir
 
 
-def _settings_path(scope: str, project_dir: Path) -> Path:
-    if scope == "user":
-        return Path.home() / ".claude" / "settings.json"
-    return Path(project_dir) / ".claude" / _SETTINGS[scope]
+def _user_settings() -> Path:
+    return Path.home() / ".claude" / "settings.json"
 
 
 def _root(scope: str, project_dir: Path, user_dir: Path, linked: bool) -> Path:
@@ -46,49 +46,41 @@ def _root(scope: str, project_dir: Path, user_dir: Path, linked: bool) -> Path:
 def register_scope_plugin(
     scope: str, project_dir: Path, user_dir: Path, *, linked: bool = False
 ) -> None:
-    """Create a scope's skill plugin and enable it in Claude Code's settings."""
+    """Create a scope's skill plugin and make Claude Code load it."""
+    register_plugin((scope, project_dir, user_dir), linked=linked)
+
+
+def register_plugin(target: Target, *, linked: bool = False) -> None:
+    """`register_scope_plugin` for a `(scope, project_dir, user_dir)` target."""
+    scope, project_dir, user_dir = target
     root = _root(scope, project_dir, user_dir, linked)
     ensure_plugin_root(root, scope, linked=linked)
-    settings = _settings_path(scope, project_dir)
     if scope == "user":
-        append_plugin_dir(settings, root)
-        return
-    ensure_marketplace(root.parent, scope, linked=linked)
-    register_marketplace(
-        settings,
-        plugin_name(scope, linked=linked),
-        root.parent,
-        relative_to=project_dir,
-    )
+        append_plugin_dir(_user_settings(), root)
 
 
-def _registered(scope: str, project_dir: Path, user_dir: Path, linked: bool) -> bool:
-    """Whether Claude Code would load the plugin, by any form it honors.
+def _registered(target: Target, linked: bool) -> bool:
+    """Whether Claude Code would load the plugin.
 
-    Project and local settings are both read for the project, so either file
-    counts; the user file accepts a plugin directory or an enabled marketplace.
+    A plugin folder in `.claude/skills/` loads once it has its manifest; the
+    user plugin must also be listed as a plugin directory (or, as earlier
+    versions wrote, an enabled marketplace) in the user settings file.
     """
-    name = plugin_name(scope, linked=linked)
+    scope, project_dir, user_dir = target
     root = _root(scope, project_dir, user_dir, linked)
-    if scope == "user":
-        settings = _settings_path(scope, project_dir)
-        return plugin_dir_registered(settings, root) or marketplace_registered(
-            settings, name, root.parent
-        )
-    return any(
-        marketplace_registered(
-            _settings_path(file, project_dir),
-            name,
-            root.parent,
-            relative_to=project_dir,
-        )
-        for file in (scope, *(other for other in _SETTINGS if other != scope))
+    if not (root / _MANIFEST).is_file():
+        return False
+    if scope != "user":
+        return True
+    settings = _user_settings()
+    return plugin_dir_registered(settings, root) or marketplace_registered(
+        settings, plugin_name(scope, linked=linked), root.parent
     )
 
 
-def scope_plugin_registered(scope: str, project_dir: Path, user_dir: Path) -> bool:
+def scope_plugin_registered(target: Target) -> bool:
     """Whether Claude Code is set to load the scope's own plugin."""
-    return _registered(scope, project_dir, user_dir, False)
+    return _registered(target, False)
 
 
 def linked_skills(
@@ -139,38 +131,38 @@ def _build_linked(root: Path, skills: list[CustomSkill]) -> None:
 
 
 def _plugin_problems(
-    target: tuple[str, Path, Path], linked: list[CustomSkill] | None, apply: bool
+    target: Target, linked: list[CustomSkill] | None, mode: str
 ) -> list[str]:
     """Problems of one plugin: native when `linked` is None, else the linked copy."""
     scope, project_dir, user_dir = target
     is_linked = linked is not None
     root = _root(scope, project_dir, user_dir, is_linked)
     label = f"{scope} {'linked ' if is_linked else ''}skills ({root})"
-    if scope == "project" and git_ignored(project_dir, root):
+    if scope == "project" and not is_linked and git_ignored(project_dir, root):
         return [f"{label}: skipped, ignored by git so it would not be shared"]
     found = []
     if is_linked and not _linked_current(root, linked):
         found.append(f"{label}: copies are out of date")
-    if not _registered(scope, project_dir, user_dir, is_linked):
+    if not _registered(target, is_linked):
         found.append(f"{label}: not registered with Claude Code")
-    if apply and found:
-        register_scope_plugin(scope, project_dir, user_dir, linked=is_linked)
+    if mode != CHECK and found:
+        register_plugin(target, linked=is_linked)
         if is_linked:
             _build_linked(root, linked)
     return found
 
 
 def _scope_problems(
-    target: tuple[str, Path, Path], skills: tuple[CustomSkill, ...], apply: bool
+    target: Target, skills: tuple[CustomSkill, ...], mode: str
 ) -> list[str]:
-    """Describe (and with `apply`, fix) what keeps a scope's skills from loading."""
+    """Describe (and unless `CHECK`, fix) what keeps a scope's skills from loading."""
     scope, project_dir, user_dir = target
     found = []
     if (scope_plugin_dir(scope, project_dir, user_dir) / "skills").is_dir():
-        found += _plugin_problems(target, None, apply)
+        found += _plugin_problems(target, None, mode)
     linked = linked_skills(skills, scope, project_dir, user_dir)
     if linked or linked_plugin_dir(scope, project_dir, user_dir).is_dir():
-        found += _plugin_problems(target, linked, apply)
+        found += _plugin_problems(target, linked, mode)
     return found
 
 
@@ -181,7 +173,7 @@ def check_skill_registration(
     problems = []
     for scope in SYNC_SCOPES:
         try:
-            problems += _scope_problems((scope, project_dir, user_dir), skills, False)
+            problems += _scope_problems((scope, project_dir, user_dir), skills, CHECK)
         except (OSError, ValueError) as exc:
             problems.append(f"{scope} skills: {exc}")
     return problems
@@ -196,5 +188,5 @@ def sync_skill_plugins(
     """Register every selected scope's skills; returns what was fixed."""
     fixed = []
     for scope in scopes:
-        fixed += _scope_problems((scope, project_dir, user_dir), skills, True)
+        fixed += _scope_problems((scope, project_dir, user_dir), skills, SHARED)
     return fixed

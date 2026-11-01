@@ -45,14 +45,18 @@ Like custom skills, hooks are registered with Claude Code so they run as
 regular hooks in every session, not only inside MEOW's SDK agents:
 
 ```bash
-meow hooks sync          # writes <scope>/plugin/hooks/hooks.json, enables the plugin
+meow hooks sync          # writes hooks/hooks.json in each scope's plugin folder
 meow hooks sync --check  # report what is missing; changes nothing
 meow sync                # skills and hooks together
 ```
 
 Restart Claude Code afterward. Each definition becomes one plugin hook with
-its `matcher` and `timeout` that calls `meow native hook EVENT --name NAME`.
-Re-run the sync after adding, editing, or removing a definition. Only the
+its `timeout` and its `matcher` anchored (`^(?:M)$`, as MEOW matches whole tool
+names). The entry runs `command` directly, as `meow native hook` would: in the
+project directory with `MEOW_HOOK`/`MEOW_EVENT` set, stdout discarded, and only
+exit 2 blocking, so it works without MEOW installed. MEOW's entries carry
+`MEOW_HOOK=`; other entries in that `hooks.json` are kept. The plugin's sync
+([CUSTOM](CUSTOM.md#claude-code-registration)) keeps this current. Only the
 winning scope's definition is written.
 
 Not synced (SDK agents only): hooks with `roles`, and `sprint_*` events. MEOW's

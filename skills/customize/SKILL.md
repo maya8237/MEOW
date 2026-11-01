@@ -23,13 +23,14 @@ Use a skill for reusable instructions, an agent definition for a role with its
 own prompt/tools/model, and a workflow for a different sequence of operations.
 Ask only for choices the request leaves open; use clear defaults when possible.
 
-| Scope | Agent/workflow directories | Config |
-|---|---|---|
-| Project | `.meow/agents/`, `.meow/workflows/` | `.meow/config.toml` |
-| Local project | `.meow/local/agents/`, `.meow/local/workflows/` | `.meow/config.local.toml` |
-| User | `~/.meow/agents/`, `~/.meow/workflows/` | `~/.meow/config.toml` |
+| Scope | `agents/`, `workflows/`, `hooks/` in | Skills in | Config |
+|---|---|---|---|
+| Project | `.meow/` | `.claude/skills/meow-project/skills/` | `.meow/config.toml` |
+| Local project | `.meow/local/` | `.claude/skills/meow-local/skills/` | `.meow/config.local.toml` |
+| User | `~/.meow/` | `~/.meow/plugin/skills/` | `~/.meow/config.toml` |
 
-These conventional directories require no registration. Higher scopes replace
+These conventional directories need no `[custom]` entry; skills and hooks also
+need the Claude Code sync below. Higher scopes replace
 whole definitions: local > project > user > builtin. Duplicate names within
 one scope fail. Share project definitions in version control; never put a
 personal absolute path in shared config. Extra directories can be registered
@@ -109,11 +110,11 @@ the contract even if an override omits it. Conditions can use run flags,
 `--input name=value`, or set `[workflow].default = "NAME"`. Custom workflow
 execution uses CLI mode in `/meow:run`.
 
-**Skill:** `<dir>/<name>/SKILL.md`, with frontmatter `name` matching its
-directory and `description` explaining when it applies. Supporting files may
-sit beside it. Register skill directories through `[custom].skills`; optional
-`roles` limits recipients. Definition `skills` and `[agent_skills]` can also
-name installed skills.
+**Skill:** `<name>/SKILL.md` in the scope's skills folder (table above), with
+frontmatter `name` matching its directory and `description` explaining when it
+applies. Supporting files may sit beside it. Use
+`[custom].skills` only for an existing directory elsewhere or to limit `roles`.
+Definition `skills` and `[agent_skills]` can also name installed skills.
 
 Register extra directories with `[custom]` using the
 [configuration example](../../docs/INTEGRATIONS.md#custom-skills-and-agents).
@@ -128,9 +129,10 @@ JSON, `meow native prompt ROLE` for resolved role instructions, and
 For project scope, confirm files are committable with `git status`.
 
 Report paths, scope, overrides, selection/config changes, and verification.
-After adding or changing a skill or hook, run `meow sync` (registers both with
-Claude Code at every scope; `--check` reports only), then tell the user to
-restart Claude Code so it loads. Skills appear as `/meow-<scope>:<name>`.
+Skills and hooks register with Claude Code automatically: the MEOW plugin
+syncs after Claude edits them and at startup. Outside Claude Code, run
+`meow sync` (`--check` reports only). Tell the user to restart Claude Code and
+commit project changes. Skills appear as `/meow-<scope>:<name>`.
 Role-limited and `sprint_*` hooks stay in MEOW's SDK agents and need no sync.
 Commit only when the user requests it. Remove a file to remove a definition;
 remove a configured directory entry to unregister its contents. Follow the

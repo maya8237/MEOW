@@ -106,30 +106,3 @@ def ensure_plugin_root(root: Path, scope: str, *, linked: bool = False) -> Path:
             encoding="utf-8",
         )
     return root
-
-
-def ensure_marketplace(base: Path, scope: str, *, linked: bool = False) -> None:
-    """Write the marketplace file that lists the scope's plugin under `base`."""
-    path = Path(base) / ".claude-plugin" / "marketplace.json"
-    if path.is_file():
-        return
-    name = plugin_name(scope, linked=linked)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "name": name,
-                "owner": {"name": "MEOW"},
-                "plugins": [
-                    {
-                        "name": name,
-                        "source": "./plugin",
-                        "description": f"MEOW {scope} skills.",
-                    }
-                ],
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )

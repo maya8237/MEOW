@@ -1,0 +1,29 @@
+{
+  "description": "MEOW: keep custom skills and hooks registered with Claude Code.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v meow >/dev/null 2>&1 && meow sync --auto --work-dir \"${CLAUDE_PROJECT_DIR:-.}\" || true",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(?:Write|Edit|MultiEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); case \"$input\" in *.meow*|*SKILL.md*|*.toml*) command -v meow >/dev/null 2>&1 && meow sync --auto PostToolUse --work-dir \"${CLAUDE_PROJECT_DIR:-.}\" ;; esac; exit 0",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

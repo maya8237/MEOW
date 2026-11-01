@@ -1,32 +1,62 @@
 """Register hook definitions with Claude Code so they run in any session.
 
 Like custom skills, each scope's hooks are served by its Claude plugin (the
-conventional `plugin/` folder): a generated `hooks/hooks.json` there calls
-`meow native hook` once per definition, keeping its matcher and timeout.
-SDK-only definitions stay with MEOW: those limited to roles, and the
-`sprint_*` lifecycle events. Claude Code picks the plugin up on its next launch.
+conventional `plugin/` folder): its `hooks/hooks.json` gets one entry per
+definition that runs the definition's command the way MEOW would, so it works
+without MEOW installed. Entries are marked by `MEOW_HOOK=`; any other entries
+in the file are kept. SDK-only definitions stay with MEOW: those limited to
+roles, and the `sprint_*` lifecycle events. Claude Code picks the plugin up on
+its next launch.
 """
 
 import json
 import math
+import shlex
 from pathlib import Path
 
 from meow.project.custom.definitions import CustomHook
 from meow.project.custom.hook_files import SDK_EVENTS
 from meow.project.custom.sources import git_ignored, scope_plugin_dir
 from meow.project.custom.sync import (
+    CHECK,
+    SHARED,
     SYNC_SCOPES,
-    register_scope_plugin,
+    register_plugin,
     scope_plugin_registered,
 )
 
 _DESCRIPTION = "MEOW hook definitions."
-_COMMAND = 'meow native hook {event} --name {name} --work-dir "${{CLAUDE_PROJECT_DIR}}"'
+# Every generated command sets this; it marks MEOW's entries in a shared file.
+_MARK = "MEOW_HOOK="
+# Entries earlier versions generated; replaced on the next sync.
+_LEGACY = "meow native hook "
+# `user_hooks.SDK_AGENT_ENV`: MEOW's own agents already run their hooks.
+SDK_AGENT_ENV = "MEOW_SDK_AGENT"
 
 
 def syncable(hook: CustomHook) -> bool:
     """Whether Claude Code itself can run `hook` (no MEOW role or lifecycle)."""
     return hook.event in SDK_EVENTS and not (hook.roles or hook.source.roles)
+
+
+def claude_matcher(matcher: str) -> str:
+    """MEOW matches the whole tool name; Claude Code regexes match anywhere."""
+    return f"^(?:{matcher})$"
+
+
+def hook_command(hook: CustomHook) -> str:
+    """Shell running `hook` as `meow native hook` does, without MEOW installed.
+
+    Skipped inside MEOW's SDK agents; stdout is discarded so a hook can only
+    deny (exit 2, stderr fed back) or inform, never grant a permission.
+    """
+    return (
+        f'[ -n "${{{SDK_AGENT_ENV}:-}}" ] && exit 0; '
+        'cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0; '
+        f"{_MARK}{shlex.quote(hook.name)} MEOW_EVENT={hook.event} MEOW_ROLE= "
+        f"sh -c {shlex.quote(hook.command)} >/dev/null; "
+        '[ "$?" -eq 2 ] && exit 2; exit 0'
+    )
 
 
 def hooks_config(hooks: list[CustomHook]) -> dict:
@@ -37,15 +67,69 @@ def hooks_config(hooks: list[CustomHook]) -> dict:
             "hooks": [
                 {
                     "type": "command",
-                    "command": _COMMAND.format(event=hook.event, name=hook.name),
+                    "command": hook_command(hook),
                     "timeout": math.ceil(hook.timeout),
                 }
             ]
         }
         if hook.matcher:
-            entry = {"matcher": hook.matcher, **entry}
+            entry = {"matcher": claude_matcher(hook.matcher), **entry}
         events.setdefault(hook.event, []).append(entry)
     return {"description": _DESCRIPTION, "hooks": events}
+
+
+def _ours(entry: object) -> bool:
+    """Whether a hooks.json entry is one MEOW generated."""
+    hooks = entry.get("hooks") if isinstance(entry, dict) else None
+    return bool(hooks) and all(
+        isinstance(item, dict)
+        and (
+            _MARK in str(item.get("command", ""))
+            or str(item.get("command", "")).startswith(_LEGACY)
+        )
+        for item in hooks
+    )
+
+
+def _existing(path: Path) -> dict:
+    """The current hooks.json, or {}; a file MEOW cannot merge into is refused."""
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise ValueError(f"{path} is not valid JSON; it was not changed") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("hooks", {}), dict):
+        raise ValueError(f"{path} must hold a `hooks` object; it was not changed")
+    return data
+
+
+def merged_config(existing: dict, hooks: list[CustomHook]) -> dict:
+    """`existing` with MEOW's entries replaced by those for `hooks`."""
+    kept = {
+        event: [entry for entry in entries if not _ours(entry)]
+        if isinstance(entries, list)
+        else entries
+        for event, entries in existing.get("hooks", {}).items()
+    }
+    ours = hooks_config(hooks)["hooks"]
+    events = {}
+    for event in [*kept, *(name for name in ours if name not in kept)]:
+        combined = kept.get(event, [])
+        if isinstance(combined, list):
+            combined = [*combined, *ours.get(event, [])]
+        if combined:
+            events[event] = combined
+    return {"description": _DESCRIPTION, **existing, "hooks": events}
+
+
+def _empty(config: dict) -> bool:
+    """Nothing but MEOW's own (now empty) content is left."""
+    return (
+        not config["hooks"]
+        and set(config) <= {"description", "hooks"}
+        and config.get("description") == _DESCRIPTION
+    )
 
 
 def _text(config: dict) -> str:
@@ -56,56 +140,60 @@ def _file(scope: str, project_dir: Path, user_dir: Path) -> Path:
     return scope_plugin_dir(scope, project_dir, user_dir) / "hooks" / "hooks.json"
 
 
-def _generated(path: Path) -> bool:
-    """Whether MEOW wrote `path`; a hand-written hooks.json is never touched."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    return isinstance(data, dict) and data.get("description") == _DESCRIPTION
+def _has_ours(existing: dict) -> bool:
+    return any(
+        _ours(entry)
+        for entries in existing.get("hooks", {}).values()
+        if isinstance(entries, list)
+        for entry in entries
+    )
 
 
-def _skipped(scope: str, project_dir: Path, path: Path, label: str) -> list[str]:
-    """Why a scope's hooks.json must not be written, if it must not be."""
-    if scope == "project" and git_ignored(project_dir, path.parent):
-        return [f"{label}: skipped, ignored by git so it would not be shared"]
-    if path.is_file() and not _generated(path):
-        return [f"{label}: not generated by MEOW, left unchanged"]
-    return []
-
-
-def _stale(path: Path, label: str, apply: bool) -> list[str]:
-    """A scope with no syncable hooks left must not keep serving old ones."""
-    if not path.is_file() or not _generated(path):
-        return []
+def _remove(path: Path, label: str, apply: bool) -> list[str]:
     if apply:
         path.unlink()
     return [f"{label}: no hook definitions left; removed"]
 
 
-def _scope_problems(
-    target: tuple[str, Path, Path], hooks: tuple[CustomHook, ...], apply: bool
+def _update(
+    where: tuple[tuple[str, Path, Path], Path, str],
+    config: dict,
+    register: bool,
+    mode: str,
 ) -> list[str]:
+    """Write `config` (and register the plugin when `register`) unless checking."""
+    target, path, label = where
+    text = _text(config)
+    found = []
+    if not path.is_file() or path.read_text(encoding="utf-8") != text:
+        found.append(f"{label}: out of date")
+    if register and not scope_plugin_registered(target):
+        found.append(f"{label}: not registered with Claude Code")
+    if mode != CHECK and found:
+        if register:
+            register_plugin(target)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return found
+
+
+def _scope_problems(
+    target: tuple[str, Path, Path], hooks: tuple[CustomHook, ...], mode: str
+) -> list[str]:
+    """Describe (and unless `CHECK`, fix) what keeps a scope's hooks from running."""
     scope, project_dir, user_dir = target
     chosen = [h for h in hooks if h.source.scope == scope and syncable(h)]
     path = _file(scope, project_dir, user_dir)
     label = f"{scope} hooks ({path})"
-    if not chosen:
-        return _stale(path, label, apply)
-    skipped = _skipped(scope, project_dir, path, label)
-    if skipped:
-        return skipped
-    text = _text(hooks_config(chosen))
-    found = []
-    if not path.is_file() or path.read_text(encoding="utf-8") != text:
-        found.append(f"{label}: out of date")
-    if not scope_plugin_registered(scope, project_dir, user_dir):
-        found.append(f"{label}: not registered with Claude Code")
-    if apply and found:
-        register_scope_plugin(scope, project_dir, user_dir)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-    return found
+    existing = _existing(path)
+    if not chosen and not _has_ours(existing):
+        return []
+    if chosen and scope == "project" and git_ignored(project_dir, path.parent):
+        return [f"{label}: skipped, ignored by git so it would not be shared"]
+    config = merged_config(existing, chosen)
+    if _empty(config):
+        return _remove(path, label, mode != CHECK)
+    return _update((target, path, label), config, bool(chosen), mode)
 
 
 def check_hook_registration(
@@ -115,7 +203,7 @@ def check_hook_registration(
     problems = []
     for scope in SYNC_SCOPES:
         try:
-            problems += _scope_problems((scope, project_dir, user_dir), hooks, False)
+            problems += _scope_problems((scope, project_dir, user_dir), hooks, CHECK)
         except (OSError, ValueError) as exc:
             problems.append(f"{scope} hooks: {exc}")
     return problems
@@ -130,5 +218,5 @@ def sync_hook_plugins(
     """Write and register every selected scope's hooks; returns what changed."""
     fixed = []
     for scope in scopes:
-        fixed += _scope_problems((scope, project_dir, user_dir), hooks, True)
+        fixed += _scope_problems((scope, project_dir, user_dir), hooks, SHARED)
     return fixed

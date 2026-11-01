@@ -25,6 +25,10 @@ def project(tmp_path):
     return root
 
 
+def plugin(project: Path, scope: str) -> Path:
+    return project / ".claude" / "skills" / f"meow-{scope}"
+
+
 def skill(directory: Path, name: str) -> None:
     folder = directory / name
     folder.mkdir(parents=True, exist_ok=True)
@@ -48,48 +52,41 @@ def settings(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def manifest(root: Path) -> dict:
+    return settings(root / ".claude-plugin" / "plugin.json")
+
+
 def test_hand_made_skill_in_every_scope_is_registered(project, home):
-    skill(project / ".meow" / "local" / "plugin" / "skills", "mine")
-    skill(project / ".meow" / "plugin" / "skills", "team")
+    skill(plugin(project, "local") / "skills", "mine")
+    skill(plugin(project, "project") / "skills", "team")
     skill(home / ".meow" / "plugin" / "skills", "everywhere")
 
     assert sync(project, home)
 
-    local = settings(project / ".claude" / "settings.local.json")
-    shared = settings(project / ".claude" / "settings.json")
+    assert manifest(plugin(project, "local"))["name"] == "meow-local"
+    assert manifest(plugin(project, "project"))["name"] == "meow-project"
     user = settings(home / ".claude" / "settings.json")
-    assert local["enabledPlugins"] == {"meow-local@meow-local": True}
-    assert local["extraKnownMarketplaces"]["meow-local"]["source"] == {
-        "source": "directory",
-        "path": "./.meow/local",
-    }
-    assert shared["enabledPlugins"] == {"meow-project@meow-project": True}
     assert user["env"]["CLAUDE_CODE_PLUGIN_DIRS"] == str(
         (home / ".meow" / "plugin").resolve()
     )
-    manifest = project / ".meow" / "plugin" / ".claude-plugin" / "plugin.json"
-    assert json.loads(manifest.read_text())["name"] == "meow-project"
+    # `.claude/skills/` plugins load in place: no marketplace, no settings entry.
+    assert not (project / ".claude" / "settings.json").exists()
+    assert not (project / ".claude" / "settings.local.json").exists()
     assert check(project, home) == []
 
 
 def test_sync_is_idempotent_and_keeps_existing_settings(project, home):
-    skill(project / ".meow" / "plugin" / "skills", "team")
-    path = project / ".claude" / "settings.json"
+    skill(home / ".meow" / "plugin" / "skills", "everywhere")
+    path = home / ".claude" / "settings.json"
     path.parent.mkdir()
-    path.write_text(
-        json.dumps({"enabledPlugins": {"other@other": True}, "model": "x"}),
-        encoding="utf-8",
-    )
+    path.write_text(json.dumps({"model": "x"}), encoding="utf-8")
 
     assert sync(project, home)
     first = path.read_text(encoding="utf-8")
 
     assert sync(project, home) == []
     assert path.read_text(encoding="utf-8") == first
-    data = settings(path)
-    assert data["model"] == "x"
-    assert data["enabledPlugins"]["other@other"] is True
-    assert data["enabledPlugins"]["meow-project@meow-project"] is True
+    assert settings(path)["model"] == "x"
 
 
 def test_scopes_without_skills_are_left_alone(project, home):
@@ -99,18 +96,18 @@ def test_scopes_without_skills_are_left_alone(project, home):
 
 
 def test_scope_option_limits_what_is_registered(project, home):
-    skill(project / ".meow" / "plugin" / "skills", "team")
+    skill(plugin(project, "project") / "skills", "team")
     skill(home / ".meow" / "plugin" / "skills", "everywhere")
 
     sync(project, home, ("user",))
 
     assert (home / ".claude" / "settings.json").is_file()
-    assert not (project / ".claude").exists()
+    assert not (plugin(project, "project") / ".claude-plugin").exists()
 
 
 def test_malformed_settings_are_not_overwritten(project, home):
-    skill(project / ".meow" / "plugin" / "skills", "team")
-    path = project / ".claude" / "settings.json"
+    skill(home / ".meow" / "plugin" / "skills", "everywhere")
+    path = home / ".claude" / "settings.json"
     path.parent.mkdir()
     path.write_text("{not json", encoding="utf-8")
 
@@ -129,15 +126,10 @@ def test_configured_skill_directories_are_copied_into_a_linked_plugin(project, h
 
     assert sync(project, home)
 
-    linked = project / ".meow" / "linked" / "plugin"
+    linked = plugin(project, "project-linked")
     assert (linked / "skills" / "extra" / "SKILL.md").is_file()
-    manifest = linked / ".claude-plugin" / "plugin.json"
-    assert json.loads(manifest.read_text())["name"] == "meow-project-linked"
-    shared = settings(project / ".claude" / "settings.json")
-    assert shared["extraKnownMarketplaces"]["meow-project-linked"]["source"] == {
-        "source": "directory",
-        "path": "./.meow/linked",
-    }
+    assert manifest(linked)["name"] == "meow-project-linked"
+    assert not (project / ".claude" / "settings.json").exists()
     assert check(project, home) == []
 
 
@@ -156,7 +148,7 @@ def test_edited_configured_skill_is_reported_stale_then_resynced(project, home):
 
     sync(project, home)
 
-    copied = project / ".meow" / "linked" / "plugin" / "skills" / "extra" / "SKILL.md"
+    copied = plugin(project, "project-linked") / "skills" / "extra" / "SKILL.md"
     assert "New." in copied.read_text(encoding="utf-8")
     assert check(project, home) == []
 
@@ -174,19 +166,20 @@ def test_removed_configured_skill_leaves_the_linked_plugin(project, home):
 
     sync(project, home)
 
-    skills = project / ".meow" / "linked" / "plugin" / "skills"
+    skills = plugin(project, "project-linked") / "skills"
     assert sorted(path.name for path in skills.iterdir()) == ["extra"]
 
 
 def test_config_entry_for_the_conventional_folder_is_not_copied(project, home):
-    skill(project / ".meow" / "plugin" / "skills", "team")
+    skill(plugin(project, "project") / "skills", "team")
     (project / ".meow" / "config.toml").write_text(
-        '[custom]\nskills = [".meow/plugin/skills"]\n', encoding="utf-8"
+        '[custom]\nskills = [".claude/skills/meow-project/skills"]\n',
+        encoding="utf-8",
     )
 
     sync(project, home)
 
-    assert not (project / ".meow" / "linked").exists()
+    assert not plugin(project, "project-linked").exists()
 
 
 def test_user_scope_configured_skills_use_the_user_plugin_dirs(project, home):
@@ -206,20 +199,20 @@ def test_user_scope_configured_skills_use_the_user_plugin_dirs(project, home):
 
 
 def test_unregistered_skills_are_reported_without_changes(project, home):
-    skill(project / ".meow" / "local" / "plugin" / "skills", "mine")
+    skill(plugin(project, "local") / "skills", "mine")
 
     problems = check(project, home)
 
     assert problems
     assert "not registered" in problems[0]
-    assert not (project / ".claude").exists()
+    assert not (plugin(project, "local") / ".claude-plugin").exists()
 
 
 def test_skills_sync_command_registers_and_check_flags_drift(project, home, capsys):
     from meow.cli.parser import _build_arg_parser
     from meow.cli.skills_cli import skills_command
 
-    skill(project / ".meow" / "local" / "plugin" / "skills", "mine")
+    skill(plugin(project, "local") / "skills", "mine")
     parser = _build_arg_parser()
 
     with pytest.raises(ValueError, match="meow skills sync"):
@@ -234,8 +227,8 @@ def test_skills_sync_command_registers_and_check_flags_drift(project, home, caps
 
 def test_user_plugin_enabled_through_marketplace_counts_as_registered(project, home):
     skill(home / ".meow" / "plugin" / "skills", "everywhere")
+    sync(project, home, ("user",))
     path = home / ".claude" / "settings.json"
-    path.parent.mkdir()
     path.write_text(
         json.dumps({
             "extraKnownMarketplaces": {
@@ -251,23 +244,6 @@ def test_user_plugin_enabled_through_marketplace_counts_as_registered(project, h
     assert check(project, home) == []
 
 
-def test_project_plugin_enabled_in_local_settings_counts_as_registered(project, home):
-    skill(project / ".meow" / "plugin" / "skills", "team")
-    path = project / ".claude" / "settings.local.json"
-    path.parent.mkdir()
-    path.write_text(
-        json.dumps({
-            "extraKnownMarketplaces": {
-                "meow-project": {"source": {"source": "directory", "path": "./.meow"}}
-            },
-            "enabledPlugins": {"meow-project@meow-project": True},
-        }),
-        encoding="utf-8",
-    )
-
-    assert check(project, home) == []
-
-
 def test_hidden_files_do_not_make_linked_copies_stale(project, home):
     skill(project / "shared", "linked-one")
     (project / ".meow" / "config.toml").write_text(
@@ -276,29 +252,17 @@ def test_hidden_files_do_not_make_linked_copies_stale(project, home):
     sync(project, home)
     assert check(project, home) == []
 
-    linked = project / ".meow" / "linked" / "plugin" / "skills"
+    linked = plugin(project, "project-linked") / "skills"
     (linked / ".DS_Store").write_bytes(b"x")
 
     assert check(project, home) == []
 
 
-def test_marketplace_pointing_elsewhere_is_not_registered(project, home):
-    skill(project / ".meow" / "plugin" / "skills", "team")
-    path = project / ".claude" / "settings.json"
-    path.parent.mkdir()
-    path.write_text(
-        json.dumps({
-            "extraKnownMarketplaces": {
-                "meow-project": {
-                    "source": {"source": "directory", "path": "../moved/.meow"}
-                }
-            },
-            "enabledPlugins": {"meow-project@meow-project": True},
-        }),
-        encoding="utf-8",
-    )
+def test_missing_manifest_is_reported_and_restored(project, home):
+    skill(plugin(project, "project") / "skills", "team")
+    sync(project, home)
+    (plugin(project, "project") / ".claude-plugin" / "plugin.json").unlink()
 
-    (problem,) = check(project, home)
-    assert problem.endswith(": not registered with Claude Code")
+    assert any("not registered" in problem for problem in check(project, home))
     sync(project, home)
     assert check(project, home) == []

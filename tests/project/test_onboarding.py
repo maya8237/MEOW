@@ -426,3 +426,46 @@ def test_python_build_metadata_is_ignored_locally(repo):
         ).returncode
         == 0
     )
+
+
+def test_old_boundary_is_upgraded_for_hooks_and_claude_skills_plugins(repo):
+    old = [
+        ".meow/*",
+        "!.meow/",
+        "!.meow/config.toml",
+        "!.meow/skills/",
+        "!.meow/plugin/",
+        "!.meow/.claude-plugin/",
+        "!.meow/agents/",
+        "!.meow/workflows/",
+        "!.meow/linked/",
+        ".claude/settings.local.json",
+    ]
+    (repo / ".gitignore").write_text("\n".join(old) + "\n", encoding="utf-8")
+    assert _ignored(repo, ".meow/hooks/guard.toml")
+    assert not _ignored(repo, ".claude/skills/meow-local/skills/s/SKILL.md")
+    assert not boundary_ok(repo)
+
+    assert repair_boundary(repo) is True
+
+    lines = (repo / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "!.meow/linked/" not in lines
+    assert "!.meow/plugin/" not in lines
+    for rel in (
+        ".meow/hooks/guard.toml",
+        ".meow/agents/a.toml",
+        ".meow/workflows/w.toml",
+        ".claude/skills/meow-project/skills/s/SKILL.md",
+        ".claude/skills/meow-project/hooks/hooks.json",
+    ):
+        assert not _ignored(repo, rel), rel
+    for rel in (
+        ".meow/local/hooks/guard.toml",
+        ".meow/linked/plugin/skills/s/SKILL.md",
+        ".meow/plugin/skills/s/SKILL.md",
+        ".claude/skills/meow-local/skills/s/SKILL.md",
+        ".claude/skills/meow-project-linked/skills/s/SKILL.md",
+        ".claude/skills/meow-local-linked/skills/s/SKILL.md",
+    ):
+        assert _ignored(repo, rel), rel
+    assert boundary_ok(repo)

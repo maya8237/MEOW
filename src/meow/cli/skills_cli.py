@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from meow.project.config import load_config, user_config_path
+from meow.project.custom.registration import old_layout
 from meow.project.custom.sync import (
     SYNC_SCOPES,
     check_skill_registration,
@@ -11,10 +12,15 @@ from meow.project.custom.sync import (
 
 
 def skills_command(args, project_dir: Path) -> None:
-    skills = load_config(project_dir)["customizations"].skills
+    migrated = [] if args.check else old_layout(project_dir, apply=True)
+    custom = load_config(project_dir)["customizations"]
+    skills = custom.skills
     user_dir = user_config_path().parent
     if args.check:
-        problems = check_skill_registration(skills, project_dir, user_dir)
+        problems = [
+            *old_layout(project_dir),
+            *check_skill_registration(skills, project_dir, user_dir),
+        ]
         for problem in problems:
             print(problem)
         if problems:
@@ -24,7 +30,10 @@ def skills_command(args, project_dir: Path) -> None:
         print("Custom skills are registered with Claude Code.")
         return
     scopes = SYNC_SCOPES if args.scope == "all" else (args.scope,)
-    fixed = sync_skill_plugins(skills, project_dir, user_dir, scopes)
+    fixed = [
+        *migrated,
+        *sync_skill_plugins(skills, project_dir, user_dir, scopes),
+    ]
     for line in fixed:
         print(line)
     print(
