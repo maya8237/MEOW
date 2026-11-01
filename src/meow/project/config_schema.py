@@ -682,7 +682,9 @@ def _validate_max_parallel_tasks(config: dict) -> None:
 # parking; worker_startup_grace: time a detached worker gets to register;
 # supervise: run foreground `meow run` under the supervisor (as under Claude
 # Code); background runs are always supervised; stale_after: silence after
-# which a native `intent=run` record counts as a lost session and is parked.
+# which a native `intent=run` record counts as a lost session and is parked;
+# agent_idle_timeout: silence from an SDK stream before its CLI is killed and
+# the run parks; agent_result_grace: time a stream may stay open after its result.
 RUN_DEFAULTS = {
     "auto_retries": 3,
     "retry_backoff": [60, 300, 900],
@@ -692,6 +694,8 @@ RUN_DEFAULTS = {
     "worker_startup_grace": 180,
     "supervise": False,
     "stale_after": 7200,
+    "agent_idle_timeout": 900,
+    "agent_result_grace": 120,
 }
 
 
@@ -712,7 +716,13 @@ def _run_value(table: dict, key: str):
             )
         )
         need = "a non-empty list of numbers >= 0"
-    elif key in {"api_max_wait", "worker_startup_grace", "stale_after"}:
+    elif key in {
+        "api_max_wait",
+        "worker_startup_grace",
+        "stale_after",
+        "agent_idle_timeout",
+        "agent_result_grace",
+    }:
         valid = (
             isinstance(value, (int, float))
             and not isinstance(value, bool)

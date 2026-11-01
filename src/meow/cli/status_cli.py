@@ -2,6 +2,7 @@
 
 import json
 import sys
+import time
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +23,7 @@ from meow.execution.run_state import (
     RunRecord,
     RunStateError,
     RunStore,
+    driver_alive,
 )
 from meow.infrastructure.background import inspect_worker, reconcile_worker
 from meow.infrastructure.quality import Concern, QualityStoreError, concerns_for_run
@@ -87,6 +89,37 @@ def _pipeline_lines(delivery: dict) -> list[str]:
     return [line, *([f"Merge request: {url}"] if url else [])]
 
 
+def _idle_timeout(record: RunRecord) -> float:
+    from meow.project.config_schema import RUN_DEFAULTS
+
+    try:
+        return float(run_config(Path(record.repo))["agent_idle_timeout"])
+    except (OSError, ValueError):
+        return float(RUN_DEFAULTS["agent_idle_timeout"])
+
+
+def _activity_lines(record: RunRecord) -> list[str]:
+    """Newest agent activity and driver liveness of an unfinished run, so a
+    hung run no longer looks like a healthy one between checkpoints."""
+    if record.phase in TERMINAL_PHASES:
+        return []
+    lines = []
+    activity = record.results.get("activity")
+    at = activity.get("at") if isinstance(activity, dict) else None
+    if isinstance(at, (int, float)) and not isinstance(at, bool):
+        age = max(0, int(time.time() - at))
+        line = (
+            f"Last agent activity: {age}s ago "
+            f"({activity.get('role', '?')}: {activity.get('event', '?')})"
+        )
+        if record.phase != PARKED_PHASE and age > (limit := _idle_timeout(record)):
+            line += f" - possibly stalled (over agent_idle_timeout {limit:g}s)"
+        lines.append(line)
+    if (alive := driver_alive(record)) is not None:
+        lines.append(f"Driver: {'alive' if alive else 'not running'}")
+    return lines
+
+
 def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches, too-many-locals]
     record: RunRecord, *, verbose: bool = False, concerns: tuple[Concern, ...] = ()
 ) -> str:
@@ -129,6 +162,7 @@ def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-bra
         f"Branch: {record.branch}",
         f"Recovery: {recovery_command(record)}",
     ]
+    lines[4:4] = _activity_lines(record)
     if record.delivery.get("base"):
         lines.append(f"MR target: {record.delivery['base']}")
     worker = inspect_worker(record)

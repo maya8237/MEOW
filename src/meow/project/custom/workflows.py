@@ -38,6 +38,7 @@ RUN_VARIABLES = frozenset({
     "test",
     "bug_mode",
     "round",
+    "feedback",
     "checks_configured",
     "short_plan",
     "steps",

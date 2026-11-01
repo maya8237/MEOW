@@ -7,6 +7,7 @@ import re
 import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import aclosing, suppress
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -37,7 +38,8 @@ from meow.agents.api_errors import (
     classify_api_error,
     redact,
 )
-from meow.execution.run_failures import TransientRunError
+from meow.common.process import kill_process_tree
+from meow.execution.run_failures import AgentStalled, TransientRunError
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
 from meow.infrastructure.user_hooks import SDK_AGENT_ENV, merge_hooks, sdk_hooks
@@ -68,6 +70,10 @@ _OUTPUT_UNLINK_ATTEMPTS = 3
 _OUTPUT_UNLINK_BACKOFF = 0.2
 # How long an SDK stream may stay silent before the CLI's liveness is checked.
 _STREAM_POLL_SECONDS = 30.0
+# Minimum seconds between journal stamps of an agent's latest activity.
+_ACTIVITY_INTERVAL = 10.0
+_DEFAULT_IDLE_TIMEOUT = 900.0
+_DEFAULT_RESULT_GRACE = 120.0
 # LiteLLM (and Anthropic) 400s for a message history the API refuses.
 _SEQUENCE_ERROR = re.compile(
     r"unexpected role ['\"`]?user['\"`]? after role ['\"`]?tool|"
@@ -109,9 +115,10 @@ def _fresh_options(options: ClaudeAgentOptions) -> ClaudeAgentOptions:
     for name in ("resume", "continue_conversation"):
         if hasattr(fresh, name):
             setattr(fresh, name, None if name == "resume" else False)
-    callback = getattr(options, "_meow_session_callback", None)
-    if callback is not None:
-        fresh._meow_session_callback = callback
+    for name in ("_meow_session_callback", "_meow_activity_callback"):
+        callback = getattr(options, name, None)
+        if callback is not None:
+            setattr(fresh, name, callback)
     return fresh
 
 
@@ -307,6 +314,24 @@ def _remember_session(options: object, message: object) -> None:
             logger.warning("session_not_recorded", reason=str(exc))
 
 
+def _activity_event(message: object) -> str | None:
+    """A short label for what a streamed message shows the agent doing."""
+    if isinstance(message, AssistantMessage):
+        tools = [b.name for b in message.content if isinstance(b, ToolUseBlock)]
+        return tools[-1] if tools else "text"
+    return {ResultMessage: "result", UserMessage: "tool_result"}.get(type(message))
+
+
+def _note_activity(options: object, message: object) -> None:
+    callback = getattr(options, "_meow_activity_callback", None)
+    event = _activity_event(message)
+    if callable(callback) and event:
+        try:
+            callback(event)
+        except Exception as exc:  # a journal write must not abort the turn
+            logger.warning("activity_not_recorded", reason=str(exc))
+
+
 def log_stream_message(  # ruff: ignore[complex-structure]
     role: str, message: object, *, options: ClaudeAgentOptions | object | None = None
 ) -> None:
@@ -314,6 +339,7 @@ def log_stream_message(  # ruff: ignore[complex-structure]
     visibly alive instead of going silent until the final result."""
     if options is not None:
         _remember_session(options, message)
+        _note_activity(options, message)
     if isinstance(message, AssistantMessage):
         for block in message.content:
             _log_assistant_block(role, block)
@@ -389,30 +415,193 @@ async def _stop_iteration(pending: asyncio.Task | None, iterator: AsyncIterator)
             await aclose()
 
 
+@dataclass
+class _Watchdog:
+    """Idle and result-grace limits for one SDK stream.
+
+    `pids()` names the `claude` CLI process to kill when a limit trips; only
+    an unambiguous single PID is killed. `on_first` runs at the first item and
+    `on_close` when the stream ends.
+    """
+
+    role: str
+    idle: float
+    grace: float
+    pids: Callable[[], list[int]]
+    on_first: Callable[[], None] | None = None
+    on_close: Callable[[], None] | None = None
+    last: float = field(default_factory=time.monotonic)
+    result_at: float | None = None
+    result_ok: bool = False
+    accepted: bool = False
+    seen: bool = False
+
+    def note(self, item: object) -> None:
+        if not self.seen:
+            self.seen = True
+            if self.on_first is not None:
+                self.on_first()
+        self.last = time.monotonic()
+        if isinstance(item, ResultMessage):
+            self.result_at = self.last
+            self.result_ok = (
+                not item.is_error and getattr(item, "subtype", "success") == "success"
+            )
+
+    def remaining(self) -> float:
+        if self.result_at is not None:
+            return self.result_at + self.grace - time.monotonic()
+        return self.last + self.idle - time.monotonic()
+
+    def fire(self) -> None:
+        """Kill the CLI tree; accept a good result, else raise `AgentStalled`."""
+        pids = self.pids()
+        if len(pids) == 1:
+            kill_process_tree(pids[0])
+        else:
+            # Ambiguous: closing the stream still ends this query's own CLI.
+            logger.warning("agent_stall_pid_unknown", role=self.role, pids=pids)
+        if self.result_at is not None:
+            logger.warning("agent_result_grace_expired", role=self.role)
+            if self.result_ok:
+                self.accepted = True
+                return
+            limit, key = self.grace, "agent_result_grace"
+            what = "sent a failed result but its stream did not close"
+        else:
+            limit, key = self.idle, "agent_idle_timeout"
+            what = "sent no SDK message"
+        logger.error("agent_stalled", role=self.role, limit=limit)
+        raise AgentStalled(
+            f"{self.role} {what} for {limit:g}s ([run].{key}); its claude CLI was "
+            "killed. Resume the run to retry."
+        )
+
+
+def _sdk_children() -> dict[int, object]:
+    """The SDK's live `claude` subprocesses by PID (SDK internals, read
+    defensively: unknown means none)."""
+    try:
+        from claude_agent_sdk._internal.transport import subprocess_cli
+
+        children = list(subprocess_cli._ACTIVE_CHILDREN)
+    except Exception:
+        return {}
+    return {
+        pid: child
+        for child in children
+        if isinstance(pid := getattr(child, "pid", None), int)
+    }
+
+
+_CLAIMED_PIDS: set[int] = set()
+
+
+class _QueryPids:
+    """`query()` exposes no transport: its CLI is the SDK child that appeared
+    between this query's start and its first message, unclaimed by any other
+    watched stream. Concurrent queries make later attribution unsafe, so it is
+    fixed at the first message and released when the stream ends."""
+
+    def __init__(self) -> None:
+        self.before = set(_sdk_children())
+        self.found: list[int] = []
+
+    def attribute(self) -> None:
+        self.found = [
+            pid for pid in _sdk_children() if pid not in self.before | _CLAIMED_PIDS
+        ]
+        _CLAIMED_PIDS.update(self.found)
+
+    def release(self) -> None:
+        _CLAIMED_PIDS.difference_update(self.found)
+
+    def __call__(self) -> list[int]:
+        return self.found
+
+
+def _client_pids(client: object) -> list[int]:
+    process = getattr(getattr(client, "_transport", None), "_process", None)
+    pid = getattr(process, "pid", None)
+    return [pid] if isinstance(pid, int) and not isinstance(pid, bool) else []
+
+
+def _run_setting(config: object, cwd: object, key: str, default: float) -> float:
+    """`[run] <key>`: from loaded config, else the project at `cwd`."""
+    run = config.get("run") if isinstance(config, dict) else None
+    if isinstance(run, dict) and key in run:
+        return float(run[key])
+    try:
+        from meow.project.config import run_config
+
+        return float(run_config(Path(str(cwd)))[key])
+    except Exception:
+        return default
+
+
+def _watchdog(
+    config: object, cwd: object, role: str, pids: Callable[[], list[int]]
+) -> _Watchdog:
+    return _Watchdog(
+        role,
+        _run_setting(config, cwd, "agent_idle_timeout", _DEFAULT_IDLE_TIMEOUT),
+        _run_setting(config, cwd, "agent_result_grace", _DEFAULT_RESULT_GRACE),
+        pids,
+    )
+
+
+async def _wait_item(
+    pending: asyncio.Task,
+    alive: Callable[[], bool],
+    poll: float,
+    guard: _Watchdog | None,
+) -> bool:
+    """Wait for `pending`; False when the guard ended the stream by accepting
+    a good result (it raises when it does not)."""
+    while True:
+        wait = poll if guard is None else min(poll, max(guard.remaining(), 0))
+        if (await asyncio.wait({pending}, timeout=wait))[0]:
+            return True
+        if guard is not None and guard.remaining() <= 0:
+            guard.fire()
+            return False
+        if not alive():
+            raise CLIConnectionError("claude CLI exited mid-turn")
+
+
 async def _watch_stream(
-    stream: AsyncIterator, alive: Callable[[], bool], poll: float
+    stream: AsyncIterator,
+    alive: Callable[[], bool],
+    poll: float,
+    guard: _Watchdog | None = None,
 ) -> AsyncIterator:
     """Yield `stream`'s items; fail a turn whose CLI died without ending it.
 
     When `poll` seconds pass with no item and `alive()` is False, raises
-    `CLIConnectionError`, which the session/query retry paths replay.
+    `CLIConnectionError`, which the session/query retry paths replay. A
+    `guard` also bounds silence and the wait for the stream to close after
+    its result (see `_Watchdog`); `guard.accepted` marks a good result taken
+    without the stream closing.
     """
     iterator = aiter(stream)
     pending: asyncio.Task | None = None
     try:
         while True:
             pending = asyncio.ensure_future(_next_item(iterator))
-            while not (await asyncio.wait({pending}, timeout=poll))[0]:
-                if not alive():
-                    raise CLIConnectionError("claude CLI exited mid-turn")
+            if not await _wait_item(pending, alive, poll, guard):
+                return
             done, pending = pending, None
             try:
                 item = done.result()
             except StopAsyncIteration:
                 return
+            if guard is not None:
+                guard.note(item)
             yield item
     finally:
         await _stop_iteration(pending, iterator)
+        if guard is not None and guard.on_close is not None:
+            guard.on_close()
 
 
 def _last_text_block(message: AssistantMessage) -> str:
@@ -448,15 +637,7 @@ def _redact_process_error(exc: ProcessError) -> None:
 
 def _max_wait(config: object, cwd: object) -> float:
     """`[run] api_max_wait`: from loaded config, else the project at `cwd`."""
-    run = config.get("run") if isinstance(config, dict) else None
-    if isinstance(run, dict) and "api_max_wait" in run:
-        return float(run["api_max_wait"])
-    try:
-        from meow.project.config import run_config
-
-        return float(run_config(Path(str(cwd)))["api_max_wait"])
-    except Exception:
-        return DEFAULT_MAX_WAIT
+    return _run_setting(config, cwd, "api_max_wait", DEFAULT_MAX_WAIT)
 
 
 def _query_failure(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
@@ -493,8 +674,14 @@ async def _consume_query(  # ruff: ignore[complex-structure, too-many-branches, 
     otherwise failed) propagates unchanged for `Agent.run_query`'s retry
     loop to handle. `observe`, when given, sees every streamed message."""
     # query() exposes no transport, so liveness defaults to alive here.
+    pids = _QueryPids()
+    guard = _watchdog({}, getattr(options, "cwd", None), role, pids)
+    guard.on_first, guard.on_close = pids.attribute, pids.release
     messages: AsyncIterator = _watch_stream(
-        query(prompt=prompt, options=options), lambda: True, _STREAM_POLL_SECONDS
+        query(prompt=prompt, options=options),
+        lambda: True,
+        _STREAM_POLL_SECONDS,
+        guard,
     )
     last_text = assistant_text = ""
     assistant_error = None
@@ -808,6 +995,15 @@ class Agent:
             options._meow_session_callback = lambda session_id: store.set_session(
                 run_id, role.lower(), session_id
             )
+            last_stamp = [0.0]
+
+            def stamp_activity(event: str) -> None:
+                now = time.monotonic()
+                if now - last_stamp[0] >= _ACTIVITY_INTERVAL:
+                    last_stamp[0] = now
+                    store.record_activity(run_id, role.lower(), event)
+
+            options._meow_activity_callback = stamp_activity
         return options
 
     @staticmethod
@@ -919,6 +1115,7 @@ class SessionAgent(Agent):
     _entered = False
     _context_size = 0
     _recap = ""
+    _stalled = False
 
     def _open_session(self, options: ClaudeAgentOptions) -> None:
         self._session_options = options
@@ -1013,6 +1210,9 @@ class SessionAgent(Agent):
                     await self._recover_os_error(exc, crashes)
                 continue
             self._recap = ""
+            if self._stalled:
+                self._stalled = False
+                await self._restart("was closed after its result")
             logger.info("session_turn_finished", role=self.role)
             return text
 
@@ -1071,10 +1271,17 @@ class SessionAgent(Agent):
         api_error = None
         try:
             await self._client.query(message)
+            guard = _watchdog(
+                getattr(getattr(self, "context", None), "config", {}),
+                getattr(self._session_options, "cwd", None),
+                self.role,
+                lambda: _client_pids(self._client),
+            )
             stream = _watch_stream(
                 self._client.receive_response(),
                 lambda: _transport_alive(self._client),
                 _STREAM_POLL_SECONDS,
+                guard,
             )
             async with aclosing(stream):
                 async for item in stream:
@@ -1100,6 +1307,7 @@ class SessionAgent(Agent):
         except ProcessError as exc:
             _classify_process_error(exc, text)
             raise
+        self._stalled = guard.accepted  # CLI killed: the next turn needs a new one
         return "\n".join(text)
 
     def _check_result(

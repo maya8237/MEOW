@@ -9,6 +9,7 @@ from meow.agents.base import SessionAgent
 from meow.execution import round_memory
 from meow.execution.run_state import RunStore
 from meow.execution.sprint import Sprint
+from meow.execution.workflow import hot_reload
 from meow.execution.workflow.stall import StallTracker
 from meow.infrastructure.cancellation import cancellable, check_cancel
 from meow.infrastructure.usage import usage_scope
@@ -256,6 +257,8 @@ class WorkflowRun:
             ):
                 state.round, state.gates = number, {}
                 state.generate_changed = None
+                self._seed_resume_feedback(step, number)
+                hot_reload.reload_config(state)
                 await self.body(step.body)
                 failed = self._blocking_failures()
                 if not failed:
@@ -273,6 +276,11 @@ class WorkflowRun:
                 state.sprint.config.pop("_workflow_pool", None)
             else:
                 state.sprint.config["_workflow_pool"] = old_pool
+
+    def _seed_resume_feedback(self, step, number):
+        """A verdict edited by hand while parked seeds the first fix round."""
+        if number == 1 and _generates(step):
+            self.state.feedback = self.state.flags.pop("resume_feedback", "") or ""
 
     def _blocking_failures(self):
         return [
@@ -315,6 +323,10 @@ class WorkflowRun:
             f"Workflow loop {step.id!r} did not pass after {limit} rounds. "
             f"{_inspect_hint(state, step)}"
         ).rstrip()
+
+
+def _generates(step):
+    return any(item.target == "builtin.generate" for item in walk(step.body))
 
 
 def _reviews(state, step):

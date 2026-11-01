@@ -323,8 +323,8 @@ def list_imported_runs(repo: Path) -> list[dict]:
     ]
 
 
-def _validate_imported_resume(repo: Path, run_id: str, repair: bool):
-    from meow.cli.resume_cli import _required_session_roles, _resume_at, _validate
+def _validate_imported_resume(repo: Path, run_id: str):
+    from meow.cli.resume_cli import _validate
     from meow.cli.status_cli import RESUMABLE_SOURCES
     from meow.execution.run_state import RunStore
     from meow.infrastructure.background import inspect_worker
@@ -336,10 +336,8 @@ def _validate_imported_resume(repo: Path, run_id: str, repair: bool):
         raise SessionError("Run worker is already active")
     if problem := _validate(record, repo):
         raise SessionError(f"Cannot resume: {problem}")
-    resume_at = _resume_at(record)
-    missing = _required_session_roles(record, resume_at) - set(record.sessions)
-    if missing and not repair:
-        raise SessionError("Cannot resume without saved Claude session references")
+    # Missing Claude sessions never block a resume: `meow resume` falls back to
+    # fresh sessions built from the plan and on-disk verdicts.
     return record
 
 
@@ -391,7 +389,7 @@ def resume_imported_run(
             from meow.ui.sessions import SessionBusy
 
             raise SessionBusy("This MEOW run already has an active UI resume")
-        record = _validate_imported_resume(repo, run_id, repair)
+        record = _validate_imported_resume(repo, run_id)
         session_id = new_id()
         sessions = SessionStore(repo)
         recipe = _imported_resume_recipe(repo, record, session_id)
@@ -546,7 +544,7 @@ def resume_attempt(  # ruff: ignore[complex-structure, too-many-arguments, too-m
                     raise SessionError(
                         "A request applies only to Claude session attempts."
                     )
-                _validate_imported_resume(Path(repo).resolve(), run_id, repair)
+                _validate_imported_resume(Path(repo).resolve(), run_id)
             else:
                 if not old.claude_session_id:
                     raise SessionError(

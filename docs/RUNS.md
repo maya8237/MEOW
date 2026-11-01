@@ -67,10 +67,12 @@ meow cancel RUN_ID
 
 Atomic journals live under ignored `.meow/runs/`. Resume is inspection-only
 until `--continue`; continuation validates repository, worktree, branch, plan,
-config, and workflow. `--repair` re-baselines blocked gates, including missing
-sessions. Task graphs rerun only unfinished tasks. Interrupted mutations review
-the saved worktree against its plan before any generator retry; mismatches stop
-with a diagnostic. Preserve failed/interrupted worktrees and evidence.
+config, and workflow. `--repair` re-baselines blocked gates; a missing session
+falls back to a fresh one. A non-PASS review or tester verdict edited while
+parked becomes the first fix round's feedback. Task graphs rerun only unfinished
+tasks. Interrupted mutations review the saved worktree against its plan before
+any generator retry; mismatches stop with a diagnostic. Preserve
+failed/interrupted worktrees and evidence.
 
 
 Status shows received SDK turns and tokens; verbose lists results
@@ -101,6 +103,11 @@ and unrecognised git errors end `delivery_failed`.
 Every helper with a run ID refreshes its heartbeat. A `--intent run` silent past
 `[run] stale_after` (2 h) is parked as a lost session; once `meow resume` drives it,
 native helpers for that run refuse with `driver_busy`, so the session stops editing.
+
+`[run] agent_idle_timeout` (900 s): an agent stream silent this long has its
+`claude` CLI killed and the run parks, resumable. `[run] agent_result_grace`
+(120 s): a successful result whose stream never closes is accepted; `meow status`
+shows `Last agent activity` and flags a run silent past the idle timeout.
 
 A managing session starts runs with `--background` and polls `meow status ID --json`
 (cron `*/7 * * * *`), acting only when `settled` is true: with `retryable: true`

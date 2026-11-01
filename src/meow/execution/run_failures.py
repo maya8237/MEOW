@@ -112,6 +112,13 @@ class WindowsQueryTimeout(TransientRunError, ValueError):
         super().__init__(message, cause="windows_query_timeout")
 
 
+class AgentStalled(TransientRunError):
+    """An agent's SDK stream went silent or never closed; its CLI was killed."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, cause="agent_stalled")
+
+
 class BlockingRunError(RuntimeError):
     """A failure no resume can fix; the run ends `failed` with `cause`."""
 
