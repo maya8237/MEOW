@@ -48,6 +48,7 @@ meow run "Add a dark mode toggle" --from release --target dev
 |---|---|---|
 | `open_mr` | `true` | `false` equals `--no-mr` |
 | `fix_non_meow_jobs` | `false` | Equals `--fix-non-meow-jobs` |
+| `require_review_job` | `false` | A green pipeline without a `meow-review` job is not verified |
 | `max_fix_rounds` | `3` | Fix rounds before giving up |
 | `start_timeout` | `300` | Seconds to wait for a pipeline to appear |
 | `timeout` | `3600` | Seconds to wait for the pipeline |

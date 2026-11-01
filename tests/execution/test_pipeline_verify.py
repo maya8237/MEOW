@@ -360,6 +360,15 @@ def test_non_meow_jobs_fixed_even_when_review_job_skipped(harness):
     assert outcome.detail == "meow review job skipped"
 
 
+def test_require_review_job_rejects_green_pipeline_without_one(harness):
+    provider = FakeProvider(snapshots=[snap(job("unit-tests", "success"))])
+
+    outcome = harness.run(provider, require_review_job=True)
+
+    assert outcome.status == "not_verified"
+    assert outcome.detail == "no meow-review job ran"
+
+
 def test_resume_keeps_round_counter(harness):
     store, run_id = harness.store, harness.run_id
     store.transition(
