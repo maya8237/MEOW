@@ -68,7 +68,8 @@ def _install(tmp_path, shell, base, **extra):
         env=env,
         capture_output=True,
         text=True,
-        timeout=60,
+        # Hang guard only: loaded Windows runners can take minutes to start PowerShell.
+        timeout=600,
         check=False,
     )
 
