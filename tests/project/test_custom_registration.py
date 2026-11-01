@@ -177,3 +177,18 @@ def test_plugin_runs_auto_sync_when_claude_code_starts():
     assert entry["matcher"] == "startup"
     assert "meow sync --auto" in command
     assert command.startswith("command -v meow") and command.endswith("|| true")
+
+
+def test_auto_sync_serves_hooks_from_configured_directories(project, home):
+    write(project / "tools" / "hooks" / "cfg.toml", HOOK + 'matcher = "Bash"\n')
+    write(project / ".meow" / "config.toml", '[custom]\nhooks = ["tools/hooks"]\n')
+
+    auto_sync_message(custom(project), project, home / ".meow")
+
+    hooks = json.loads(
+        (project / ".meow" / "plugin" / "hooks" / "hooks.json").read_text()
+    )
+    (entry,) = hooks["hooks"]["PreToolUse"]
+    assert entry["matcher"] == "Bash"
+    assert "--name cfg" in entry["hooks"][0]["command"]
+    assert check_registration(custom(project), project, home / ".meow") == []
