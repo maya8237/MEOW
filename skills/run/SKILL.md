@@ -87,7 +87,8 @@ delivered and verified, or done-and-verified unless the output contains
 `Verified by pipeline`; for `Not verified by pipeline`, report the reason and
 the MR/pipeline URLs. Pass `--no-mr` only if the user does not want an MR, and
 `--fix-non-meow-jobs` only if they explicitly ask to fix unrelated (non-MEOW)
-jobs; deploy jobs are never fixed. Details: [pipeline](../../docs/PIPELINE.md).
+jobs; deploy jobs are never fixed. See the Pipeline guide in `meow ui` or the
+[online docs](https://maya8237.github.io/MEOW/) for details.
 
 Full orchestration uses isolated detached CLI sprints, pushes only after the
 combined objective passes review, and opens one PR unless `--no-mr` is given.

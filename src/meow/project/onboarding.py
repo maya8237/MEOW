@@ -184,7 +184,8 @@ def _config_text(
         "# Created automatically by meow on the first run.",
         "# This shared file is safe to commit; keep private values in the local",
         "# config or environment variables. See templates/meow-config.toml.example",
-        "# for every option and docs/INTEGRATIONS.md for feature setup.",
+        "# for every option and the Integrations guide in `meow ui` or at "
+        "https://maya8237.github.io/MEOW/ for feature setup.",
     ]
     if "max_rounds" not in existing:
         lines += [
@@ -225,7 +226,8 @@ def _local_config_text() -> str:
         "# [tester.mcp.env]",
         '# TOKEN = "$TOKEN"',
         "#",
-        "# See templates/meow-config.toml.example and docs/INTEGRATIONS.md.",
+        "# See templates/meow-config.toml.example and the Integrations guide in "
+        "`meow ui` or at https://maya8237.github.io/MEOW/.",
         "",
     ])
 
@@ -482,7 +484,7 @@ def onboard_if_needed(active_dir: Path, config_dir: Path) -> dict | None:
     return report.to_dict()
 
 
-_GUIDE = "docs/INTEGRATIONS.md"
+_GUIDE = "the Integrations guide in `meow ui` or at https://maya8237.github.io/MEOW/"
 # Add optional capabilities here when introducing them, so installer and skill
 # reruns discover the same current options without storing an onboarding version.
 # Then decide in `announcements.py` whether `meow --update` announces each one;
@@ -542,11 +544,13 @@ _GAPS: dict[str, tuple[tuple[str, ...], str]] = {
     "models": (("models",), f"Configure role-specific [models] ({_GUIDE})."),
     "workflow": (
         ("workflow",),
-        "Select [workflow].default or use `/meow:customize` (docs/WORKFLOWS.md).",
+        "Select [workflow].default or use `/meow:customize` (see the Workflows "
+        "guide in `meow ui` or at https://maya8237.github.io/MEOW/).",
     ),
     "orchestrator": (
         ("orchestrator",),
-        "Configure [orchestrator] for multi-sprint runs (docs/ORCHESTRATION.md).",
+        "Configure [orchestrator] for multi-sprint runs (see the Orchestration "
+        "guide in `meow ui` or at https://maya8237.github.io/MEOW/).",
     ),
     "delivery": (
         ("delivery", "target_branch"),

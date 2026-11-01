@@ -5,8 +5,9 @@ description: Create, override, attach, or remove MEOW skills, agents, and workfl
 
 # Customize MEOW
 
-Definitions load on every run; no reinstall is needed. Use `docs/WORKFLOWS.md`
-for agent/workflow formats and `docs/INTEGRATIONS.md` for configured sources,
+Definitions load on every run; no reinstall is needed. Use the Workflows guide in
+`meow ui` or the [online docs](https://maya8237.github.io/MEOW/) for agent/workflow
+formats and the Integrations guide there for configured sources,
 skills, models, and permissions. Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
 ## See what is customized, by scope
@@ -88,7 +89,8 @@ Resolved tools remain subject to `[permissions]`; prompts never bypass policy.
 
 **Hook:** `<name>.toml` under `hooks/` with `description`, `event`, `command`
 (optional `matcher`, `timeout`, `roles`). Exit 2 denies or feeds back; hooks never
-grant permissions. Events and `meow native hook`: [HOOKS](../../docs/HOOKS.md).
+grant permissions. Events and `meow native hook` are covered in the Hooks guide in
+`meow ui` or the [online docs](https://maya8237.github.io/MEOW/).
 
 **Workflow:** `<name>.toml`, with `description` and a `steps` list. Choose from
 `uses = "builtin.name"`, `agent`, `gate`, `loop`, `parallel`, and `call`.
@@ -103,7 +105,8 @@ uses = "builtin.checks"
 ```
 
 Blocking loops require a gate or `builtin.review`. Parallel branches must use
-read-only agent/gate definitions as specified in `docs/WORKFLOWS.md`. Gates
+read-only agent/gate definitions as specified in the Workflows guide in `meow ui` or the
+[online docs](https://maya8237.github.io/MEOW/). Gates
 need a verdict artifact with `SUMMARY:` and `STATUS: PASS|FAIL`; MEOW enforces
 the contract even if an override omits it. Conditions can use run flags,
 `round`, `steps`, and string `inputs`. Run with `--workflow NAME` and repeated
@@ -116,8 +119,8 @@ applies. Supporting files may sit beside it. Use
 `[custom].skills` only for an existing directory elsewhere or to limit `roles`.
 Definition `skills` and `[agent_skills]` can also name installed skills.
 
-Register extra directories with `[custom]` using the
-[configuration example](../../docs/INTEGRATIONS.md#custom-skills-and-agents).
+Register extra directories with `[custom]` using the configuration example in the
+Integrations guide in `meow ui` or the [online docs](https://maya8237.github.io/MEOW/).
 Workflow sources do not take `roles`.
 
 ## 4. Verify and report

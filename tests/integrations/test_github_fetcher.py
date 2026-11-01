@@ -80,7 +80,11 @@ class GithubFetcherCheckActiveTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("meow.agents.mcp_fetcher.query", fake_query),
-            self.assertRaisesRegex(RuntimeError, "No active GitHub MCP server"),
+            self.assertRaisesRegex(
+                RuntimeError,
+                r"No active GitHub MCP server.*Integrations guide in `meow ui`.*"
+                r"https://maya8237\.github\.io/MEOW/",
+            ),
         ):
             await self.agent.check_active()
 
@@ -97,7 +101,11 @@ class GithubFetcherCheckActiveTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("meow.agents.mcp_fetcher.query", fake_query),
-            self.assertRaisesRegex(RuntimeError, "No active GitHub MCP server"),
+            self.assertRaisesRegex(
+                RuntimeError,
+                r"No active GitHub MCP server.*Integrations guide in `meow ui`.*"
+                r"https://maya8237\.github\.io/MEOW/",
+            ),
         ):
             await self.agent.check_active()
 

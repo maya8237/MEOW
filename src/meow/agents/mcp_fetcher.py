@@ -40,6 +40,9 @@ logger = get_logger(__name__)
 
 _FETCH_ATTEMPTS = 2
 _PROJECT_KEY = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+_INTEGRATIONS_GUIDE = (
+    "See the Integrations guide in `meow ui` or at https://maya8237.github.io/MEOW/."
+)
 
 
 class _ServerCalls:
@@ -160,7 +163,7 @@ class IssueFetcherAgent(McpFetcherAgent):
     setup_hint = (
         'Set [jira.mcp] from = "registered-name" to select an existing Claude '
         "MCP registration, or check the inline stdio command/args and credentials. "
-        "See docs/INTEGRATIONS.md."
+        + _INTEGRATIONS_GUIDE
     )
 
     async def fetch(
@@ -235,7 +238,7 @@ class GitlabFetcherAgent(McpFetcherAgent):
     setup_hint = (
         'Set [gitlab.mcp] from = "registered-name" to select an existing Claude '
         "MCP registration, or check the inline stdio command/args and credentials. "
-        "See docs/INTEGRATIONS.md."
+        + _INTEGRATIONS_GUIDE
     )
 
     async def fetch(self, mr_link: str, output_file: Path) -> None:
@@ -257,7 +260,7 @@ class GithubFetcherAgent(McpFetcherAgent):
     setup_hint = (
         'Set [github.mcp] from = "registered-name" to select an existing Claude '
         "MCP registration, or check the inline stdio command/args and credentials. "
-        "See docs/INTEGRATIONS.md."
+        + _INTEGRATIONS_GUIDE
     )
 
     async def fetch(self, pull_request_link: str, output_file: Path) -> None:

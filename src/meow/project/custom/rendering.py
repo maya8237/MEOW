@@ -2,7 +2,8 @@
 
 Every render sees every documented variable (`PROMPT_VARIABLES`), unset
 ones as None, so an override can use any of them and a misspelt name still
-fails loudly. `docs/WORKFLOWS.md` documents what each one holds.
+fails loudly. The Workflows guide in `meow ui` or at
+https://maya8237.github.io/MEOW/ documents what each one holds.
 """
 
 from collections.abc import Mapping

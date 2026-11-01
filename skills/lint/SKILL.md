@@ -20,7 +20,8 @@ your work and racing your edits. Dependency or install problems: [dependencies](
 ## Native mode
 
 1. The project needs `.meow/config.toml` with at least one `[[lint]]` entry;
-otherwise tell the user and stop (point at `docs/INTEGRATIONS.md` for the
+otherwise tell the user and stop (point at the Integrations guide in `meow ui` or the
+[online docs](https://maya8237.github.io/MEOW/) for the
 `[[lint]]` schema, or invoke `/meow:onboard` to configure it).
 2. Run `meow native prepare --no-worktree --allow-dirty --work-dir "<project-path>"`
    for `max_rounds` and `docs_dir`, then

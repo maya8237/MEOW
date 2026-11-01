@@ -12,7 +12,8 @@ Dependencies are installed later during task worktree preparation. Show detected
 sources and explicit overrides; ask only for changes or unresolved required choices.
 
 For explicit flag-based setup, run `meow onboard --non-interactive --work-dir PATH`
-with supplied options ([flags](../../docs/ONBOARDING.md)).
+with supplied options; see the Onboarding guide in `meow ui` or the
+[online docs](https://maya8237.github.io/MEOW/) for the flags.
 It never prompts or starts agents; do not continue into interactive steps afterward.
 Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
@@ -61,7 +62,7 @@ Identify the project root, language, package manager, existing lint/test
 commands, docs, and relevant `AGENTS.md` files. Verify Python 3.12+ with
 `python --version`, `python3 --version`, or `py -3.12 --version` on Windows.
 Run `meow --help` before changing files. If it is missing, ask before installing,
-then run the README installer: `curl -fsSL
+then run the online installer: `curl -fsSL
 https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.sh | sh` on
 Linux, or `irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex`
 in PowerShell. It finds Python and adds `meow` to PATH; do not `pip install` MEOW
@@ -123,7 +124,8 @@ Use ignored local config for private MCP `env`, machine commands, API-key
 references, and personal installed skills. `agent_skills.default` and
 `agent_skills.<role>` append across layers; local entries do not remove
 lower-layer or built-in skills. Follow the
-[configuration rules](../../docs/INTEGRATIONS.md#monorepo-lint-and-tester) for
+configuration rules in the Integrations guide in `meow ui` or the
+[online docs](https://maya8237.github.io/MEOW/) for
 portable environment references. Do not assume another user has a local skill.
 
 Do not present a questionnaire for already detected defaults. Offer requested
@@ -153,7 +155,8 @@ prompt. Automatic: run it only for providers the user named with the variables
 already set; otherwise list "no MCP: run `meow onboard --mcp NAME`". Projects
 then need no `[provider.mcp]`; with several matches set `from` in local config.
 For GitHub or other servers, use one the user registered. Hosted OAuth
-connectors are not usable by the CLI. See [MCP](../../docs/MCP.md).
+connectors are not usable by the CLI. See the MCP guide in `meow ui` or the
+[online docs](https://maya8237.github.io/MEOW/).
 
 For Tester MCPs, check whether the session has the tools and the launcher exists.
 If not, warn that the MCP is missing, give the exact install step, mark the

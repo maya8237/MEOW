@@ -163,6 +163,18 @@ def test_onboard_project_writes_documented_shared_and_local_configs(repo):
     assert "automatically" in shared_text.lower()
 
 
+def test_onboard_config_points_to_installed_integrations_guide(repo):
+    onboard_project(repo)
+
+    shared_text = (repo / ".meow" / "config.toml").read_text(encoding="utf-8")
+    local_text = (repo / ".meow" / "config.local.toml").read_text(encoding="utf-8")
+    assert "Integrations guide in `meow ui`" in shared_text
+    assert "Integrations guide in `meow ui`" in local_text
+    assert "https://maya8237.github.io/MEOW/" in shared_text
+    assert "https://maya8237.github.io/MEOW/" in local_text
+    assert "docs/INTEGRATIONS.md" not in shared_text + local_text
+
+
 def test_onboard_project_never_rewrites_existing_local_config(repo):
     local = repo / ".meow" / "config.local.toml"
     local.parent.mkdir()

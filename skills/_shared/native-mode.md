@@ -3,13 +3,13 @@
 Read this for native execution. `plan`, `review`, and `lint` default to native;
 `run` defaults to CLI. You execute roles in this session or fresh subagents.
 Orchestrator task sprints remain detached CLI workers. Named workflows,
-including `quick`, execute through CLI ([WORKFLOWS.md](../../docs/WORKFLOWS.md)).
+including `quick`, execute through CLI; see the Workflows guide in `meow ui` or the [online docs](https://maya8237.github.io/MEOW/).
 Future-time requests use [schedule](../schedule/SKILL.md) first.
 
 ## The `meow native` helper
 
 Helpers start no agents and print JSON on stdout; errors print one JSON line on
-stderr. If `meow` is missing, point to the README installer, not a guessed venv. A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
+stderr. If `meow` is missing, point to the online installer, not a guessed venv. A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
 OSError-class failures: wait `retry_after` (it can be long for a rate
 limit; the cron simply skips ticks until then), then run the printed `next_command`
 detached (host background execution), or rerun the same native helper, up to
@@ -167,8 +167,8 @@ in-place runs do not deliver. For worktree delivery, the first checkpoint saves
 `--target` or `[delivery].target_branch`, never `--from` (which only chooses the start).
 State the saved MR target from `meow status RUN_ID`, also on resume. The loop is
 finished and final delivery is being verified through the MR pipeline: open the MR/PR
-with connected tools and report the pipeline status. The pipeline-fix loop is CLI-only
-([pipeline](../../docs/PIPELINE.md)); claim "Verified by pipeline" only when it passed.
+with connected tools and report the pipeline status. The pipeline-fix loop is CLI-only;
+see the Pipeline guide in `meow ui` or the [online docs](https://maya8237.github.io/MEOW/). Claim "Verified by pipeline" only when it passed.
 
 Claude owns transcripts; journals retain role/session references (missing SDK usage is
 `unavailable`). Successful finalization cleans integrated task artifacts and retains the

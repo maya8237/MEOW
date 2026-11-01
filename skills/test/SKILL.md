@@ -32,7 +32,8 @@ Named workflows execute through CLI mode only. Dependency or install problems:
 
 Shared with `/meow:onboard`. MEOW infers the dev server, URL and browser from the
 project's Playwright config and `package.json`, including an inner `frontend/` folder
-([what is read](../../docs/TESTER.md)), so most projects need no entry.
+(see the Tester guide in `meow ui` or the
+[online docs](https://maya8237.github.io/MEOW/)), so most projects need no entry.
 
 1. Run `meow native verify --work-dir "<project-path>" --no-lint --preflight`. The JSON
    has `preflight` (per check: `status`, `detail`, `fix`, `snippet`), `preflight_ok`

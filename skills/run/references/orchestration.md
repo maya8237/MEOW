@@ -10,7 +10,8 @@ of fighting for it.
 
 1. **Pick the source** (exactly one):
    - an **objective**: whatever the user typed;
-   - a **tasks file** the user named ([TOML/JSON format](../../../docs/ORCHESTRATION.md#task-file));
+   - a **tasks file** the user named (see the Orchestration guide in `meow ui` or
+     the [online docs](https://maya8237.github.io/MEOW/) for the TOML/JSON format);
    - **Jira keys** or a **JQL query**: fetch through the Jira MCP tools already
      connected to this session (tool names containing `jira`; read-only, never
      comment or transition). For JQL, run the search and read every match. Each

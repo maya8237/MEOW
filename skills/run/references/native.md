@@ -28,7 +28,8 @@ without a saved run use the documented
    `issue/`. The `[jira.mcp]` table is **not** used here: fetch through
    the Jira MCP tools already connected to this session (tool names
    containing `jira`). If none connected, say so and
-   stop; point at docs/INTEGRATIONS.md in the meow repo. Fetch the named
+stop; point at the Integrations guide in `meow ui` or the
+[online docs](https://maya8237.github.io/MEOW/). Fetch the named
    issue, or the most recently created one in `project_key`; need `key`,
    `summary`, `description` -- stop and report if any is missing. Request
    text becomes `Resolve Jira issue <key>: <summary>` + blank line +
