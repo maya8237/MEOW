@@ -138,21 +138,44 @@ def test_worker_runs_once_and_records_exit(tmp_path, monkeypatch, backend):
     backend.assert_not_called()
 
 
+def _record_worker_lock_waits(monkeypatch):
+    """Record the lock timeout each non-main thread requests; the event is set
+    once a worker has reached the (held) lock."""
+    import inspect
+    import threading
+
+    real = scheduling._file_transaction
+    default_wait = inspect.signature(real).parameters["timeout"].default
+    requested: list[float] = []
+    waiting = threading.Event()
+
+    def recording(path, resource, *, timeout=default_wait):
+        if threading.current_thread() is not threading.main_thread():
+            requested.append(timeout)
+            waiting.set()
+        return real(path, resource, timeout=timeout)
+
+    monkeypatch.setattr(scheduling, "_file_transaction", recording)
+    return real, default_wait, requested, waiting
+
+
 def test_imminent_worker_waits_through_registration(tmp_path, monkeypatch, backend):
-    import time
+    """A trigger firing mid-registration waits on the lock for longer than the
+    default metadata wait, then runs once the registration publishes."""
     from concurrent.futures import ThreadPoolExecutor
 
     monkeypatch.setattr(scheduling, "platform", "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     make_due(tmp_path, job)
     lock = scheduling._path(tmp_path, job["id"]).with_suffix(".lock")
+    real, default_wait, requested, waiting = _record_worker_lock_waits(monkeypatch)
     with ThreadPoolExecutor(max_workers=1) as pool:
-        with scheduling._file_transaction(lock, "registration"):
+        with real(lock, "registration"):
             worker = pool.submit(scheduling.execute_schedule, tmp_path, job["id"])
-            # OS registration can legitimately outlast the default metadata wait.
-            time.sleep(5.2)
+            assert waiting.wait(60)  # the worker has reached the held lock
             assert not worker.done()
-        assert worker.result(timeout=5) == 0
+        assert worker.result(timeout=60) == 0
+    assert requested[0] > default_wait
     assert scheduling.list_schedules(tmp_path)[0]["state"] == "succeeded"
 
 

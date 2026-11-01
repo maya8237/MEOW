@@ -9,6 +9,7 @@ from meow.infrastructure.checks import run_final_checks
 from meow.project.config_models import LintCommand
 from meow.tasks.model import TaskSpec
 from meow.tasks.runner import verify_task
+from tests.orphans import assert_grandchild_dead, grandchild_pid
 
 
 @pytest.mark.parametrize("kind", ["lint", "build", "task", "lint_hook"])
@@ -17,14 +18,14 @@ def test_cancelled_verification_cannot_write_after_returning(tmp_path, kind):  #
 
     (tmp_path / ".meow").mkdir()
     (tmp_path / ".meow/config.toml").write_text("", encoding="utf-8")
-    child = (
-        "import time; from pathlib import Path; time.sleep(1); Path('survivor').touch()"
-    )
+    pidfile = tmp_path / "grandchild.pid"
     script = tmp_path / "verify.py"
     script.write_text(
         "import subprocess, sys, time\nfrom pathlib import Path\n"
-        f"subprocess.Popen([sys.executable, '-c', {child!r}])\n"
-        "Path('ready').touch()\ntime.sleep(2)\n",
+        "child = subprocess.Popen("
+        "[sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        f"Path({str(pidfile)!r}).write_text(str(child.pid))\n"
+        "Path('ready').touch()\ntime.sleep(60)\n",
         encoding="utf-8",
     )
     config = {"lint": [], "lint_timeout": 10, "build": [], "tester": {"tests": []}}
@@ -55,8 +56,7 @@ def test_cancelled_verification_cannot_write_after_returning(tmp_path, kind):  #
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
-            await asyncio.sleep(1.3)
-            assert not (tmp_path / "survivor").exists()
+            assert_grandchild_dead(pidfile)
         finally:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
@@ -68,19 +68,22 @@ def test_cancelled_verification_cannot_write_after_returning(tmp_path, kind):  #
 def test_verification_stops_children_after_the_wrapper_has_exited(tmp_path):
     from meow.infrastructure.checks import run_captured_async
 
-    child = (
-        "import time; from pathlib import Path; time.sleep(1); Path('survivor').touch()"
+    pidfile = tmp_path / "grandchild.pid"
+    code = (
+        "import subprocess, sys; "
+        "child = subprocess.Popen("
+        "[sys.executable, '-c', 'import time; time.sleep(60)']); "
+        f"open({str(pidfile)!r}, 'w').write(str(child.pid))"
     )
-    code = f"import subprocess,sys; subprocess.Popen([sys.executable, '-c', {child!r}])"
 
     async def scenario():
         import os
 
         result = await run_captured_async(
-            [sys.executable, "-c", code], tmp_path, os.environ.copy(), 0.5
+            [sys.executable, "-c", code], tmp_path, os.environ.copy(), 30
         )
-        await asyncio.sleep(1.3)
-        assert not (tmp_path / "survivor").exists()
         assert result[0] == 0 or result[2]
+        assert grandchild_pid(pidfile) is not None
+        assert_grandchild_dead(pidfile)
 
     asyncio.run(scenario())
