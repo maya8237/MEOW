@@ -117,7 +117,7 @@ def test_classify_failure_table(tmp_path, make, expected):
         (TimeoutError(), ("transient", "error")),
         (ValueError("mid-run value"), ("transient", "error")),
         (_ApiFailure("park", "rate_limit"), ("transient", "rate_limit")),
-        (TransientRunError("later", cause="budget"), ("transient", "budget")),
+        (TransientRunError("later", cause="rate_limit"), ("transient", "rate_limit")),
         (
             TransientRunError("slow", cause="windows_query_timeout"),
             ("transient", "windows_query_timeout"),

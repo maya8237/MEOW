@@ -2,7 +2,6 @@
 
 from types import SimpleNamespace
 
-import pytest
 from claude_agent_sdk import ResultMessage
 
 from meow.agents.base import log_stream_message
@@ -13,30 +12,27 @@ from meow.infrastructure.usage import usage_entry, usage_scope, usage_totals
 
 def test_usage_entry_and_totals_keep_reported_values():
     token_count = 14
-    cost = 0.25
     result = SimpleNamespace(
         num_turns=2,
         duration_ms=1200,
-        total_cost_usd=cost,
         usage={"input_tokens": 10, "output_tokens": 4},
     )
     entry = usage_entry("generator", result)
     assert entry["tokens"] == token_count
-    assert usage_totals({"entries": [entry]})["cost_usd"] == pytest.approx(cost)
+    assert usage_totals({"entries": [entry]})["tokens"] == token_count
+    assert "cost_usd" not in entry
 
 
 def test_unknown_metrics_stay_unavailable():
     result = SimpleNamespace(
         num_turns=True,
         duration_ms=-1,
-        total_cost_usd=float("nan"),
         usage={"input_tokens": False, "output_tokens": float("inf")},
     )
     entry = usage_entry("planner", result)
     assert entry["tokens"] is None
-    assert entry["cost_usd"] is None
     assert usage_totals({"entries": [entry]})["tokens"] is None
-    assert usage_totals("unavailable")["cost_usd"] is None
+    assert usage_totals("unavailable")["tokens"] is None
 
 
 def test_received_results_append_without_phase_transition(tmp_path):
@@ -57,7 +53,6 @@ def test_received_results_append_without_phase_transition(tmp_path):
         is_error=False,
         num_turns=2,
         session_id="test",
-        total_cost_usd=0.25,
         usage={"input_tokens": 10, "output_tokens": 4},
     )
     with usage_scope(store, record.id):

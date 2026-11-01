@@ -57,7 +57,6 @@ def usage_entry(role: str, result: object) -> dict[str, object]:
         "turns": _number(getattr(result, "num_turns", None), integer=True),
         "duration_ms": _number(getattr(result, "duration_ms", None), integer=True),
         "tokens": tokens,
-        "cost_usd": _number(getattr(result, "total_cost_usd", None)),
         "breakdown": breakdown or None,
     }
 
@@ -66,7 +65,7 @@ def usage_totals(value: object) -> dict[str, object]:
     """Sum known entries; a field with no reported values stays unavailable."""
     entries = value.get("entries", []) if isinstance(value, dict) else []
     totals: dict[str, object] = {}
-    for field in ("turns", "duration_ms", "tokens", "cost_usd"):
+    for field in ("turns", "duration_ms", "tokens"):
         numbers = [
             number
             for entry in entries

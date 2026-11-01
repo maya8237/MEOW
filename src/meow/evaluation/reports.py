@@ -59,7 +59,7 @@ def evaluate_run(
     }
     unavailable: list[str] = []
     if record.usage in (None, "unavailable", {}):
-        unavailable.append("SDK usage/cost was not recorded")
+        unavailable.append("SDK usage was not recorded")
     results = record.results or {}
     if "tester" in results:
         observed["tester"] = results["tester"]

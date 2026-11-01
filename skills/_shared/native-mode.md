@@ -10,7 +10,7 @@ Future-time requests use [schedule](../schedule/SKILL.md) first.
 
 Helpers start no agents and print JSON on stdout; errors print one JSON line on
 stderr. If `meow` is missing, point to the README installer, not a guessed venv. A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
-OSError-class failures: wait `retry_after` (it can be long for an API budget or rate
+OSError-class failures: wait `retry_after` (it can be long for a rate
 limit; the cron simply skips ticks until then), then run the printed `next_command`
 detached (host background execution), or rerun the same native helper, up to
 `managed_resumes` (default 6), and stop when `meow status ID --json` shows no

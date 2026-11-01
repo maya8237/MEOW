@@ -26,7 +26,7 @@ def test_fresh_run_reports_every_missing_evidence_source(tmp_path):
     assert report.verdict == "created"
     assert report.observed["delivery"] == "unavailable"
     assert report.unavailable == (
-        "SDK usage/cost was not recorded",
+        "SDK usage was not recorded",
         "tester evidence",
         "browser evidence",
         "plan reference",

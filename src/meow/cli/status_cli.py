@@ -124,7 +124,6 @@ def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-bra
         f"Last checkpoint: {idle}s ago",
         f"Turns: {available(totals['turns'])}",
         f"Tokens: {available(totals['tokens'])}{usage_note}",
-        f"Cost (USD): {available(totals['cost_usd'])}{usage_note}",
         f"Last result/failure: {record.last_failure or tasks_error or reviewer}",
         f"Worktree: {record.worktree}",
         f"Branch: {record.branch}",

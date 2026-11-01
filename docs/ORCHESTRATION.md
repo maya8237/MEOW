@@ -80,7 +80,7 @@ Delivery prints
 `{"orchestrator":"ID","branch":"orchestrator/ID","pr":"URL or null","tasks":N}`.
 Other exit codes: 0 delivered with MR or MR disabled, 1 failed,
 2 blocked without push, 130 cancelled. Usage is recorded per child and
-summarized; no dollar budget is enforced.
+summarized.
 
 ## State, resume, and cleanup
 

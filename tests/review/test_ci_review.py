@@ -272,7 +272,6 @@ def test_ci_reviewer_grants_only_read_tools(  # ruff: ignore[too-many-statements
             is_error=False,
             num_turns=1,
             session_id="test",
-            total_cost_usd=0,
             result="SUMMARY: Fine\nSTATUS: PASS",
         )
 
