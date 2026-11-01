@@ -5,8 +5,7 @@ from `[custom].skills` directories live anywhere, so they are copied into a
 generated `linked` plugin beside it. Both are enabled in the scope's Claude
 settings file; Claude Code picks them up on its next launch. The project's
 linked copies are git-ignored and rebuilt per user, so they are always enabled
-in `.claude/settings.local.json`. A `personal` sync (`meow sync --auto`) does
-the same for the project plugin, so it never edits the committed settings file.
+in `.claude/settings.local.json`.
 """
 
 import shutil
@@ -46,16 +45,14 @@ def _root(scope: str, project_dir: Path, user_dir: Path, linked: bool) -> Path:
     return where(scope, project_dir, user_dir)
 
 
-# Sync modes: report only, register for everyone, or register for this user.
-CHECK, SHARED, PERSONAL = "check", "shared", "personal"
+# Sync modes: report only, or register.
+CHECK, SHARED = "check", "shared"
 Target = tuple[str, Path, Path]  # scope, project_dir, user_dir
 
 
-def _settings_scope(scope: str, mode: str, linked: bool = False) -> str:
-    """The settings file a sync writes; per-user project plugins stay local."""
-    if scope == "project" and (linked or mode == PERSONAL):
-        return "local"
-    return scope
+def _settings_scope(scope: str, linked: bool = False) -> str:
+    """The settings file a sync writes; per-user linked project copies stay local."""
+    return "local" if scope == "project" and linked else scope
 
 
 def register_scope_plugin(
@@ -65,14 +62,12 @@ def register_scope_plugin(
     register_plugin((scope, project_dir, user_dir), linked=linked)
 
 
-def register_plugin(
-    target: Target, *, linked: bool = False, mode: str = SHARED
-) -> None:
-    """`register_scope_plugin`, writing the settings file `mode` allows."""
+def register_plugin(target: Target, *, linked: bool = False) -> None:
+    """`register_scope_plugin` for a `(scope, project_dir, user_dir)` target."""
     scope, project_dir, user_dir = target
     root = _root(scope, project_dir, user_dir, linked)
     ensure_plugin_root(root, scope, linked=linked)
-    settings = _settings_path(_settings_scope(scope, mode, linked), project_dir)
+    settings = _settings_path(_settings_scope(scope, linked), project_dir)
     if scope == "user":
         append_plugin_dir(settings, root)
         return
@@ -101,7 +96,7 @@ def _registered(target: Target, linked: bool, mode: str = CHECK) -> bool:
         return plugin_dir_registered(settings, root) or marketplace_registered(
             settings, name, root.parent
         )
-    own = _settings_scope(scope, mode, linked)
+    own = _settings_scope(scope, linked)
     files = (own,) if mode == SHARED else (own, *(f for f in _SETTINGS if f != own))
     return any(
         marketplace_registered(
@@ -117,16 +112,6 @@ def _registered(target: Target, linked: bool, mode: str = CHECK) -> bool:
 def scope_plugin_registered(target: Target, mode: str = CHECK) -> bool:
     """Whether Claude Code is set to load the scope's own plugin, as `mode` sees it."""
     return _registered(target, False, mode)
-
-
-def registration_note(scope: str, mode: str) -> str:
-    """What a sync reports for a scope plugin it had to register."""
-    if _settings_scope(scope, mode) != scope:
-        return (
-            "enabled for you in .claude/settings.local.json; "
-            "run `meow sync` to share it in .claude/settings.json"
-        )
-    return "not registered with Claude Code"
 
 
 def linked_skills(
@@ -190,12 +175,9 @@ def _plugin_problems(
     if is_linked and not _linked_current(root, linked):
         found.append(f"{label}: copies are out of date")
     if not _registered(target, is_linked, mode):
-        note = "not registered with Claude Code"
-        found.append(
-            f"{label}: {note if is_linked else registration_note(scope, mode)}"
-        )
+        found.append(f"{label}: not registered with Claude Code")
     if mode != CHECK and found:
-        register_plugin(target, linked=is_linked, mode=mode)
+        register_plugin(target, linked=is_linked)
         if is_linked:
             _build_linked(root, linked)
     return found
@@ -238,17 +220,4 @@ def sync_skill_plugins(
     fixed = []
     for scope in scopes:
         fixed += _scope_problems((scope, project_dir, user_dir), skills, SHARED)
-    return fixed
-
-
-def sync_personal_skill_plugins(
-    skills: tuple[CustomSkill, ...], project_dir: Path, user_dir: Path
-) -> list[str]:
-    """`sync_skill_plugins` at every scope, enabling project plugins for this user.
-
-    Never edits the committed `.claude/settings.json` (see module doc).
-    """
-    fixed = []
-    for scope in SYNC_SCOPES:
-        fixed += _scope_problems((scope, project_dir, user_dir), skills, PERSONAL)
     return fixed

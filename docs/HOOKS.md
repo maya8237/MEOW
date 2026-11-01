@@ -51,10 +51,13 @@ meow sync                # skills and hooks together
 ```
 
 Restart Claude Code afterward. Each definition becomes one plugin hook with
-its `matcher` and `timeout` that calls `meow native hook EVENT --name NAME`.
-The plugin's startup `meow sync --auto` keeps this current; run the sync by
-hand to share project hooks in `.claude/settings.json`. Only the winning
-scope's definition is written.
+its `timeout` and its `matcher` anchored (`^(?:M)$`, as MEOW matches whole tool
+names). The entry runs `command` directly, as `meow native hook` would: in the
+project directory with `MEOW_HOOK`/`MEOW_EVENT` set, stdout discarded, and only
+exit 2 blocking, so it works without MEOW installed. MEOW's entries carry
+`MEOW_HOOK=`; other entries in that `hooks.json` are kept. The plugin's sync
+([CUSTOM](CUSTOM.md#claude-code-registration)) keeps this current. Only the
+winning scope's definition is written.
 
 Not synced (SDK agents only): hooks with `roles`, and `sprint_*` events. MEOW's
 SDK agents set `MEOW_SDK_AGENT`, which turns the plugin entries into no-ops, so

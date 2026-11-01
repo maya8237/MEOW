@@ -13,21 +13,21 @@ from meow.project.custom.registration import (
 from meow.project.custom.sync import SYNC_SCOPES
 
 
-def _auto(project_dir: Path) -> None:
+def _auto(project_dir: Path, event: str) -> None:
     """Never fails: a broken config must not break Claude Code's startup."""
     try:
         custom = load_config(project_dir)["customizations"]
         message = auto_sync_message(custom, project_dir, user_config_path().parent)
     except Exception as exc:  # reported, never raised: startup must go on
         message = f"MEOW could not sync customizations: {exc}"
-    output = hook_output(message)
+    output = hook_output(message, event)
     if output:
         print(output)
 
 
 def sync_command(args, project_dir: Path) -> None:
-    if getattr(args, "auto", False):
-        _auto(project_dir)
+    if getattr(args, "auto", None):
+        _auto(project_dir, args.auto)
         return
     custom = load_config(project_dir)["customizations"]
     user_dir = user_config_path().parent
@@ -57,9 +57,11 @@ def add_sync_parser(subparsers):
     add_sync_options(parser)
     parser.add_argument(
         "--auto",
-        action="store_true",
+        nargs="?",
+        const="SessionStart",
+        choices=("SessionStart", "PostToolUse"),
         help=(
-            "Claude Code SessionStart mode: sync for this user only, print hook "
-            "JSON, never fail."
+            "Claude Code hook mode (default SessionStart): sync, print hook JSON, "
+            "never fail."
         ),
     )

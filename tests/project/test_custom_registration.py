@@ -72,18 +72,19 @@ def settings(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_auto_sync_fixes_every_scope_without_editing_shared_settings(project, home):
+def test_auto_sync_fixes_every_scope(project, home):
     every_scope(project, home)
 
     message = auto_sync_message(custom(project), project, home / ".meow")
 
     assert message and "Restart Claude Code" in message
+    assert "Commit the .meow/" in message
     assert "need attention" not in message
-    assert not (project / ".claude" / "settings.json").exists()
+    shared = settings(project / ".claude" / "settings.json")["enabledPlugins"]
+    assert shared == {"meow-project@meow-project": True}
     local = settings(project / ".claude" / "settings.local.json")["enabledPlugins"]
     assert local == {
         "meow-local@meow-local": True,
-        "meow-project@meow-project": True,
         "meow-project-linked@meow-project-linked": True,
     }
     user = settings(home / ".claude" / "settings.json")["env"]
@@ -110,21 +111,52 @@ def test_auto_sync_picks_up_later_edits(project, home):
 
     assert message and "out of date" in message
     hooks = (project / ".meow" / "plugin" / "hooks" / "hooks.json").read_text()
-    assert '"matcher": "Bash"' in hooks
+    assert '"matcher": "^(?:Bash)$"' in hooks
     assert (project / ".meow" / "linked" / "plugin" / "skills" / "linked-two").is_dir()
 
 
-def test_shared_sync_still_reaches_committed_settings_after_auto_sync(project, home):
+def test_sync_shares_a_project_plugin_enabled_only_locally(project, home):
     skill(project / ".meow" / "plugin" / "skills", "team")
-    auto_sync_message(custom(project), project, home / ".meow")
-    assert not (project / ".claude" / "settings.json").exists()
+    write(
+        project / ".claude" / "settings.local.json",
+        json.dumps({
+            "extraKnownMarketplaces": {
+                "meow-project": {"source": {"source": "directory", "path": "./.meow"}}
+            },
+            "enabledPlugins": {"meow-project@meow-project": True},
+        }),
+    )
 
-    changed = sync_registration(custom(project), project, home / ".meow")
+    assert sync_registration(custom(project), project, home / ".meow")
 
-    assert changed
     shared = settings(project / ".claude" / "settings.json")
     assert shared["enabledPlugins"] == {"meow-project@meow-project": True}
     assert sync_registration(custom(project), project, home / ".meow") == []
+
+
+def test_auto_sync_restores_the_gitignore_boundary(project, home):
+    write(project / ".meow" / "hooks" / "guard.toml", HOOK)
+    write(project / ".meow" / "config.toml", "")
+    old = [rule for rule in BOUNDARY if rule != "!.meow/hooks/"]
+    (project / ".gitignore").write_text("\n".join(old) + "\n", encoding="utf-8")
+    assert unshared_project_dirs(project)
+
+    message = auto_sync_message(custom(project), project, home / ".meow")
+
+    assert message and ".gitignore: restored" in message
+    assert "need attention" not in message
+    assert unshared_project_dirs(project) == []
+
+
+def test_one_broken_scope_does_not_stop_the_others(project, home):
+    skill(project / ".meow" / "plugin" / "skills", "team")
+    skill(home / ".meow" / "plugin" / "skills", "mine")
+    write(project / ".claude" / "settings.json", "{not json")
+
+    message = auto_sync_message(custom(project), project, home / ".meow")
+
+    assert message and "not valid JSON" in message
+    assert (home / ".claude" / "settings.json").is_file()
 
 
 def test_ignored_project_definitions_are_reported(project, home):
@@ -156,7 +188,12 @@ def test_sync_auto_command_prints_hook_json_and_never_fails(project, home, capsy
     args = _build_arg_parser().parse_args(["sync", "--auto"])
     skill(project / ".meow" / "plugin" / "skills", "team")
     sync_command(args, project)
-    assert "Restart" in json.loads(capsys.readouterr().out)["systemMessage"]
+    output = json.loads(capsys.readouterr().out)
+    assert "Restart" in output["systemMessage"]
+    assert output["hookSpecificOutput"] == {
+        "hookEventName": "SessionStart",
+        "reloadSkills": True,
+    }
 
     sync_command(args, project)
     assert capsys.readouterr().out == ""
@@ -170,6 +207,10 @@ def test_hook_output_is_empty_without_a_message():
     assert hook_output(None) == ""
 
 
+def test_post_tool_use_output_has_no_session_start_fields():
+    assert json.loads(hook_output("x", "PostToolUse")) == {"systemMessage": "x"}
+
+
 def test_plugin_runs_auto_sync_when_claude_code_starts():
     config = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     (entry,) = config["hooks"]["SessionStart"]
@@ -177,6 +218,36 @@ def test_plugin_runs_auto_sync_when_claude_code_starts():
     assert entry["matcher"] == "startup"
     assert "meow sync --auto" in command
     assert command.startswith("command -v meow") and command.endswith("|| true")
+
+
+def plugin_edit_hook(stdin: str, tmp_path: Path) -> str:
+    """Run the plugin's PostToolUse command with a fake `meow` that logs its args."""
+    config = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    (entry,) = config["hooks"]["PostToolUse"]
+    assert entry["matcher"] == "^(?:Write|Edit|MultiEdit)$"
+    bin_dir = tmp_path / "bin"
+    log = tmp_path / "calls"
+    write(bin_dir / "meow", f'#!/bin/sh\necho "$@" >> {log}\n')
+    (bin_dir / "meow").chmod(0o755)
+    result = subprocess.run(
+        ["sh", "-c", entry["hooks"][0]["command"]],
+        input=stdin,
+        text=True,
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "CLAUDE_PROJECT_DIR": str(tmp_path)},
+        check=False,
+    )
+    assert result.returncode == 0
+    return log.read_text() if log.exists() else ""
+
+
+def test_plugin_syncs_right_after_a_customization_is_edited(tmp_path):
+    edit = '{"tool_input": {"file_path": "/repo/.meow/hooks/guard.toml"}}'
+    assert "sync --auto PostToolUse" in plugin_edit_hook(edit, tmp_path)
+
+
+def test_plugin_ignores_unrelated_edits(tmp_path):
+    edit = '{"tool_input": {"file_path": "/repo/src/app.py"}}'
+    assert plugin_edit_hook(edit, tmp_path) == ""
 
 
 def test_auto_sync_serves_hooks_from_configured_directories(project, home):
@@ -189,6 +260,6 @@ def test_auto_sync_serves_hooks_from_configured_directories(project, home):
         (project / ".meow" / "plugin" / "hooks" / "hooks.json").read_text()
     )
     (entry,) = hooks["hooks"]["PreToolUse"]
-    assert entry["matcher"] == "Bash"
-    assert "--name cfg" in entry["hooks"][0]["command"]
+    assert entry["matcher"] == "^(?:Bash)$"
+    assert "MEOW_HOOK=cfg" in entry["hooks"][0]["command"]
     assert check_registration(custom(project), project, home / ".meow") == []

@@ -54,11 +54,11 @@ enabled in `settings.local.json`. Agents and workflows need no registration.
 
 `meow sync` (or `skills sync`) writes the manifests and enables them in
 `.claude/settings.local.json`, `.claude/settings.json`, or `~/.claude/settings.json`
-without touching other settings. The MEOW plugin runs `meow sync --auto` when
-Claude Code starts: it refreshes copies and generated hook files, enables new
-plugins for you (project ones in `settings.local.json`), and reports what still
-needs a shared `meow sync` or `meow onboard`. It never edits the committed
-`.claude/settings.json` or `.gitignore`. Restart Claude Code to load changes.
+without touching other settings. The MEOW plugin runs the same sync as
+`meow sync --auto` when Claude Code starts and right after Claude edits a
+`.meow/`, `SKILL.md`, or `.toml` file; it also restores MEOW's `.gitignore`
+rules in an onboarded project, and reports what it cannot fix. Commit the
+project changes it makes; restart Claude Code to load new skills and hooks.
 `meow native verify` reports `skill_registration`, `hook_registration`, and
 `unshared_definitions` (project definition folders git ignores). Onboarding
 keeps `.meow/{agents,workflows,hooks,plugin}` trackable.
