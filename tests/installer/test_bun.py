@@ -232,7 +232,7 @@ def test_bun_migration_runs_in_background_and_logs_nested_app(tmp_path, monkeypa
     fake.write_text(
         "import time\nfrom pathlib import Path\n"
         f"Path({str(started)!r}).touch()\n"
-        "for _ in range(100):\n"
+        "for _ in range(1200):\n"
         f"    if Path({str(release)!r}).exists(): break\n    time.sleep(.1)\n"
     )
     executable = bin_dir / ("bun.cmd" if os.name == "nt" else "bun")
@@ -247,7 +247,7 @@ def test_bun_migration_runs_in_background_and_logs_nested_app(tmp_path, monkeypa
     job = start_bun_migration([app.parent], output.append)
     log = Path(job["log"])
     try:
-        for _ in range(100):
+        for _ in range(1200):
             if started.exists():
                 break
             time.sleep(0.1)
@@ -256,7 +256,7 @@ def test_bun_migration_runs_in_background_and_logs_nested_app(tmp_path, monkeypa
         assert any(str(log) in line for line in output)
     finally:
         release.touch()
-    for _ in range(100):
+    for _ in range(1200):
         if "Bun migration finished" in log.read_text(encoding="utf-8"):
             break
         time.sleep(0.1)

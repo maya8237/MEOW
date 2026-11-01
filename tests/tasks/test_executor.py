@@ -3,6 +3,7 @@
 import asyncio
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -13,6 +14,7 @@ from meow.tasks.model import TaskGraph, TaskSpec
 from meow.tasks.runner import verify_task
 
 MIN_TICKS = 10
+HANG_GUARD_SECONDS = 60  # bounds a hang; never decides pass or fail
 
 
 def _git(repo, *args):
@@ -195,7 +197,9 @@ def test_clean_worker_with_failed_verification_does_not_complete(tmp_path):
     assert result.revision == original
 
 
-def _ticks_while_executing(repo):
+def _ticks_while_executing(repo, gate=None):
+    """Run the graph with a heartbeat; `gate` is set once the loop has ticked
+    MIN_TICKS times, so a blocking step can wait for proof the loop is free."""
     graph = TaskGraph((
         TaskSpec("api", (), ("api.txt",), ()),
         TaskSpec("ui", (), ("ui.txt",), ()),
@@ -213,6 +217,8 @@ def _ticks_while_executing(repo):
         async def heartbeat():
             while not work.done():
                 ticks.append(time.monotonic())
+                if gate is not None and len(ticks) >= MIN_TICKS:
+                    gate.set()
                 await asyncio.sleep(0.01)
 
         beat = asyncio.ensure_future(heartbeat())
@@ -227,12 +233,16 @@ def test_integration_does_not_block_the_event_loop(tmp_path, monkeypatch):
     repo = _one_commit_repo(tmp_path)
     real = executor.integrate_results
 
+    gate = threading.Event()
+
     def slow(*args, **kwargs):
-        time.sleep(0.3)
+        # Blocks until the event loop has ticked while this runs; a loop blocked
+        # by it never ticks, so the wait fails instead of the test measuring time.
+        assert gate.wait(HANG_GUARD_SECONDS), "event loop was blocked"
         return real(*args, **kwargs)
 
     monkeypatch.setattr(executor, "integrate_results", slow)
-    result, ticks = _ticks_while_executing(repo)
+    result, ticks = _ticks_while_executing(repo, gate)
     assert result.passed
     assert len(ticks) >= MIN_TICKS
 
@@ -243,11 +253,12 @@ def test_worktree_creation_does_not_block_the_event_loop(tmp_path, monkeypatch):
 
     def slow(cmd, *args, **kwargs):
         if "worktree" in cmd and "add" in cmd:
-            time.sleep(0.3)
+            assert gate.wait(HANG_GUARD_SECONDS), "event loop was blocked"
         return real(cmd, *args, **kwargs)
 
+    gate = threading.Event()
     monkeypatch.setattr(executor.subprocess, "run", slow)
-    result, ticks = _ticks_while_executing(repo)
+    result, ticks = _ticks_while_executing(repo, gate)
     assert result.passed
     assert len(ticks) >= MIN_TICKS
 

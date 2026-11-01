@@ -49,18 +49,13 @@ def test_fix_pass_skips_a_command_that_cannot_start(tmp_path):
 def test_timed_out_lint_command_leaves_no_orphans(tmp_path):
     import asyncio
     import sys
-    import time
+
+    from tests.orphans import assert_grandchild_dead, orphan_script
 
     from meow.infrastructure.lint import _run_subprocess
 
-    marker = tmp_path / "survivor"
-    child = f"import time;time.sleep(1.5);open(r'{marker}','w').close()"
-    code = (
-        "import subprocess, sys, time;"
-        f"subprocess.Popen([sys.executable, '-c', {child!r}]);"
-        "time.sleep(60)"
-    )
+    pidfile = tmp_path / "grandchild.pid"
+    code = orphan_script(pidfile)
     result = asyncio.run(_run_subprocess(tmp_path, [sys.executable, "-c", code], 0.5))
     assert result is None
-    time.sleep(2.5)
-    assert not marker.exists()
+    assert_grandchild_dead(pidfile)

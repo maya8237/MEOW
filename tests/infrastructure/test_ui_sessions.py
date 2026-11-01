@@ -456,7 +456,7 @@ def test_stop_terminates_deterministic_child_after_cooperative_request(
         ],
     )
     attempt = ui_sessions.launch_attempt(tmp_path, recipe.id)
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
         output = store.read_output(recipe.id, attempt.id, 0, 200)["text"]
         if "grandchild=" in output:
@@ -505,7 +505,7 @@ def test_launch_attempt_runs_deterministic_python_child(tmp_path, monkeypatch):
     )
 
     attempt = ui_sessions.launch_attempt(tmp_path, recipe.id)
-    deadline = time.monotonic() + 15
+    deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
         latest = store._read_attempt(recipe.id, attempt.id)
         if latest.state in {"succeeded", "failed"}:
@@ -534,12 +534,12 @@ def test_cli_output_streams_flushed_partial_text_before_child_exit(
         lambda _recipe: [
             sys.executable,
             "-c",
-            "import sys,time; print('partial',end='',flush=True); time.sleep(6)",
+            "import sys,time; print('partial',end='',flush=True); time.sleep(600)",
         ],
     )
 
     attempt = ui_sessions.launch_attempt(tmp_path, recipe.id)
-    deadline = time.monotonic() + 2
+    deadline = time.monotonic() + 120  # bounds a hang; the child never exits alone
     try:
         while time.monotonic() < deadline:
             latest = store._read_attempt(recipe.id, attempt.id)

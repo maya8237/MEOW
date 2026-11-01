@@ -88,30 +88,20 @@ def test_setup_can_be_rerun_after_a_later_command_failed(tmp_path):
     assert (worktree / "local.cfg").read_text(encoding="utf-8") == "value"
 
 
-def _orphan_script(marker):
-    child = f"import time;time.sleep(1.5);open(r'{marker}','w').close()"
-    return (
-        "import subprocess, sys, time;"
-        f"subprocess.Popen([sys.executable, '-c', {child!r}]);"
-        "time.sleep(60)"
-    )
-
-
 def test_timed_out_setup_command_leaves_no_orphans(tmp_path, monkeypatch):
     import sys
-    import time
 
     from meow.infrastructure import worktree_setup
+    from tests.orphans import assert_grandchild_dead, orphan_script
 
     monkeypatch.setattr(worktree_setup, "_COMMAND_TIMEOUT", 0.5)
-    marker = tmp_path / "survivor"
+    pidfile = tmp_path / "grandchild.pid"
     manifest = validate_setup({
-        "commands": [[sys.executable, "-c", _orphan_script(marker)]]
+        "commands": [[sys.executable, "-c", orphan_script(pidfile)]]
     })
     with pytest.raises(WorktreeSetupError, match="timed out"):
         run_setup(tmp_path, tmp_path, manifest)
-    time.sleep(2.5)
-    assert not marker.exists()
+    assert_grandchild_dead(pidfile)
 
 
 def _git_worktree(path):

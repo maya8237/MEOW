@@ -77,11 +77,13 @@ def test_round_trip_preserves_tasks(tmp_path):
     }
 
 
-def test_save_refreshes_updated_at_and_leaves_no_temp_files(tmp_path):
+def test_save_refreshes_updated_at_and_leaves_no_temp_files(tmp_path, monkeypatch):
     store = make_store(tmp_path)
     record = create(store)
     first = record.updated_at
-    time.sleep(0.01)
+    monkeypatch.setattr(
+        "meow.execution.orchestration.store._now", lambda: "9999-01-01T00:00:00+00:00"
+    )
     store.save(record)
     assert store.load(record.id).updated_at > first
     assert list(store.dir_for(record.id).glob("*.tmp")) == []
