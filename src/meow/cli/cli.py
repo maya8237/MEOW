@@ -172,7 +172,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
     if args.check_update:
-        check_for_updates()
+        check_for_updates(report_current=True)
         return
     if args.update:
         from meow.installer.maintenance import update

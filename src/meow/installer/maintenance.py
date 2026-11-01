@@ -138,8 +138,8 @@ def _legacy_stable_release(data: object) -> tuple[str, str]:
     raise ValueError("PyPI legacy JSON has no stable wheel with a SHA-256 checksum")
 
 
-def check_for_updates() -> None:
-    """Best-effort public-command warning; keep stdout and helper JSON clean."""
+def check_for_updates(*, report_current: bool = False) -> None:
+    """Best-effort update check; keep automatic checks quiet when current."""
     try:
         current = version("meow-harness")
         latest = latest_version(
@@ -154,6 +154,8 @@ def check_for_updates() -> None:
             "Please update with `meow --update` (or `meow -u`).",
             file=sys.stderr,
         )
+    elif report_current:
+        print(f"MEOW {current} is up to date.")
 
 
 def update(

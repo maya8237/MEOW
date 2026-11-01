@@ -132,6 +132,17 @@ def test_warning_uses_release_version_and_stderr(monkeypatch, capsys, latest, wa
     assert ("meow --update" in out.err) == warns
 
 
+def test_explicit_check_reports_current_version_when_up_to_date(monkeypatch, capsys):
+    monkeypatch.setattr(maintenance, "version", lambda name: "0.1.2")
+    monkeypatch.setattr(maintenance, "latest_version", lambda **kwargs: "0.1.2")
+
+    maintenance.check_for_updates(report_current=True)
+
+    out = capsys.readouterr()
+    assert out.out == "MEOW 0.1.2 is up to date.\n"
+    assert not out.err
+
+
 @pytest.mark.parametrize("current,channel", [("0.1.2", "stable"), ("0.2.0b1", "any")])
 def test_update_check_follows_the_installed_channel(monkeypatch, current, channel):
     asked = []

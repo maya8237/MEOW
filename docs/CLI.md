@@ -54,7 +54,9 @@ It checks no project, so options already configured are still listed. Listing is
 best-effort and skipped for checkout installs. In a terminal it then offers Bun's
 shared dependency store once and migrates registered repos in the background.
 Public commands warn on stderr when PyPI has a newer version (betas count only
-when a beta is installed), silently ignoring network failures; `--check-update` checks only. Internal workers skip this check.
+when a beta is installed), silently ignoring network failures; `--check-update`
+also reports the installed version when it is current. Internal workers skip
+this check.
 
 ## Build and plan
 

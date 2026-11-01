@@ -257,7 +257,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     updates.add_argument(
         "--check-update",
         action="store_true",
-        help="Only check for a newer version and print an update warning.",
+        help="Check for an update and report when the installed version is current.",
     )
     parser.add_argument(
         "--latest-pypi",
