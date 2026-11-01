@@ -188,17 +188,20 @@ class _Loop:
             job.name for job in judged.other_failed if job not in judged.fixable_other
         )
         blocked = self._blocked(snapshot, judged, unfixed)
-        if blocked is not None:
+        if blocked is not None and not judged.fixable_other:
             return blocked
+        # A review job that cannot be fixed (canceled, skipped, unverified) must
+        # not leave failing non-MEOW jobs unfixed: fix them, then report it.
         problems = [self._job_problem(job) for job in judged.fixable_other]
-        if judged.review_failed:
+        if judged.review_failed and blocked is None:
             problems.insert(0, self._review_problem(judged.review))
         if not problems:
-            return self._final(unfixed)
+            return self._final(unfixed, judged.review)
         failing = tuple(job.name for job in snapshot.jobs if job.status == "failed")
+        fixing_review = judged.review_failed and blocked is None
         announce = (
             f"meow review job failed; fixing ({self._round_text()})."
-            if judged.review_failed
+            if fixing_review
             else None
         )
         return await self._fix_phase("review", "\n\n".join(problems), failing, announce)
@@ -239,10 +242,14 @@ class _Loop:
         log = self.provider.job_log(job)
         return f"Pipeline job `{job.name}` failed ({job.url}). Log:\n{log}"
 
-    def _final(self, unfixed: tuple[str, ...]) -> PipelineOutcome:
+    def _final(
+        self, unfixed: tuple[str, ...], review: PipelineJob | None
+    ) -> PipelineOutcome:
         if unfixed:
             detail = "failing jobs not fixed: " + ", ".join(unfixed)
             return self.outcome("not_verified", unfixed, detail)
+        if review is None and self.settings.get("require_review_job"):
+            return self.outcome("not_verified", detail="no meow-review job ran")
         return self.outcome("unvalidated" if self.unvalidated else "verified")
 
     async def _fix_phase(

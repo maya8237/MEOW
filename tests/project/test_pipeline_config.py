@@ -19,6 +19,7 @@ def test_pipeline_defaults_filled(tmp_path):
         "timeout": 3600,
         "poll_seconds": 15,
         "fix_non_meow_jobs": False,
+        "require_review_job": False,
     }
     assert load_config(tmp_path)["pipeline"] == PIPELINE_DEFAULTS
 

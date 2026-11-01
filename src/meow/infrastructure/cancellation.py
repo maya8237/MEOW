@@ -24,6 +24,8 @@ class RunCancelled(RuntimeError):
 
 
 def _marker(store: RunStore, run_id: str) -> Path:
+    if hasattr(store, "marker_for"):  # orchestrator-backed pipeline store
+        return store.marker_for(run_id)
     return store._path(run_id).with_suffix(".cancel")
 
 

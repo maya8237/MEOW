@@ -39,6 +39,10 @@ from meow.execution.orchestration.model import (
     OrchestratorRecord,
     OrchestratorTask,
 )
+from meow.execution.orchestration.pipeline_view import (
+    pipeline_settings,
+    verify_orchestrator_mr,
+)
 from meow.execution.orchestration.pull_request import open_pull_request
 from meow.execution.orchestration.report import exit_code, write_report
 from meow.execution.orchestration.store import DriverLock, OrchestratorStore
@@ -53,6 +57,7 @@ from meow.execution.orchestration.tick import (
 )
 from meow.execution.orchestration.triage import apply_decision_file, decision_file
 from meow.infrastructure.background import launch_background
+from meow.infrastructure.cancellation import RunCancelled
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.worktree import current_branch
 from meow.project.config import load_config
@@ -391,10 +396,47 @@ class _Driver:
             await open_pull_request(
                 self.repo, self.store, self.orch_id, self.config, self.agents
             )
+            if not await self._verify_pipeline():
+                return
         self._set_phase("delivered")
         from meow.execution.cleanup import cleanup_completed
 
         await asyncio.to_thread(cleanup_completed, self.repo, self.orch_id)
+
+    def _unverified_pr(self) -> dict | None:
+        """The opened MR whose pipeline still needs verifying, else None."""
+        delivery = self._load().delivery
+        pr, stored = delivery.get("pr"), delivery.get("pipeline")
+        if not (pr and pr.get("url")) or not pipeline_settings(self.config)["open_mr"]:
+            return None
+        verified = isinstance(stored, dict) and stored.get("status") == "verified"
+        return None if verified else pr
+
+    async def _verify_pipeline(self) -> bool:
+        """Verify and fix the MR pipeline; False when cancelled meanwhile."""
+        pr = self._unverified_pr()
+        if pr is None:
+            return True
+        print(
+            f"[delivery] MR opened: {pr['url']}. Waiting for the pipeline.", flush=True
+        )
+        try:
+            outcome = await verify_orchestrator_mr(
+                self.repo, self.store, self.orch_id, self.config
+            )
+        except RunCancelled:
+            self._mark_cancelled()
+            return False
+        except Exception as exc:  # the branch is pushed; report, do not fail
+            logger.warning("orchestrator_pipeline_failed", reason=str(exc))
+            return True
+        ok = outcome.status in {"verified", "unvalidated"}
+        label = "Verified" if ok else "Not verified"
+        print(
+            f"[delivery] {label} by pipeline: {outcome.detail or outcome.url}",
+            flush=True,
+        )
+        return True
 
     # -- intake -----------------------------------------------------------
 
