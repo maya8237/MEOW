@@ -73,7 +73,7 @@ the saved worktree against its plan before any generator retry; mismatches stop
 with a diagnostic. Preserve failed/interrupted worktrees and evidence.
 
 
-Status shows received SDK turns, tokens, and USD cost; verbose lists results
+Status shows received SDK turns and tokens; verbose lists results
 by role, with missing metrics marked `unavailable`. Claude owns transcripts;
 MEOW stores only role/session references.
 

@@ -35,7 +35,7 @@ def make_record(tmp_path, tasks, **changes):
     return store, store.load(record.id)
 
 
-def child_run(tmp_path, tokens=None, cost=None):
+def child_run(tmp_path, tokens=None):
     runs = RunStore(tmp_path)
     run = runs.create(
         source="orchestrator",
@@ -52,7 +52,6 @@ def child_run(tmp_path, tokens=None, cost=None):
                 "turns": 2,
                 "duration_ms": 10,
                 "tokens": tokens,
-                "cost_usd": cost,
             },
         )
     return run.id
@@ -80,7 +79,7 @@ def test_blocked_report_leads_with_blocker_and_resume_commands(tmp_path):
 
 
 def test_report_lists_tasks_with_keys_cycles_runs_history_and_usage(tmp_path):
-    first, second = child_run(tmp_path, 1000, 0.25), child_run(tmp_path, 500, 0.5)
+    first, second = child_run(tmp_path, 1000), child_run(tmp_path, 500)
     history = [
         {"action": "failure", "cause": "child-failed", "rationale": ""},
         {"action": "retry", "cause": "", "rationale": "flaky port"},
@@ -111,13 +110,13 @@ def test_report_lists_tasks_with_keys_cycles_runs_history_and_usage(tmp_path):
     assert "- Cycles: 1" in text
     assert "- Branch: orchestrator/x-api" in text
     assert f"- Runs: {first}, {second}" in text
-    assert "- Usage: tokens 1500, cost $0.75" in text
+    assert "- Usage: tokens 1500" in text
     assert "  - failure (child-failed)" in text
     assert "  - retry: flaky port" in text
     assert "### ui\n" in text
     assert "- Usage: unavailable" in text
     assert "## Conflicts resolved\n\n- api: Resolved conflicts in s.py" in text
-    assert "- Total: tokens 1500, cost $0.75" in text
+    assert "- Total: tokens 1500" in text
 
 
 def test_report_without_conflicts_or_review_says_so(tmp_path):

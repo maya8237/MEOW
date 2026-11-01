@@ -95,26 +95,21 @@ def _add(left: float | None, right: float | None) -> float | None:
     return right if left is None else left + right
 
 
-def run_usage(repo: Path, run_ids: list[str]) -> tuple[float | None, float | None]:
-    """(tokens, cost) summed over child runs; None when none reported a value."""
+def run_usage(repo: Path, run_ids: list[str]) -> float | None:
+    """Tokens summed over child runs; None when none reported a value."""
     store = RunStore(repo)
-    tokens = cost = None
+    tokens = None
     for run_id in run_ids:
         try:
             totals = usage_totals(store.load(run_id).usage)
         except RunStateError:
             continue
         tokens = _add(tokens, totals["tokens"])
-        cost = _add(cost, totals["cost_usd"])
-    return tokens, cost
+    return tokens
 
 
-def usage_text(tokens: float | None, cost: float | None) -> str:
-    if tokens is None and cost is None:
-        return "unavailable"
-    shown_tokens = "unavailable" if tokens is None else f"{tokens:g}"
-    shown_cost = "unavailable" if cost is None else f"${cost:.2f}"
-    return f"tokens {shown_tokens}, cost {shown_cost}"
+def usage_text(tokens: float | None) -> str:
+    return "unavailable" if tokens is None else f"tokens {tokens:g}"
 
 
 def history_line(entry: dict) -> str:
@@ -134,7 +129,7 @@ def task_lines(repo: Path, task: OrchestratorTask) -> list[str]:
         f"- Cycles: {task.cycles}",
         f"- Branch: {task.branch or '-'}",
         f"- Runs: {', '.join(task.run_ids) or '-'}",
-        f"- Usage: {usage_text(*run_usage(repo, task.run_ids))}",
+        f"- Usage: {usage_text(run_usage(repo, task.run_ids))}",
     ]
     if task.history:
         lines.append("- History:")
@@ -191,7 +186,7 @@ def render_report(repo: Path, record: OrchestratorRecord) -> str:
         lines += [*task_lines(repo, task), ""]
     lines += ["## Conflicts resolved", "", *resolved_conflict_lines(record), ""]
     lines += ["## Final review", "", *review_lines(record), ""]
-    lines += ["## Usage", "", f"- Total: {usage_text(*run_usage(repo, runs))}", ""]
+    lines += ["## Usage", "", f"- Total: {usage_text(run_usage(repo, runs))}", ""]
     return "\n".join(lines)
 
 

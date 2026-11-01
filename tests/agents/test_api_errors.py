@@ -37,7 +37,6 @@ TABLE = [
         "wait",
         "model_key_rate_limit",
     ),
-    (429, None, "model_max_budget exceeded", "wait", "model_key_rate_limit"),
     (529, None, "", "backoff", "server_error"),
     (503, None, "", "backoff", "server_error"),
     (None, "server_error", "", "backoff", "server_error"),
@@ -55,26 +54,7 @@ TABLE = [
     (None, "invalid_request", "", "restart", "invalid_request"),
     (None, None, "litellm.UnsupportedParamsError: x", "restart", "invalid_request"),
     (None, None, "litellm.ContentPolicyViolationError: x", "restart", "content_policy"),
-    (402, None, "", "park", "budget"),
-    (None, "billing_error", "", "park", "budget"),
-    (None, None, "litellm.BudgetExceededError: x", "park", "budget"),
     # A specific LiteLLM class outranks the generic status it travels under.
-    (
-        400,
-        None,
-        'API Error: 400 {"error":{"message":"litellm.BudgetExceededError: '
-        'Budget has been exceeded","type":"budget_exceeded","code":"400"}}',
-        "park",
-        "budget",
-    ),
-    (
-        400,
-        None,
-        'API Error: 400 {"error":{"type":"budget_exceeded"}}',
-        "park",
-        "budget",
-    ),
-    (401, None, "API Error: 401 litellm.BudgetExceededError: spend", "park", "budget"),
     (
         400,
         None,
@@ -127,7 +107,6 @@ def test_model_per_key_429_is_detected():
     texts = [
         MODEL_KEY_BODY,
         "429 Max parallel request limit reached",
-        "429 model_max_budget limit hit",
         "429 litellm.RateLimitError: model=gpt-x api_key=abc123 limit",
     ]
     for text in texts:
@@ -262,14 +241,6 @@ def test_overloaded_529_backs_off_then_parks(monkeypatch, sleeps):
         _run()
     assert caught.value.cause == "server_error"
     assert sleeps == [15, 30, 60, 120, 240, 300]
-
-
-def test_budget_parks_with_retry_after(monkeypatch, sleeps):
-    _scripted(monkeypatch, [[_result(status=402, text="API Error: 402")]])
-    with pytest.raises(TransientRunError) as caught:
-        _run()
-    assert (caught.value.cause, caught.value.retry_after) == ("budget", 3600.0)
-    assert sleeps == []
 
 
 def test_auth_retries_once_then_blocks(monkeypatch, sleeps):

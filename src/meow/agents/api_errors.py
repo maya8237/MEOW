@@ -36,9 +36,9 @@ _SEQUENCE = re.compile(
     re.I,
 )
 _MODEL_KEY = re.compile(
-    r"(?i)(model[^\n]{0,80}(rate|rpm|tpm|limit|budget)[^\n]{0,80}key|"
-    r"key[^\n]{0,80}model[^\n]{0,80}(rate|rpm|tpm|limit|budget)|"
-    r"model_max_budget|model.?per.?key|Max parallel request limit|"
+    r"(?i)(model[^\n]{0,80}(rate|rpm|tpm|limit)[^\n]{0,80}key|"
+    r"key[^\n]{0,80}model[^\n]{0,80}(rate|rpm|tpm|limit)|"
+    r"model.?per.?key|Max parallel request limit|"
     r"over (the )?(model )?(rpm|tpm)? ?limit for model)"
 )
 _MODEL_AND_KEY = re.compile(r"(?i)\bmodel\b.*\b(api_key|user_api_key|key)\b")
@@ -52,12 +52,11 @@ _RETRY_AFTER = re.compile(
     r"\s*(ms|milliseconds?|s\b|sec\w*)?",
     re.I,
 )
-_BUDGET_TYPE = re.compile(r"[\"']type[\"']\s*:\s*[\"']budget_exceeded[\"']")
 _KEY = re.compile(r"(?i)\bkey\W{0,6}(sk-[\w-]+|[0-9a-f]{32,64})")
 _TOO_MANY, _BAD_REQUEST, _TOO_LARGE, _SERVER = 429, 400, 413, 500
 _REDACTED = "[redacted-key]"
 _MODEL = re.compile(r"(?i)\bmodel[=:\s'\"]+([\w./:-]+)")
-_MODEL_STOP = frozenset({"rate", "per", "limit", "max", "budget", "not", "key"})
+_MODEL_STOP = frozenset({"rate", "per", "limit", "max", "not", "key"})
 
 _BY_CLASS: dict[str, tuple[Kind, str]] = {}
 for _names, _kind, _cause in (
@@ -80,7 +79,6 @@ for _names, _kind, _cause in (
         "invalid_request",
     ),
     (("ContentPolicyViolationError",), "restart", "content_policy"),
-    (("BudgetExceededError",), "park", "budget"),
     (("AuthenticationError", "PermissionDeniedError"), "blocking", "auth"),
     (("NotFoundError",), "blocking", "model_unavailable"),
 ):
@@ -92,7 +90,6 @@ _BY_STATUS: dict[int, tuple[Kind, str]] = {
     408: ("backoff", "api_timeout"),
     413: ("overflow", "context"),
     429: ("wait", "rate_limit"),
-    402: ("park", "budget"),
     401: ("blocking", "auth"),
     403: ("blocking", "auth"),
     404: ("blocking", "model_unavailable"),
@@ -104,7 +101,6 @@ _BY_TEXT: tuple[tuple[str, Kind, str], ...] = (
     (r"ECONNRESET|Connection error|MidStreamFallbackError", "backoff", "api_timeout"),
     (r"invalid_request", "restart", "invalid_request"),
     (r"refusal|content[ _]policy", "restart", "content_policy"),
-    (r"billing_error", "park", "budget"),
     (r"authentication_failed|authentication_error", "blocking", "auth"),
     (r"model .* not found", "blocking", "model_unavailable"),
 )
@@ -170,10 +166,8 @@ def classify_api_error(  # ruff: ignore[complex-structure, too-many-return-state
         or _CONTEXT.search(text)
     ):
         return make("overflow", "context")
-    # A specific LiteLLM class (or error type) outranks the generic status it
-    # travels under: a budget error arrives as a 400, a policy block as a 400.
-    if "BudgetExceededError" in classes or _BUDGET_TYPE.search(text):
-        return make("park", "budget")
+    # A specific LiteLLM class outranks the generic status it travels under:
+    # a policy block arrives as a 400.
     if "ContentPolicyViolationError" in classes:
         return make("restart", "content_policy")
     if code in _BY_STATUS:

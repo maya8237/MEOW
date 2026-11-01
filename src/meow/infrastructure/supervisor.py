@@ -103,7 +103,7 @@ def _run_child(repo: Path, command: list[str], env: dict[str, str]) -> int:
 def relaunch_delay(record: RunRecord, config: dict) -> float | None:
     """Seconds to wait before resuming a parked run; None past the budget.
 
-    A park's `retry_after` (rate limit, budget reset) wins over
+    A park's `retry_after` (rate limit reset) wins over
     `retry_backoff[attempts-1]`.
     """
     park = record.park if isinstance(record.park, dict) else {}
