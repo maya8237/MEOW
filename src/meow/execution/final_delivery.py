@@ -10,6 +10,7 @@ from pathlib import Path
 from meow.agents.base import ProjectContext
 from meow.agents.fixers import LintFixAgent, ReviewFixAgent
 from meow.agents.orchestration import OrchestratorAgents
+from meow.execution.mr_hook import fire_mr_end, mr_payload
 from meow.execution.orchestration.pull_request import (
     detect_provider,
     manual_pr_link,
@@ -301,4 +302,9 @@ async def run_final_delivery(state) -> PipelineOutcome | None:
         outcome = await _guarded(state, settings, announce)
     outcome = _settle(store, run_id, outcome)
     announce(_final_text(outcome, *_mr_links(store, run_id)))
+    record = store.load(run_id)
+    payload = mr_payload(
+        "run", record.delivery, id=run_id, branch=record.branch, base=delivery["base"]
+    )
+    await fire_mr_end(state.sprint.config, payload, Path(record.worktree), announce)
     return outcome

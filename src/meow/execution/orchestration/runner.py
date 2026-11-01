@@ -391,10 +391,32 @@ class _Driver:
             await open_pull_request(
                 self.repo, self.store, self.orch_id, self.config, self.agents
             )
+        await self._fire_mr_end()
         self._set_phase("delivered")
         from meow.execution.cleanup import cleanup_completed
 
         await asyncio.to_thread(cleanup_completed, self.repo, self.orch_id)
+
+    async def _fire_mr_end(self) -> None:
+        record = self._load()
+        if not record.options.get("pr", True):
+            return
+        from meow.execution.mr_hook import fire_mr_end, mr_payload
+
+        target = record.options.get("target_branch") or record.base_branch
+        payload = mr_payload(
+            "orchestrator",
+            record.delivery,
+            id=record.id,
+            branch=record.integration["branch"],
+            base=target,
+        )
+        await fire_mr_end(
+            self.config,
+            payload,
+            Path(record.integration["worktree"]),
+            lambda text: print(f"[delivery] {text}", flush=True),
+        )
 
     # -- intake -----------------------------------------------------------
 

@@ -161,8 +161,12 @@ def merge_hooks(*tables: dict | None) -> dict:
 
 async def run_lifecycle(
     hooks: Iterable[CustomHook], event: str, payload: dict, cwd: Path
-) -> None:
-    """Run MEOW lifecycle hooks; they are advisory and never raise."""
+) -> list[str]:
+    """Run MEOW lifecycle hooks; they are advisory and never raise.
+
+    Returns one message per hook that exited 2 so the caller can show it.
+    """
+    notes: list[str] = []
     for hook in hooks:
         if hook.event == event:
             result = await run_hook(hook, {"event": event, **payload}, cwd)
@@ -170,3 +174,5 @@ async def run_lifecycle(
                 logger.warning(
                     "user_hook_ignored_block", hook=hook.name, hook_event=event
                 )
+                notes.append(f"{hook.name}: {result.stderr or 'flagged a problem'}")
+    return notes
