@@ -15,8 +15,12 @@ from meow.project.custom.definitions import CustomHook
 from meow.project.custom.hook_files import SDK_EVENTS
 from meow.project.custom.sources import git_ignored, scope_plugin_dir
 from meow.project.custom.sync import (
+    CHECK,
+    PERSONAL,
+    SHARED,
     SYNC_SCOPES,
-    register_scope_plugin,
+    register_plugin,
+    registration_note,
     scope_plugin_registered,
 )
 
@@ -84,12 +88,13 @@ def _stale(path: Path, label: str, apply: bool) -> list[str]:
 
 
 def _scope_problems(
-    target: tuple[str, Path, Path], hooks: tuple[CustomHook, ...], apply: bool
+    target: tuple[str, Path, Path], hooks: tuple[CustomHook, ...], mode: str
 ) -> list[str]:
     scope, project_dir, user_dir = target
     chosen = [h for h in hooks if h.source.scope == scope and syncable(h)]
     path = _file(scope, project_dir, user_dir)
     label = f"{scope} hooks ({path})"
+    apply = mode != CHECK
     if not chosen:
         return _stale(path, label, apply)
     skipped = _skipped(scope, project_dir, path, label)
@@ -99,10 +104,10 @@ def _scope_problems(
     found = []
     if not path.is_file() or path.read_text(encoding="utf-8") != text:
         found.append(f"{label}: out of date")
-    if not scope_plugin_registered(scope, project_dir, user_dir):
-        found.append(f"{label}: not registered with Claude Code")
+    if not scope_plugin_registered(target, mode):
+        found.append(f"{label}: {registration_note(scope, mode)}")
     if apply and found:
-        register_scope_plugin(scope, project_dir, user_dir)
+        register_plugin(target, mode=mode)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     return found
@@ -115,7 +120,7 @@ def check_hook_registration(
     problems = []
     for scope in SYNC_SCOPES:
         try:
-            problems += _scope_problems((scope, project_dir, user_dir), hooks, False)
+            problems += _scope_problems((scope, project_dir, user_dir), hooks, CHECK)
         except (OSError, ValueError) as exc:
             problems.append(f"{scope} hooks: {exc}")
     return problems
@@ -130,5 +135,15 @@ def sync_hook_plugins(
     """Write and register every selected scope's hooks; returns what changed."""
     fixed = []
     for scope in scopes:
-        fixed += _scope_problems((scope, project_dir, user_dir), hooks, True)
+        fixed += _scope_problems((scope, project_dir, user_dir), hooks, SHARED)
+    return fixed
+
+
+def sync_personal_hook_plugins(
+    hooks: tuple[CustomHook, ...], project_dir: Path, user_dir: Path
+) -> list[str]:
+    """`sync_hook_plugins` at every scope, enabling project plugins for this user."""
+    fixed = []
+    for scope in SYNC_SCOPES:
+        fixed += _scope_problems((scope, project_dir, user_dir), hooks, PERSONAL)
     return fixed

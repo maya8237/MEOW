@@ -426,3 +426,28 @@ def test_python_build_metadata_is_ignored_locally(repo):
         ).returncode
         == 0
     )
+
+
+def test_old_boundary_is_upgraded_so_project_hooks_are_shared(repo):
+    old = [rule for rule in BOUNDARY if rule != "!.meow/hooks/"]
+    (repo / ".gitignore").write_text("\n".join(old) + "\n", encoding="utf-8")
+    assert _ignored(repo, ".meow/hooks/guard.toml")
+    assert not boundary_ok(repo)
+
+    assert repair_boundary(repo) is True
+
+    for rel in (
+        ".meow/hooks/guard.toml",
+        ".meow/agents/a.toml",
+        ".meow/workflows/w.toml",
+        ".meow/plugin/skills/s/SKILL.md",
+        ".meow/plugin/hooks/hooks.json",
+    ):
+        assert not _ignored(repo, rel), rel
+    for rel in (
+        ".meow/local/hooks/guard.toml",
+        ".meow/local/plugin/skills/s/SKILL.md",
+        ".meow/linked/plugin/skills/s/SKILL.md",
+    ):
+        assert _ignored(repo, rel), rel
+    assert boundary_ok(repo)

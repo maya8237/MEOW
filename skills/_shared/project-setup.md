@@ -13,6 +13,7 @@ Preserve unrelated rules and remove obsolete broad MEOW rules when safe.
 !.meow/.claude-plugin/
 !.meow/agents/
 !.meow/workflows/
+!.meow/hooks/
 .claude/settings.local.json
 ```
 

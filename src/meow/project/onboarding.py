@@ -33,6 +33,7 @@ BOUNDARY = (
     "!.meow/.claude-plugin/",
     "!.meow/agents/",
     "!.meow/workflows/",
+    "!.meow/hooks/",
     ".claude/settings.local.json",
 )
 
@@ -58,6 +59,9 @@ _EXPECTED_IGNORED = {
     ".meow/local/plugin/skills/x/SKILL.md": True,
     ".meow/agents/x.toml": False,
     ".meow/workflows/x.toml": False,
+    ".meow/hooks/x.toml": False,
+    ".meow/linked/plugin/skills/x/SKILL.md": True,
+    ".meow/local/hooks/x.toml": True,
     ".meow/runs/x.json": True,
     ".claude/settings.local.json": True,
 }

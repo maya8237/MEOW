@@ -133,11 +133,12 @@ def test_configured_skill_directories_are_copied_into_a_linked_plugin(project, h
     assert (linked / "skills" / "extra" / "SKILL.md").is_file()
     manifest = linked / ".claude-plugin" / "plugin.json"
     assert json.loads(manifest.read_text())["name"] == "meow-project-linked"
-    shared = settings(project / ".claude" / "settings.json")
-    assert shared["extraKnownMarketplaces"]["meow-project-linked"]["source"] == {
+    local = settings(project / ".claude" / "settings.local.json")
+    assert local["extraKnownMarketplaces"]["meow-project-linked"]["source"] == {
         "source": "directory",
         "path": "./.meow/linked",
     }
+    assert not (project / ".claude" / "settings.json").exists()
     assert check(project, home) == []
 
 

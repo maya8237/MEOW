@@ -126,6 +126,20 @@ def git_ignored(project_dir: Path, path: Path) -> bool:
     return result.returncode == 0
 
 
+def unshared_project_dirs(project_dir: Path) -> list[str]:
+    """Project definition folders git ignores, so teammates would never get them."""
+    project_dir = Path(project_dir)
+    return [
+        f"project {kind} ({folder}): ignored by git, so it would not be shared; "
+        "run `meow onboard` to repair .gitignore"
+        for kind in KINDS
+        if (
+            folder := conventional_dir("project", kind, project_dir, project_dir)
+        ).is_dir()
+        and git_ignored(project_dir, folder)
+    ]
+
+
 def _resolve(raw: str, scope: str, base: Path, where: str) -> Path:
     text = raw.replace("\\", "/")
     if scope == "project":

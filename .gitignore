@@ -236,6 +236,7 @@ __marimo__/
 !.meow/.claude-plugin/
 !.meow/agents/
 !.meow/workflows/
+!.meow/hooks/
 .claude/settings.local.json
 
 # Hosted docs site build output

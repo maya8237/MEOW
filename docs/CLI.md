@@ -18,16 +18,15 @@ Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](OR
 | `meow detach [--log FILE] -- CMD...` | Detach a command; returns PID and log JSON |
 | `meow queue ["request"]` | Add a request, or process pending requests serially |
 | `meow workflows` / `meow agents` | Inspect, eject, validate, or diff definitions |
-| `meow skills sync`, `hooks sync`, `sync` `[--scope S] [--check]` | Register custom skills, [hooks](HOOKS.md), or both with Claude Code; `--check` only reports |
+| `meow skills sync`, `hooks sync`, `sync` `[--scope S] [--check]` | Register custom skills, [hooks](HOOKS.md), or both with Claude Code; `--check` only reports; the plugin runs `sync --auto` [at startup](CUSTOM.md#claude-code-registration) |
 | `meow ui` | Read-only catalog, session history, and docs |
 | `meow schedule` | Add, list, edit, or cancel a one-shot trigger |
 | `meow onboard` | [Configure a project without prompts](ONBOARDING.md); optional integration/feature flags |
 | `meow mcp PROVIDERS` | Register user-scope MCP servers without changing project configuration |
 | `meow ipython` | Interactive command session |
 
-`mw` aliases `meow`. Shortcuts: `r` run, `p` plan,
-`rv` review, `l` lint (`run --lint-fix`), `s` status, `x` cancel,
-`c` resume, `q` queue, `w` worktree, `i` ipython.
+`mw` aliases `meow`. Shortcuts: `r` run, `p` plan, `rv` review, `l` lint (`run --lint-fix`),
+`s` status, `x` cancel, `c` resume, `q` queue, `w` worktree, `i` ipython.
 
 Bare `meow` opens IPython. Use `meow run` to preserve IPython's `%run`;
 other commands work directly or through `%meow`/`!meow`.
@@ -56,7 +55,6 @@ best-effort and skipped for checkout installs. In a terminal it then offers Bun'
 shared dependency store once and migrates registered repos in the background.
 Public commands warn on stderr when PyPI has a newer version (betas count only
 when a beta is installed), silently ignoring network failures; `--check-update` checks only. Internal workers skip this check.
-Runs execute automatically; `-m` adds a plan approval pause. `-u` means update.
 
 ## Build and plan
 
@@ -69,9 +67,8 @@ Normal runs use a worktree and commit/push after verification.
 `-n` / `--no-worktree` uses the selected checkout without committing or pushing;
 `-nc` / `--no-worktree-commit` commits without pushing; `-np` / `--no-worktree-push`
 commits/pushes. These options are exclusive.
-An existing linked worktree selected with `-d PATH` is used directly.
 Omit `--name` to derive a short request name. `--from BRANCH` (`-b`) selects the starting branch.
-`--from` chooses the start in a new worktree. Existing linked worktrees are reused without `--from`. `--target` overrides `[delivery].target_branch` (auto-onboarded to existing `dev`, otherwise `master`). Targets survive resume; [MR/pipeline options](PIPELINE.md).
+`--from` chooses the start in a new worktree. An existing linked worktree selected with `-d PATH` is used directly, without `--from`. `--target` overrides `[delivery].target_branch` (auto-onboarded to existing `dev`, otherwise `master`). Targets survive resume; [MR/pipeline options](PIPELINE.md).
 `--plan PATH` supplies a plan; `--resume-at review` reviews existing work first.
 `--manually-approve-plan` (`-m`) pauses before implementation; plan-only rejects it.
 `--background` detaches a run and rejects manual approval and lint-fix. First use onboards the
@@ -93,7 +90,6 @@ Task files, JQL, and multiple Jira keys select orchestration automatically.
 sprints, `--dry-run` saves the decomposition, and `--no-mr` skips opening an MR.
 Local edits require explicit `--from BRANCH`; execution uses an isolated worktree.
 See [ORCHESTRATION.md](ORCHESTRATION.md) for sources, flags, delivery gates, and recovery.
-`/meow:run` chooses the engine; native supervision requires explicit opt-in.
 Exit code 3 means delivered but `MR not opened` (manual link in output); 0 settled,
 75 parked or retryable (`MEOW_RETRY`), 1 blocked or budget exhausted (`MEOW_BLOCKED`),
 130 interrupted. `meow status ID --json` and `meow resume --parked` drive unattended

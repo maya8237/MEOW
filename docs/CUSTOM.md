@@ -46,15 +46,22 @@ and resolved built-in skills.
 
 Custom skills also load in Claude Code as namespaced plugin skills
 (`/meow-local:NAME`, `/meow-project:NAME`, `/meow-user:NAME`). `<scope>/plugin/skills/`
-(`.meow/local/`, `.meow/`, `~/.meow/`) is that scope's plugin. Skills from
-`[custom].skills` directories are copied into a generated `<scope>/linked/plugin`
-(`meow-<scope>-linked`). `meow skills sync` writes the manifests and enables
-them in `.claude/settings.local.json`, `.claude/settings.json`, or
-`~/.claude/settings.json` without touching other settings. Re-run it after
-editing a configured skill; restart Claude Code to load changes.
-`meow native verify` reports unregistered or stale skills as `skill_registration`.
-The UI skill creator syncs automatically. Project plugins in git-ignored folders
-are skipped.
+(`.meow/local/`, `.meow/`, `~/.meow/`) is that scope's plugin; put new skills there.
+Skills from other `[custom].skills` directories are copied into a generated
+`<scope>/linked/plugin` (`meow-<scope>-linked`), kept apart so rebuilding the
+copies never touches hand-made skills. Copies are per user: git-ignored and
+enabled in `settings.local.json`. Agents and workflows need no registration.
+
+`meow sync` (or `skills sync`) writes the manifests and enables them in
+`.claude/settings.local.json`, `.claude/settings.json`, or `~/.claude/settings.json`
+without touching other settings. The MEOW plugin runs `meow sync --auto` when
+Claude Code starts: it refreshes copies and generated hook files, enables new
+plugins for you (project ones in `settings.local.json`), and reports what still
+needs a shared `meow sync` or `meow onboard`. It never edits the committed
+`.claude/settings.json` or `.gitignore`. Restart Claude Code to load changes.
+`meow native verify` reports `skill_registration`, `hook_registration`, and
+`unshared_definitions` (project definition folders git ignores). Onboarding
+keeps `.meow/{agents,workflows,hooks,plugin}` trackable.
 
 Agent TOML fields, model/session semantics, delegates, and Claude Code imports
 are defined in [WORKFLOWS.md](WORKFLOWS.md#agents).

@@ -16,4 +16,5 @@ SHARED_PROJECT_PATHS = (
     ".meow/.claude-plugin",
     ".meow/agents",
     ".meow/workflows",
+    ".meow/hooks",
 )

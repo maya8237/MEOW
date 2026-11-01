@@ -35,7 +35,9 @@ from meow.project.config import (
 )
 from meow.project.config_env import unresolved_environment_references
 from meow.project.config_models import resolve_command_cwd
+from meow.project.custom.hook_sync import check_hook_registration
 from meow.project.custom.rendering import effective_models
+from meow.project.custom.sources import unshared_project_dirs
 from meow.project.custom.sync import check_skill_registration
 from meow.project.onboarding import boundary_ok, feature_gaps, is_onboarded
 from meow.project.tester_setup import inferred_tester_lines
@@ -120,6 +122,10 @@ def verify(
         "skill_registration": check_skill_registration(
             config["customizations"].skills, working_dir, user_config_path().parent
         ),
+        "hook_registration": check_hook_registration(
+            config["customizations"].hooks, working_dir, user_config_path().parent
+        ),
+        "unshared_definitions": unshared_project_dirs(working_dir),
     }
     if preflight:
         from meow.infrastructure import tester_preflight
