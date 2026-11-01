@@ -12,8 +12,7 @@ Dependencies are installed later during task worktree preparation. Show detected
 sources and explicit overrides; ask only for changes or unresolved required choices.
 
 For explicit flag-based setup, run `meow onboard --non-interactive --work-dir PATH`
-with supplied options; see the Onboarding guide in `meow ui` or the
-[online docs](https://maya8237.github.io/MEOW/) for the flags.
+with supplied options; see the Onboarding guide in `meow ui` or the [online docs](https://maya8237.github.io/MEOW/) for the flags.
 It never prompts or starts agents; do not continue into interactive steps afterward.
 Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
