@@ -103,24 +103,61 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
         if ($release) {
             $tag = $release.Tag
             $digest = $release.Digest
-        } elseif ($beta -or ${latest-pypi} -or $version -or $env:MEOW_PYPI_INDEX_URL) {
+        } elseif ($env:MEOW_PYPI_INDEX_URL) {
             throw "No published MEOW release was found on PyPI. $indexError"
         } else {
             Write-Host 'PyPI Index API unavailable; trying the legacy JSON API...'
             $legacy = Invoke-RestMethod 'https://pypi.org/pypi/meow-harness/json'
-            $tag = "$($legacy.info.version)"
-            if ($tag -notmatch '^\d+\.\d+\.\d+$') { throw 'PyPI legacy JSON has no stable project version.' }
-            $wheel = @(
-                $legacy.urls |
-                    Where-Object {
-                        $_.packagetype -eq 'bdist_wheel' -and
-                        -not $_.yanked -and
-                        "$($_.digests.sha256)" -match '^[0-9a-f]{64}$'
-                    } |
-                    Select-Object -First 1
-            )
-            if ($wheel.Count -eq 0) { throw 'PyPI legacy JSON has no stable wheel with a SHA-256 checksum.' }
-            $digest = "$($wheel[0].digests.sha256)"
+            if (-not $version -and -not $beta -and -not ${latest-pypi}) {
+                $tag = "$($legacy.info.version)"
+                if ($tag -notmatch '^\d+\.\d+\.\d+$') { throw 'PyPI legacy JSON has no stable project version.' }
+                $wheel = @(
+                    $legacy.urls |
+                        Where-Object {
+                            $_.packagetype -eq 'bdist_wheel' -and
+                            -not $_.yanked -and
+                            "$($_.digests.sha256)" -match '^[0-9a-f]{64}$'
+                        } |
+                        Select-Object -First 1
+                )
+                if ($wheel.Count -eq 0) { throw 'PyPI legacy JSON has no stable wheel with a SHA-256 checksum.' }
+                $digest = "$($wheel[0].digests.sha256)"
+            } else {
+                # Only "releases" lists betas and older versions; "urls" is the newest.
+                $release = @(
+                    $legacy.releases.PSObject.Properties.Value |
+                        ForEach-Object { $_ } |
+                        ForEach-Object {
+                            $filename = "$($_.filename)"
+                            if ($filename -notmatch '^meow[-_]harness-(\d+)\.(\d+)\.(\d+)(b(\d+))?-[^/]+\.whl$') { return }
+                            if ($_.yanked) { return }
+                            $base = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+                            $suffix = "$($Matches[4])"
+                            $isBeta = [bool]$suffix
+                            $number = [int]("0$($Matches[5])")
+                            $candidateTag = "$base$suffix"
+                            if ($version) {
+                                if ($candidateTag -cne $version) { return }
+                            } elseif ((-not $isBeta -and $beta) -or ($isBeta -and -not ${latest-pypi} -and -not $beta)) {
+                                return
+                            }
+                            $candidateDigest = "$($_.digests.sha256)"
+                            if ($candidateDigest -notmatch '^[0-9a-f]{64}$') { return }
+                            [PSCustomObject]@{
+                                Tag = $candidateTag
+                                Version = [version]$base
+                                Stable = [int](-not $isBeta)
+                                Beta = $number
+                                Digest = $candidateDigest
+                            }
+                        } |
+                        Sort-Object Version, Stable, Beta |
+                        Select-Object -Last 1
+                )
+                if ($release.Count -eq 0) { throw 'PyPI legacy JSON has no matching MEOW wheel.' }
+                $tag = $release[0].Tag
+                $digest = $release[0].Digest
+            }
         }
         $versions = Join-Path $root 'versions'
         $destination = Join-Path $versions $tag

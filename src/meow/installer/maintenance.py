@@ -86,18 +86,42 @@ def latest_release(
         _, tag, digest = _pypi_wheel_release(files, channel, pin)
         return tag, digest
     except (AttributeError, OSError, TypeError, ValueError, KeyError):
-        if channel != "stable" or pin:
-            raise  # the legacy JSON only describes the newest stable release
-        return _latest_pypi_legacy_release(timeout=timeout)
+        return _latest_pypi_legacy_release(channel, pin, timeout=timeout)
 
 
 def latest_version(*, channel: str = "stable", timeout: float = 10) -> str:
     return latest_release(channel=channel, timeout=timeout)[0]
 
 
-def _latest_pypi_legacy_release(*, timeout: float) -> tuple[str, str]:
+def _legacy_release_files(data: object) -> list[dict]:
+    """Index-style file entries from the legacy JSON's "releases" map."""
+    releases = data.get("releases") if isinstance(data, dict) else None
+    groups = releases.values() if isinstance(releases, dict) else []
+    return [
+        {
+            "filename": file.get("filename"),
+            "yanked": file.get("yanked"),
+            "hashes": {"sha256": (file.get("digests") or {}).get("sha256")},
+        }
+        for group in groups
+        for file in (group if isinstance(group, list) else [])
+        if isinstance(file, dict)
+    ]
+
+
+def _latest_pypi_legacy_release(
+    channel: str, pin: str | None, *, timeout: float
+) -> tuple[str, str]:
     with urlopen(PYPI_LEGACY_URL, timeout=timeout) as response:
         data = json.load(response)
+    if channel != "stable" or pin:
+        # Only "releases" lists betas and older versions; "urls" is the newest.
+        _, tag, digest = _pypi_wheel_release(_legacy_release_files(data), channel, pin)
+        return tag, digest
+    return _legacy_stable_release(data)
+
+
+def _legacy_stable_release(data: object) -> tuple[str, str]:
     info = data.get("info")
     tag = info.get("version") if isinstance(info, dict) else None
     if not isinstance(tag, str) or _is_beta(tag):

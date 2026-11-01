@@ -97,6 +97,12 @@ esac
                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
                 ;;
+            *releases*)
+                printf '%s ' "$MEOW_CHANNEL${MEOW_PIN:+=$MEOW_PIN}-legacy"
+                printf '%s%s\\n' \
+                    'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' \
+                    'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+                ;;
             *urls*)
                 printf '8.8.8 '
                 printf '%s%s\\n' \
@@ -197,6 +203,21 @@ def test_installer_falls_back_to_legacy_pypi_json(tmp_path, pypi_mode):
     activation = _run_installer(tmp_path, ["--non-interactive"], pypi_mode=pypi_mode)
     assert "8.8.8" in activation
     assert "9.9.9" not in activation
+
+
+@pytest.mark.parametrize("pypi_mode", ["error", "empty"])
+@pytest.mark.parametrize(
+    "flags,selection",
+    [(["--latest-pypi"], "any-legacy"), (["--version=9.9.9"], "stable=9.9.9-legacy")],
+)
+def test_installer_legacy_fallback_honors_release_selection(
+    tmp_path, pypi_mode, flags, selection
+):
+    activation = _run_installer(
+        tmp_path, ["--non-interactive", *flags], pypi_mode=pypi_mode
+    )
+    assert selection in activation
+    assert "8.8.8" not in activation
 
 
 def test_mcp_flag_needs_a_value(tmp_path):

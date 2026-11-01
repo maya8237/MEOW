@@ -183,15 +183,44 @@ def test_latest_release_channels_and_pins(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "kwargs", [{"channel": "beta"}, {"channel": "any"}, {"pin": "0.2.0"}]
+    "kwargs,expected",
+    [
+        ({"channel": "any"}, "0.5.0b1"),
+        ({"channel": "beta"}, "0.5.0b1"),
+        ({"channel": "stable"}, "0.4.0"),
+        ({"pin": "0.2.0"}, "0.2.0"),
+    ],
 )
-def test_only_the_newest_stable_lookup_uses_legacy_json(monkeypatch, kwargs):
+def test_non_stable_lookups_use_legacy_releases_map(monkeypatch, kwargs, expected):
+    def entry(version, digit, yanked=False):
+        return {
+            "filename": f"meow_harness-{version}-py3-none-any.whl",
+            "yanked": yanked,
+            "digests": {"sha256": digit * 64},
+        }
+
+    legacy = {
+        "info": {"version": "0.4.0"},
+        "urls": [{**entry("0.4.0", "4"), "packagetype": "bdist_wheel"}],
+        "releases": {
+            "0.2.0": [entry("0.2.0", "2")],
+            "0.4.0": [entry("0.4.0", "4")],
+            "0.5.0b1": [entry("0.5.0b1", "5")],
+            "0.6.0b1": [entry("0.6.0b1", "6", yanked=True)],
+        },
+    }
+    calls = []
+
     def fetch(request, **kw):
-        raise OSError("HTTP 406")
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("HTTP 406")
+        return io.BytesIO(json.dumps(legacy).encode())
 
     monkeypatch.setattr(maintenance, "urlopen", fetch)
-    with pytest.raises(OSError):
-        maintenance.latest_release(**kwargs)
+    tag, digest = maintenance.latest_release(**kwargs)
+    assert tag == expected
+    assert digest == {"0.5.0b1": "5", "0.4.0": "4", "0.2.0": "2"}[tag] * 64
 
 
 @pytest.mark.parametrize("primary", ["error", "empty"])

@@ -125,11 +125,11 @@ _, tag, digest = max(candidates)
 print(tag, digest)
     ' 2>/dev/null) || release=
 fi
-if [ -z "$release" ] && [ "$channel" = stable ] && [ -z "$pin" ] \
-    && [ -z "${MEOW_PYPI_INDEX_URL:-}" ]; then
+if [ -z "$release" ] && [ -z "${MEOW_PYPI_INDEX_URL:-}" ]; then
     printf '%s\n' 'PyPI Index API unavailable; trying the legacy JSON API...'
     pypi_json=$(curl -fsSL --retry 3 'https://pypi.org/pypi/meow-harness/json')
-    release=$(printf '%s' "$pypi_json" | "$python" -c '
+    if [ "$channel" = stable ] && [ -z "$pin" ]; then
+        release=$(printf '%s' "$pypi_json" | "$python" -c '
 import json
 import re
 import sys
@@ -149,6 +149,41 @@ for file in data.get("urls", []):
 else:
     raise SystemExit("PyPI legacy JSON has no stable wheel with a SHA-256 checksum")
 ')
+    else
+        # Only "releases" lists betas and older versions; "urls" is the newest.
+        release=$(printf '%s' "$pypi_json" | MEOW_CHANNEL=$channel MEOW_PIN=$pin "$python" -c '
+import json
+import os
+import re
+import sys
+
+data = json.load(sys.stdin)
+channel = os.environ["MEOW_CHANNEL"]
+pin = os.environ["MEOW_PIN"]
+candidates = []
+for group in data.get("releases", {}).values():
+    for file in group:
+        filename = file.get("filename")
+        match = re.fullmatch(r"meow[-_]harness-(\d+)\.(\d+)\.(\d+)(?:b(\d+))?-[^/]+\.whl", filename or "")
+        if not match or file.get("yanked"):
+            continue
+        major, minor, patch, pre = match.groups()
+        tag = f"{major}.{minor}.{patch}" + (f"b{pre}" if pre else "")
+        if pin:
+            if tag != pin:
+                continue
+        elif (channel == "stable" and pre) or (channel == "beta" and not pre):
+            continue
+        digest = file.get("digests", {}).get("sha256")
+        if re.fullmatch(r"[0-9a-f]{64}", digest or ""):
+            key = (int(major), int(minor), int(patch), 0 if pre else 1, int(pre or 0))
+            candidates.append((key, tag, digest))
+if not candidates:
+    raise SystemExit("No published MEOW wheel was found on PyPI.")
+_, tag, digest = max(candidates)
+print(tag, digest)
+')
+    fi
 fi
 if [ -z "$release" ]; then
     printf '%s\n' 'No published MEOW release was found on PyPI.' >&2
