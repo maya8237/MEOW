@@ -198,9 +198,10 @@ class _Loop:
         if not problems:
             return self._final(unfixed, judged.review)
         failing = tuple(job.name for job in snapshot.jobs if job.status == "failed")
+        fixing_review = judged.review_failed and blocked is None
         announce = (
             f"meow review job failed; fixing ({self._round_text()})."
-            if judged.review_failed
+            if fixing_review
             else None
         )
         return await self._fix_phase("review", "\n\n".join(problems), failing, announce)
