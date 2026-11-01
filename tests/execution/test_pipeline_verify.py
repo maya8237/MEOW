@@ -347,6 +347,19 @@ def test_fixable_other_jobs_fixed_when_enabled_never_deploy(harness):
     assert outcome.failing == ("ship",)
 
 
+def test_non_meow_jobs_fixed_even_when_review_job_skipped(harness):
+    failing = snap(job("meow-review", "skipped"), job("unit-tests", "failed"))
+    after = snap(job("meow-review", "skipped"), job("unit-tests", "success"))
+    provider = FakeProvider(snapshots=[failing, after], logs={"unit-tests": "boom"})
+
+    outcome = harness.run(provider, fix_non_meow_jobs=True)
+
+    assert len(harness.review_calls) == 1
+    assert "boom" in harness.review_calls[0]
+    assert outcome.status == "not_verified"
+    assert outcome.detail == "meow review job skipped"
+
+
 def test_resume_keeps_round_counter(harness):
     store, run_id = harness.store, harness.run_id
     store.transition(

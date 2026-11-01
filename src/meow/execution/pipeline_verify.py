@@ -188,10 +188,12 @@ class _Loop:
             job.name for job in judged.other_failed if job not in judged.fixable_other
         )
         blocked = self._blocked(snapshot, judged, unfixed)
-        if blocked is not None:
+        if blocked is not None and not judged.fixable_other:
             return blocked
+        # A review job that cannot be fixed (canceled, skipped, unverified) must
+        # not leave failing non-MEOW jobs unfixed: fix them, then report it.
         problems = [self._job_problem(job) for job in judged.fixable_other]
-        if judged.review_failed:
+        if judged.review_failed and blocked is None:
             problems.insert(0, self._review_problem(judged.review))
         if not problems:
             return self._final(unfixed)

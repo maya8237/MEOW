@@ -26,16 +26,9 @@ roles = ["generator"]         # optional; default every role
 | `PostToolUse`, `PostToolUseFailure` | After a tool call | Feeds stderr back to the agent |
 | `UserPromptSubmit`, `Stop`, `SubagentStop` | Prompt submitted / agent stops | Blocks, with stderr as the reason |
 | `sprint_start`, `sprint_end` | MEOW run begins / ends (any outcome) | Nothing: advisory |
-| `mr_end` | A run or orchestrator has put its MR (not with `--no-mr`) | Prints stderr as a `[delivery]` line (built-in check runs first) |
 
 `sprint_*` payloads carry `run_id`, `request`, `work_dir` (and `phase` at
 the end) and take no `roles` or `matcher`.
-
-`mr_end` payloads add `kind` (`run`/`orchestrator`), `id`, `branch`, `base`,
-`mr_url`, `mr_error`, `pushed_commit`, `pipeline`. MEOW runs a built-in check
-first (orchestrators; plain runs already print the pipeline outcome) and prints `[delivery] MR check: ...` when the MR was not posted or the
-pipeline is not verified (orchestrators: checked live, read-only). Your own
-`mr_end` hooks run after it; `python -m meow.execution.mr_hook` is the same check.
 
 ## Contract
 

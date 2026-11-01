@@ -12,7 +12,7 @@ from pathlib import Path
 TOOL_EVENTS = ("PreToolUse", "PostToolUse", "PostToolUseFailure")
 SDK_EVENTS = (*TOOL_EVENTS, "UserPromptSubmit", "Stop", "SubagentStop")
 # MEOW's own events; their hooks are advisory and never stop a run.
-LIFECYCLE_EVENTS = ("sprint_start", "sprint_end", "mr_end")
+LIFECYCLE_EVENTS = ("sprint_start", "sprint_end")
 EVENTS = (*SDK_EVENTS, *LIFECYCLE_EVENTS)
 DEFAULT_TIMEOUT = 30.0
 _KEYS = frozenset({

@@ -1,6 +1,7 @@
 # MR and pipeline verification
 
-After `builtin.deliver` pushes a worktree run, MEOW opens an
+Orchestrators run the same verify/fix loop after opening their MR (fixes go
+to `orchestrator/<id>`; settings come from `[pipeline]`). After `builtin.deliver` pushes a worktree run, MEOW opens an
 MR into its saved target, validates the pipeline file, waits for the pipeline, and
 fixes code until the `meow-review` job passes. Any workflow containing
 `builtin.deliver` gets this. Explicit in-place runs retain their delivery choices
@@ -69,7 +70,9 @@ The token must read pipelines and jobs. Without one the run ends
 
 - `meow-review` / `meow_review`: decided by job status, so a failure with
   `allow_failure: true` in a green pipeline is still fixed.
-- Other failing jobs are only reported, unless `--fix-non-meow-jobs`.
+- Other failing jobs are only reported, unless `--fix-non-meow-jobs`. They are
+  fixed even when the review job is canceled, skipped, or unverified; that
+  outcome is reported after they are fixed.
 - Jobs whose name or stage matches `deploy|release|publish|rollback`
   (case-insensitive) are never fixed.
 
