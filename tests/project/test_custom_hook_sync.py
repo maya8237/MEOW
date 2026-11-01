@@ -208,7 +208,8 @@ def test_generated_command_can_only_inform_never_grant(project, home):
 def test_generated_command_sees_payload_env_and_project_dir(project, home):
     result = run_generated(
         project,
-        'grep -q Write && [ "$MEOW_HOOK" = guard ] && [ "$(pwd -P)" = "$EXPECT" ] '
+        'grep -q Write && [ "$MEOW_HOOK" = guard ] '
+        '&& [ "$(pwd -P)" = "$(cd "$EXPECT" && pwd -P)" ] '
         "|| exit 2",
         {"EXPECT": str(project.resolve())},
     )
