@@ -97,16 +97,41 @@ def test_empty_config_without_disk_config_passes(tmp_path):
     assert api.review_check_status(tmp_path, {})["passed"]
 
 
-def test_background_survives_launcher_and_deduplicates(tmp_path):
+def _wait_terminal(api, root):
+    """Status once the job is terminal, not merely not-running: a worker that
+    has not registered itself yet reads as "interrupted". The deadline only
+    bounds a hang; it never decides pass or fail."""
+    from meow.project.config import load_config
+
+    config = load_config(root)
+    deadline = time.monotonic() + 120
+    while True:
+        status = api.review_check_status(root, config)
+        if status["status"] in {"passed", "failed", "stale"}:
+            return status
+        assert time.monotonic() < deadline, status
+        time.sleep(0.1)
+
+
+def test_background_survives_launcher_and_deduplicates(tmp_path, tmp_path_factory):
     api = _api()
     directory = tmp_path / ".meow"
     directory.mkdir()
-    # A slow command makes the launched process observable after its caller exits.
+    # Outside the project: a new file there would change the source revision.
+    release = tmp_path_factory.mktemp("gate") / "release"
+    # The command blocks until the test releases it, so the job is provably
+    # running while the launcher exits and while the duplicate start is made.
+    script = (
+        "import time; from pathlib import Path; "
+        f"release = Path({str(release)!r})\n"
+        "while not release.exists(): time.sleep(0.05)\n"
+        "print('durable verification')"
+    )
     (directory / "config.toml").write_text(
         "[[build]]\ncommand = "
         + json.dumps(sys.executable)
         + '\nargs = ["-c", '
-        + json.dumps("import time; time.sleep(1.5); print('durable verification')")
+        + json.dumps(script)
         + "]\n"
     )
     launch = subprocess.run(
@@ -127,15 +152,8 @@ def test_background_survives_launcher_and_deduplicates(tmp_path):
     first = json.loads(launch.stdout)
     second = api.start_review_checks(tmp_path, tmp_path)
     assert second["job_id"] == first["job_id"]
-    from meow.project.config import load_config
-
-    config = load_config(tmp_path)
-    deadline = time.monotonic() + 20
-    while time.monotonic() < deadline:
-        status = api.review_check_status(tmp_path, config)
-        if status["status"] not in {"starting", "running"}:
-            break
-        time.sleep(0.1)
+    release.write_text("go")
+    status = _wait_terminal(api, tmp_path)
     assert status["passed"], status
     assert "durable verification" in Path(status["log_path"]).read_text()
     assert (
