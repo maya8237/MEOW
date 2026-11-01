@@ -264,7 +264,9 @@ def test_delivery_does_not_hang_on_a_stuck_push(tmp_path, monkeypatch):
     hook = repo / ".git" / "hooks" / "pre-push"
     hook.write_text("#!/bin/sh\nexec sleep 30\n", encoding="utf-8")
     hook.chmod(0o755)
-    monkeypatch.setattr(delivery, "_GIT_TIMEOUT", 1)
+    # Leave enough time for the Windows commit setup; the 30-second hook
+    # still exceeds this timeout and stays below MAX_HANG_SECONDS.
+    monkeypatch.setattr(delivery, "_GIT_TIMEOUT", 5)
     active = tmp_path / "feature"
     git(repo, "worktree", "add", "--detach", str(active))
     (active / "file.txt").write_text("after", encoding="utf-8")
