@@ -161,7 +161,6 @@ class WorkflowRun:
         self.state.has_test_step = any(
             item.target == "builtin.test" for item in walk(steps)
         )
-        hot_reload.warn_haiku_verdicts(self.state.sprint, steps, source="start")
         for step in steps:
             if step.id in self.state.completed:
                 continue
@@ -259,7 +258,7 @@ class WorkflowRun:
                 state.round, state.gates = number, {}
                 state.generate_changed = None
                 self._seed_resume_feedback(step, number)
-                hot_reload.reload_config(state, step.body)
+                hot_reload.reload_config(state)
                 await self.body(step.body)
                 failed = self._blocking_failures()
                 if not failed:

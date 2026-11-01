@@ -4,8 +4,6 @@ from unittest.mock import patch
 from structlog.testing import capture_logs
 
 from meow.execution.workflow.engine import run_workflow
-from meow.execution.workflow.hot_reload import haiku_verdict_roles
-from meow.project.custom.workflows import Step
 from tests.execution.test_workflow_stall import gate_loop, state_for
 
 
@@ -55,25 +53,6 @@ def test_invalid_config_on_disk_keeps_the_old_models(tmp_path):
     assert models == ["sonnet", "sonnet"]
     assert any(log["event"] == "config_reload_failed" for log in logs)
     assert "config_reloaded" not in state.store.load(state.run_id).results
-
-
-def test_haiku_tester_warns_at_start(tmp_path):
-    write_models(tmp_path, '[models]\ntester = "haiku"\n')
-    state = state_for(tmp_path)
-    assert haiku_verdict_roles(state.sprint, (gate_loop(),)) == {"tester": "haiku"}
-    with capture_logs() as logs:
-        asyncio.run(run_workflow(state, (Step("sequence", "noop", body=()),)))
-    warned = [log for log in logs if log["event"] == "haiku_verdict_role"]
-    assert [(log["role"], log["source"]) for log in warned] == [("tester", "start")]
-
-
-def test_reload_to_haiku_reviewer_warns(tmp_path):
-    state, models, stage = rewriting_gate(tmp_path, '[models]\nreviewer = "haiku"\n')
-    with stage, capture_logs() as logs:
-        asyncio.run(run_workflow(state, (gate_loop(),)))
-    assert models == ["sonnet", "haiku"]
-    warned = [log for log in logs if log["event"] == "haiku_verdict_role"]
-    assert [(log["role"], log["source"]) for log in warned] == [("reviewer", "reload")]
 
 
 def test_agent_definition_edits_are_not_hot_reloaded(tmp_path):

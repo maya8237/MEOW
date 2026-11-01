@@ -102,7 +102,7 @@ otherwise `master`; it also supplies the CI target unless `--target-ref` is give
 
 [CUSTOM.md](CUSTOM.md): `[custom]` paths, roles, scopes, validation, permissions;
 [WORKFLOWS.md](WORKFLOWS.md): definition formats. Sources reload each run; each loop
-round re-reads `[models]` only (invalid files keep old values; Haiku verdict roles warn).
+round re-reads `[models]` only (invalid files keep old values).
 
 ## Reviewer architecture check
 
