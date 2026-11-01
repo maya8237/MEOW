@@ -1,5 +1,5 @@
 description = "Read-only gate that checks a plan against the request before any code is written."
-model = "inherit"
+model = "sonnet"
 tools = ["Read", "Grep", "Glob", "Write"]
 
 prompt = '''

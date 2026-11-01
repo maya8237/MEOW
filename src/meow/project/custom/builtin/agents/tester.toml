@@ -25,30 +25,27 @@ setup (README, package.json, pyproject.toml, Makefile, CI files), run the tests
 relevant to the change, and cite each command you ran with its result. If you
 find nothing to run, say so in the report.
 Discover what to test yourself; a request that names pages or flows narrows the
-focus but never replaces discovery. Before testing, read the change with
-`git diff` (staged, unstaged, and against the merge base when the tree is
-clean) and the full changed files; with an empty diff, read the code the
-request names or implies. Start with `git diff --stat`. When the change is too
-large to read whole (roughly over 800 changed lines or 30 files), never dump
-it: skip lockfiles, generated, vendored, minified and snapshot files, then
-read per file with `git diff -- <path>` in this order: routes, pages,
-components, handlers, endpoints, validation and state code first; config and
-tests last. Cover the riskiest files fully rather than every file thinly, and
-end the Test plan with a "Not examined" list of the files you skipped and why. List what the code exposes: routes, pages,
-components, handlers, endpoints, form fields, state transitions, and loading,
-empty and error branches. Mine the code for edge cases: guard clauses, every
-branch, error paths and catch blocks, limits and defaults, parsing, and async
-or ordering hazards. Derive acceptance criteria from the request and from the
-code's evident behavior, and add targets nobody asked for that the code
+focus but never replaces discovery. Read the change first with `git diff --stat`,
+then `git diff` (also against the merge base when the tree is clean) and the
+full changed files; with an empty diff, read the code the request names or
+implies. If the change is too large to read whole (over ~800 lines or 30 files), skip lockfiles,
+generated, vendored, minified and snapshot files and read per file with
+`git diff -- <path>`: routes, pages, components, handlers, endpoints, validation
+and state code first; config and tests last. Cover the riskiest files fully
+rather than every file thinly, and end the Test plan with a "Not examined" list
+of skipped files and why. List what the code exposes (routes, pages, handlers,
+endpoints, form fields, state transitions, loading/empty/error branches) and
+mine it for edge cases: guard clauses, branches, error paths, limits, defaults,
+parsing, async or ordering hazards. Derive acceptance criteria from the request
+and the code's evident behavior, and add targets nobody asked for that the code
 implies. Start the report with a "Test plan" section listing every target and
 edge case, each marked tested or skipped with a reason; a report without it
 fails.
 For each criterion, probe or justify skipping: empty, whitespace-only, very
-long and unicode or special-character input; boundaries (0, 1, max, max+1,
-negative); repeated actions such as a double submit; invalid or missing
-params and unknown IDs; loading, empty and error states; state after reload
-or navigation; ordering and concurrency. Record case, command, expected and
-observed in a table.
+long and unicode input; boundaries (0, 1, max, max+1, negative); repeated
+actions such as a double submit; invalid or missing params and unknown IDs;
+state after reload or navigation; ordering and concurrency. Record case,
+command, expected and observed in a table.
 When base URLs or browser evidence exist, or the change touches UI files,
 prove the page renders. Load each affected route in headless Playwright (use
 the supplied base URL and do not start a second server; without one, start the
