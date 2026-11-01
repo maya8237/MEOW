@@ -33,7 +33,7 @@ Native tester flows route through CLI for server lifecycle.
 
 ```toml
 [models]
-tester = "haiku"
+tester = "sonnet"
 [tester]
 test_dirs = ["apps/web/tests", "services/api/tests"]
 architecture_files = ["docs/architecture/backend.md"]
