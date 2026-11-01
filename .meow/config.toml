@@ -4,9 +4,6 @@ docs_dir = ".meow/plans"
 [models]
 explorer = "haiku"
 
-[pipeline]
-fix_non_meow_jobs = true
-
 [[lint]]
 command = "ruff check"
 fix_flag = "--fix"
