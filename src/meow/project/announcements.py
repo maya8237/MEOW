@@ -20,7 +20,7 @@ ANNOUNCED: dict[str, tuple[str, str]] = {
         "Let the tester add new tests for the change ([tester] write_tests).",
     ),
     "tester_browser_launch": (
-        "unreleased",
+        "0.1.32",
         "Select the tester's browser ([tester] browser_channel, browser_executable "
         "or browser_playwright) and check it with `meow native verify --preflight`.",
     ),
