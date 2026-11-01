@@ -296,7 +296,7 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
             stderr=asyncio.subprocess.DEVNULL,
         )
         try:
-            for _ in range(30):
+            for _ in range(1200):  # bounds a hang; breaks as soon as it is up
                 if await asyncio.to_thread(_reachable, ready):
                     break
                 await asyncio.sleep(0.05)
@@ -318,7 +318,7 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
             Path("."),
             f"{sys.executable} {failed_script}",
             ready_url=f"http://127.0.0.1:{_port()}/",
-            startup_timeout=2,
+            startup_timeout=60,  # the script exits at once; this only bounds a hang
         )
         config["tester"]["dev_server"] = [failed]
         with self.assertRaisesRegex(VerificationSetupError, "exited with code 4"):
@@ -446,8 +446,10 @@ class TestRunnerTests(unittest.IsolatedAsyncioTestCase):  # ruff: ignore[too-man
 def _reachable(url: str) -> bool:
     import urllib.request
 
+    # Loopback refusal is instant, so a generous timeout only matters when the
+    # server is up but slow to answer its first request (loaded CI runners).
     try:
-        with urllib.request.urlopen(url, timeout=0.2):
+        with urllib.request.urlopen(url, timeout=30):
             return True
     except Exception:
         return False

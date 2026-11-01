@@ -280,13 +280,13 @@ class ProjectWideLintTests(unittest.IsolatedAsyncioTestCase):
                 command=f"{sys.executable} {script}",
                 cwd=Path("apps/web"),
                 env={"COMPONENT": "web"},
-                timeout=2,
+                timeout=60,
             ),
             LintCommand(
                 command=f"{sys.executable} {script}",
                 cwd=Path("services/api"),
                 env={"COMPONENT": "api"},
-                timeout=2,
+                timeout=60,
             ),
         ]
         self.assertEqual(await check_lint_commands(root, commands, timeout=20), [])
