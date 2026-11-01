@@ -258,6 +258,7 @@ class WorkflowRun:
             ):
                 state.round, state.gates = number, {}
                 state.generate_changed = None
+                self._seed_resume_feedback(step, number)
                 hot_reload.reload_config(state, step.body)
                 await self.body(step.body)
                 failed = self._blocking_failures()
@@ -276,6 +277,11 @@ class WorkflowRun:
                 state.sprint.config.pop("_workflow_pool", None)
             else:
                 state.sprint.config["_workflow_pool"] = old_pool
+
+    def _seed_resume_feedback(self, step, number):
+        """A verdict edited by hand while parked seeds the first fix round."""
+        if number == 1 and _generates(step):
+            self.state.feedback = self.state.flags.pop("resume_feedback", "") or ""
 
     def _blocking_failures(self):
         return [
@@ -318,6 +324,10 @@ class WorkflowRun:
             f"Workflow loop {step.id!r} did not pass after {limit} rounds. "
             f"{_inspect_hint(state, step)}"
         ).rstrip()
+
+
+def _generates(step):
+    return any(item.target == "builtin.generate" for item in walk(step.body))
 
 
 def _reviews(state, step):

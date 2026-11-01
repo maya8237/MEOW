@@ -6,9 +6,11 @@ import os
 import subprocess
 import sys
 from contextlib import redirect_stdout, suppress
+from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
+from meow.agents.reviewer import _verdict_status
 from meow.cli.orchestration_cli import resume_orchestration
 from meow.cli.status_cli import (
     RESUMABLE_SOURCES,
@@ -44,6 +46,7 @@ from meow.infrastructure.supervisor import (
 from meow.infrastructure.worktree import GitTimeoutError, current_branch, strict_branch
 from meow.project.config import config_root, load_config, run_config
 from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
+from meow.project.plan_files import plan_review_file, plan_test_file, stage_file
 
 
 def _config_dir(record: RunRecord) -> Path:
@@ -692,9 +695,19 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
     saved_workflow = record.results.get("workflow")
     resume_at = _resume_at(record)
     required_sessions, missing_sessions = _session_plan(record, resume_at)
+    edited = _edited_verdicts(record, resume_at)  # before the claim stamps it
     clear_cancel(store, record.id)
     if (record := _claim(store, record)) is None:
         return 1
+    if edited:
+        print(
+            "Notice: using hand-edited verdict(s) "
+            f"{', '.join(str(path) for path, _ in edited)} as feedback for the "
+            "first fix round."
+        )
+        store.update_results(
+            record.id, resume_feedback={"files": [str(path) for path, _ in edited]}
+        )
     if missing_sessions:
         print(
             "Notice: no saved Claude session for "
@@ -716,8 +729,38 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
         record_root=Path(record.repo),
         required_session_roles=required_sessions,
         workflow=saved_workflow["name"] if saved_workflow else "default",
+        resume_feedback="\n\n".join(
+            f"Verdict edited by hand ({path.name}):\n{text}" for path, text in edited
+        ),
     )
     return 0
+
+
+def _verdict_files(record: RunRecord) -> list[Path]:
+    if record.plan_file:
+        plan = Path(record.plan_file)
+        return [plan_review_file(plan), plan_test_file(plan)]
+    docs = Path(record.worktree) / load_config(_config_dir(record))["docs_dir"]
+    return [stage_file(docs, "tester")]
+
+
+def _edited_verdicts(record: RunRecord, resume_at: str) -> list[tuple[Path, str]]:
+    """Non-PASS verdicts modified after the run last journaled anything: a
+    person's edit while it was parked, to be fixed rather than re-tested."""
+    if resume_at != "review":
+        return []
+    since = datetime.fromisoformat(record.updated_at).timestamp()
+    edited = []
+    for path in _verdict_files(record):
+        try:
+            if path.stat().st_mtime <= since:
+                continue
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        if _verdict_status(text) != "PASS":
+            edited.append((path, text))
+    return edited
 
 
 async def _resume_orchestration(  # ruff: ignore[too-many-arguments] -- explicit lifecycle options

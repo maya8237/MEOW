@@ -67,10 +67,12 @@ meow cancel RUN_ID
 
 Atomic journals live under ignored `.meow/runs/`. Resume is inspection-only
 until `--continue`; continuation validates repository, worktree, branch, plan,
-config, and workflow. `--repair` re-baselines blocked gates, including missing
-sessions. Task graphs rerun only unfinished tasks. Interrupted mutations review
-the saved worktree against its plan before any generator retry; mismatches stop
-with a diagnostic. Preserve failed/interrupted worktrees and evidence.
+config, and workflow. `--repair` re-baselines blocked gates; a missing session
+falls back to a fresh one. A non-PASS review or tester verdict edited while
+parked becomes the first fix round's feedback. Task graphs rerun only unfinished
+tasks. Interrupted mutations review the saved worktree against its plan before
+any generator retry; mismatches stop with a diagnostic. Preserve
+failed/interrupted worktrees and evidence.
 
 
 Status shows received SDK turns, tokens, and USD cost; verbose lists results

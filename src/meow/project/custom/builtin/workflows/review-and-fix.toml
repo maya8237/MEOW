@@ -3,7 +3,7 @@ description = "Review existing code, fix findings until review passes, then run 
 [[steps]]
 id = "rounds"
 loop = [
-  { id = "fix", uses = "builtin.generate", when = "round > 1" },
+  { id = "fix", uses = "builtin.generate", when = "round > 1 or feedback" },
   { id = "verify", uses = "builtin.verify", when = "checks_configured" },
   { id = "review", uses = "builtin.review", when = "steps.verify.status != 'FAIL'" },
 ]

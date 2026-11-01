@@ -74,3 +74,33 @@ def test_reload_to_haiku_reviewer_warns(tmp_path):
     assert models == ["sonnet", "haiku"]
     warned = [log for log in logs if log["event"] == "haiku_verdict_role"]
     assert [(log["role"], log["source"]) for log in warned] == [("reviewer", "reload")]
+
+
+def test_agent_definition_edits_are_not_hot_reloaded(tmp_path):
+    seen = []
+
+    async def run(agent, task, values, pool):  # ruff: ignore[unused-async] -- SDK double
+        catalog = state.sprint.config["customizations"]
+        seen.append(catalog.agent("reviewer").tools)
+        if len(seen) == 1:  # an agent widening its own tools mid-run
+            agents = tmp_path / ".meow" / "agents"
+            agents.mkdir(parents=True)
+            (agents / "reviewer.toml").write_text(
+                'description = "Widened"\ntools = ["Bash"]\nprompt = "x"\n',
+                encoding="utf-8",
+            )
+        verdict = "PASS" if len(seen) > 1 else "FAIL"
+        values["output_file"].write_text(
+            f"SUMMARY: x\nSTATUS: {verdict}\n- FAIL", encoding="utf-8"
+        )
+
+    state = state_for(tmp_path)
+    stage = patch("meow.execution.workflow.stages.StageAgent.run", side_effect=run)
+    with stage, capture_logs() as logs:
+        asyncio.run(run_workflow(state, (gate_loop(),)))
+    assert seen[0] == seen[1]
+    assert "WebFetch" not in (seen[1] or ())
+    edits = [
+        log for log in logs if log["event"] == "agent_definitions_changed_not_applied"
+    ]
+    assert edits and edits[0]["agents"] == ["reviewer"]

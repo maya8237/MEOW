@@ -288,18 +288,36 @@ def test_planless_run_requires_the_review_fixer_session(tmp_path):
     assert "session_fallback" not in store.load(record.id).results
 
 
-def test_resume_after_manual_verdict_edit_keeps_the_edited_verdict(tmp_path):
+def test_resume_after_manual_verdict_edit_fixes_from_the_edited_verdict(tmp_path):
     store, record = _record(tmp_path)
     verdict = tmp_path / "plan-test.md"
     verdict.write_text("SUMMARY: ok\nSTATUS: PASS\n", encoding="utf-8")
     store.transition(record.id, "generator_started")
     store.transition(record.id, "tester_finished")
-    verdict.write_text("SUMMARY: ok\nSTATUS: FAIL\n", encoding="utf-8")
+    verdict.write_text("SUMMARY: login breaks\nSTATUS: FAIL\n", encoding="utf-8")
+    later = time.time() + 60
+    os.utime(verdict, (later, later))  # edited after the last checkpoint
     with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
-    assert run.await_args.kwargs["resume_at"] == "review"
-    assert run.await_args.kwargs["plan_file"] == tmp_path / "plan.md"
+    kwargs = run.await_args.kwargs
+    assert kwargs["resume_at"] == "review"
+    assert "login breaks" in kwargs["resume_feedback"]
     assert "STATUS: FAIL" in verdict.read_text(encoding="utf-8")
+    assert store.load(record.id).results["resume_feedback"] == {"files": [str(verdict)]}
+
+
+def test_verdicts_untouched_since_the_checkpoint_are_not_feedback(tmp_path):
+    store, record = _record(tmp_path)
+    verdict = tmp_path / "plan-test.md"
+    verdict.write_text("SUMMARY: x\nSTATUS: FAIL\n", encoding="utf-8")
+    earlier = time.time() - 60
+    os.utime(verdict, (earlier, earlier))
+    store.transition(record.id, "generator_started")
+    store.transition(record.id, "tester_finished")
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 0
+    assert run.await_args.kwargs["resume_feedback"] == ""
+    assert "resume_feedback" not in store.load(record.id).results
 
 
 def test_repair_rebaselines_a_changed_plan(tmp_path, capsys):
