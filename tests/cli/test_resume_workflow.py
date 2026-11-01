@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 import subprocess
 from unittest.mock import AsyncMock, patch
 
@@ -14,7 +15,11 @@ from meow.project.custom.workflows import fingerprint
 
 
 def setup_workflow(tmp_path):
-    subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
+    template = tmp_path.parent / "resume-workflow-template"
+    if not template.exists():
+        template.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "dev"], cwd=template, check=True)
+    shutil.copytree(template, tmp_path, dirs_exist_ok=True)
     directory = tmp_path / ".meow" / "workflows"
     directory.mkdir(parents=True)
     path = directory / "audit.toml"

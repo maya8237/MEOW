@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -26,14 +27,18 @@ SLACK = 50
 
 
 def _repo(tmp_path):
-    subprocess.run(["git", "init", "-q", "-b", "dev", str(tmp_path)], check=True)
-    for key, value in (("user.name", "T"), ("user.email", "t@example.com")):
-        subprocess.run(["git", "-C", str(tmp_path), "config", key, value], check=True)
-    (tmp_path / ".meow").mkdir()
-    (tmp_path / ".meow" / "config.toml").write_text("", encoding="utf-8")
-    (tmp_path / ".gitignore").write_text(".meow/\n.worktrees/\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
-    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "init"], check=True)
+    template = tmp_path.parent / "exit-code-repo-template"
+    if not template.exists():
+        template.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "dev"], cwd=template, check=True)
+        (template / ".meow").mkdir()
+        (template / ".meow" / "config.toml").write_text("", encoding="utf-8")
+        (template / ".gitignore").write_text(".meow/\n.worktrees/\n", encoding="utf-8")
+        for key, value in (("user.name", "T"), ("user.email", "t@example.com")):
+            subprocess.run(["git", "config", key, value], cwd=template, check=True)
+        subprocess.run(["git", "add", "."], cwd=template, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=template, check=True)
+    shutil.copytree(template, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 

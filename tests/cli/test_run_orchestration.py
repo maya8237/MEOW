@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -35,18 +36,21 @@ def parse(*argv: str):
 
 
 @pytest.fixture
-def repo(tmp_path):
+def repo(tmp_path, tmp_path_factory):
     """A clean one-commit git repository."""
+    template = tmp_path_factory.getbasetemp() / "orchestration-repo-template"
+    if not template.exists():
+        template.mkdir()
+        git(template, "init", "-q")
+        git(template, "config", "user.name", "Test")
+        git(template, "config", "user.email", "test@example.com")
+        (template / ".gitignore").write_text(
+            ".meow/*\n!.meow/\n!.meow/config.toml\n", encoding="utf-8"
+        )
+        git(template, "add", ".gitignore")
+        git(template, "commit", "-qm", "initial")
     path = tmp_path / "repo"
-    path.mkdir()
-    git(path, "init", "-q")
-    git(path, "config", "user.name", "Test")
-    git(path, "config", "user.email", "test@example.com")
-    (path / ".gitignore").write_text(
-        ".meow/*\n!.meow/\n!.meow/config.toml\n", encoding="utf-8"
-    )
-    git(path, "add", ".gitignore")
-    git(path, "commit", "-qm", "initial")
+    shutil.copytree(template, path)
     return path
 
 

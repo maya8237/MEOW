@@ -45,6 +45,9 @@ exclude = [
 [project.optional-dependencies]
 dev = ["pytest", "pytest-xdist", "ruff==0.16.9"]
 
+[tool.pytest.ini_options]
+addopts = ["-n", "auto", "--dist", "worksteal"]
+
 [tool.ruff]
 line-length = 88
 src = ["src"]

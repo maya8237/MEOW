@@ -1,5 +1,6 @@
 """Verified runs deliver only when the caller opted into a safe context."""
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -24,20 +25,27 @@ def git(directory: Path, *args: str) -> str:
 
 
 def repository(tmp_path: Path) -> tuple[Path, Path]:
+    template = tmp_path.parent / "delivery-repository-template"
+    template_repo = template / "repo"
+    template_remote = template / "remote.git"
+    if not template_repo.exists():
+        template_repo.mkdir(parents=True)
+        git(template_repo, "init", "-q")
+        git(template_repo, "config", "user.name", "Test")
+        git(template_repo, "config", "user.email", "test@example.com")
+        (template_repo / "file.txt").write_text("before", encoding="utf-8")
+        (template_repo / ".gitignore").write_text(
+            ".meow/*\n!.meow/\n!.meow/config.toml\n", encoding="utf-8"
+        )
+        git(template_repo, "add", "file.txt", ".gitignore")
+        git(template_repo, "commit", "-qm", "initial")
+        git(template_repo, "init", "-q", "--bare", "../remote.git")
+        git(template_repo, "remote", "add", "origin", "../remote.git")
     repo = tmp_path / "repo"
     remote = tmp_path / "remote.git"
-    repo.mkdir()
-    git(repo, "init", "-q")
-    git(repo, "config", "user.name", "Test")
-    git(repo, "config", "user.email", "test@example.com")
-    (repo / "file.txt").write_text("before", encoding="utf-8")
-    (repo / ".gitignore").write_text(
-        ".meow/*\n!.meow/\n!.meow/config.toml\n", encoding="utf-8"
-    )
-    git(repo, "add", "file.txt", ".gitignore")
-    git(repo, "commit", "-qm", "initial")
-    git(repo, "init", "-q", "--bare", str(remote))
-    git(repo, "remote", "add", "origin", str(remote))
+    shutil.copytree(template_repo, repo)
+    shutil.copytree(template_remote, remote)
+    git(repo, "remote", "set-url", "origin", str(remote))
     return repo, remote
 
 
