@@ -69,8 +69,17 @@ Use `/meow:onboard` to inspect or override settings and enable optional features
 meow --update
 ```
 
-This installs the newest stable release from PyPI (`meow --update --latest-pypi`, `--beta` or `--version X` select others). See the [CLI guide](CLI.md#common-options)
-for runtime handling, update checks, and editable-install migration.
+This is the recommended update path for an installed MEOW setup. `meow -u` is
+the short alias. It installs the newest stable release from PyPI, verifies the
+wheel, updates the managed runtime, launcher, and Claude plugin, and retains
+your configuration and caches. (`--latest-pypi`, `--beta`, or `--version X`
+select other releases.)
+
+`pip install -U meow-harness` only upgrades the package in the Python
+environment targeted by that `pip`; it does not replace the managed MEOW
+runtime or launcher. Use pip directly only for a deliberately pip-managed or
+development environment. See the [CLI guide](CLI.md#common-options) for more
+details.
 
 ## Uninstall
 

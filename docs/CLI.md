@@ -37,12 +37,16 @@ other commands work directly or through `%meow`/`!meow`.
 All public commands accept `--work-dir PATH` (`-d`); native helpers also accept
 `--working-dir`. Artifacts default to `.meow/plans/` unless `docs_dir` is set.
 
-`meow --update` (`-u`) installs the newest stable release on PyPI, never
-a branch tip (`--latest-pypi`: newest beta or stable; `--beta`: newest beta;
-`--version X.Y.Z[bN]`: exactly that version, even older; at most one); it cannot accompany a project command. It installs that version's
+`meow --update` (`-u`) is the recommended way to update an installed MEOW
+setup. It installs the newest stable release on PyPI, never a branch tip
+(`--latest-pypi`: newest beta or stable; `--beta`: newest beta;
+`--version X.Y.Z[bN]`: exactly that version, even older; at most one); it
+cannot accompany a project command. It installs that version's
 checksum-verified wheel from the package index into a venv built by the newest
 Python 3.12+ found. The installer registers the plugin before switching
 launchers in `~/.meow/bin`; config, caches, and earlier runtimes are retained.
+By contrast, `pip install -U meow-harness` upgrades only the Python environment
+that pip targets and does not update the managed runtime or launcher.
 Failures return nonzero. Keep runtimes used by workers/schedules. Rerun the installer
 for setup prompts or editable-install migration; remove obsolete launchers shadowing PATH.
 After installing, it lists the onboarding options added since the previous
