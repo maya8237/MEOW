@@ -23,6 +23,7 @@ from meow.project.command_detection import (
 )
 from meow.project.config import _merge_config, config_paths
 from meow.project.config_files import GENERATED_SKILL_PATHS
+from meow.project.custom.flat_skills import local_skill_paths
 from meow.project.custom.legacy import legacy_layout
 from meow.project.repos import remember
 
@@ -160,10 +161,19 @@ def repair_boundary(root: Path) -> bool:
     return True
 
 
+def generated_paths(root: Path) -> tuple[str, ...]:
+    """Every personal or generated skill folder: legacy plugins and local skills."""
+    return (*GENERATED_SKILL_PATHS, *local_skill_paths(Path(root)))
+
+
+def _legacy_present(root: Path) -> bool:
+    return any((root / rel).exists() for rel in GENERATED_SKILL_PATHS)
+
+
 def untrack_generated(root: Path) -> list[str]:
     """Stop tracking generated skill folders (files stay on disk); names removed."""
     root = Path(root)
-    listed = _git(root, "ls-files", "-z", "--", *GENERATED_SKILL_PATHS)
+    listed = _git(root, "ls-files", "-z", "--", *generated_paths(root))
     if listed is None or listed.returncode or not listed.stdout:
         return []
     names = [name for name in listed.stdout.split("\0") if name]
@@ -171,17 +181,25 @@ def untrack_generated(root: Path) -> list[str]:
     return names if removed is not None and removed.returncode == 0 else []
 
 
+def _unignored_locals(root: Path) -> list[str]:
+    return [
+        f"local skill {rel} is not ignored by git; run: meow sync"
+        for rel in local_skill_paths(root)
+        if _ignored(root, f"{rel}/.meow-managed") is False
+    ]
+
+
 def generated_problems(root: Path) -> list[str]:
     """Read-only twin of `protect_generated`: what it would fix."""
     root = Path(root)
-    if not any((root / rel).exists() for rel in GENERATED_SKILL_PATHS):
+    if not any((root / rel).exists() for rel in generated_paths(root)):
         return []
     if not _in_git_repo(root):
         return []
-    found = []
-    if not _text_boundary_ok(root):
+    found = _unignored_locals(root)
+    if _legacy_present(root) and not _text_boundary_ok(root):
         found.append(".gitignore: MEOW's rules for personal/linked skills are missing")
-    listed = _git(root, "ls-files", "--", *GENERATED_SKILL_PATHS)
+    listed = _git(root, "ls-files", "--", *generated_paths(root))
     if listed is not None and listed.stdout.strip():
         found.append("generated skill folders are tracked by git; run: meow sync")
     return found
@@ -194,12 +212,12 @@ def protect_generated(root: Path) -> list[str]:
     never touched; sync calls it again after it creates them.
     """
     root = Path(root)
-    if not any((root / rel).exists() for rel in GENERATED_SKILL_PATHS):
+    if not any((root / rel).exists() for rel in generated_paths(root)):
         return []
     if not _in_git_repo(root):
         return []
     changed = []
-    if repair_boundary(root):
+    if _legacy_present(root) and repair_boundary(root):
         changed.append(".gitignore: restored MEOW's rules (personal and linked skills)")
     untracked = untrack_generated(root)
     if untracked:

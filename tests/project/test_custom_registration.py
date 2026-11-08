@@ -314,3 +314,53 @@ def test_commit_worktree_never_commits_generated_skills(project):
     tracked = _git(project, "ls-files").stdout.split()
     assert "real.txt" in tracked
     assert GENERATED not in tracked
+
+
+def _local_copy(project: Path) -> str:
+    rel = ".claude/skills/mine/SKILL.md"
+    write(project / rel, "---\nname: mine\ndescription: Mine.\n---\n")
+    write(project / ".claude/skills/mine/.meow-managed", "local\n")
+    return rel
+
+
+def test_published_local_skill_is_untracked_and_never_committed(project):
+    from meow.execution.delivery import commit_worktree
+    from meow.project.onboarding import protect_generated
+
+    rel = _local_copy(project)
+    _git(project, "add", "-f", ".claude/skills/mine")
+    assert any("stopped tracking" in line for line in protect_generated(project))
+    assert _git(project, "ls-files", rel).stdout == ""
+
+    write(project / "real.txt", "y")
+    commit_worktree(project, ["-m", "work"])
+    tracked = _git(project, "ls-files").stdout.split()
+    assert "real.txt" in tracked
+    assert rel not in tracked
+
+
+def test_shared_project_skill_is_left_tracked(project):
+    from meow.project.onboarding import protect_generated
+
+    rel = ".claude/skills/team/SKILL.md"
+    write(project / rel, "x")
+    write(project / ".claude/skills/team/.meow-managed", "project\n")
+    _git(project, "add", "-f", ".claude/skills/team")
+    assert protect_generated(project) == []
+    assert _git(project, "ls-files", rel).stdout.strip() == rel
+
+
+def test_check_reports_local_skill_not_ignored(project):
+    from meow.project.onboarding import generated_problems
+
+    _local_copy(project)
+    assert any("not ignored" in line for line in generated_problems(project))
+
+
+def test_flat_local_skill_does_not_rewrite_gitignore(project):
+    from meow.project.onboarding import protect_generated
+
+    _local_copy(project)
+    (project / ".gitignore").write_text(".meow/\n", encoding="utf-8")
+    protect_generated(project)
+    assert (project / ".gitignore").read_text(encoding="utf-8") == ".meow/\n"

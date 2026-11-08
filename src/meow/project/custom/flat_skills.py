@@ -168,6 +168,17 @@ def _write_exclude(project_dir: Path, names: list[str]) -> None:
         path.write_text(new, encoding="utf-8")
 
 
+def local_skill_paths(project_dir: Path) -> list[str]:
+    """Repo-relative folders of local skills MEOW published (never shared)."""
+    root = skills_root("local", project_dir)
+    folders = sorted(root.iterdir()) if root.is_dir() else []
+    return [
+        f".claude/skills/{folder.name}"
+        for folder in folders
+        if folder.is_dir() and _owner(folder) == "local"
+    ]
+
+
 def publish_native(scope: str, project_dir: Path, user_dir: Path) -> list[str]:
     """Publish the scope's own-folder skills; for callers without a loaded config."""
     wanted = native_wanted(scope, project_dir, user_dir)
