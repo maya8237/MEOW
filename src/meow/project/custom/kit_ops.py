@@ -33,6 +33,8 @@ from meow.project.custom.kits import (
 )
 
 SCOPES = ("local", "project", "user")
+# The startup hook is killed after 30 s, and one kit may need three git calls.
+STARTUP_TIMEOUT = 8
 
 
 def config_file(scope: str, project_dir: Path, user_dir: Path) -> Path:
@@ -205,10 +207,14 @@ class Kit:
 
     spec: KitSpec
     home: Path
+    timeout: float = 120  # seconds per git call; startup passes a short one
 
     @property
     def remote(self) -> str:
         return normalize_url(self.spec.url)
+
+    def fetch(self, sha: str) -> Path:
+        return fetch(self.home, self.remote, sha, self.timeout)
 
     def root(self, sha: str) -> Path:
         return kit_dir(self.home, self.remote, sha)
@@ -233,10 +239,10 @@ def _settle_hooks(kit: Kit, entry: dict, accept: bool) -> list[str]:
     """The kit is current; apply or keep holding hook changes from earlier."""
     sha = entry["sha"]
     held = entry.get("hooks_sha") or sha
-    fetch(kit.home, kit.remote, sha)
+    kit.fetch(sha)
     if held == sha:
         return []
-    fetch(kit.home, kit.remote, held)
+    kit.fetch(held)
     if accept or kit.spec.auto_accept_hooks:
         entry["hooks_sha"] = sha
         return [f"kit {kit.spec.name}: hook changes accepted"]
@@ -248,7 +254,7 @@ def _advance(kit: Kit, entry: dict, latest: str, accept: bool) -> list[str]:
     spec = kit.spec
     old = entry.get("sha")
     held = entry.get("hooks_sha") or old
-    root = fetch(kit.home, kit.remote, latest)
+    root = kit.fetch(latest)
     validate_kit(root, spec.only)
     entry["sha"] = latest
     unchanged = held is not None and tree(kit.root(held) / "hooks") == (
@@ -257,7 +263,7 @@ def _advance(kit: Kit, entry: dict, latest: str, accept: bool) -> list[str]:
     if old is None or unchanged or _trusts_hooks(spec, accept):
         entry["hooks_sha"] = latest
         return [f"kit {spec.name}: updated to {latest[:7]}"]
-    fetch(kit.home, kit.remote, held)
+    kit.fetch(held)
     entry["hooks_sha"] = held
     return [
         f"kit {spec.name}: updated to {latest[:7]}",
@@ -270,14 +276,16 @@ def refresh_kit(
 ) -> tuple[dict, list[str]]:
     """Compare one kit with its remote; with `apply`, move to the new commit."""
     spec, remote = kit.spec, kit.remote
-    latest = remote_sha(remote, spec.ref)
+    latest = remote_sha(remote, spec.ref, kit.timeout)
     entry = {**(entry or {}), "url": remote, "ref": spec.ref or "HEAD"}
     entry["checked_at"] = time.time()
     if latest == entry.get("sha"):
+        entry.pop("latest", None)
         return entry, _settle_hooks(kit, entry, accept)
     if not apply:
-        shown = (entry.get("sha") or "none")[:7]
-        return entry, [f"kit {spec.name}: update available ({shown} -> {latest[:7]})"]
+        entry["latest"] = latest  # remembered, so `list` and startup can say so
+        return entry, []
+    entry.pop("latest", None)
     return entry, _advance(kit, entry, latest, accept)
 
 
@@ -290,6 +298,7 @@ class Plan:
     manual: bool  # an explicit `meow kits update`, not the startup check
     apply: bool = True
     accept: bool = False
+    timeout: float = 120
 
     def due(self, spec: KitSpec, entry: dict | None) -> bool:
         if self.manual or entry is None:
@@ -301,13 +310,14 @@ class Plan:
 
 
 def _check(spec: KitSpec, entry: dict | None, plan: Plan) -> tuple[dict | None, list]:
+    kit = Kit(spec, plan.home, plan.timeout)
     if entry and entry.get("sha"):  # the pinned copy must be on disk
-        fetch(plan.home, normalize_url(spec.url), entry["sha"])
+        kit.fetch(entry["sha"])
     if plan.pinned(spec, entry) or not plan.due(spec, entry):
         return None, []
     follows_lock = spec.scope == "project" and entry is not None
     apply = plan.apply and (plan.manual or not follows_lock)
-    return refresh_kit(Kit(spec, plan.home), entry, apply=apply, accept=plan.accept)
+    return refresh_kit(kit, entry, apply=apply, accept=plan.accept)
 
 
 def _safe_check(spec: KitSpec, entry: dict | None, plan: Plan):
@@ -315,7 +325,9 @@ def _safe_check(spec: KitSpec, entry: dict | None, plan: Plan):
     try:
         return _check(spec, entry, plan)
     except KitUnavailable as exc:
-        return None, [f"kit {spec.name}: offline ({exc})"] if plan.manual else []
+        return None, [
+            f"kit {spec.name}: could not reach or fetch ({exc})"
+        ] * plan.manual
     except ValueError as exc:
         return None, [f"kit {spec.name}: {exc}"]
 
@@ -327,6 +339,30 @@ def _select(project_dir: Path, user_dir: Path, names: tuple[str, ...]):
     if missing := sorted(set(names) - {s.name for s in specs}):
         raise ValueError(f"no such kit: {', '.join(missing)}")
     return specs
+
+
+def _available(spec: KitSpec, entry: dict) -> list[str]:
+    latest, sha = entry.get("latest"), entry.get("sha")
+    if not latest or latest == sha:
+        return []
+    return [
+        f"kit {spec.name}: update available ({(sha or 'none')[:7]} -> {latest[:7]})"
+    ]
+
+
+def pending_updates(project_dir: Path, user_dir: Path) -> list[str]:
+    """Updates found earlier and not applied, for the startup message."""
+    lines = []
+    for spec in collect_specs(project_dir, user_dir):
+        entry = _entry(spec, project_dir, user_dir)
+        latest, sha = entry.get("latest"), entry.get("sha")
+        if not latest or not sha or latest == sha:
+            continue
+        action = f"run `meow kits update {spec.name}`"
+        if spec.scope == "project":
+            action += f", review it, and commit {spec.config_file.name}"
+        lines.append(f"  {spec.name}: {sha[:7]} -> {latest[:7]}; {action}")
+    return ["Kit updates available:", *lines] if lines else []
 
 
 def _write_rev(spec: KitSpec, entry: dict, old: dict | None, plan: Plan) -> list[str]:
@@ -355,6 +391,7 @@ def _visit(project_dir: Path, user_dir: Path, names: tuple[str, ...], plan: Plan
         if entry is not None:
             locks[spec.scope][spec.name] = entry
             lines += _write_rev(spec, entry, before[spec.name], plan)
+            lines += _available(spec, entry) if plan.manual and not plan.apply else []
         lines += found
     for scope, data in locks.items():
         write_lock(lock_file(scope, project_dir, user_dir), data)
@@ -380,7 +417,8 @@ def auto_update(
     project_dir: Path, user_dir: Path, now: float | None = None
 ) -> list[str]:
     """Startup check: only kits whose timer ran out; project kits just report."""
-    plan = Plan(kits_home(user_dir), time.time() if now is None else now, False)
+    now = time.time() if now is None else now
+    plan = Plan(kits_home(user_dir), now, False, timeout=STARTUP_TIMEOUT)
     return _visit(project_dir, user_dir, (), plan)
 
 
@@ -453,6 +491,8 @@ def listing(project_dir: Path, user_dir: Path) -> list[str]:
         sha = entry.get("sha")
         fetched = bool(sha) and kit_dir(home, normalize_url(spec.url), sha).is_dir()
         state = f"@ {sha[:7]}" if fetched else "not downloaded"
+        if entry.get("latest") and entry["latest"] != sha:
+            state += f" (update available: {entry['latest'][:7]})"
         hold = " (hook changes on hold)" if entry.get("hooks_sha") != sha else ""
         head = f"{spec.name:<20} {spec.scope:<8} {spec.update:<7}"
         lines.append(f"{head} {state}{hold}  {spec.url}")
@@ -475,4 +515,12 @@ def show(project_dir: Path, user_dir: Path, name: str) -> list[str]:
     raise ValueError(f"no kit named {name!r}")
 
 
-__all__ = ["auto_update", "install", "listing", "show", "uninstall", "update"]
+__all__ = [
+    "auto_update",
+    "install",
+    "listing",
+    "pending_updates",
+    "show",
+    "uninstall",
+    "update",
+]

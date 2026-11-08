@@ -98,20 +98,20 @@ def kit_dir(home: Path, url: str, sha: str) -> Path:
     return home / f"{leaf}-{hashlib.sha1(url.encode()).hexdigest()[:10]}" / sha
 
 
-def _download(url: str, sha: str, repo: Path) -> None:
+def _download(url: str, sha: str, repo: Path, timeout: float) -> None:
     """Shallow-fetch one commit; hosts that refuse that get a full clone."""
     try:
         repo.mkdir()
         _git(["init", "--quiet"], cwd=repo)
-        _git(["fetch", "--quiet", "--depth", "1", url, sha], cwd=repo, timeout=300)
+        _git(["fetch", "--quiet", "--depth", "1", url, sha], cwd=repo, timeout=timeout)
         _git(["checkout", "--quiet", "--detach", "FETCH_HEAD"], cwd=repo)
     except KitUnavailable:
         shutil.rmtree(repo, ignore_errors=True)
-        _git(["clone", "--quiet", "--no-checkout", url, str(repo)], timeout=300)
+        _git(["clone", "--quiet", "--no-checkout", url, str(repo)], timeout=timeout)
         _git(["checkout", "--quiet", "--detach", sha], cwd=repo, timeout=120)
 
 
-def fetch(home: Path, url: str, sha: str) -> Path:
+def fetch(home: Path, url: str, sha: str, timeout: float = 300) -> Path:
     """Store `sha` of `url` in the cache (a no-op when already there)."""
     target = kit_dir(home, url, sha)
     if target.is_dir():
@@ -120,7 +120,7 @@ def fetch(home: Path, url: str, sha: str) -> Path:
     work = Path(tempfile.mkdtemp(prefix=".fetch-", dir=target.parent))
     try:
         repo = work / "repo"
-        _download(url, sha, repo)
+        _download(url, sha, repo, timeout)
         shutil.rmtree(repo / ".git")
         for path in repo.rglob("*"):
             if path.is_symlink():

@@ -66,8 +66,23 @@ copy keeps working. `meow kits update` always checks.
 Skills, agents, and workflows are prompts and apply automatically. Hooks are
 shell commands, so a changed hook stays on the old commit until you run
 `meow kits update NAME --accept`, which prints what it would run
-(`auto_accept_hooks = true` skips this). Project kits never move on their
-own: startup reports "update available".
+(`auto_accept_hooks = true` skips this).
+
+### Project kits
+
+Project kits never move on their own. When a check finds a newer commit MEOW
+remembers it: `meow kits list` shows `update available`, and every Claude Code
+start prints a `Kit updates available:` block until it is applied. Then one
+person updates the pin:
+
+```bash
+meow kits update team-kit   # rewrites rev in .meow/config.toml, applies hook changes
+git diff .meow/config.toml  # review what moved, then commit it
+```
+
+Teammates receive the new `rev` with the commit. CI or a pre-push hook can run
+`meow kits update --check`, which prints pending updates and exits 1 when any
+kit is behind.
 
 ## Skills for built-in roles
 

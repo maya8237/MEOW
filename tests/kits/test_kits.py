@@ -137,9 +137,13 @@ def test_project_kit_is_pinned_by_rev_in_config(make_kit, project, user_dir):
     first = spec.rev
     assert first and f'rev = "{first}"' in (project / ".meow/config.toml").read_text()
     new = repo.write({"agents/security-reviewer.toml": AGENT.format(d="v2")})
-    assert kit_ops.auto_update(project, user_dir, now=10**12) == [
-        f"kit {spec.name}: update available ({first[:7]} -> {new[:7]})"
+    assert kit_ops.auto_update(project, user_dir, now=10**12) == []  # report only
+    assert kit_ops.pending_updates(project, user_dir) == [
+        "Kit updates available:",
+        f"  {spec.name}: {first[:7]} -> {new[:7]}; run `meow kits update "
+        f"{spec.name}`, review it, and commit config.toml",
     ]
+    assert f"update available: {new[:7]}" in kit_ops.listing(project, user_dir)[0]
     assert (
         load_config(project)["customizations"].agent("security-reviewer").description
         == "from kit"
@@ -147,6 +151,7 @@ def test_project_kit_is_pinned_by_rev_in_config(make_kit, project, user_dir):
     lines = kit_ops.update(project, user_dir)
     assert f'rev = "{new}"' in (project / ".meow/config.toml").read_text()
     assert any("commit" in line for line in lines)
+    assert kit_ops.pending_updates(project, user_dir) == []  # cleared once applied
     assert (
         load_config(project)["customizations"].agent("security-reviewer").description
         == "v2"
@@ -197,7 +202,7 @@ def test_offline_auto_update_is_silent(make_kit, project, user_dir):
     add(project, user_dir, repo)
     repo.path.rename(repo.path.with_name("gone"))
     assert kit_ops.auto_update(project, user_dir, now=10**12) == []
-    assert "offline" in kit_ops.update(project, user_dir)[0]
+    assert "could not reach" in kit_ops.update(project, user_dir)[0]
     assert load_config(project)["customizations"].skills  # cached copy keeps working
 
 

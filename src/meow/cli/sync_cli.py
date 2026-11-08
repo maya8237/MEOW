@@ -27,6 +27,9 @@ def _auto(project_dir: Path, event: str) -> None:
         message = auto_sync_message(
             custom, project_dir, user_config_path().parent, migrated
         )
+        if event == "SessionStart":
+            notice = kit_ops.pending_updates(project_dir, user_config_path().parent)
+            message = "\n".join(part for part in (message, *notice) if part) or None
     except Exception as exc:  # reported, never raised: startup must go on
         message = f"MEOW could not sync customizations: {exc}"
     output = hook_output(message, event)

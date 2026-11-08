@@ -46,8 +46,11 @@ def _update(args, project_dir: Path, user_dir: Path) -> None:
         project_dir, user_dir, tuple(args.names), check=args.check, accept=args.accept
     )
     print("\n".join(lines))
-    if not args.check:
-        _sync(project_dir, user_dir)
+    if args.check:  # for CI or a pre-push hook: nonzero when a kit is behind
+        if any("update available" in line for line in lines):
+            raise SystemExit(1)
+        return
+    _sync(project_dir, user_dir)
 
 
 def _uninstall(args, project_dir: Path, user_dir: Path) -> None:

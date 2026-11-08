@@ -123,3 +123,34 @@ def test_session_start_sync_updates_due_kits_but_post_tool_use_does_not(
     _auto(project, "SessionStart")
     assert "kit demo: updated to" in capsys.readouterr().out
     assert "newer" in (Path.home() / ".claude/skills/s/SKILL.md").read_text()
+
+
+def test_check_exits_nonzero_when_a_kit_is_behind(repo, project, user_dir, capsys):
+    run(project, "add", str(repo.path), "--yes", "--name", "demo")
+    run(project, "update", "--check")  # current: exit 0
+    repo.write({"skills/s/SKILL.md": SKILL.format(name="s", body="newer")})
+    with pytest.raises(SystemExit) as stopped:
+        run(project, "update", "--check")
+    assert stopped.value.code == 1
+    assert "update available" in capsys.readouterr().out
+
+
+def test_startup_keeps_reminding_until_a_project_kit_is_updated(
+    repo, project, user_dir, capsys
+):
+    from meow.cli.sync_cli import _auto
+
+    run(project, "add", str(repo.path), "--yes", "--name", "demo", "--scope", "project")
+    repo.write({"skills/s/SKILL.md": SKILL.format(name="s", body="newer")})
+    lock = project / ".meow/kits.lock"
+    data = json.loads(lock.read_text())
+    data["kits"]["demo"]["checked_at"] = 0
+    lock.write_text(json.dumps(data))
+    capsys.readouterr()
+    for _ in range(2):  # the second start is inside the timer, yet still reminds
+        _auto(project, "SessionStart")
+        assert "Kit updates available" in capsys.readouterr().out
+    run(project, "update", "demo")
+    capsys.readouterr()
+    _auto(project, "SessionStart")
+    assert "Kit updates available" not in capsys.readouterr().out
