@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from functools import wraps
 from pathlib import Path
@@ -187,6 +188,19 @@ def _boot_repo(working_dir: Path, *, include_gitignore: bool = True) -> None:
             ".claude/settings.local.json",
         ):
             _ensure_gitignore_entry(working_dir, entry)
+    _protect_generated_skills(working_dir)
+
+
+def _protect_generated_skills(working_dir: Path) -> None:
+    """Silently keep personal/linked skill folders ignored and untracked."""
+    from meow.project.onboarding import protect_generated
+
+    try:
+        changed = protect_generated(working_dir)
+    except OSError:
+        return
+    for line in changed:
+        print(f"meow: {line}", file=sys.stderr)
 
 
 def _require_source_worktree(

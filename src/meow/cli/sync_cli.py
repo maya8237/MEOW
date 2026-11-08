@@ -8,7 +8,9 @@ from meow.project.custom.registration import (
     auto_sync_message,
     check_registration,
     hook_output,
+    ignore_problems,
     old_layout,
+    repair_gitignore,
     sync_registration,
 )
 from meow.project.custom.sync import SYNC_SCOPES
@@ -37,7 +39,10 @@ def sync_command(args, project_dir: Path) -> None:
     custom = load_config(project_dir)["customizations"]
     user_dir = user_config_path().parent
     if args.check:
-        problems = check_registration(custom, project_dir, user_dir)
+        problems = [
+            *ignore_problems(project_dir),
+            *check_registration(custom, project_dir, user_dir),
+        ]
         for problem in problems:
             print(problem)
         if problems:
@@ -45,7 +50,9 @@ def sync_command(args, project_dir: Path) -> None:
         print("Custom skills and hooks are registered with Claude Code.")
         return
     scopes = SYNC_SCOPES if args.scope == "all" else (args.scope,)
-    fixed = [*migrated, *sync_registration(custom, project_dir, user_dir, scopes)]
+    fixed = [*migrated, *repair_gitignore(project_dir)]
+    fixed += sync_registration(custom, project_dir, user_dir, scopes)
+    fixed += repair_gitignore(project_dir)  # folders created just now
     for line in fixed:
         print(line)
     print(

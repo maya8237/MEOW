@@ -1,12 +1,15 @@
 """Isolated task workers and incremental integration into one checkout."""
 
 import asyncio
+import contextlib
 import re
 import shutil
 import subprocess
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+from meow.project.config_files import GENERATED_SKILL_PATHS
 
 from .integration import integrate_results
 from .model import TaskGraph, TaskSpec, normalize_path, owns
@@ -146,6 +149,8 @@ async def execute_in_worktrees(  # ruff: ignore[complex-structure, too-many-argu
             await prepare(task_dir)
         await implement(spec, task_dir)
         await _git(task_dir, "add", "-A")
+        with contextlib.suppress(Exception):  # personal skills never ship
+            await _git(task_dir, "reset", "-q", "--", *GENERATED_SKILL_PATHS)
         # NUL-separated: plain --name-only quotes non-ASCII names.
         staged = [
             name

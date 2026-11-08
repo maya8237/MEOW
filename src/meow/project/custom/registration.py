@@ -48,18 +48,32 @@ def sync_registration(
     ]
 
 
-def _repair_gitignore(project_dir: Path) -> list[str]:
-    """Restore MEOW's ignore boundary in an onboarded project, as any run would.
+def repair_gitignore(project_dir: Path) -> list[str]:
+    """Keep personal and linked skill folders ignored and untracked, as any run does.
 
-    It keeps project definitions shared and personal plugins out of git.
+    It acts once those folders exist; an onboarded project is always repaired.
     """
-    from meow.project.onboarding import CONFIG_RELPATH, boundary_ok, repair_boundary
+    from meow.project.onboarding import (
+        CONFIG_RELPATH,
+        boundary_ok,
+        protect_generated,
+        repair_boundary,
+    )
 
-    if not (project_dir / CONFIG_RELPATH).is_file() or boundary_ok(project_dir):
-        return []
-    if not repair_boundary(project_dir):
-        return []
-    return [".gitignore: restored MEOW's rules (shared definitions, personal plugins)"]
+    changed = []
+    onboarded = (project_dir / CONFIG_RELPATH).is_file()
+    if onboarded and not boundary_ok(project_dir) and repair_boundary(project_dir):
+        changed.append(
+            ".gitignore: restored MEOW's rules (shared definitions, personal plugins)"
+        )
+    return [*changed, *protect_generated(project_dir)]
+
+
+def ignore_problems(project_dir: Path) -> list[str]:
+    """What `repair_gitignore` would fix, without changing anything."""
+    from meow.project.onboarding import generated_problems
+
+    return generated_problems(project_dir)
 
 
 def auto_sync(
@@ -70,12 +84,13 @@ def auto_sync(
     One broken scope (say, malformed settings JSON) never stops the others.
     """
     project_dir = Path(project_dir)
-    attempted = [*migrated, *_repair_gitignore(project_dir)]
+    attempted = [*migrated, *repair_gitignore(project_dir)]
     for scope in SYNC_SCOPES:
         try:
             attempted += sync_registration(custom, project_dir, user_dir, (scope,))
         except (OSError, ValueError) as exc:
             attempted.append(f"{scope}: {exc}")
+    attempted += repair_gitignore(project_dir)  # folders created just now
     remaining = check_registration(custom, project_dir, user_dir)
     changed = [line for line in attempted if line not in remaining]
     return changed, remaining

@@ -262,3 +262,56 @@ def test_auto_sync_serves_hooks_from_configured_directories(project, home):
     assert entry["matcher"] == "^(?:Bash)$"
     assert "MEOW_HOOK=cfg" in entry["hooks"][0]["command"]
     assert check_registration(custom(project), project, home / ".meow") == []
+
+
+GENERATED = ".claude/skills/meow-project-linked/skills/x/SKILL.md"
+
+
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *args], cwd=root, capture_output=True, text=True, check=False
+    )
+
+
+def test_protect_generated_restores_rules_and_untracks(project):
+    from meow.project.onboarding import protect_generated
+
+    write(project / GENERATED, "x")
+    (project / ".gitignore").write_text("", encoding="utf-8")
+    _git(project, "add", "-f", GENERATED)
+    changed = protect_generated(project)
+    assert any("restored" in line for line in changed)
+    assert any("stopped tracking" in line for line in changed)
+    assert _git(project, "ls-files", GENERATED).stdout == ""
+    assert (project / GENERATED).is_file()
+    assert _git(project, "check-ignore", "-q", GENERATED).returncode == 0
+    assert protect_generated(project) == []
+
+
+def test_protect_generated_ignores_unrelated_repos(project):
+    from meow.project.onboarding import protect_generated
+
+    (project / ".gitignore").write_text("", encoding="utf-8")
+    assert protect_generated(project) == []
+    assert (project / ".gitignore").read_text(encoding="utf-8") == ""
+
+
+def test_generated_problems_reports_without_writing(project):
+    from meow.project.onboarding import generated_problems
+
+    write(project / GENERATED, "x")
+    (project / ".gitignore").write_text("", encoding="utf-8")
+    assert generated_problems(project)
+    assert (project / ".gitignore").read_text(encoding="utf-8") == ""
+
+
+def test_commit_worktree_never_commits_generated_skills(project):
+    from meow.execution.delivery import commit_worktree
+
+    (project / ".gitignore").write_text("", encoding="utf-8")
+    write(project / GENERATED, "x")
+    write(project / "real.txt", "y")
+    commit_worktree(project, ["-m", "work"])
+    tracked = _git(project, "ls-files").stdout.split()
+    assert "real.txt" in tracked
+    assert GENERATED not in tracked

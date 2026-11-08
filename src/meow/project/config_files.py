@@ -18,3 +18,10 @@ SHARED_PROJECT_PATHS = (
     ".meow/workflows",
     ".meow/hooks",
 )
+
+# Personal or generated skill plugins: ignored by git, never committed or pushed.
+GENERATED_SKILL_PATHS = (
+    ".claude/skills/meow-local",
+    ".claude/skills/meow-project-linked",
+    ".claude/skills/meow-local-linked",
+)

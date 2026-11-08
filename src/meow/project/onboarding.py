@@ -22,6 +22,7 @@ from meow.project.command_detection import (
     setup_defaults,
 )
 from meow.project.config import _merge_config, config_paths
+from meow.project.config_files import GENERATED_SKILL_PATHS
 from meow.project.custom.legacy import legacy_layout
 from meow.project.repos import remember
 
@@ -155,6 +156,56 @@ def repair_boundary(root: Path) -> bool:
     kept = [line for line in raw.splitlines() if line.strip() not in _STALE]
     path.write_bytes((newline.join([*kept, *BOUNDARY]) + newline).encode("utf-8"))
     return True
+
+
+def untrack_generated(root: Path) -> list[str]:
+    """Stop tracking generated skill folders (files stay on disk); names removed."""
+    root = Path(root)
+    listed = _git(root, "ls-files", "-z", "--", *GENERATED_SKILL_PATHS)
+    if listed is None or listed.returncode or not listed.stdout:
+        return []
+    names = [name for name in listed.stdout.split("\0") if name]
+    removed = _git(root, "rm", "-q", "--cached", "--", *names)
+    return names if removed is not None and removed.returncode == 0 else []
+
+
+def generated_problems(root: Path) -> list[str]:
+    """Read-only twin of `protect_generated`: what it would fix."""
+    root = Path(root)
+    if not any((root / rel).exists() for rel in GENERATED_SKILL_PATHS):
+        return []
+    if not _in_git_repo(root):
+        return []
+    found = []
+    if not _text_boundary_ok(root):
+        found.append(".gitignore: MEOW's rules for personal/linked skills are missing")
+    listed = _git(root, "ls-files", "--", *GENERATED_SKILL_PATHS)
+    if listed is not None and listed.stdout.strip():
+        found.append("generated skill folders are tracked by git; run: meow sync")
+    return found
+
+
+def protect_generated(root: Path) -> list[str]:
+    """Keep personal/generated skill folders out of git; returns what changed.
+
+    Acts only when one of those folders exists, so unrelated repositories are
+    never touched; sync calls it again after it creates them.
+    """
+    root = Path(root)
+    if not any((root / rel).exists() for rel in GENERATED_SKILL_PATHS):
+        return []
+    if not _in_git_repo(root):
+        return []
+    changed = []
+    if repair_boundary(root):
+        changed.append(".gitignore: restored MEOW's rules (personal and linked skills)")
+    untracked = untrack_generated(root)
+    if untracked:
+        changed.append(
+            f"stopped tracking {len(untracked)} generated skill file(s) under "
+            ".claude/skills/ (kept on disk)"
+        )
+    return changed
 
 
 def detect_lint(root: Path) -> tuple[str, str] | None:

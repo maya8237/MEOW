@@ -66,7 +66,9 @@ Agents and workflows need no registration.
 plugin runs the same sync as `meow sync --auto` when Claude Code starts and
 right after Claude edits a `.meow/`, `SKILL.md`, or `.toml` file; it also
 restores MEOW's `.gitignore` rules in an onboarded project and reports what it
-cannot fix. Run `/reload-plugins` (or restart) to load changes; commit project
+cannot fix. Plain `meow sync` and every `meow` command do the same once
+`meow-local`/`-linked` folders exist, untrack any already committed, and
+delivery never stages them. Run `/reload-plugins` (or restart) to load changes; commit project
 changes. `meow native verify` reports `skill_registration`,
 `hook_registration`, `unshared_definitions` (project folders git ignores), and
 `old_layout`.
