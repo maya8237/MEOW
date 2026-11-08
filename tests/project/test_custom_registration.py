@@ -314,3 +314,26 @@ def test_commit_worktree_never_commits_generated_skills(project):
     tracked = _git(project, "ls-files").stdout.split()
     assert "real.txt" in tracked
     assert GENERATED not in tracked
+
+
+def test_sync_command_protects_linked_folder_without_onboarding(project, home, capsys):
+    from meow.cli.parser import _build_arg_parser
+    from meow.cli.sync_cli import sync_command
+
+    (project / ".gitignore").write_text("", encoding="utf-8")
+    external = project.parent / "external"
+    skill(external, "foo")
+    write(
+        project / ".meow" / "config.local.toml",
+        f'[custom]\nskills = ["{_shell_path(external)}"]\n',
+    )
+    assert not (project / ".meow" / "config.toml").exists()
+
+    sync_command(_build_arg_parser().parse_args(["sync", "--scope", "local"]), project)
+
+    linked = ".claude/skills/meow-local-linked/skills/foo/SKILL.md"
+    assert (project / linked).is_file()
+    assert _git(project, "check-ignore", "-q", linked).returncode == 0
+    _git(project, "add", "-A")
+    assert linked not in _git(project, "ls-files").stdout.split()
+    assert "restored" in capsys.readouterr().out
