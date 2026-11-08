@@ -1,6 +1,6 @@
 ---
 name: run
-description: Use when building features, resolving one or more Jira issues, or coordinating an objective or task file into one reviewed delivery. Defaults to CLI; native execution requires an explicit request.
+description: Use when building features, resolving one or more Jira issues, or coordinating an objective or task file into one reviewed delivery. Runs natively in this session by default; CLI only when requested or required.
 ---
 
 # run
@@ -11,17 +11,19 @@ Register the scheduled automatic run now and report the returned schedule;
 do not begin the sprint or hold this session open until the time arrives.
 Dependency or install problems: [dependencies](../_shared/dependencies.md).
 
-CLI mode is the default: `meow run` owns project understanding, planning,
-implementation, verification, review, and checkpoints.
-
-## Native mode
-
-Native mode is an explicit opt-in. Read [the shared protocol](../_shared/native-mode.md),
-then follow [the native run procedure](references/native.md) for tester routing,
-checkpoints, resume checks, and finalization. Do not load these for CLI runs.
-For explicit native supervision with `--orchestrate`, follow
-[the multi-sprint procedure](references/orchestration.md) instead. Its child
+Native mode is the default: you run the sprint in this session (or fresh
+subagents) with `meow native` helpers, not a separate `meow run` process. Read
+[the shared protocol](../_shared/native-mode.md), then follow
+[the native run procedure](references/native.md) for tester routing,
+checkpoints, resume checks, and finalization.
+For multiple independent deliverables (or `--orchestrate`), follow
+[the multi-sprint procedure](references/orchestration.md); its child
 sprints remain detached CLI workers.
+
+Use CLI mode below only when the user asks for it (`meow run`, `--background`),
+for a named `--workflow`, `--test` or a configured tester, `--force-disable-tests`,
+`--tasks`/`--jql`, or when continuing a saved CLI run. Do not load the native
+files for CLI runs.
 
 ## CLI mode
 

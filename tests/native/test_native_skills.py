@@ -210,12 +210,12 @@ class SkillStructureTests(unittest.TestCase):  # ruff: ignore[too-many-public-me
         self.assertIn("Without `--test`, keep the native flow", review)
         self.assertIn("configured servers stay alive", shared)
 
-    def test_run_skill_defaults_to_cli(self):
+    def test_run_skill_defaults_to_native(self):
         run = (
             Path(__file__).resolve().parents[2] / "skills" / "run" / "SKILL.md"
         ).read_text(encoding="utf-8")
-        self.assertIn("CLI mode is the default", run)
-        self.assertIn("Native mode is an explicit opt-in", run)
+        self.assertIn("Native mode is the default", run)
+        self.assertIn("Use CLI mode below only when", run)
 
     def test_onboarding_treats_tester_as_optional(self):
         onboard = (SKILLS_DIR / "onboard" / "SKILL.md").read_text(encoding="utf-8")
