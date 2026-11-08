@@ -139,6 +139,19 @@ def release_python(release: Path) -> Path:
     return runtime / ("Scripts/python.exe" if os.name == "nt" else "bin/python3")
 
 
+def _register_plugin(plugin: Path) -> None:
+    try:
+        register_checkout_plugin(settings_path(), plugin)
+    except ValueError as exc:  # an unreadable settings file must not fail an update
+        print(f"Warning: Claude Code plugin not registered: {exc}", file=sys.stderr)
+        return
+    print(
+        f"Registered MEOW's Claude Code plugin in {settings_path()}\n"
+        f"Plugin directory: {plugin}\n"
+        "Restart Claude Code to load /meow:* skills (including /meow:run)."
+    )
+
+
 def activate(release: Path) -> None:
     """Register the plugin, then atomically select this immutable release."""
     release = release.resolve()
@@ -150,17 +163,12 @@ def activate(release: Path) -> None:
     source = release / "bin" / executable
     if not source.is_file():
         raise ValueError("MEOW release launcher is missing")
-    register_checkout_plugin(settings_path(), release / "plugin")
-    print(
-        f"Registered and enabled MEOW's Claude Code plugin in {settings_path()}\n"
-        f"Plugin directory: {release / 'plugin'}\n"
-        "Restart Claude Code to load /meow:* skills (including /meow:run)."
-    )
+    _register_plugin(release / "plugin")
     _install_launcher(source, root / "bin")
     _add_to_path(root / "bin")
     print(
-        f"Installed meow and mw commands in {root / 'bin'} and added it to PATH.\n"
-        "Open a new terminal to use them."
+        f"Installed meow and mw commands in {root / 'bin'}.\n"
+        "If this is a new install, open a new terminal to use them."
     )
     pointer = root / "current-version"
     with tempfile.NamedTemporaryFile(mode="w", dir=root, delete=False) as stream:
@@ -188,21 +196,35 @@ def _install_launcher(source: Path, bin_dir: Path) -> None:
         replace_with_retry(temporary, target)
 
 
+def _on_path(bin_dir: Path) -> bool:
+    wanted = os.path.normcase(str(bin_dir))
+    entries = os.environ.get("PATH", "").split(os.pathsep)
+    return any(
+        os.path.normcase(os.path.expandvars(entry)) == wanted for entry in entries
+    )
+
+
+def _add_to_profiles() -> None:
+    line = '\nexport PATH="$HOME/.meow/bin:$PATH"\n'
+    profiles = [Path.home() / ".profile", Path.home() / ".bashrc"]
+    if (Path.home() / ".bash_profile").exists():
+        profiles.append(Path.home() / ".bash_profile")
+    if Path(os.environ.get("SHELL", "")).name == "zsh":
+        profiles.append(Path.home() / ".zshrc")
+    for profile in profiles:
+        content = profile.read_text() if profile.exists() else ""
+        if line.strip() not in content.splitlines():
+            with profile.open("a") as stream:
+                stream.write(line)
+
+
 def _add_to_path(bin_dir: Path) -> None:
+    if _on_path(bin_dir):
+        return  # an update runs from it; leave shell profiles and PATH alone
     if os.name == "nt":
         _windows_path(bin_dir)
     else:
-        line = '\nexport PATH="$HOME/.meow/bin:$PATH"\n'
-        profiles = [Path.home() / ".profile", Path.home() / ".bashrc"]
-        if (Path.home() / ".bash_profile").exists():
-            profiles.append(Path.home() / ".bash_profile")
-        if Path(os.environ.get("SHELL", "")).name == "zsh":
-            profiles.append(Path.home() / ".zshrc")
-        for profile in profiles:
-            content = profile.read_text() if profile.exists() else ""
-            if line.strip() not in content.splitlines():
-                with profile.open("a") as stream:
-                    stream.write(line)
+        _add_to_profiles()
     os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
 
 

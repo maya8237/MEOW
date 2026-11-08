@@ -134,14 +134,17 @@ def append_plugin_dir(
     _write_settings(settings_path, data)
 
 
-def register_marketplace(
+def register_marketplace(  # ruff: ignore[too-many-arguments]
     settings_path: Path,
     marketplace_name: str,
     marketplace_dir: Path,
     *,
     relative_to: Path | None = None,
+    keep_disabled: bool = False,
 ) -> None:
     """Declare a directory marketplace in a settings file and enable its plugin.
+
+    With `keep_disabled`, a plugin the user turned off stays off.
 
     Claude Code loads project and local plugins this way; the plugin-dir
     environment variable is not read from project settings.
@@ -159,10 +162,14 @@ def register_marketplace(
     entry = _entry_for(Path(marketplace_dir).expanduser().resolve(), base)
     wanted = {"source": {"source": "directory", "path": entry}}
     plugin_key = f"{marketplace_name}@{marketplace_name}"
-    if known.get(marketplace_name) == wanted and enabled.get(plugin_key) is True:
+    disabled = keep_disabled and enabled.get(plugin_key) is False
+    if known.get(marketplace_name) == wanted and (
+        disabled or enabled.get(plugin_key) is True
+    ):
         return
     known[marketplace_name] = wanted
-    enabled[plugin_key] = True
+    if not disabled:
+        enabled[plugin_key] = True
     data["extraKnownMarketplaces"] = known
     data["enabledPlugins"] = enabled
     _write_settings(settings_path, data)
@@ -230,4 +237,4 @@ def register_checkout_plugin(settings_path: Path, checkout: Path) -> None:
         name = json.loads(manifest.read_text(encoding="utf-8"))["name"]
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise ValueError(f"{manifest} is missing or has no marketplace name") from exc
-    register_marketplace(settings_path, str(name), checkout)
+    register_marketplace(settings_path, str(name), checkout, keep_disabled=True)
