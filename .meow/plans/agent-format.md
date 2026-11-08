@@ -141,7 +141,7 @@ registration".
 - Adds the opt-in `claude_agent = true` (TOML) and `meow-claude-agent: true`
   (`.md`). Default is off for now; later flip it so renderable agents sync and
   `claude_agent = false` opts out (decision 4).
-- Adds the standalone-render check to `meow agents validate`.
+- Done. The check runs at config load; `meow agents` has no `validate` action.
 - Tests: every builtin either renders standalone or names its blocking variable
   (golden list); unresolved placeholders fail.
 - Risk: low. Nothing is written to `.claude/` yet.

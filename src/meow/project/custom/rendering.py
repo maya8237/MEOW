@@ -160,8 +160,12 @@ def unknown_variables(agent: CustomAgent) -> list[str]:
 
 
 def validate_agents(catalog) -> None:
+    from meow.project.custom.standalone import standalone_problems
+
     for agent in catalog.catalog:
         problems = unknown_variables(agent)
+        if agent.claude_agent and not problems:
+            problems = standalone_problems(agent)
         for name in agent.agents:
             try:
                 catalog.agent(name)

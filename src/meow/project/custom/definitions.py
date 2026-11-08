@@ -58,6 +58,7 @@ class CustomAgent:
     agents: tuple[str, ...] = ()  # delegates, by agent name
     session: str = "one-shot"
     lint_on_edit: bool = False
+    claude_agent: bool = False  # opted in to Claude Code (see `standalone.py`)
     ejected_from: str | None = None
     variants: Mapping[str, str] = field(default_factory=dict, hash=False)
     fragments: Mapping[str, str] = field(default_factory=dict, hash=False)
