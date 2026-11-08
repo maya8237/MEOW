@@ -6,14 +6,14 @@ Research and plan only; based on `claude/awesome-mendel-btcxyb` (kits). Touches 
 ## Recommendation
 
 Keep TOML as the canonical format for agents that MEOW workflows run. Do not
-convert the builtins. Make **publishing**, not the source format, the portable
+convert the builtins. Make **syncing**, not the source format, the portable
 step: MEOW generates sanitized `.md` subagents from any definition marked
-portable, the same way `flat_skills.py` publishes skills today. `.md` stays a
+portable, the same way `flat_skills.py` syncs skills today. `.md` stays a
 first-class input, gains the flat MEOW keys, and is never more than a subset.
 
 That is option D with A's generator, and it changes D in three ways:
 
-1. **Publish by generating, never by copying.** Copying a kit's `.md` would pass
+1. **Sync by generating, never by copying.** Copying a kit's `.md` would pass
    `hooks`, `mcpServers`, and `permissionMode` straight to Claude Code. A
    generator writes only allowlisted keys, so the allowlist is enforced in code
    (AGENTS.md: permissions stay code-owned).
@@ -28,18 +28,18 @@ That is option D with A's generator, and it changes D in three ways:
    collide with the user's own agents.
 
 Your lean ("converting everything loses features") is right. Where D goes wrong
-is making `.md` the publishing path. Copying `.md` is the unsafe path, and
+is making `.md` the sync path. Copying `.md` is the unsafe path, and
 rendering is what makes an agent portable.
 
 ## Options
 
-| | Source of truth | Variants / fragments | session, lint_on_edit, agents | Placeholders standalone | Back-compat | Security of published agent | Cost |
+| | Source of truth | Variants / fragments | session, lint_on_edit, agents | Placeholders standalone | Back-compat | Security of synced agent | Cost |
 |---|---|---|---|---|---|---|---|
-| A TOML + generated `.md` | TOML | TOML | TOML | rendered at publish | full | allowlist in generator | low |
+| A TOML + generated `.md` | TOML | TOML | TOML | rendered at sync | full | allowlist in generator | low |
 | B `.md` + rich frontmatter | `.md` | YAML maps (needs PyYAML or a bigger parser) | frontmatter | literal unless rendered | dual loader forever | copy leaks unknown future keys | high |
 | C `.md` body + sibling TOML | both | sidecar TOML | sidecar TOML | literal unless rendered | dual loader; two files per agent drift apart | same as B | medium-high |
-| D status quo + `.md` equal + publish `.md` | either | TOML only | TOML only (or lost) | literal | full | copy is unsafe unless filtered | medium |
-| **E (rec.) A + flat MEOW keys in `.md` + plugin builtins** | either; TOML for workflow agents | TOML only (`.md` with them is rejected) | TOML keys; `.md` uses `meow-session`, `meow-lint-on-edit`, `meow-agents` | rendered with a standalone context; publishing fails on any unresolved placeholder | full | generator allowlist; plugin strips risky fields | medium |
+| D status quo + `.md` equal + sync `.md` | either | TOML only | TOML only (or lost) | literal | full | copy is unsafe unless filtered | medium |
+| **E (rec.) A + flat MEOW keys in `.md` + plugin builtins** | either; TOML for workflow agents | TOML only (`.md` with them is rejected) | TOML keys; `.md` uses `meow-session`, `meow-lint-on-edit`, `meow-agents` | rendered with a standalone context; an unresolved placeholder skips the agent | full | generator allowlist; plugin strips risky fields | medium |
 
 ## Answers
 
@@ -51,14 +51,14 @@ Claude Code ignores them. The `meow-` prefix avoids clashes with fields Claude
 Code adds later (a future `agents` or `session` key, for example).
 
 **2. Placeholders.** MEOW renders the body in its own runs, as it does today.
-Publishing renders with a **standalone context**:
+Syncing renders with a **standalone context**:
 - `active_dir` becomes "the current working directory".
 - `{{#if}}` values that are not set are false.
 - Fragments are inlined.
 - An optional `[variants] standalone` prompt wins when present.
 - Any other variable that is still needed (`plan_file`, `verdict_format`,
   `docs_dir`...) skips that agent with a note naming the variable; `meow agents
-  validate` lists it. An explicit `publish = true` on such an agent is an error.
+  validate` lists it. An explicit `sync = true` on such an agent is an error.
 
 Builtins:
 - **explorer**: worth building. One placeholder; good as a read-only Haiku
@@ -68,17 +68,17 @@ Builtins:
 - **planner**: skip. Its value is MEOW's plan format and the run that follows.
 
 Make it **opt-in** through `[claude].agents = ["explorer", ...]` in config
-(default empty, or `["explorer"]`; see decisions). Every published agent costs
+(default empty, or `["explorer"]`; see decisions). Every synced agent costs
 description tokens in every session.
 
 **3. Back-compat.** Nothing is deprecated. The TOML schema and loader are
-unchanged; `publish` is the only new key and it is optional. `.md` files keep
+unchanged; `sync` is the only new key and it is optional. `.md` files keep
 loading; the `meow-*` keys are optional too. Eject still emits TOML. Drift and
 `ejected_from` keep hashing the shipped TOML. Diff, show, and validate gain one
-thing: validate checks that each published agent renders standalone. Generated
+thing: validate checks that each synced agent renders standalone. Generated
 files carry `meow-managed`, are ignored by discovery (no import loop when
 `[custom].agents` points at `.claude/agents`), and are never ejected or diffed.
-`meow agents show NAME --published` prints the generated `.md`.
+`meow agents show NAME --synced` prints the generated `.md`.
 
 **4. Security.** The generator writes only these keys: `name`, `description`,
 `tools`, `disallowedTools`, `model`, `skills`, `color`, `maxTurns`, `effort`,
@@ -90,19 +90,19 @@ it is an error.
 Kit agents must declare `tools`; otherwise they inherit every tool, MCP tools
 included. Approval follows the kit rule "prompts apply, commands wait":
 - Changes to prose and description apply automatically, like skills.
-- Changes that widen `tools`, drop a `disallowedTools` entry, or first publish a
+- Changes that widen `tools`, drop a `disallowedTools` entry, or first sync a
   kit agent stay on hold until `meow kits update NAME --accept`. This reuses the
   `hooks_sha` mechanism as `agents_sha`.
 - Project kits are pinned and reviewed in a commit, so no extra hold.
 
-**5. Collisions and ownership.** Each scope publishes to a MEOW subfolder:
+**5. Collisions and ownership.** Each scope syncs to a MEOW subfolder:
 - project: `.claude/agents/meow/`, committed
 - local: `.claude/agents/meow-local/`, listed in `.git/info/exclude`
 - user: `~/.claude/agents/meow/`
 
 Claude Code scans recursively, and with duplicate names it picks by filesystem
 read order. So sync checks for a name clash across the whole tree, not by file
-name. If the user owns an agent with that `name`, sync skips publishing it and
+name. If the user owns an agent with that `name`, sync skips it and
 reports the clash; it never overwrites. Ownership comes from `meow-managed:
 <scope>` plus `meow-source: <path>@<sha256>`. Sync rewrites or removes only
 files that carry the key. A generated file that was hand-edited (hash mismatch)
@@ -110,7 +110,7 @@ is reported, then replaced, and the report names the source file to edit
 instead. A `# generated by meow; edit <source>` comment goes in the frontmatter.
 
 **6. Tests and docs.** See the phases. Docs stay under 200 lines: a new
-`## Publishing to Claude Code` section in `docs/CUSTOM.md` (around 25 lines),
+`## Claude Code registration` entry for agents in `docs/CUSTOM.md` (around 25 lines),
 the `.md` key list in `docs/WORKFLOWS.md#agents`, and the `[claude]` key in
 `INTEGRATIONS.md`. Replace the CUSTOM.md sentence "Agents and workflows need no
 registration".
@@ -119,9 +119,9 @@ registration".
 
 **P0: verify assumptions (no code).**
 - MEOW's SDK runs leave `setting_sources` unset (SDK 0.2.172 default `None`), so
-  published agents never appear inside MEOW runs. Add a test that pins this.
+  synced agents never appear inside MEOW runs. Add a test that pins this.
 - Confirm that a new subfolder under an existing `.claude/agents/` is
-  live-watched. Otherwise the first publish prints "restart Claude Code once".
+  live-watched. Otherwise the first sync prints "restart Claude Code once".
 - Confirm the plugin `agents/` folder loads from MEOW's install path.
 
 **P1: `.md` parity for flat keys.**
@@ -138,18 +138,19 @@ registration".
 - New `project/custom/standalone.py` (pure; render-only). Reuses `templates.py`
   and `rendering.py` with a standalone value set. Not added to `prompts.py`,
   which keeps run context.
-- Adds the `publish` key (TOML) and the `meow-publish` key (`.md`). The default
-  is true for both; `false` opts out. Agents that cannot render are skipped.
-- Adds the publish check to `meow agents validate`.
+- Adds the opt-out `sync = false` (TOML) and `meow-sync: false` (`.md`). Without
+  it, every agent that renders standalone syncs. Agents that cannot render are
+  skipped with a note.
+- Adds the standalone-render check to `meow agents validate`.
 - Tests: every builtin either renders standalone or names its blocking variable
   (golden list); unresolved placeholders fail.
 - Risk: low. Nothing is written to `.claude/` yet.
 
-**P3: publish user, project, and local agents.**
+**P3: sync user, project, and local agents.**
 - New `project/custom/agent_sync.py`, mirroring `flat_skills.py`: marker key,
   atomic write, collision report, `.git/info/exclude` for local.
 - Wired into `meow sync` and `--auto`.
-- `meow native verify` gains `agent_registration` and warns when published
+- `meow native verify` gains `agent_registration` and warns when synced
   descriptions pass about 10k tokens.
 - Discovery skips files that carry `meow-managed`.
 - Tests: new `test_custom_agent_sync.py` (allowlist; never overwrites a user
@@ -169,7 +170,7 @@ registration".
 - Risk: description-budget creep; keep the list short.
 
 **P5: kit agents** (after the kits branch merges; touches `kit_ops.py`).
-- Kit agents publish through P3 with `tools` required.
+- Kit agents sync through P3 with `tools` required.
 - `agents_sha` holds widened tools.
 - `meow kits update --accept` shows the tool diff.
 - Tests go in `tests/kits/`.
@@ -181,7 +182,7 @@ no variants or fragments; refused otherwise.
 
 Each phase runs `python -m pytest -q`, `ruff check .`, `ruff format --check .`.
 AGENTS.md "Role prose" and "Definitions replace whole files" stay true. Add one
-invariant line: "Published Claude Code agents are generated by
+invariant line: "Synced Claude Code agents are generated by
 `agent_sync`; only allowlisted frontmatter is written".
 
 ## Decisions (approved)
@@ -189,11 +190,10 @@ invariant line: "Published Claude Code agents are generated by
 1. E over D: TOML stays the source; generate `.md`, never copy; no rich YAML.
 2. `[claude].agents` defaults to `["explorer"]`.
 3. No standalone reviewer for now; revisit after P4.
-4. `publish` defaults to true for TOML and `.md`; agents that cannot render
-   standalone are skipped with a note; `publish = false` opts out.
+4. No per-agent switch to opt in: agents that render standalone sync, the rest
+   are skipped with a note; `sync = false` / `meow-sync: false` opts out.
 5. Allowlist: your list plus `effort`; never hooks, permissions, or MCP servers.
-6. Kit agents must declare `tools`; widening and first publish wait for `--accept`.
+6. Kit agents must declare `tools`; widening and first sync wait for `--accept`.
 7. Keep source names; skip and report on a clash, never overwrite.
 8. Unknown `meow-*` keys are errors.
-
-Start with P1.
+Start with P1 (done).
