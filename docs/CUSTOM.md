@@ -44,34 +44,35 @@ and resolved built-in skills.
 
 ### Claude Code registration
 
-Custom skills also load in Claude Code as namespaced plugin skills
-(`/meow-local:NAME`, `/meow-project:NAME`, `/meow-user:NAME`). Each scope has
-one plugin folder; put new skills in its `skills/`:
+Write skills in the scope's folder; `meow sync` publishes each one as
+`<name>/` beside your own skills, where Claude Code watches for changes, so it
+works as `/NAME` without a restart (`/reload-plugins` rescans if needed):
 
-| Scope | Plugin folder | How Claude Code loads it |
+| Scope | Write skills in | Published to |
 |---|---|---|
-| Project | `.claude/skills/meow-project/` (tracked) | In place from the project's `.claude/skills/` |
-| Local | `.claude/skills/meow-local/` (git-ignored) | In place, as above |
-| User | `~/.meow/plugin/` | `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json` |
+| Project | `.claude/skills/meow-project/skills/` | `.claude/skills/NAME/` (commit it) |
+| Local | `.claude/skills/meow-local/skills/` | `.claude/skills/NAME/` (excluded via `.git/info/exclude`) |
+| User | `~/.meow/plugin/skills/` | `~/.claude/skills/NAME/` |
 
-Project and local plugins need no marketplace or settings entry, so checkouts
-and worktrees cannot collide; start Claude Code from the repository root.
-Skills from other `[custom].skills` directories are copied into a generated,
-git-ignored `meow-<scope>-linked` folder beside the plugin (`~/.meow/linked/plugin`
-for the user), kept apart so rebuilding never touches hand-made skills. A rebuild keeps the
-previous copies in `.skills-previous`; migrated old layouts are renamed `*.bak`.
-Agents and workflows need no registration.
+Skills from other `[custom].skills` directories are published the same way.
+Each published folder holds a `.meow-managed` marker: sync replaces or removes
+only folders it marked, and reports (never overwrites) a skill of yours with
+the same name. Hooks go into the settings file Claude Code reads for the scope:
+`.claude/settings.json`, `.claude/settings.local.json`, `~/.claude/settings.json`;
+other settings and hooks there are kept. Agents and workflows need no
+registration.
 
-`meow sync` writes the manifests (and the user's plugin-dir entry). The MEOW
-plugin runs the same sync as `meow sync --auto` when Claude Code starts and
-right after Claude edits a `.meow/`, `SKILL.md`, or `.toml` file; it also
-restores MEOW's `.gitignore` rules in an onboarded project and reports what it
-cannot fix. Plain `meow sync` and every `meow` command do the same once
-`meow-local`/`-linked` folders exist, untrack any already committed, and
-delivery never stages them. Run `/reload-plugins` (or restart) to load changes; commit project
-changes. `meow native verify` reports `skill_registration`,
-`hook_registration`, `unshared_definitions` (project folders git ignores), and
-`old_layout`.
+`meow sync` does all of this. The MEOW plugin runs it as `meow sync --auto`
+when Claude Code starts and right after Claude edits a `.meow/`, `SKILL.md`, or
+`.toml` file; it also restores MEOW's `.gitignore` rules in an onboarded project
+and reports what it cannot fix. Plain `meow sync` and every `meow` command do
+the same once `meow-local`/`-linked` folders exist, untrack any already
+committed, and delivery never stages them. Commit project changes.
+`meow native verify` reports `skill_registration`, `hook_registration`,
+`unshared_definitions` (project folders git ignores), and `old_layout`.
+Updating MEOW migrates older installs on the next start: skills and hooks move
+to these locations, and the user plugin-directory entry in
+`~/.claude/settings.json` is removed.
 
 Earlier versions used `.meow/plugin/`, `.meow/local/plugin/`, and `meow-*`
 directory marketplaces, which clashed across checkouts ("Marketplace file not

@@ -134,6 +134,30 @@ def append_plugin_dir(
     _write_settings(settings_path, data)
 
 
+def remove_plugin_dir(
+    settings_path: Path, plugin_dir: Path, *, separator: str | None = None
+) -> None:
+    """Drop `plugin_dir` from the plugin-dir setting; other entries stay."""
+    settings_path = Path(settings_path)
+    separator = separator or os.pathsep
+    data = _load_settings(settings_path)
+    env = _settings_env(data, settings_path)
+    entries = _plugin_entries(env, settings_path, separator)
+    wanted = path_key(Path(plugin_dir).expanduser().resolve())
+    kept = [entry for entry in entries if _entry_path(entry, None) != wanted]
+    if len(kept) == len(entries):
+        return
+    if kept:
+        env[PLUGIN_DIRS_ENV] = separator.join(kept)
+    else:
+        env.pop(PLUGIN_DIRS_ENV, None)
+    if env:
+        data["env"] = env
+    else:
+        data.pop("env", None)
+    _write_settings(settings_path, data)
+
+
 def register_marketplace(  # ruff: ignore[too-many-arguments]
     settings_path: Path,
     marketplace_name: str,

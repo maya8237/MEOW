@@ -37,7 +37,7 @@ def skills_command(args, project_dir: Path) -> None:
     for line in fixed:
         print(line)
     print(
-        "Synced custom skills; restart Claude Code to load them."
+        "Synced custom skills; run /reload-plugins if Claude Code does not list them."
         if fixed
         else "Custom skills were already registered."
     )

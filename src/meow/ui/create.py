@@ -42,8 +42,9 @@ def create_definition(working_dir: Path, kind: str, payload: dict) -> dict:
     item = _source(kind, items, source)
     if kind == "skills":
         folder = _skill_folder(scope, working_dir)
-        _register_skill_plugin(scope, working_dir)
-        return _create_skill((folder, scope), name, description, item)
+        created = _create_skill((folder, scope), name, description, item)
+        _publish_skill(scope, working_dir)
+        return created
     directory = conventional_dir(scope, kind, working_dir, user_config_path().parent)
     text = _with_identity(item["text"], name, description)
     return _create_file(directory / f"{name}.toml", kind, scope, text)
@@ -154,13 +155,13 @@ def _skill_folder(scope: str, working_dir: Path) -> Path:
     return folder
 
 
-def _register_skill_plugin(scope: str, working_dir: Path) -> None:
-    """Make the scope's skill plugin load when Claude Code launches."""
+def _publish_skill(scope: str, working_dir: Path) -> None:
+    """Publish the new skill where Claude Code loads it, with no restart."""
     try:
         register_scope_plugin(scope, working_dir, user_config_path().parent)
     except (OSError, ValueError) as exc:
         raise CreateError(
-            422, f"Could not register the {scope} skill plugin: {exc}"
+            422, f"Created the skill but could not publish it to Claude Code: {exc}"
         ) from exc
 
 

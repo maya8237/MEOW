@@ -316,9 +316,8 @@ def test_create_skill_lands_in_project_plugin_and_registers_it(running, project)
     assert status == HTTPStatus.CREATED
     plugin = project / ".claude" / "skills" / "meow-project"
     assert Path(body["file"]) == plugin / "skills" / "journal" / "SKILL.md"
-    manifest = json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())
-    assert manifest["name"] == "meow-project"
-    # Claude Code loads `.claude/skills/` plugins in place: no settings entry.
+    # Published natively, so Claude Code picks it up without a restart.
+    assert (project / ".claude" / "skills" / "journal" / "SKILL.md").is_file()
     assert not (project / ".claude" / "settings.json").exists()
     skills = {item["name"]: item for item in build_catalog(project)["skills"]}
     assert skills["journal"]["description"] == "Keeps a journal."
@@ -394,7 +393,9 @@ def test_create_at_user_scope(running, project, tmp_path, monkeypatch):
     assert (home / "workflows" / "shared-flow.toml").is_file()
 
 
-def test_create_user_skill_registers_user_plugin(tmp_path, monkeypatch):
+def test_create_user_skill_is_published_to_the_user_claude_folder(
+    tmp_path, monkeypatch
+):
     home = tmp_path / "home" / ".meow"
     monkeypatch.setattr(create_module, "user_config_path", lambda: home / "config.toml")
     fake_user = tmp_path / "user"
@@ -408,8 +409,7 @@ def test_create_user_skill_registers_user_plugin(tmp_path, monkeypatch):
 
     assert status == HTTPStatus.CREATED
     assert (home / "plugin" / "skills" / "shared" / "SKILL.md").is_file()
-    settings = json.loads((fake_user / ".claude" / "settings.json").read_text())
-    assert settings["env"]["CLAUDE_CODE_PLUGIN_DIRS"] == str(home / "plugin")
+    assert (fake_user / ".claude" / "skills" / "shared" / "SKILL.md").is_file()
 
 
 def test_create_in_chosen_repo(running, project, tmp_path, monkeypatch):

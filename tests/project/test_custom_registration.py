@@ -95,19 +95,22 @@ def test_auto_sync_fixes_every_scope(project, home):
 
     message = auto_sync_message(custom(project), project, home / ".meow")
 
-    assert message and "/reload-plugins" in message
-    assert "Commit the .claude/skills/meow-project/" in message
+    assert message and "Claude Code" in message
     assert "need attention" not in message
-    # Project and local plugins load from `.claude/skills/`: no marketplaces.
-    assert not (project / ".claude" / "settings.json").exists()
-    assert not (project / ".claude" / "settings.local.json").exists()
-    user = settings(home / ".claude" / "settings.json")["env"]
-    assert str((home / ".meow" / "plugin").resolve()) in user["CLAUDE_CODE_PLUGIN_DIRS"]
-    for root in plugins(project, home).values():
-        assert (root / ".claude-plugin" / "plugin.json").is_file()
-        assert (root / "hooks" / "hooks.json").is_file()
-    linked = project / ".claude/skills/meow-project-linked/skills/linked-one"
-    assert (linked / "SKILL.md").is_file()
+    # Skills and hooks land where Claude Code watches them: no restart.
+    for scope, base in {
+        "local": project / ".claude" / "skills",
+        "project": project / ".claude" / "skills",
+        "user": home / ".claude" / "skills",
+    }.items():
+        assert (base / f"s-{scope}" / "SKILL.md").is_file()
+    assert (project / ".claude/skills/linked-one/SKILL.md").is_file()
+    for path in (
+        project / ".claude" / "settings.json",
+        project / ".claude" / "settings.local.json",
+        home / ".claude" / "settings.json",
+    ):
+        assert "MEOW_HOOK=guard" in path.read_text()
     assert check_registration(custom(project), project, home / ".meow") == []
     assert auto_sync_message(custom(project), project, home / ".meow") is None
 
@@ -125,9 +128,8 @@ def test_auto_sync_picks_up_later_edits(project, home):
     message = auto_sync_message(custom(project), project, home / ".meow")
 
     assert message and "out of date" in message
-    hooks = (plugins(project, home)["project"] / "hooks" / "hooks.json").read_text()
-    assert '"matcher": "^(?:Bash)$"' in hooks
-    assert (project / ".claude/skills/meow-project-linked/skills/linked-two").is_dir()
+    assert '"matcher": "^(?:Bash)$"' in (project / ".claude/settings.json").read_text()
+    assert (project / ".claude/skills/linked-two/SKILL.md").is_file()
 
 
 def test_auto_sync_restores_the_gitignore_boundary(project, home):
@@ -152,8 +154,7 @@ def test_one_broken_scope_does_not_stop_the_others(project, home):
     message = auto_sync_message(custom(project), project, home / ".meow")
 
     assert message and "not valid JSON" in message
-    manifest = plugins(project, home)["project"] / ".claude-plugin" / "plugin.json"
-    assert manifest.is_file()
+    assert (project / ".claude/skills/team/SKILL.md").is_file()
 
 
 def test_ignored_project_definitions_are_reported(project, home):
@@ -255,9 +256,7 @@ def test_auto_sync_serves_hooks_from_configured_directories(project, home):
 
     auto_sync_message(custom(project), project, home / ".meow")
 
-    hooks = json.loads(
-        (plugins(project, home)["project"] / "hooks" / "hooks.json").read_text()
-    )
+    hooks = json.loads((project / ".claude" / "settings.json").read_text())
     (entry,) = hooks["hooks"]["PreToolUse"]
     assert entry["matcher"] == "^(?:Bash)$"
     assert "MEOW_HOOK=cfg" in entry["hooks"][0]["command"]

@@ -1,12 +1,13 @@
 """Register hook definitions with Claude Code so they run in any session.
 
-Like custom skills, each scope's hooks are served by its Claude plugin (the
-conventional `plugin/` folder): its `hooks/hooks.json` gets one entry per
-definition that runs the definition's command the way MEOW would, so it works
-without MEOW installed. Entries are marked by `MEOW_HOOK=`; any other entries
-in the file are kept. SDK-only definitions stay with MEOW: those limited to
-roles, and the `sprint_*` lifecycle events. Claude Code picks the plugin up on
-its next launch.
+Each scope's hooks go into the Claude Code settings file it reads directly and
+watches, so they apply without a restart: `.claude/settings.json` (project),
+`.claude/settings.local.json` (local), and `~/.claude/settings.json` (user).
+One entry per definition runs the definition's command the way MEOW would, so
+it works without MEOW installed. Entries are marked by `MEOW_HOOK=`; every
+other setting and hook in the file is kept. SDK-only
+definitions stay with MEOW: those limited to roles, and the `sprint_*`
+lifecycle events. Plugin `hooks.json` files earlier versions wrote are cleaned up.
 """
 
 import json
@@ -14,16 +15,11 @@ import math
 import shlex
 from pathlib import Path
 
+from meow.project.claude_settings import _load_settings, _write_settings
 from meow.project.custom.definitions import CustomHook
 from meow.project.custom.hook_files import SDK_EVENTS
 from meow.project.custom.sources import git_ignored, scope_plugin_dir
-from meow.project.custom.sync import (
-    CHECK,
-    SHARED,
-    SYNC_SCOPES,
-    register_plugin,
-    scope_plugin_registered,
-)
+from meow.project.custom.sync import CHECK, SHARED, SYNC_SCOPES
 
 _DESCRIPTION = "MEOW hook definitions."
 # Every generated command sets this; it marks MEOW's entries in a shared file.
@@ -155,45 +151,68 @@ def _remove(path: Path, label: str, apply: bool) -> list[str]:
     return [f"{label}: no hook definitions left; removed"]
 
 
-def _update(
-    where: tuple[tuple[str, Path, Path], Path, str],
-    config: dict,
-    register: bool,
-    mode: str,
+def _settings_file(scope: str, project_dir: Path) -> Path:
+    if scope == "user":
+        return Path.home() / ".claude" / "settings.json"
+    name = "settings.json" if scope == "project" else "settings.local.json"
+    return Path(project_dir) / ".claude" / name
+
+
+def _settings_problems(
+    target: tuple[str, Path, Path], chosen: list[CustomHook], mode: str
 ) -> list[str]:
-    """Write `config` (and register the plugin when `register`) unless checking."""
-    target, path, label = where
-    text = _text(config)
-    found = []
-    if not path.is_file() or path.read_text(encoding="utf-8") != text:
-        found.append(f"{label}: out of date")
-    if register and not scope_plugin_registered(target):
-        found.append(f"{label}: not registered with Claude Code")
+    """Project and local hooks live in Claude Code's own settings file.
+
+    A project or local plugin folder in `.claude/skills/` is not loaded, so its
+    `hooks.json` never ran. Entries MEOW generated are replaced in place; every
+    other setting and hook in the file is kept.
+    """
+    scope, project_dir, _ = target
+    path = _settings_file(scope, project_dir)
+    label = f"{scope} hooks ({path})"
+    if chosen and scope == "project" and git_ignored(project_dir, path):
+        return [f"{label}: skipped, ignored by git so it would not be shared"]
+    data = _load_settings(path)
+    current = data.get("hooks", {})
+    if not isinstance(current, dict):
+        raise ValueError(f"{path} must hold a `hooks` object; it was not changed")
+    wanted = merged_config({"hooks": current}, chosen)["hooks"]
+    found = [] if wanted == current else [f"{label}: out of date"]
     if mode != CHECK and found:
-        if register:
-            register_plugin(target)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-    return found
+        if wanted:
+            data["hooks"] = wanted
+        else:
+            data.pop("hooks", None)
+        if data:
+            _write_settings(path, data)
+        else:
+            path.unlink()
+    return found + _old_plugin_hooks(target, mode)
+
+
+def _old_plugin_hooks(target: tuple[str, Path, Path], mode: str) -> list[str]:
+    """Drop MEOW's entries from the plugin hooks file earlier versions wrote."""
+    scope, project_dir, user_dir = target
+    path = _file(scope, project_dir, user_dir)
+    existing = _existing(path)
+    if not _has_ours(existing):
+        return []
+    label = f"{scope} hooks ({path}): old plugin location"
+    config = merged_config(existing, [])
+    if _empty(config):
+        return _remove(path, label, mode != CHECK)
+    if mode != CHECK:
+        path.write_text(_text(config), encoding="utf-8")
+    return [label]
 
 
 def _scope_problems(
     target: tuple[str, Path, Path], hooks: tuple[CustomHook, ...], mode: str
 ) -> list[str]:
     """Describe (and unless `CHECK`, fix) what keeps a scope's hooks from running."""
-    scope, project_dir, user_dir = target
+    scope = target[0]
     chosen = [h for h in hooks if h.source.scope == scope and syncable(h)]
-    path = _file(scope, project_dir, user_dir)
-    label = f"{scope} hooks ({path})"
-    existing = _existing(path)
-    if not chosen and not _has_ours(existing):
-        return []
-    if chosen and scope == "project" and git_ignored(project_dir, path.parent):
-        return [f"{label}: skipped, ignored by git so it would not be shared"]
-    config = merged_config(existing, chosen)
-    if _empty(config):
-        return _remove(path, label, mode != CHECK)
-    return _update((target, path, label), config, bool(chosen), mode)
+    return _settings_problems(target, chosen, mode)
 
 
 def check_hook_registration(

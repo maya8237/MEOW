@@ -32,7 +32,7 @@ def hooks_command(args, project_dir: Path) -> None:
     for line in fixed:
         print(line)
     print(
-        "Synced hooks; restart Claude Code to load them."
+        "Synced hooks; run /reload-plugins if Claude Code does not list them."
         if fixed
         else "Hooks were already registered."
     )

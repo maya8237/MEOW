@@ -134,12 +134,11 @@ For project scope, confirm files are committable with `git status`.
 After creating, changing, or removing any skill or hook (or a `[custom]` skills
 entry), always run `meow sync` yourself before reporting; the automatic hook can
 miss edits. `meow sync --check` only reports. Tell the user to run
-`/reload-plugins`; if sync newly added the user plugin dir to
-`~/.claude/settings.json`, they must restart Claude Code once (it reads that
-setting at launch).
+`/reload-plugins` if the new item is not listed yet. No restart is needed:
+skills and hooks are published where Claude Code watches them.
 
 Report paths, scope, overrides, selection/config changes, the `meow sync`
-result, and verification. Skills appear as `/meow-<scope>:<name>`.
+result, and verification. Skills appear as `/<name>`.
 Role-limited and `sprint_*` hooks stay in MEOW's SDK agents and need no sync.
 Commit only when the user requests it. Remove a file to remove a definition;
 remove a configured directory entry to unregister its contents. Follow the

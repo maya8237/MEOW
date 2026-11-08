@@ -1,33 +1,25 @@
-"""Register custom skills with Claude Code so they load as normal plugin skills.
+"""Make custom skills load in Claude Code, live and in every scope.
 
-Each scope's plugin folder (`scope_plugin_dir`) is a Claude plugin. Skills
-from `[custom].skills` directories live anywhere, so they are copied into a
-generated `linked` plugin beside it (git-ignored, rebuilt per user). Project
-and local plugins sit in the project's `.claude/skills/`, which Claude Code
-loads in place, so they need only their manifest; the user plugin is listed in
-`CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`. Claude Code loads
-changes at its next start or `/reload-plugins`.
+Skills from a scope's conventional folder and `[custom].skills` directories are
+published as `<name>/` beside the user's own skills (`flat_skills`), which
+Claude Code watches, so a new skill needs no restart. Earlier versions served
+the user scope through a plugin directory in `~/.claude/settings.json`; that
+entry is removed so skills do not load twice.
 """
 
-import shutil
 from pathlib import Path
 
-from meow.project.claude_settings import (
-    append_plugin_dir,
-    marketplace_registered,
-    plugin_dir_registered,
-)
+from meow.project.claude_settings import plugin_dir_registered, remove_plugin_dir
 from meow.project.custom.definitions import CustomSkill
-from meow.project.custom.plugin import ensure_plugin_root, plugin_name
-from meow.project.custom.sources import (
-    git_ignored,
-    linked_plugin_dir,
-    scope_plugin_dir,
-    source_files,
+from meow.project.custom.flat_skills import (
+    FLAT_SCOPES,
+    configured_wanted,
+    flat_problems,
+    publish_native,
 )
+from meow.project.custom.sources import scope_plugin_dir
 
-SYNC_SCOPES = ("local", "project", "user")
-_MANIFEST = Path(".claude-plugin") / "plugin.json"
+SYNC_SCOPES = FLAT_SCOPES
 
 # Sync modes: report only, or fix.
 CHECK, SHARED = "check", "shared"
@@ -38,122 +30,23 @@ def _user_settings() -> Path:
     return Path.home() / ".claude" / "settings.json"
 
 
-def _root(scope: str, project_dir: Path, user_dir: Path, linked: bool) -> Path:
-    where = linked_plugin_dir if linked else scope_plugin_dir
-    return where(scope, project_dir, user_dir)
+def register_scope_plugin(scope: str, project_dir: Path, user_dir: Path) -> None:
+    """Publish a scope's own-folder skills so Claude Code loads them now."""
+    publish_native(scope, project_dir, user_dir)
 
 
-def register_scope_plugin(
-    scope: str, project_dir: Path, user_dir: Path, *, linked: bool = False
-) -> None:
-    """Create a scope's skill plugin and make Claude Code load it."""
-    register_plugin((scope, project_dir, user_dir), linked=linked)
-
-
-def register_plugin(target: Target, *, linked: bool = False) -> None:
-    """`register_scope_plugin` for a `(scope, project_dir, user_dir)` target."""
-    scope, project_dir, user_dir = target
-    root = _root(scope, project_dir, user_dir, linked)
-    ensure_plugin_root(root, scope, linked=linked)
-    if scope == "user":
-        append_plugin_dir(_user_settings(), root)
-
-
-def _registered(target: Target, linked: bool) -> bool:
-    """Whether Claude Code would load the plugin.
-
-    A plugin folder in `.claude/skills/` loads once it has its manifest; the
-    user plugin must also be listed as a plugin directory (or, as earlier
-    versions wrote, an enabled marketplace) in the user settings file.
-    """
-    scope, project_dir, user_dir = target
-    root = _root(scope, project_dir, user_dir, linked)
-    if not (root / _MANIFEST).is_file():
-        return False
-    if scope != "user":
-        return True
+def _plugin_dir_leftover(user_dir: Path, mode: str) -> list[str]:
+    """Drop the user plugin directories earlier versions registered."""
     settings = _user_settings()
-    return plugin_dir_registered(settings, root) or marketplace_registered(
-        settings, plugin_name(scope, linked=linked), root.parent
-    )
-
-
-def scope_plugin_registered(target: Target) -> bool:
-    """Whether Claude Code is set to load the scope's own plugin."""
-    return _registered(target, False)
-
-
-def linked_skills(
-    skills: tuple[CustomSkill, ...], scope: str, project_dir: Path, user_dir: Path
-) -> list[CustomSkill]:
-    """Winning skills a scope's config entries add, outside its own plugin."""
-    native = scope_plugin_dir(scope, project_dir, user_dir) / "skills"
-    return [
-        skill
-        for skill in skills
-        if skill.source.scope == scope
-        and skill.source.config_file is not None
-        and skill.directory.parent.resolve() != native.resolve()
-    ]
-
-
-def _tree(directory: Path, skill: CustomSkill | None = None) -> dict[str, bytes]:
-    files = (
-        source_files(directory, skill.source) if skill else sorted(directory.rglob("*"))
-    )
-    return {
-        path.relative_to(directory).as_posix(): path.read_bytes()
-        for path in files
-        if path.is_file()
-    }
-
-
-def _linked_current(root: Path, skills: list[CustomSkill]) -> bool:
-    folder = root / "skills"
-    present = (
-        {path.name for path in folder.iterdir() if not path.name.startswith(".")}
-        if folder.is_dir()
-        else set()
-    )
-    if present != {skill.name for skill in skills}:
-        return False
-    return all(
-        _tree(skill.directory, skill) == _tree(folder / skill.name) for skill in skills
-    )
-
-
-def _build_linked(root: Path, skills: list[CustomSkill]) -> None:
-    for skill in skills:
-        source_files(skill.directory, skill.source)  # containment checks first
-    # Keep whatever was there (hand-placed skills included) until the next sync.
-    folder = root / "skills"
-    stale = folder.with_name(".skills-previous")
-    shutil.rmtree(stale, ignore_errors=True)
-    if folder.is_dir():
-        folder.rename(stale)
-    for skill in skills:
-        shutil.copytree(skill.directory, root / "skills" / skill.name)
-
-
-def _plugin_problems(
-    target: Target, linked: list[CustomSkill] | None, mode: str
-) -> list[str]:
-    """Problems of one plugin: native when `linked` is None, else the linked copy."""
-    scope, project_dir, user_dir = target
-    is_linked = linked is not None
-    root = _root(scope, project_dir, user_dir, is_linked)
-    label = f"{scope} {'linked ' if is_linked else ''}skills ({root})"
-    if scope == "project" and not is_linked and git_ignored(project_dir, root):
-        return [f"{label}: skipped, ignored by git so it would not be shared"]
     found = []
-    if is_linked and not _linked_current(root, linked):
-        found.append(f"{label}: copies are out of date")
-    if not _registered(target, is_linked):
-        found.append(f"{label}: not registered with Claude Code")
-    if mode != CHECK and found:
-        register_plugin(target, linked=is_linked)
-        if is_linked:
-            _build_linked(root, linked)
+    for root in (
+        scope_plugin_dir("user", user_dir, user_dir),
+        Path(user_dir) / "linked" / "plugin",
+    ):
+        if settings.is_file() and plugin_dir_registered(settings, root):
+            found.append(f"user plugin directory ({root}): no longer needed")
+            if mode != CHECK:
+                remove_plugin_dir(settings, root)
     return found
 
 
@@ -162,12 +55,10 @@ def _scope_problems(
 ) -> list[str]:
     """Describe (and unless `CHECK`, fix) what keeps a scope's skills from loading."""
     scope, project_dir, user_dir = target
-    found = []
-    if (scope_plugin_dir(scope, project_dir, user_dir) / "skills").is_dir():
-        found += _plugin_problems(target, None, mode)
-    linked = linked_skills(skills, scope, project_dir, user_dir)
-    if linked or linked_plugin_dir(scope, project_dir, user_dir).is_dir():
-        found += _plugin_problems(target, linked, mode)
+    wanted = configured_wanted(scope, project_dir, skills)
+    found = flat_problems(scope, project_dir, wanted, fix=mode != CHECK)
+    if scope == "user":
+        found += _plugin_dir_leftover(user_dir, mode)
     return found
 
 
@@ -190,7 +81,7 @@ def sync_skill_plugins(
     user_dir: Path,
     scopes: tuple[str, ...] = SYNC_SCOPES,
 ) -> list[str]:
-    """Register every selected scope's skills; returns what was fixed."""
+    """Publish every selected scope's skills; returns what was fixed."""
     fixed = []
     for scope in scopes:
         fixed += _scope_problems((scope, project_dir, user_dir), skills, SHARED)

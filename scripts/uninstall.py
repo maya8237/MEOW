@@ -128,6 +128,14 @@ def remove_plugin(home: Path, root: Path) -> None:
         write_settings(settings, data)
         for name in kept:
             print(f"Kept {name} in {settings}: it points outside {root}.")
+    remove_published_skills(home / ".claude" / "skills")
+    remove_hook_entries(settings)
+
+
+def remove_project_customizations(project: Path) -> None:
+    remove_published_skills(project / ".claude" / "skills")
+    for name in ("settings.json", "settings.local.json"):
+        remove_hook_entries(project / ".claude" / name)
 
 
 def un_onboard(project: Path) -> None:
@@ -148,8 +156,44 @@ def un_onboard(project: Path) -> None:
         write_settings(settings, data, delete_empty=True)
     remove_install(root, root)
     remove_project_plugins(project)
+    remove_project_customizations(project)
     remove_project_ignores(project)
     print(f"Removed MEOW onboarding and project data: {project}")
+
+
+def remove_published_skills(skills: Path) -> None:
+    """Skill copies MEOW published (marked `.meow-managed`); the user's stay."""
+    if not skills.is_dir():
+        return
+    for folder in skills.iterdir():
+        if (folder / ".meow-managed").is_file() and not folder.is_symlink():
+            shutil.rmtree(folder)
+
+
+def _without_meow_hooks(hooks: dict) -> dict:
+    kept = {}
+    for event, entries in hooks.items():
+        if isinstance(entries, list):
+            entries = [e for e in entries if "MEOW_HOOK=" not in json.dumps(e)]
+        if entries:
+            kept[event] = entries
+    return kept
+
+
+def remove_hook_entries(settings: Path) -> None:
+    """Drop the hook entries MEOW generated (marked `MEOW_HOOK=`) from a file."""
+    try:
+        data = json.loads(settings.read_text(encoding="utf-8"))
+        kept = _without_meow_hooks(data["hooks"])
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return
+    data.pop("hooks")
+    if kept:
+        data["hooks"] = kept
+    if data:
+        settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    else:
+        settings.unlink()
 
 
 def remove_project_plugins(project: Path) -> None:

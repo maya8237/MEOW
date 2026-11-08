@@ -109,10 +109,12 @@ def auto_sync_message(
         lines += ["MEOW updated your custom skills/hooks:", *changed]
         if any(line.startswith(("project", ".gitignore")) for line in changed):
             lines.append(
-                "Commit the .claude/skills/meow-project/, .meow/, and .gitignore "
-                "changes."
+                "Commit the .claude/skills/, .claude/settings.json, .meow/, and "
+                ".gitignore changes."
             )
-        lines.append("Run /reload-plugins (or restart Claude Code) to load them.")
+        lines.append(
+            "Running sessions pick these up; if one is not listed, run /reload-plugins."
+        )
     if remaining:
         lines += ["MEOW customizations need attention:", *remaining]
     return "\n".join(lines) if lines else None

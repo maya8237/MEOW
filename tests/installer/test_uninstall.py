@@ -334,3 +334,32 @@ def test_uninstall_refuses_python_inside_meow(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "executable", str(tmp_path / ".meow/versions/x/python"))
     with pytest.raises(ValueError, match="outside"):
         module["check_python_location"](tmp_path / ".meow")
+
+
+def test_published_skills_and_hook_entries_are_removed_but_the_users_stay(tmp_path):
+    import importlib.util
+    import json
+
+    spec = importlib.util.spec_from_file_location(
+        "uninstall_script", Path(__file__).parents[2] / "scripts" / "uninstall.py"
+    )
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    skills = tmp_path / "skills"
+    for name, managed in (("ours", True), ("mine", False)):
+        (skills / name).mkdir(parents=True)
+        (skills / name / "SKILL.md").write_text("x")
+        if managed:
+            (skills / name / ".meow-managed").write_text("project\n")
+    settings = tmp_path / "settings.json"
+    mine = {"hooks": [{"type": "command", "command": "echo mine"}]}
+    ours = {"hooks": [{"type": "command", "command": "MEOW_HOOK=g true"}]}
+    settings.write_text(
+        json.dumps({"model": "x", "hooks": {"Stop": [mine], "PreToolUse": [ours]}})
+    )
+
+    script.remove_published_skills(skills)
+    script.remove_hook_entries(settings)
+
+    assert not (skills / "ours").exists() and (skills / "mine").is_dir()
+    assert json.loads(settings.read_text()) == {"model": "x", "hooks": {"Stop": [mine]}}

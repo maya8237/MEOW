@@ -56,7 +56,8 @@ def sync_command(args, project_dir: Path) -> None:
     for line in fixed:
         print(line)
     print(
-        "Synced custom skills and hooks; restart Claude Code to load them."
+        "Synced custom skills and hooks; run /reload-plugins if Claude Code "
+        "does not list them yet."
         if fixed
         else "Custom skills and hooks were already registered."
     )
