@@ -1,9 +1,16 @@
 import time
 from datetime import datetime
 
+import pytest
+
 from meow.common.clock import now_iso, timestamp_key
 
 
+def test_now_iso_is_offset_aware():
+    assert datetime.fromisoformat(now_iso()).utcoffset() is not None
+
+
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="needs POSIX tzset")
 def test_now_iso_uses_local_offset(monkeypatch):
     monkeypatch.setenv("TZ", "Asia/Jerusalem")
     time.tzset()
