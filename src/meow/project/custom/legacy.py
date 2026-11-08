@@ -19,6 +19,7 @@ from pathlib import Path
 
 import tomlkit
 
+from meow.common.atomic import set_aside
 from meow.project.custom.sources import legacy_plugin_dir, scope_plugin_dir
 
 LEGACY_MARKETPLACES = (
@@ -96,9 +97,10 @@ def _drop_linked(scope: str, project_dir: Path, apply: bool) -> list[str]:
     old = legacy_plugin_dir(scope, project_dir, linked=True).parent
     if not old.is_dir():
         return []
-    if apply:
-        shutil.rmtree(old)
-    return [f"{scope} linked copies ({old}): old layout; rebuilt elsewhere"]
+    if not apply:
+        return [f"{scope} linked copies ({old}): old layout; rebuilt elsewhere"]
+    backup = set_aside(old)
+    return [f"{scope} linked copies ({old}): old layout; kept as {backup}"]
 
 
 def _ours(entry: object) -> bool:

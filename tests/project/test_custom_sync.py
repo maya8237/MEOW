@@ -266,3 +266,31 @@ def test_missing_manifest_is_reported_and_restored(project, home):
     assert any("not registered" in problem for problem in check(project, home))
     sync(project, home)
     assert check(project, home) == []
+
+
+def test_rebuilding_linked_copies_keeps_hand_placed_skills(project, home):
+    skill(project / "tools" / "skills", "extra")
+    (project / ".meow" / "config.toml").write_text(
+        '[custom]\nskills = ["tools/skills"]\n', encoding="utf-8"
+    )
+    sync(project, home)
+    linked = plugin(project, "project-linked")
+    skill(linked / "skills", "by-hand")
+
+    sync(project, home)
+
+    assert not (linked / "skills" / "by-hand").exists()
+    assert (linked / ".skills-previous" / "by-hand" / "SKILL.md").is_file()
+
+
+def test_old_linked_layout_is_set_aside_not_deleted(project):
+    from meow.project.custom.legacy import legacy_layout
+
+    old = project / ".meow" / "linked" / "plugin" / "skills"
+    skill(old, "mine")
+
+    legacy_layout(project, apply=True)
+
+    assert not (project / ".meow" / "linked").exists()
+    kept = project / ".meow" / "linked.bak" / "plugin" / "skills" / "mine"
+    assert (kept / "SKILL.md").is_file()

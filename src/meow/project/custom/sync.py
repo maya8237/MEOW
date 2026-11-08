@@ -125,7 +125,12 @@ def _linked_current(root: Path, skills: list[CustomSkill]) -> bool:
 def _build_linked(root: Path, skills: list[CustomSkill]) -> None:
     for skill in skills:
         source_files(skill.directory, skill.source)  # containment checks first
-    shutil.rmtree(root / "skills", ignore_errors=True)
+    # Keep whatever was there (hand-placed skills included) until the next sync.
+    folder = root / "skills"
+    stale = folder.with_name(".skills-previous")
+    shutil.rmtree(stale, ignore_errors=True)
+    if folder.is_dir():
+        folder.rename(stale)
     for skill in skills:
         shutil.copytree(skill.directory, root / "skills" / skill.name)
 

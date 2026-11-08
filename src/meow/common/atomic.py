@@ -67,3 +67,19 @@ def move_directory(source: Path, target: Path) -> None:
         shutil.rmtree(target, ignore_errors=True)
         raise
     shutil.rmtree(source, ignore_errors=True)
+
+
+def set_aside(path: Path) -> Path | None:
+    """Rename PATH to a free `NAME.bak[-N]` sibling instead of deleting it.
+
+    Returns the new path, or None when PATH does not exist.
+    """
+    if not path.exists():
+        return None
+    backup = path.with_name(f"{path.name}.bak")
+    number = 1
+    while backup.exists():
+        number += 1
+        backup = path.with_name(f"{path.name}.bak-{number}")
+    move_directory(path, backup)
+    return backup

@@ -58,7 +58,8 @@ Project and local plugins need no marketplace or settings entry, so checkouts
 and worktrees cannot collide; start Claude Code from the repository root.
 Skills from other `[custom].skills` directories are copied into a generated,
 git-ignored `meow-<scope>-linked` folder beside the plugin (`~/.meow/linked/plugin`
-for the user), kept apart so rebuilding never touches hand-made skills.
+for the user), kept apart so rebuilding never touches hand-made skills. A rebuild keeps the
+previous copies in `.skills-previous`; migrated old layouts are renamed `*.bak`.
 Agents and workflows need no registration.
 
 `meow sync` writes the manifests (and the user's plugin-dir entry). The MEOW
