@@ -16,6 +16,7 @@ from meow.common.atomic import replace_with_retry
 from meow.common.clock import now_iso
 from meow.common.process import process_identity
 from meow.infrastructure.logging import get_logger
+from meow.project.custom.kit_pins import adopt, current_pins
 
 logger = get_logger(__name__)
 
@@ -177,6 +178,18 @@ class RunRecord:
     driver: dict = field(default_factory=dict)
     ui_session_id: str | None = None
     ui_attempt_id: str | None = None
+    # Kit commits in effect when the run started: {"scope/name": {url, sha, ...}}
+    kit_pins: dict = field(default_factory=dict)
+
+
+def _kit_pins(repo: Path) -> dict:
+    """The kit commits now in effect; never blocks a run on a kit problem."""
+    from meow.project.config import user_config_path
+
+    try:
+        return current_pins(repo, user_config_path().parent)
+    except (OSError, ValueError):
+        return {}
 
 
 def _drop_stale_failure(record: RunRecord, phase: str, patch: dict) -> None:
@@ -281,6 +294,7 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
         ):
             raise RunStateError("Invalid UI session or attempt ID")
         now = _now()
+        pins = _kit_pins(repo)
         record = RunRecord(
             uuid4().hex,
             source,
@@ -294,8 +308,10 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
             delivery=_safe(delivery or {}, "delivery"),
             ui_session_id=ui_session_id,
             ui_attempt_id=ui_attempt_id,
+            kit_pins=pins,
         )
         self._write(record)
+        adopt(pins)  # this run's processes keep these kit versions until it ends
         return self.load(record.id)
 
     def load(  # ruff: ignore[complex-structure, too-many-branches, too-many-statements]

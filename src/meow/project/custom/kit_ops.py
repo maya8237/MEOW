@@ -8,7 +8,7 @@ from pathlib import Path
 
 import tomlkit
 
-from meow.project.config_files import CONFIG_FILENAME, LOCAL_CONFIG_FILENAME
+from meow.project.custom.kit_pins import active_run_shas
 from meow.project.custom.kit_store import (
     KitUnavailable,
     default_name,
@@ -22,39 +22,19 @@ from meow.project.custom.kit_store import (
 from meow.project.custom.kits import (
     NAME,
     KitSpec,
+    collect_specs,
+    config_file,
     contents,
     effective_entry,
     kits_home,
     lock_file,
-    parse_kits,
     read_lock,
     validate_kit,
     write_lock,
 )
 
-SCOPES = ("local", "project", "user")
 # The startup hook is killed after 30 s, and one kit may need three git calls.
 STARTUP_TIMEOUT = 8
-
-
-def config_file(scope: str, project_dir: Path, user_dir: Path) -> Path:
-    if scope == "user":
-        return Path(user_dir) / CONFIG_FILENAME.removeprefix(".meow/")
-    name = LOCAL_CONFIG_FILENAME if scope == "local" else CONFIG_FILENAME
-    return Path(project_dir) / name
-
-
-def collect_specs(project_dir: Path, user_dir: Path) -> list[KitSpec]:
-    """Every declared kit, read without loading the rest of the configuration."""
-    specs: list[KitSpec] = []
-    for scope in SCOPES:
-        path = config_file(scope, project_dir, user_dir)
-        try:
-            data = tomllib.loads(path.read_text(encoding="utf-8"))
-        except (OSError, tomllib.TOMLDecodeError):
-            continue
-        specs += parse_kits(data.get("kits"), scope, path)
-    return specs
 
 
 def _lock(spec: KitSpec, project_dir: Path, user_dir: Path) -> Path:
@@ -461,7 +441,7 @@ def _pinned_shas(project_dir: Path, user_dir: Path, remote: str) -> set[str]:
         entry = read_lock(_lock(s, project_dir, user_dir)).get(s.name) or {}
         shas |= {v for v in entry.values() if isinstance(v, str)}
         shas |= {s.rev} if s.rev else set()
-    return shas
+    return shas | active_run_shas(project_dir, remote)
 
 
 def _prune_cache(project_dir: Path, user_dir: Path, remote: str) -> list[str]:

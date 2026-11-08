@@ -45,7 +45,13 @@ from meow.infrastructure.supervisor import (
     SUPERVISOR_ENV,
 )
 from meow.infrastructure.worktree import GitTimeoutError, current_branch, strict_branch
-from meow.project.config import config_root, load_config, run_config
+from meow.project.config import (
+    config_root,
+    load_config,
+    run_config,
+    user_config_path,
+)
+from meow.project.custom.kit_pins import pinned
 from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
 from meow.project.plan_files import plan_review_file, plan_test_file, stage_file
 
@@ -579,7 +585,42 @@ async def _restart_unprepared(
     return 0
 
 
-async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-many-return-statements, too-many-statements, too-many-branches] -- inspect-first recovery with validation
+def _recorded_pins(working_dir: Path, run_id: str | None) -> dict:
+    """The kit pins of the run `meow resume` is about to continue, if any."""
+    run_id = saved_run_id(working_dir, run_id)
+    if run_id is None or is_orchestrator_id(run_id):
+        return {}
+    try:
+        return RunStore(working_dir).load(run_id).kit_pins
+    except RunStateError:
+        return {}
+
+
+async def resume(  # ruff: ignore[too-many-arguments]
+    working_dir: Path,
+    run_id: str | None = None,
+    *,
+    continue_run: bool = False,
+    request: str | None = None,
+    repair: bool = False,
+    task_id: str | None = None,
+) -> int:
+    """Inspect or continue a run; a continued run keeps its kit versions."""
+    pins = _recorded_pins(working_dir, run_id) if continue_run or repair else {}
+    with pinned(pins, working_dir, user_config_path().parent) as notes:
+        for note in notes:
+            print(note, file=sys.stderr)
+        return await _resume_run(
+            working_dir,
+            run_id,
+            continue_run=continue_run,
+            request=request,
+            repair=repair,
+            task_id=task_id,
+        )
+
+
+async def _resume_run(  # ruff: ignore[too-many-arguments, complex-structure, too-many-return-statements, too-many-statements, too-many-branches] -- inspect-first recovery with validation
     working_dir: Path,
     run_id: str | None = None,
     *,

@@ -84,6 +84,19 @@ Teammates receive the new `rev` with the commit. CI or a pre-push hook can run
 `meow kits update --check`, which prints pending updates and exits 1 when any
 kit is behind.
 
+## Runs keep their kit versions
+
+A `meow run`, `plan`, or `review` records the kit commits in effect (`kit_pins`
+in its run journal) and its processes and workers keep using them, so a kit
+update from another session cannot change a run midway. `meow resume
+--continue` re-applies the recorded commits, downloading one again if it was
+pruned, and prints which version it uses. If a commit cannot be restored
+(remote unreachable, kit since removed) it warns and uses the installed
+version. Cleanup keeps commits that unfinished runs in the project still pin.
+Not covered: in-session `/meow:*` flows (each `meow native` call is its own
+process) and the driver of `--orchestrate` runs (each task run pins when it
+starts).
+
 ## Writing a kit
 
 ```bash
