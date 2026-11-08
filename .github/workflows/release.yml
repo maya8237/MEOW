@@ -4,6 +4,14 @@ on:
   push:
     # X.Y.Z is stable; X.Y.ZbN is a beta. Both go to PyPI only.
     tags: ['[0-9]*.[0-9]*.[0-9]*']
+  # Release the tip of main without a local tag push: this run tags it itself
+  # after the same validation and smoke gates, then publishes as for a tag.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release to tag on main: X.Y.Z (stable) or X.Y.ZbN (beta)'
+        required: true
+        type: string
   pull_request:
     paths:
       - 'scripts/**'
@@ -23,7 +31,7 @@ concurrency:
 jobs:
   validate:
     # CI already runs this suite on every PR; the release gate only matters on tags.
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -115,7 +123,7 @@ jobs:
           PIP_NO_COMPILE: '1'
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     needs: [smoke, validate]
     runs-on: ubuntu-latest
     concurrency:
@@ -127,13 +135,27 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      TAG: ${{ github.ref_name }}
+      TAG: ${{ inputs.version || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@v5
+      - name: Tag the commit when started by hand
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+(b[0-9]+)?$ ]] || { echo "Bad version: $TAG"; exit 1; }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --tags origin
+          if git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then
+            # A rerun after a later failure; never move a published tag.
+            [ "$(git rev-list -n1 "$TAG")" = "$GITHUB_SHA" ] || { echo "$TAG exists on another commit"; exit 1; }
+          else
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+          fi
       - name: Stamp the tag into the package and plugin, then build
         run: |
           echo "UNRELEASED=$(python scripts/stamp_release.py --unreleased)" >> "$GITHUB_ENV"
@@ -161,7 +183,7 @@ jobs:
           gh release edit "$TAG" --draft=false
       - name: Record the release on main
         # Betas never stamp announcements or move the versions on main.
-        if: ${{ !contains(github.ref_name, 'b') }}
+        if: ${{ !contains(env.TAG, 'b') }}
         run: |
           # Stamp only announcements this tag shipped; main may hold newer ones.
           git config user.name 'github-actions[bot]'

@@ -9,6 +9,10 @@ git tag 0.2.0b1    # beta
 git push origin 0.1.6
 ```
 
+Without push access to tags, run the Release workflow by hand on `main`
+(`workflow_dispatch`, input `version`): after the same gates it tags the commit
+and publishes. A rerun reuses a tag already on that commit.
+
 That is the release process. CI stamps the tag's version into the Python package
 and both plugin manifests, runs tests and lint, installs the checkout through the
 real installers on each platform, then publishes. No prefix, alias tag, or manual
