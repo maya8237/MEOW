@@ -36,6 +36,7 @@ from meow.agents.api_errors import (
     ApiError,
     ApiRetries,
     classify_api_error,
+    is_context_overflow,
     redact,
 )
 from meow.common.process import kill_process_tree
@@ -106,6 +107,13 @@ def _sequence_giveup(role: str) -> TransientRunError:
     return TransientRunError(
         f"{role} kept hitting an invalid message history",
         cause="invalid_sequence",
+    )
+
+
+def _overflow_giveup(role: str) -> RuntimeError:
+    return RuntimeError(
+        f"{role} exceeded its context window even on a fresh session; "
+        "the prompt itself is too large"
     )
 
 
@@ -610,6 +618,12 @@ def _last_text_block(message: AssistantMessage) -> str:
     return texts[-1] if texts else ""
 
 
+def _overflowed(status: int | None, *texts: object) -> bool:
+    """True when a failed result, stderr or assistant notice reports a context
+    overflow (HTTP 413, a LiteLLM `ContextWindowExceededError`, or its text)."""
+    return status == _HTTP_TOO_LARGE or is_context_overflow(*texts)
+
+
 def _api_failure(
     status: int | None, error: str | None, text: str, prose: str = ""
 ) -> ApiError | None:
@@ -649,6 +663,10 @@ def _query_failure(  # ruff: ignore[too-many-arguments, too-many-positional-argu
 ) -> Exception:
     _raise_if_invalid_sequence(assistant=message.result or "")
     _raise_if_invalid_sequence(assistant=assistant)
+    if _overflowed(
+        message.api_error_status, message.result, assistant, assistant_error
+    ):
+        return _ContextOverflow()
     api = _api_failure(
         message.api_error_status, assistant_error, message.result or "", assistant
     )
@@ -710,6 +728,8 @@ async def _consume_query(  # ruff: ignore[complex-structure, too-many-branches, 
                         )
     except ProcessError as exc:
         _raise_if_invalid_sequence(exc.stderr, exc, assistant=last_text)
+        if _overflowed(None, exc.stderr, exc, last_text):
+            raise _ContextOverflow from exc
         api = _api_failure(None, None, f"{exc.stderr or ''} {exc}", last_text)
         if not exc.stderr and last_text:
             exc.stderr = last_text
@@ -728,14 +748,19 @@ async def _consume_rebuilding(  # ruff: ignore[too-many-arguments, too-many-posi
     observe: Callable[[object], None] | None = None,
 ) -> str:
     """`_consume_query`, retried once on a fresh conversation (no `resume`,
-    recap prepended) when the API refuses the message history."""
+    recap prepended) when the API refuses the message history or the saved
+    session no longer fits the context window."""
+    cause = "an invalid message history"
     try:
         return await _consume_query(prompt, options, role, retries, observe)
     except _InvalidSequence:
         logger.warning("agent_query_sequence_retry", role=role)
+    except _ContextOverflow:
+        logger.warning("agent_query_overflow_retry", role=role)
+        cause = "a full context window"
     try:
         return await _consume_query(
-            _recapped(prompt),
+            _recapped(prompt, cause),
             _fresh_options(options),
             role,
             retries,
@@ -743,6 +768,8 @@ async def _consume_rebuilding(  # ruff: ignore[too-many-arguments, too-many-posi
         )
     except _InvalidSequence as exc:
         raise _sequence_giveup(role) from exc
+    except _ContextOverflow as exc:
+        raise _overflow_giveup(role) from exc
 
 
 async def _consume_resilient(
@@ -1081,11 +1108,7 @@ class Agent:
 # tokens the CLI starts failing every turn, so the session is rebuilt first.
 _SESSION_TOKEN_LIMIT = 150_000
 _TURN_ATTEMPTS = (1, 2)
-_CONTEXT_OVERFLOW = re.compile(
-    r"prompt is too long|context (?:window|length|limit)|too many tokens|"
-    r"maximum context|exceed(?:s|ed)? .{0,30}context",
-    re.I,
-)
+_HTTP_TOO_LARGE = 413
 
 
 def _context_tokens(result: object) -> int:
@@ -1323,7 +1346,9 @@ class SessionAgent(Agent):
         detail = str(getattr(result, "result", "") or "")
         _raise_if_invalid_sequence(assistant=detail)
         _raise_if_invalid_sequence(assistant=last_text)
-        if _CONTEXT_OVERFLOW.search(detail):
+        if _overflowed(
+            getattr(result, "api_error_status", None), detail, last_text, api_error
+        ):
             raise _ContextOverflow
         status = getattr(result, "api_error_status", None)
         if (api := _api_failure(status, api_error, detail, last_text)) is not None:
@@ -1343,7 +1368,7 @@ def _classify_process_error(exc: ProcessError, text: list[str]) -> None:
     if not exc.stderr and text:
         exc.stderr = text[-1]
     _redact_process_error(exc)
-    if _CONTEXT_OVERFLOW.search(f"{exc.stderr or ''} {exc}"):
+    if _overflowed(None, exc.stderr, exc, text[-1] if text else ""):
         raise _ContextOverflow from exc
     if api is not None:
         raise api from exc

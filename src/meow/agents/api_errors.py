@@ -43,10 +43,18 @@ _MODEL_KEY = re.compile(
 )
 _MODEL_AND_KEY = re.compile(r"(?i)\bmodel\b.*\b(api_key|user_api_key|key)\b")
 _CONTEXT = re.compile(
-    r"prompt is too long|context (?:window|length|limit)|too many tokens|"
-    r"maximum context|exceed(?:s|ed)? .{0,30}context",
+    r"prompt is too long|context[ _-]?(?:window|length|limit)|too many tokens|"
+    r"maximum context|exceed(?:s|ed)? .{0,30}context|ContextWindowExceeded|"
+    r"input is too long|request too large",
     re.I,
 )
+
+
+def is_context_overflow(*texts: object) -> bool:
+    """True when any error text says the conversation outgrew the model."""
+    return any(_CONTEXT.search(str(text or "")) for text in texts)
+
+
 _RETRY_AFTER = re.compile(
     r"(?:retry[ -]?after|x-ratelimit-reset-\w+|try again in)\W{0,3}(\d+(?:\.\d+)?)"
     r"\s*(ms|milliseconds?|s\b|sec\w*)?",
