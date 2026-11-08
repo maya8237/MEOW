@@ -375,7 +375,7 @@ def test_failed_orchestrator_with_a_blocking_error_is_terminal(tmp_path, capsys)
     assert payload["cause"] == "auth"
 
 
-def test_failed_orchestrator_stops_retrying_past_its_budget(tmp_path, capsys):
+def test_failed_orchestrator_stops_retrying_past_its_limit(tmp_path, capsys):
     error = {"phase": "running", "message": "reset", "kind": "transient", "cause": "x"}
     options = {"test": False, "pr": True, "failed_resumes": 99}
     _, payload = _orchestrator_json(

@@ -15,10 +15,10 @@ limit; the cron simply skips ticks until then), then run the printed `next_comma
 detached (host background execution), or rerun the same native helper, up to
 `managed_resumes` (default 6), and stop when `meow status ID --json` shows no
 progress (`attempts` not reset, or `cause` / `not_resumed_reason` `no_progress`).
-Exit 1 / `MEOW_BLOCKED` (including `stop=budget_exhausted`) means stop dependent
+Exit 1 / `MEOW_BLOCKED` (including `stop=retries_exhausted`) means stop dependent
 work and report. Exit 3 (pushed, MR not opened): report the manual link, do not
 retry. Exit 130: interrupted, report it. Resume is attempted, not guaranteed: when
-status gives a reason (blocking `cause`, `not_resumed_reason`, budget exhausted, no
+status gives a reason (blocking `cause`, `not_resumed_reason`, retries exhausted, no
 progress, `not_resumable`, live driver), do not resume; report it. A resume the user
 asks for (`meow resume … --continue`) also runs detached from a managing session. On
 entry, inspect a saved run ID with `meow status ID --json` (bare `meow status` shows
@@ -135,7 +135,7 @@ requires `--continue`. Never resume a `--intent plan` run. Before every resumed 
 step, call `meow native checkpoint parked --run-id ID --failure TEXT --work-dir P
 --active-dir A` when a subagent or tool crashes, then continue with `meow resume ID
 --continue --repair` (detached). Each tick: run `meow status ID --json` and act only
-when `settled` is true. Settled with `retryable: true` and `budget_left > 0`: run
+when `settled` is true. Settled with `retryable: true` and `retries_left > 0`: run
 `next_command` exactly, detached (host background execution, never the foreground; `meow
 resume` has no `--background`), and report one line. Settled with `retryable: false`:
 report `cause`, `last_failure`, `not_resumed_reason` and the evidence paths, then stop

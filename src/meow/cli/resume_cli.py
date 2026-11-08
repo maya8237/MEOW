@@ -45,7 +45,13 @@ from meow.infrastructure.supervisor import (
     SUPERVISOR_ENV,
 )
 from meow.infrastructure.worktree import GitTimeoutError, current_branch, strict_branch
-from meow.project.config import config_root, load_config, run_config
+from meow.project.config import (
+    config_root,
+    load_config,
+    run_config,
+    user_config_path,
+)
+from meow.project.custom.kit_pins import pinned
 from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
 from meow.project.plan_files import plan_review_file, plan_test_file, stage_file
 
@@ -306,9 +312,9 @@ _SUPERVISED = "its supervisor is still running"
 _EXHAUSTED = frozenset({"max_total_resumes reached", "managed_resumes reached"})
 
 
-def budget_refusal(record: RunRecord, config: dict) -> str | None:
+def retry_refusal(record: RunRecord, config: dict) -> str | None:
     """Why no resume of this run can be attempted (not resumable, or its
-    `max_total_resumes`/`managed_resumes` budget is spent), else None."""
+    `max_total_resumes`/`managed_resumes` limit is spent), else None."""
     park = record.park if isinstance(record.park, dict) else {}
     checks = (
         # The native plan skill stops at `planned` on purpose: never continue it.
@@ -326,13 +332,13 @@ def budget_refusal(record: RunRecord, config: dict) -> str | None:
     return next((reason for hit, reason in checks if hit), None)
 
 
-def _resume_budget_left(record: RunRecord, config: dict) -> str | None:
+def _resume_retries_left(record: RunRecord, config: dict) -> str | None:
     """Why `resume --parked` must skip this record, or None to resume it."""
     if next_command(record) is not None and inspect_worker(
         record, include_terminal=True
     ).state in {"running", "starting"}:
         return _SUPERVISED
-    return budget_refusal(record, config)
+    return retry_refusal(record, config)
 
 
 def _parked_run_ids(store: RunStore) -> list[str]:
@@ -369,7 +375,7 @@ async def _resume_one(working_dir: Path, store: RunStore, record: RunRecord) -> 
 
 
 def _parked_exit_code(summary: dict) -> int:
-    """1 a resumed run is blocked, or a run/queue item exhausted its budget
+    """1 a resumed run is blocked, or a run/queue item exhausted its retries
     (`stop: no_progress`); 75 work is still pending (a run left parked, a
     live supervisor, a requeued item); else 0."""
     phases = [entry["phase"] for entry in summary["resumed"]]
@@ -408,7 +414,7 @@ def _park_orphaned_items(queue: QueueStore) -> None:
 
 
 def _requeue_parked_items(working_dir: Path, store: RunStore, config: dict) -> dict:
-    """Requeue parked queue items within budget and settle their old runs.
+    """Requeue parked queue items within the retry limit and settle their old runs.
 
     A requeued item reruns from scratch, so its parked run record is settled
     (`cancelled`) instead of being reported by every later sweep.
@@ -458,7 +464,7 @@ def _start_queue_worker(working_dir: Path) -> None:
 
 
 async def resume_parked(working_dir: Path) -> int:
-    """Continue every parked run within budget, then print a JSON summary.
+    """Continue every parked run within the retry limit, then print a JSON summary.
 
     Parked queue items are requeued first (within `managed_resumes` attempts)
     for the next `meow queue` worker. Each record is reloaded just before it
@@ -476,7 +482,7 @@ async def resume_parked(working_dir: Path) -> int:
             continue
         if record.phase != PARKED_PHASE:
             continue  # settled or resumed elsewhere meanwhile
-        if reason := _resume_budget_left(record, config):
+        if reason := _resume_retries_left(record, config):
             summary["skipped"].append({
                 "run_id": run_id,
                 "reason": reason,
@@ -579,7 +585,42 @@ async def _restart_unprepared(
     return 0
 
 
-async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-many-return-statements, too-many-statements, too-many-branches] -- inspect-first recovery with validation
+def _recorded_pins(working_dir: Path, run_id: str | None) -> dict:
+    """The kit pins of the run `meow resume` is about to continue, if any."""
+    run_id = saved_run_id(working_dir, run_id)
+    if run_id is None or is_orchestrator_id(run_id):
+        return {}
+    try:
+        return RunStore(working_dir).load(run_id).kit_pins
+    except RunStateError:
+        return {}
+
+
+async def resume(  # ruff: ignore[too-many-arguments]
+    working_dir: Path,
+    run_id: str | None = None,
+    *,
+    continue_run: bool = False,
+    request: str | None = None,
+    repair: bool = False,
+    task_id: str | None = None,
+) -> int:
+    """Inspect or continue a run; a continued run keeps its kit versions."""
+    pins = _recorded_pins(working_dir, run_id) if continue_run or repair else {}
+    with pinned(pins, working_dir, user_config_path().parent) as notes:
+        for note in notes:
+            print(note, file=sys.stderr)
+        return await _resume_run(
+            working_dir,
+            run_id,
+            continue_run=continue_run,
+            request=request,
+            repair=repair,
+            task_id=task_id,
+        )
+
+
+async def _resume_run(  # ruff: ignore[too-many-arguments, complex-structure, too-many-return-statements, too-many-statements, too-many-branches] -- inspect-first recovery with validation
     working_dir: Path,
     run_id: str | None = None,
     *,
@@ -634,7 +675,7 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
         )
         return 1
     reason = (
-        budget_refusal(record, run_config(working_dir))
+        retry_refusal(record, run_config(working_dir))
         if continue_run
         and record.phase == PARKED_PHASE
         and not _launched_by_supervisor(record)
@@ -646,7 +687,7 @@ async def resume(  # ruff: ignore[too-many-arguments, complex-structure, too-man
             record,
             f"Cannot resume: {reason}.",
             permanent=False,
-            stop="budget_exhausted" if reason in _EXHAUSTED else "not_resumable",
+            stop="retries_exhausted" if reason in _EXHAUSTED else "not_resumable",
         )
     if continue_run and _never_prepared(record):
         return await _restart_unprepared(working_dir, store, record)

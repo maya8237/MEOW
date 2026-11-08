@@ -437,14 +437,23 @@ def _add_kit(url: str, ask, output: Callable[[str], None]) -> bool:
     return added is not None
 
 
+MAX_KIT_PROMPTS = 10  # a stuck or scripted answer must not loop forever
+
+
 def _offer_kits(ask: Callable[[str], str], output: Callable[[str], None]) -> None:
-    """Offer user-scope kits; blank input skips."""
-    prompt = "Add a MEOW kit from a git URL (GitHub/GitLab; Enter to skip): "
+    """Offer user-scope kits; a blank URL finishes."""
+    question = "Add a MEOW kit (skills, agents, workflows, hooks) from a git repo? "
     try:
-        while url := ask(prompt).strip():
-            if _add_kit(url, lambda q: _yes(ask("  " + q)), output):
+        if not _yes(ask(question + "[y/N] ")):
+            return
+        for _attempt in range(MAX_KIT_PROMPTS):
+            url = ask(
+                "  Kit URL: owner/repo, github:, gitlab:, or git URL (Enter to finish) "
+            )
+            if not url.strip():
+                return
+            if _add_kit(url.strip(), lambda q: _yes(ask("  " + q)), output):
                 output("  Skills and hooks appear when Claude Code next starts.")
-            prompt = "Another kit URL (Enter to finish): "
     except EOFError:
         output("\nNo input available; skipped kit setup.")
 

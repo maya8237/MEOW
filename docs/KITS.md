@@ -84,6 +84,32 @@ Teammates receive the new `rev` with the commit. CI or a pre-push hook can run
 `meow kits update --check`, which prints pending updates and exits 1 when any
 kit is behind.
 
+## Runs keep their kit versions
+
+A `meow run`, `plan`, or `review` records the kit commits in effect (`kit_pins`
+in its run journal) and its processes and workers keep using them, so a kit
+update from another session cannot change a run midway. `meow resume
+--continue` re-applies the recorded commits, downloading one again if it was
+pruned, and prints which version it uses. If a commit cannot be restored
+(remote unreachable, kit since removed) it warns and uses the installed
+version. Cleanup keeps commits that unfinished runs in the project still pin.
+Not covered: in-session `/meow:*` flows (each `meow native` call is its own
+process) and the driver of `--orchestrate` runs (each task run pins when it
+starts).
+
+## Writing a kit
+
+```bash
+meow kits init my-kit        # scaffold: manifest, a skill, an agent, README
+meow kits validate .         # check a folder (or a git URL) before publishing
+```
+
+`validate` reports every error at once (bad manifest, skills whose name
+differs from the folder, agents missing a prompt, unknown workflow agents,
+symlinks) and lists each hook with the command it will run, so reviewers see
+what the kit executes. It exits 1 on any error. Then push the repo and
+`meow kits add owner/my-kit`.
+
 ## Skills for built-in roles
 
 ```toml
@@ -115,6 +141,7 @@ kit's config ranks below the file that declares it.
 
 ## Install and uninstall
 
+`meow onboard --kit URL` sets a kit up for a project in one command.
 `install.sh --kit URL` (`install.ps1 -kit URL`; repeatable) installs MEOW and
 adds user kits, and the installer prompts for one in a terminal. On an
 existing setup use `meow kits add`: the installer also updates MEOW itself.

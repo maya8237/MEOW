@@ -56,3 +56,9 @@ def user_dir(tmp_path):
     path = Path.home() / ".meow"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+@pytest.fixture(autouse=True)
+def _no_leaked_pins(monkeypatch):
+    """A run adopts kit pins in the process environment; never leak them."""
+    monkeypatch.setenv("MEOW_KIT_PINS", "")

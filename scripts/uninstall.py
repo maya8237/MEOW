@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -446,6 +447,14 @@ def saved_projects(home: Path) -> list[Path]:
 KIT_HEADER = re.compile(r"^\s*\[\[?[^\]]+\]\]?\s*(#.*)?$")
 
 
+def _force_delete(function, path, error) -> None:
+    """Windows keeps git's object files read-only; clear that and retry."""
+    if not isinstance(error, PermissionError):
+        raise error
+    os.chmod(path, stat.S_IWRITE)
+    function(path)
+
+
 def user_kit_names(home: Path) -> list[str]:
     """Names of the kits installed at user scope (`[[kits]]` in ~/.meow)."""
     try:
@@ -500,7 +509,7 @@ def _drop_kit_lock(home: Path, name: str) -> None:
         lock.unlink()
     for sha in {entry.get("sha"), entry.get("hooks_sha")} - {None}:
         for folder in (home / ".meow/kits").glob(f"*/{sha}"):
-            shutil.rmtree(folder, ignore_errors=True)
+            shutil.rmtree(folder, onexc=_force_delete)
 
 
 def remove_kit(home: Path, name: str) -> None:

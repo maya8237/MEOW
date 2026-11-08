@@ -7,11 +7,14 @@ the cache, never the network.
 """
 
 import json
+import os
 import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from meow.common.atomic import replace_with_retry
+from meow.project.config_files import CONFIG_FILENAME, LOCAL_CONFIG_FILENAME
 from meow.project.custom.kit_store import kit_dir, normalize_url
 from meow.project.custom.sources import KINDS, SKILL_ROLES, CustomSource
 
@@ -162,7 +165,35 @@ def write_lock(path: Path, kits: dict[str, dict]) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps({"kits": kits}, indent=2, sort_keys=True) + "\n"
-    path.write_text(text, encoding="utf-8")
+    pending = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        pending.write_text(text, encoding="utf-8")
+        replace_with_retry(pending, path)  # never half-written, even on Windows
+    finally:
+        pending.unlink(missing_ok=True)
+
+
+SCOPES = ("local", "project", "user")
+
+
+def config_file(scope: str, project_dir: Path, user_dir: Path) -> Path:
+    if scope == "user":
+        return Path(user_dir) / CONFIG_FILENAME.removeprefix(".meow/")
+    name = LOCAL_CONFIG_FILENAME if scope == "local" else CONFIG_FILENAME
+    return Path(project_dir) / name
+
+
+def collect_specs(project_dir: Path, user_dir: Path) -> list[KitSpec]:
+    """Every declared kit, read without loading the rest of the configuration."""
+    specs: list[KitSpec] = []
+    for scope in SCOPES:
+        path = config_file(scope, project_dir, user_dir)
+        try:
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        specs += parse_kits(data.get("kits"), scope, path)
+    return specs
 
 
 def kits_home(user_dir: Path) -> Path:
@@ -249,11 +280,45 @@ def effective_entry(spec: KitSpec, entry: dict | None) -> dict | None:
     return {**(entry or {}), "sha": spec.rev, "hooks_sha": spec.rev}
 
 
+PINS_ENV = "MEOW_KIT_PINS"  # JSON set for a run: {"scope/name": {url, sha, hooks_sha}}
+
+
+def pin_key(spec: KitSpec) -> str:
+    return f"{spec.scope}/{spec.name}"
+
+
+def env_pins() -> dict[str, dict]:
+    """The commits this process was told to use (a run's kit pins)."""
+    try:
+        data = json.loads(os.environ.get(PINS_ENV) or "{}")
+    except ValueError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        key: pin
+        for key, pin in data.items()
+        if isinstance(pin, dict) and isinstance(pin.get("sha"), str)
+    }
+
+
+def pinned_entry(spec: KitSpec, entry: dict | None, home: Path) -> dict | None:
+    """`entry`, or the commit a run pinned, when that copy is still on disk."""
+    pin = env_pins().get(pin_key(spec))
+    if not pin or pin.get("url") != normalize_url(spec.url):
+        return entry
+    sha = pin["sha"]
+    hooks = pin.get("hooks_sha") or sha
+    if not all(kit_dir(home, pin["url"], x).is_dir() for x in (sha, hooks)):
+        return entry
+    return {**(entry or {}), "sha": sha, "hooks_sha": hooks}
+
+
 def kit_sources(
     spec: KitSpec, entry: dict | None, home: Path
 ) -> tuple[list[CustomSource], dict]:
     """Sources and allowed config for one kit; a placeholder when not fetched."""
-    entry = effective_entry(spec, entry)
+    entry = pinned_entry(spec, effective_entry(spec, entry), home)
     root = _locked_root(spec, entry, home, "sha")
     if root is None:
         placeholder = CustomSource(

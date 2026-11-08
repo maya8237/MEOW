@@ -73,7 +73,7 @@ def test_installer_reports_a_bad_kit_and_keeps_going(repo, user_dir, capsys):
 
 
 def test_installer_prompt_adds_then_stops_on_blank(repo, user_dir):
-    answers = iter([str(repo.path), "y", ""])
+    answers = iter(["y", str(repo.path), "y", ""])
     _runtime._offer_kits(lambda _prompt: next(answers), lambda _line: None)
     assert len(kit_ops.collect_specs(Path.cwd(), user_dir)) == 1
 
@@ -154,3 +154,20 @@ def test_startup_keeps_reminding_until_a_project_kit_is_updated(
     capsys.readouterr()
     _auto(project, "SessionStart")
     assert "Kit updates available" not in capsys.readouterr().out
+
+
+def test_installer_prompt_gives_up_on_endless_bad_answers(user_dir):
+    asked = []
+
+    def stuck(prompt):
+        asked.append(prompt)
+        return "y"  # a scripted yes is never a valid kit URL
+
+    _runtime._offer_kits(stuck, lambda _line: None)
+    assert len(asked) <= _runtime.MAX_KIT_PROMPTS + 1
+
+
+def test_installer_prompt_skips_on_no(user_dir):
+    asked = []
+    _runtime._offer_kits(lambda p: asked.append(p) or "n", lambda _line: None)
+    assert len(asked) == 1

@@ -481,7 +481,7 @@ def test_resume_parked_skips_supervised_and_exhausted_runs(tmp_path, capsys):
     current = store.load(spent.id)
     store.transition(spent.id, "parked", park={**current.park, "manager_resumes": 6})
     with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
-        # An exhausted budget means stop and escalate, even beside a run its
+        # Exhausted retries mean stop and escalate, even beside a run its
         # supervisor will still retry.
         assert asyncio.run(resume_parked(tmp_path)) == EXIT_BLOCKED
     run.assert_not_awaited()
@@ -523,7 +523,7 @@ def test_resume_parked_reloads_runs_settled_meanwhile(tmp_path, capsys):
     assert store.load(second.id).park["manager_resumes"] == 0  # not counted
 
 
-def test_resume_parked_budget_exhausted_is_reported_not_retried(tmp_path, capsys):
+def test_resume_parked_retries_exhausted_is_reported_not_retried(tmp_path, capsys):
     store, spent = _record(tmp_path)
     store.park(spent.id, "boom", "transient", "error")
     current = store.load(spent.id)
@@ -556,14 +556,14 @@ def test_resume_parked_non_resumable_skip_is_not_a_stop(tmp_path, capsys):
     assert "stop" not in summary
 
 
-def test_resume_parked_requeue_counts_and_respects_item_budget(tmp_path, capsys):
+def test_resume_parked_requeue_counts_and_respects_item_retries(tmp_path, capsys):
     queue = QueueStore(tmp_path)
     fresh = queue.enqueue("fresh")
     worn = queue.enqueue("worn")
     queue.update(fresh.id, status="parked", attempts=1)
     queue.update(worn.id, status="parked", attempts=6)  # managed_resumes = 6
 
-    # The worn item exhausted its budget: stop and escalate.
+    # The worn item exhausted its retries: stop and escalate.
     assert asyncio.run(resume_parked(tmp_path)) == EXIT_BLOCKED
 
     summary = json.loads(capsys.readouterr().out)
@@ -708,7 +708,7 @@ def _parked(tmp_path, **patch):
 
 
 def test_continue_counts_a_manager_resume(tmp_path):
-    """`meow resume ID --continue` (the next_command) spends the same budget
+    """`meow resume ID --continue` (the next_command) uses the same retries
     as the sweep, once."""
     store, record = _parked(tmp_path)
     with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock):
@@ -716,7 +716,7 @@ def test_continue_counts_a_manager_resume(tmp_path):
     assert store.load(record.id).park["manager_resumes"] == 1
 
 
-def test_supervisor_relaunch_does_not_spend_manager_budget(tmp_path, monkeypatch):
+def test_supervisor_relaunch_does_not_spend_manager_retries(tmp_path, monkeypatch):
     store, record = _parked(tmp_path)
     store.update_background(record.id, nonce="n", pid=os.getpid())
     monkeypatch.setenv("MEOW_SUPERVISOR_NONCE", "n")
@@ -732,7 +732,7 @@ def test_supervisor_relaunch_does_not_spend_manager_budget(tmp_path, monkeypatch
     assert store.load(record.id).park["manager_resumes"] == 0
 
 
-def test_continue_refuses_a_spent_budget_with_a_contract_line(tmp_path, capsys):
+def test_continue_refuses_a_spent_limit_with_a_contract_line(tmp_path, capsys):
     store, record = _parked(tmp_path)
     spent = run_config(tmp_path)["managed_resumes"]
     park = {**store.load(record.id).park, "manager_resumes": spent}
@@ -742,7 +742,7 @@ def test_continue_refuses_a_spent_budget_with_a_contract_line(tmp_path, capsys):
     run.assert_not_awaited()
     err = capsys.readouterr().err
     assert "MEOW_BLOCKED" in err
-    assert "budget_exhausted" in err
+    assert "retries_exhausted" in err
     assert store.load(record.id).park["manager_resumes"] == spent
 
 
@@ -777,7 +777,7 @@ def test_permanent_refusal_does_not_settle_a_run_nobody_parked(tmp_path, capsys)
     assert "MEOW_BLOCKED" in capsys.readouterr().err
 
 
-def test_refused_sweep_spends_no_budget(tmp_path, capsys):
+def test_refused_sweep_spends_no_retries(tmp_path, capsys):
     store, record = _parked(tmp_path, worktree=str(tmp_path / "missing"))
     asyncio.run(resume_parked(tmp_path))
     assert store.load(record.id).park["manager_resumes"] == 0
@@ -950,7 +950,7 @@ def test_a_resume_that_keeps_failing_validation_ends_blocked(tmp_path, capsys):
     assert "MEOW_BLOCKED" in capsys.readouterr().err
 
 
-def test_unprepared_restart_respects_the_manager_budget(tmp_path, capsys):
+def test_unprepared_restart_respects_the_manager_limit(tmp_path, capsys):
     store, record = _unprepared_run(tmp_path, argv=["run", "x"])
     limit = run_config(tmp_path)["managed_resumes"]
     store.park(record.id, RuntimeError("boom"), "transient", "error")

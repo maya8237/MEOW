@@ -10,6 +10,7 @@ import hashlib
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -23,6 +24,24 @@ _SCP = re.compile(r"^[\w.-]+@[\w.-]+:[\w./~-]+$")
 _HOSTS = {"github": "github.com", "gitlab": "gitlab.com"}
 _SCHEMES = ("https://", "ssh://", "git://", "file://")
 _PROTOCOLS = "file:git:https:ssh"
+
+
+def _make_writable_and_retry(function, path, error) -> None:
+    """`shutil.rmtree` hook: Windows refuses to delete read-only files (git's
+    object files), so clear the flag once and retry."""
+    if not isinstance(error, PermissionError):
+        raise error
+    os.chmod(path, stat.S_IWRITE)
+    function(path)
+
+
+def remove_tree(path: Path, *, quiet: bool = False) -> None:
+    """Delete a folder tree, including read-only files; `quiet` ignores failures."""
+    try:
+        shutil.rmtree(path, onexc=_make_writable_and_retry)
+    except OSError:
+        if not quiet:
+            raise
 
 
 class KitUnavailable(OSError):
@@ -47,13 +66,19 @@ def normalize_url(text: str) -> str:
 
 
 def default_name(url: str) -> str:
-    leaf = url.rstrip("/").removesuffix(".git").replace(":", "/").rsplit("/", 1)[-1]
+    cleaned = url.replace("\\", "/").rstrip("/").removesuffix(".git")
+    leaf = cleaned.replace(":", "/").rsplit("/", 1)[-1]
     name = re.sub(r"[^a-z0-9]+", "-", leaf.lower()).strip("-")
     return name or "kit"
 
 
 def _git(args: list[str], *, cwd: Path | None = None, timeout: float = 30):
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ALLOW_PROTOCOL": _PROTOCOLS}
+    env = {
+        **os.environ,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GCM_INTERACTIVE": "never",  # Git Credential Manager would open a window
+        "GIT_ALLOW_PROTOCOL": _PROTOCOLS,
+    }
     try:
         result = subprocess.run(
             ["git", *args],
@@ -106,7 +131,7 @@ def _download(url: str, sha: str, repo: Path, timeout: float) -> None:
         _git(["fetch", "--quiet", "--depth", "1", url, sha], cwd=repo, timeout=timeout)
         _git(["checkout", "--quiet", "--detach", "FETCH_HEAD"], cwd=repo)
     except KitUnavailable:
-        shutil.rmtree(repo, ignore_errors=True)
+        remove_tree(repo, quiet=True)
         _git(["clone", "--quiet", "--no-checkout", url, str(repo)], timeout=timeout)
         _git(["checkout", "--quiet", "--detach", sha], cwd=repo, timeout=120)
 
@@ -121,9 +146,9 @@ def fetch(home: Path, url: str, sha: str, timeout: float = 300) -> Path:
     try:
         repo = work / "repo"
         _download(url, sha, repo, timeout)
-        shutil.rmtree(repo / ".git")
+        remove_tree(repo / ".git")
         for path in repo.rglob("*"):
-            if path.is_symlink():
+            if path.is_symlink() or path.is_junction():
                 raise ValueError(f"{url}: kit contains a symbolic link: {path.name}")
         try:
             move_directory(repo, target)
@@ -131,7 +156,7 @@ def fetch(home: Path, url: str, sha: str, timeout: float = 300) -> Path:
             if not target.is_dir():  # another process may have stored it first
                 raise
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work, quiet=True)
     return target
 
 

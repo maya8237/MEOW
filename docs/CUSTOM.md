@@ -68,7 +68,7 @@ when Claude Code starts and right after Claude edits a `.meow/`, `SKILL.md`, or
 `.toml` file; it also restores MEOW's `.gitignore` rules in an onboarded project
 and reports what it cannot fix. Plain `meow sync` and every `meow` command do
 the same once `meow-local`/`-linked` folders exist, untrack any already
-committed, and delivery never stages them. Commit project changes.
+committed, and delivery never stages them or any local skill copy (`.meow-managed` = `local`). Commit project changes.
 `meow native verify` reports `skill_registration`, `hook_registration`,
 `unshared_definitions` (project folders git ignores), and `old_layout`.
 Updating MEOW migrates older installs on the next start: skills and hooks move

@@ -14,7 +14,8 @@ from meow.infrastructure.cancellation import RunCancelled, check_cancel, deliver
 from meow.infrastructure.worktree import _is_linked_worktree, _run_git
 from meow.infrastructure.worktree_names import result_branch
 from meow.infrastructure.worktree_setup import is_secret_like
-from meow.project.config_files import GENERATED_SKILL_PATHS, SHARED_PROJECT_PATHS
+from meow.project.config_files import SHARED_PROJECT_PATHS
+from meow.project.onboarding import generated_paths
 
 # An automatic run must fail a stuck push (credential prompt, hook, network)
 # rather than wait on it forever.
@@ -89,7 +90,7 @@ def commit_worktree(active: Path, message: list[str]) -> str:
     """
     _git(active, "add", "-A")
     # Personal and generated skills never ship, whatever .gitignore says.
-    _git(active, "reset", "-q", "--", *GENERATED_SKILL_PATHS, check=False)
+    _git(active, "reset", "-q", "--", *generated_paths(active), check=False)
     staged = _git(active, "diff", "--cached", "--name-only", "-z").stdout.split("\0")
     runtime = [
         name

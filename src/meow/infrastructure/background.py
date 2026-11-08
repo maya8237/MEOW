@@ -354,7 +354,7 @@ def worker_main(repo: Path, run_id: str, nonce: str) -> int:
     """The detached worker: register, then supervise the run's driver.
 
     The driver runs as a `_drive` child (see `supervisor.supervise`), which
-    relaunches a parked run within the `[run]` retry budget.
+    relaunches a parked run within the `[run]` retry limit.
     """
     from meow.execution.sprint_runner import _settle_failure
     from meow.infrastructure.supervisor import supervise

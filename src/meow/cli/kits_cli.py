@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from meow.project.config import load_config, user_config_path
-from meow.project.custom import kit_ops
+from meow.project.custom import kit_author, kit_ops
 from meow.project.custom.kit_store import KitUnavailable
 from meow.project.custom.kits import UPDATE_MODES
 from meow.project.custom.registration import sync_registration
@@ -61,7 +61,35 @@ def _uninstall(args, project_dir: Path, user_dir: Path) -> None:
     _sync(project_dir, user_dir)
 
 
+def _validate(args, project_dir: Path, user_dir: Path) -> None:
+    target = args.target
+    if not Path(target).is_dir() and not Path(target).exists():
+        _, sha, root = kit_ops.fetch_new(target, args.ref, user_dir)
+        print(f"Checking {target} @ {sha[:7]}")
+    else:
+        root = Path(target)
+    report = kit_author.validate_directory(root)
+    for line in report.summary:
+        print(f"  {line}")
+    for line in report.warnings:
+        print(f"  warning: {line}")
+    for line in report.problems:
+        print(f"  error: {line}")
+    if report.problems:
+        raise SystemExit(1)
+    print("Kit is valid.")
+
+
+def _init(args, project_dir: Path, user_dir: Path) -> None:
+    created = kit_author.scaffold(Path(args.directory), args.name)
+    print(f"Created a kit in {args.directory}:")
+    print("\n".join(f"  {name}" for name in created))
+    print(f"Next: cd {args.directory} && meow kits validate .")
+
+
 _ACTIONS = {
+    "validate": _validate,
+    "init": _init,
     "add": _add,
     "update": _update,
     "uninstall": _uninstall,
@@ -92,6 +120,15 @@ def _add_options(add) -> None:
     add.add_argument("--yes", "-y", action="store_true", help="Skip confirmation.")
 
 
+def _add_author_actions(action) -> None:
+    check = action("validate", "Check a kit directory or git URL before publishing.")
+    check.add_argument("target", nargs="?", default=".")
+    check.add_argument("--ref", help="With a URL: branch, tag, or commit.")
+    create = action("init", "Create a starter kit.")
+    create.add_argument("directory", nargs="?", default=".")
+    create.add_argument("--name")
+
+
 def add_kits_parser(subparsers):
     parser = subparsers.add_parser(
         "kits", help="Install skills, agents, workflows, and hooks from a git repo."
@@ -113,6 +150,7 @@ def add_kits_parser(subparsers):
     upd.add_argument("names", nargs="*")
     upd.add_argument("--check", action="store_true", help="Only report updates.")
     upd.add_argument("--accept", action="store_true", help="Approve held hook changes.")
+    _add_author_actions(action)
     rem = action("uninstall", "Remove a kit.", aliases=["remove"])
     rem.add_argument("name")
     rem.add_argument("--scope", choices=("user", "project", "local"))

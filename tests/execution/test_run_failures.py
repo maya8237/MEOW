@@ -217,7 +217,7 @@ def _park_again(store, run_id, reason="boom"):
     return store.park(run_id, reason, "transient", "error")
 
 
-def test_no_progress_budget_ends_failed(tmp_path):
+def test_no_progress_limit_ends_failed(tmp_path):
     store, record = _store(tmp_path)
     assert (
         store.park(record.id, RuntimeError("boom"), "transient", "error").park[
@@ -240,7 +240,7 @@ def test_no_progress_budget_ends_failed(tmp_path):
     assert next_command(current) is None
 
 
-def test_progress_resets_budget(tmp_path):
+def test_progress_resets_limit(tmp_path):
     store, record = _store(tmp_path)
     with patch("meow.execution.run_failures.progress_fingerprint", return_value="a"):
         store.park(record.id, "boom", "transient", "error")
