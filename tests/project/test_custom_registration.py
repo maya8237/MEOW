@@ -350,3 +350,22 @@ def test_shared_project_skill_is_left_tracked(project):
     _git(project, "add", "-f", ".claude/skills/team")
     assert protect_generated(project) == []
     assert _git(project, "ls-files", rel).stdout.strip() == rel
+
+
+def test_check_reports_local_skill_missing_from_exclude(project):
+    from meow.project.onboarding import generated_problems, protect_generated
+
+    _local_copy(project)
+    (project / ".git" / "info" / "exclude").write_text("", encoding="utf-8")
+    assert any("not ignored" in line for line in generated_problems(project))
+    protect_generated(project)
+    assert not any("not ignored" in line for line in generated_problems(project))
+
+
+def test_flat_local_skill_does_not_rewrite_gitignore(project):
+    from meow.project.onboarding import protect_generated
+
+    _local_copy(project)
+    (project / ".gitignore").write_text(".meow/\n", encoding="utf-8")
+    protect_generated(project)
+    assert (project / ".gitignore").read_text(encoding="utf-8") == ".meow/\n"
