@@ -19,6 +19,7 @@ GUIDES = (
     "docs/TESTER.md",
     "docs/ORCHESTRATION.md",
     "docs/CUSTOM.md",
+    "docs/KITS.md",
     "docs/HOOKS.md",
     "docs/INTEGRATIONS.md",
     "docs/MCP.md",

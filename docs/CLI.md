@@ -17,8 +17,7 @@ Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](OR
 | `meow cleanup [ID]` | [Keep results and remove integrated task artifacts](CLEANUP.md) |
 | `meow detach [--log FILE] -- CMD...` | Detach a command; returns PID and log JSON |
 | `meow queue ["request"]` | Add a request, or process pending requests serially |
-| `meow workflows` / `meow agents` | Inspect, eject, validate, or diff definitions |
-| `meow kits add\|list\|show\|update\|uninstall` | Install [kits](KITS.md) from a GitHub/GitLab repo |
+| `meow workflows` / `meow agents` / `meow kits` | Inspect, eject, validate, or diff definitions; `kits` installs [git-hosted ones](KITS.md) |
 | `meow skills sync`, `hooks sync`, `sync` `[--scope S] [--check]` | Register custom skills, [hooks](HOOKS.md), or both with Claude Code; `--check` only reports; the plugin runs `sync --auto` [at startup](CUSTOM.md#claude-code-registration) |
 | `meow ui` | Read-only catalog, session history, and docs |
 | `meow schedule` | Add, list, edit, or cancel a one-shot trigger |
