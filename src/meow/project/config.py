@@ -38,6 +38,7 @@ from meow.project.custom import (
     discover,
     parse_sources,
 )
+from meow.project.custom.kits import layer_kits
 from meow.project.tester_setup import apply_browser_default
 
 __all__ = [
@@ -154,7 +155,7 @@ def config_root(project_dir: Path, active_dir: Path | None = None) -> Path:
 
 def _layer_custom_sources(
     layer: dict, config_path: Path, working_dir: Path
-) -> list[CustomSource]:
+) -> tuple[list[CustomSource], dict]:
     """Pop and resolve one layer's `[custom]` table against its own scope."""
     project = Path(working_dir)
     resolved = config_path.resolve()
@@ -166,7 +167,11 @@ def _layer_custom_sources(
         scope, base = "project", project
     else:
         scope, base = "user", config_path.parent
-    return parse_sources(layer.pop("custom", None), scope, base, config_path)
+    sources = parse_sources(layer.pop("custom", None), scope, base, config_path)
+    kit_sources, kit_config = layer_kits(
+        layer.pop("kits", None), scope, config_path, project, user_config_path().parent
+    )
+    return [*sources, *kit_sources], kit_config
 
 
 def _workflow_config(user_config):
@@ -185,8 +190,9 @@ def _layered(working_dir: Path) -> tuple[dict, list[CustomSource]]:
     for config_path in reversed(config_paths(working_dir)):
         with open(config_path, "rb") as f:
             layer = _expand_config_environment(tomllib.load(f))
-        custom_sources.extend(_layer_custom_sources(layer, config_path, working_dir))
-        user_config = _merge_config(user_config, layer)
+        found, kit_config = _layer_custom_sources(layer, config_path, working_dir)
+        custom_sources.extend(found)
+        user_config = _merge_config(_merge_config(user_config, kit_config), layer)
     return user_config, custom_sources
 
 

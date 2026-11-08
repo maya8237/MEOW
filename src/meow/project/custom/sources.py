@@ -48,11 +48,14 @@ class CustomSource:
     roles: tuple[str, ...] = ()  # empty: every role the kind allows
     missing: bool = False  # user scope only: the directory is absent, so skipped
     project_dir: Path | None = None  # containment boundary for project contents
+    kit: str | None = None  # the kit this directory came from, if any
+    # (skill name, roles) pairs from a kit manifest; overrides `roles` per skill
+    skill_roles: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @property
     def delegate(self) -> bool:
         """Agents from a `[custom].agents` entry are offered as subagents."""
-        return self.kind == "agents" and self.config_file is not None
+        return self.kind == "agents" and self.config_file is not None and not self.kit
 
 
 def builtin_dir() -> Path:

@@ -41,7 +41,8 @@ class CustomSkill:
         return f"{PLUGIN_NAME}:{self.name}"
 
     def applies_to(self, role: str) -> bool:
-        return not self.source.roles or role in self.source.roles
+        roles = dict(self.source.skill_roles).get(self.name) or self.source.roles
+        return not roles or role in roles
 
 
 @dataclass(frozen=True)
@@ -246,31 +247,45 @@ def _merge(kind: str, sources: list[CustomSource]) -> tuple[list, list[str]]:
     chosen: dict[str, CustomSkill | CustomAgent | CustomHook] = {}
     overrides = []
     label = kind.removesuffix("s")
+    # Within a scope, the user's own files outrank a kit's.
     ordered = sorted(
-        (s for s in sources if s.kind == kind), key=lambda s: SCOPES.index(s.scope)
+        (s for s in sources if s.kind == kind),
+        key=lambda s: (SCOPES.index(s.scope), s.kit is not None),
     )
     for source in ordered:
         for item in _definitions(source):
             previous = chosen.get(item.name)
             if previous is None:
                 chosen[item.name] = item
-            elif previous.source.scope == source.scope:
+            elif previous.source.scope == source.scope and (
+                previous.source.kit is None
+            ) == (source.kit is None):
                 raise ValueError(
                     f"custom {label} {item.name!r} is defined twice in "
                     f"{source.scope} scope: {previous.source.path} and {source.path}"
                 )
             else:
                 overrides.append(
-                    f"{label} {item.name}: {previous.source.scope} "
-                    f"overrides {source.scope}"
+                    f"{label} {item.name}: {_origin(previous.source)} "
+                    f"overrides {_origin(source)}"
                 )
     return list(chosen.values()), overrides
+
+
+def _origin(source: CustomSource) -> str:
+    return f"{source.scope} kit {source.kit}" if source.kit else source.scope
 
 
 def _skipped(sources: list[CustomSource]) -> tuple[str, ...]:
     notes = []
     for source in sources:
         if not source.missing:
+            continue
+        if source.kit:
+            notes.append(
+                f"kit {source.kit} ({source.scope} scope) is not downloaded; "
+                "run: meow kits update"
+            )
             continue
         notes.append(
             f"custom {source.kind} directory {source.path} does not exist "
