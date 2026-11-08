@@ -84,6 +84,19 @@ Teammates receive the new `rev` with the commit. CI or a pre-push hook can run
 `meow kits update --check`, which prints pending updates and exits 1 when any
 kit is behind.
 
+## Writing a kit
+
+```bash
+meow kits init my-kit        # scaffold: manifest, a skill, an agent, README
+meow kits validate .         # check a folder (or a git URL) before publishing
+```
+
+`validate` reports every error at once (bad manifest, skills whose name
+differs from the folder, agents missing a prompt, unknown workflow agents,
+symlinks) and lists each hook with the command it will run, so reviewers see
+what the kit executes. It exits 1 on any error. Then push the repo and
+`meow kits add owner/my-kit`.
+
 ## Skills for built-in roles
 
 ```toml
