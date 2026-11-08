@@ -7,11 +7,13 @@ the cache, never the network.
 """
 
 import json
+import os
 import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from meow.common.atomic import replace_with_retry
 from meow.project.custom.kit_store import kit_dir, normalize_url
 from meow.project.custom.sources import KINDS, SKILL_ROLES, CustomSource
 
@@ -162,7 +164,12 @@ def write_lock(path: Path, kits: dict[str, dict]) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps({"kits": kits}, indent=2, sort_keys=True) + "\n"
-    path.write_text(text, encoding="utf-8")
+    pending = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        pending.write_text(text, encoding="utf-8")
+        replace_with_retry(pending, path)  # never half-written, even on Windows
+    finally:
+        pending.unlink(missing_ok=True)
 
 
 def kits_home(user_dir: Path) -> Path:

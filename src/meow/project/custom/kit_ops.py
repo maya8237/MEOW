@@ -1,6 +1,5 @@
 """Add, update, and remove kits; the work behind `meow kits`."""
 
-import shutil
 import time
 import tomllib
 from concurrent.futures import ThreadPoolExecutor
@@ -17,6 +16,7 @@ from meow.project.custom.kit_store import (
     kit_dir,
     normalize_url,
     remote_sha,
+    remove_tree,
     tree,
 )
 from meow.project.custom.kits import (
@@ -471,7 +471,7 @@ def _prune_cache(project_dir: Path, user_dir: Path, remote: str) -> list[str]:
     gone = []
     for folder in repo.iterdir() if repo.is_dir() else ():
         if folder.is_dir() and folder.name not in used:
-            shutil.rmtree(folder)
+            remove_tree(folder)
             gone.append(folder.name[:7])
     if repo.is_dir() and not any(repo.iterdir()):
         repo.rmdir()
