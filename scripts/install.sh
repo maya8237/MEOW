@@ -9,6 +9,7 @@ install_missing=false
 channel=stable
 pin=
 mcp=
+kits=
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --non-interactive) non_interactive=true ;;
@@ -26,8 +27,12 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || { printf 'Missing value for --mcp\n' >&2; exit 2; }
             mcp=$2; shift ;;
         --mcp=*) mcp=${1#--mcp=} ;;
+        --kit)
+            [ "$#" -ge 2 ] || { printf 'Missing value for --kit\n' >&2; exit 2; }
+            kits=$(printf '%s\n%s' "$kits" "$2"); shift ;;
+        --kit=*) kits=$(printf '%s\n%s' "$kits" "${1#--kit=}") ;;
         -h|--help)
-            printf '%s\n' 'Usage: sh install.sh [--non-interactive] [--no-setup] [--latest-pypi | --beta | --version X.Y.Z[bN]] [--mcp atlassian,gitlab] [--install-missing] [--bun]' 'With a terminal, asks about MCP servers, the Bun shared store, and projects after installing.' '--no-setup or --non-interactive skips those questions; so does having no terminal.' 'By default the newest stable PyPI release is installed. --latest-pypi takes the newest release, beta or stable; --beta the newest beta; --version an exact stable or beta version.' '--mcp registers user-scope MCP servers from their credential environment variables.' '--install-missing pip-installs a missing Jira server (mcp-atlassian) for --mcp.' '--bun configures the Bun shared dependency store and migrates registered repos.'
+            printf '%s\n' 'Usage: sh install.sh [--non-interactive] [--no-setup] [--latest-pypi | --beta | --version X.Y.Z[bN]] [--mcp atlassian,gitlab] [--install-missing] [--bun] [--kit URL]...' 'With a terminal, asks about MCP servers, the Bun shared store, and projects after installing.' '--no-setup or --non-interactive skips those questions; so does having no terminal.' 'By default the newest stable PyPI release is installed. --latest-pypi takes the newest release, beta or stable; --beta the newest beta; --version an exact stable or beta version.' '--mcp registers user-scope MCP servers from their credential environment variables.' '--install-missing pip-installs a missing Jira server (mcp-atlassian) for --mcp.' '--bun configures the Bun shared dependency store and migrates registered repos.' '--kit URL installs a kit (skills, agents, workflows, hooks from a git repo: owner/repo, github:, gitlab:, or any git URL); repeatable.'
             exit 0 ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
@@ -236,6 +241,13 @@ if [ -n "$mcp" ]; then
     else
         "$destination/runtime/bin/python3" -m meow mcp "$mcp"
     fi
+fi
+if [ -n "$kits" ]; then
+    printf '%s\n' "$kits" | while IFS= read -r kit_url; do
+        [ -n "$kit_url" ] || continue
+        "$destination/runtime/bin/python3" -m meow kits add "$kit_url" --yes ||
+            printf 'Kit %s failed. Retry with: meow kits add %s\n' "$kit_url" "$kit_url" >&2
+    done
 fi
 printf '\nMEOW is ready. Open a new terminal, or run:\n  export PATH="$HOME/.meow/bin:$PATH"\n'
 printf '%s\n' 'Restart Claude Code to load /meow:* skills. Update later with meow -u.'

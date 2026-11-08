@@ -197,6 +197,17 @@ def _parser() -> argparse.ArgumentParser:
             "variables, e.g. JIRA_URL and JIRA_API_TOKEN."
         ),
     )
+    parser.add_argument(
+        "--kit",
+        metavar="URL",
+        action="append",
+        default=[],
+        help=(
+            "Install a kit (skills, agents, workflows, hooks from a git repo) at "
+            "user scope: owner/repo, github:owner/repo, gitlab:group/project, or "
+            "any git URL. Repeatable."
+        ),
+    )
     return parser
 
 
@@ -412,6 +423,32 @@ def _offer_mcp(ask: Callable[[str], str], output: Callable[[str], None]) -> None
             output(f"  {describe(result)}")
 
 
+def _add_kit(url: str, ask, output: Callable[[str], None]) -> bool:
+    from meow.project.config import user_config_path
+    from meow.project.custom import kit_ops
+
+    try:
+        added = kit_ops.install(
+            Path.cwd(), user_config_path().parent, url, confirm=ask, output=output
+        )
+    except (OSError, ValueError) as exc:
+        output(f"  Kit {url} skipped: {exc}")
+        return False
+    return added is not None
+
+
+def _offer_kits(ask: Callable[[str], str], output: Callable[[str], None]) -> None:
+    """Offer user-scope kits; blank input skips."""
+    prompt = "Add a MEOW kit from a git URL (GitHub/GitLab; Enter to skip): "
+    try:
+        while url := ask(prompt).strip():
+            if _add_kit(url, lambda q: _yes(ask("  " + q)), output):
+                output("  Skills and hooks appear when Claude Code next starts.")
+            prompt = "Another kit URL (Enter to finish): "
+    except EOFError:
+        output("\nNo input available; skipped kit setup.")
+
+
 def _install_mcp(
     providers: str, output: Callable[[str], None], install_missing: bool = False
 ) -> int:
@@ -437,6 +474,7 @@ def _setup_projects() -> int:
     onboarded: list[Path] = []
     try:
         _offer_mcp(input, print)
+        _offer_kits(input, print)
         shared_bun = _setup_bun(input, print)
         _onboard_projects(input, print, path_prompt(), onboarded)
         if shared_bun:
@@ -472,6 +510,8 @@ def _optional_setup(args: argparse.Namespace) -> int:
     status = _install_mcp(args.mcp, print, install) if args.mcp else 0
     if getattr(args, "bun", False) and _enable_bun(print):
         _migrate_registered()
+    for url in getattr(args, "kit", []):
+        status = int(not _add_kit(url, lambda _question: True, print)) or status
     if args.setup and not getattr(args, "non_interactive", False):
         status = _setup_projects() or status
     return status

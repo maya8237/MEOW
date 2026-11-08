@@ -38,7 +38,12 @@ from meow.project.custom import (
     discover,
     parse_sources,
 )
-from meow.project.custom.kits import layer_kits
+from meow.project.custom.kits import (
+    kits_home,
+    layer_kits,
+    lock_file,
+    parse_kits,
+)
 from meow.project.tester_setup import apply_browser_default
 
 __all__ = [
@@ -168,8 +173,11 @@ def _layer_custom_sources(
     else:
         scope, base = "user", config_path.parent
     sources = parse_sources(layer.pop("custom", None), scope, base, config_path)
+    user_dir = user_config_path().parent
     kit_sources, kit_config = layer_kits(
-        layer.pop("kits", None), scope, config_path, project, user_config_path().parent
+        parse_kits(layer.pop("kits", None), scope, config_path),
+        lock_file(scope, project, user_dir),
+        kits_home(user_dir),
     )
     return [*sources, *kit_sources], kit_config
 

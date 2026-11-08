@@ -4,6 +4,7 @@ from pathlib import Path
 
 from meow.cli.hooks_cli import add_sync_options
 from meow.project.config import load_config, user_config_path
+from meow.project.custom import kit_ops
 from meow.project.custom.registration import (
     auto_sync_message,
     check_registration,
@@ -20,6 +21,8 @@ def _auto(project_dir: Path, event: str) -> None:
     """Never fails: a broken config must not break Claude Code's startup."""
     try:
         migrated = old_layout(project_dir, apply=True)
+        if event == "SessionStart":  # the only event that may touch the network
+            migrated += kit_ops.auto_update(project_dir, user_config_path().parent)
         custom = load_config(project_dir)["customizations"]
         message = auto_sync_message(
             custom, project_dir, user_config_path().parent, migrated

@@ -1,6 +1,6 @@
 # irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/install.ps1 | iex
 [CmdletBinding()]
-param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$bun, [switch]${install-missing}, [switch]${latest-pypi}, [switch]$beta, [string]$version = '', [string]$mcp = '')
+param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$bun, [switch]${install-missing}, [switch]${latest-pypi}, [switch]$beta, [string]$version = '', [string]$mcp = '', [string[]]$kit = @())
 
 & {
     $ErrorActionPreference = 'Stop'
@@ -221,6 +221,10 @@ param([switch]${non-interactive}, [switch]${no-setup}, [switch]$setup, [switch]$
             if (${install-missing}) { $mcpArgs += '--install-missing' }
             & (Join-Path $destination 'runtime\Scripts\python.exe') -m meow @mcpArgs
             Invoke-Checked 'MCP setup failed. Rerun `meow mcp` to retry.'
+        }
+        foreach ($kitUrl in $kit) {
+            & (Join-Path $destination 'runtime\Scripts\python.exe') -m meow kits add $kitUrl --yes
+            if ($LASTEXITCODE -ne 0) { Write-Host "Kit $kitUrl failed. Retry with: meow kits add $kitUrl" -ForegroundColor Yellow }
         }
         $bin = Join-Path $root 'bin'
         $env:Path = "$bin;$env:Path"

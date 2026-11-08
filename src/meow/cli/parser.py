@@ -6,6 +6,7 @@ from importlib.metadata import version
 
 from meow.cli.catalog_cli import add_catalog_parsers
 from meow.cli.hooks_cli import add_hooks_parser
+from meow.cli.kits_cli import add_kits_parser
 from meow.cli.mcp_cli import add_mcp_parser
 from meow.cli.onboard_cli import add_onboard_parser
 from meow.cli.schedule_cli import add_schedule_parser
@@ -29,6 +30,7 @@ _VISIBLE_COMMANDS = (
     "skills",
     "hooks",
     "sync",
+    "kits",
     "ui",
     "schedule",
     "onboard",
@@ -290,6 +292,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     add_skills_parser(subparsers)
     add_hooks_parser(subparsers)
     add_sync_parser(subparsers)
+    add_kits_parser(subparsers)
     ui_parser = subparsers.add_parser(
         "ui", help="Browse workflows, agents, and skills in a local page."
     )

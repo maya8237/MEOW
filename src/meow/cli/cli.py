@@ -16,6 +16,7 @@ from meow.cli.cleanup_cli import cleanup_command
 from meow.cli.dispatch import _dispatch
 from meow.cli.hooks_cli import hooks_command
 from meow.cli.ipython_cli import start_ipython
+from meow.cli.kits_cli import kits_command
 from meow.cli.orchestration_cli import run_orchestration
 from meow.cli.parser import _build_arg_parser, expand_shortcuts
 from meow.cli.resume_cli import resume, resume_parked
@@ -237,6 +238,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         "skills": skills_command,
         "hooks": hooks_command,
         "sync": sync_command,
+        "kits": kits_command,
     }
     if args.command in registrars:
         try:

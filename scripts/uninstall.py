@@ -443,6 +443,82 @@ def saved_projects(home: Path) -> list[Path]:
     ]
 
 
+KIT_HEADER = re.compile(r"^\s*\[\[?[^\]]+\]\]?\s*(#.*)?$")
+
+
+def user_kit_names(home: Path) -> list[str]:
+    """Names of the kits installed at user scope (`[[kits]]` in ~/.meow)."""
+    try:
+        data = tomllib.loads((home / ".meow/config.toml").read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return []
+    kits = data.get("kits", [])
+    return [
+        kit["name"]
+        for kit in kits
+        if isinstance(kits, list)
+        and isinstance(kit, dict)
+        and isinstance(kit.get("name"), str)
+    ]
+
+
+def _kit_blocks(lines: list[str]) -> list[list[str]]:
+    blocks: list[list[str]] = [[]]
+    for line in lines:
+        if KIT_HEADER.match(line):
+            blocks.append([])
+        blocks[-1].append(line)
+    return blocks
+
+
+def remove_kit(home: Path, name: str) -> None:
+    """Drop a user kit's config entry, lock entry, and cached files."""
+    config = home / ".meow/config.toml"
+    original = config.read_text(encoding="utf-8")
+    kept = []
+    for block in _kit_blocks(original.splitlines(True)):
+        if block and block[0].strip().startswith("[[kits]]"):
+            try:
+                entry = tomllib.loads("".join(block))["kits"][0]
+            except (tomllib.TOMLDecodeError, KeyError, IndexError):
+                entry = {}
+            if entry.get("name") == name:
+                continue
+        kept.extend(block)
+    text = "".join(kept)
+    expected = [n for n in user_kit_names(home) if n != name]
+    try:
+        remaining = [k.get("name") for k in tomllib.loads(text).get("kits", [])]
+    except tomllib.TOMLDecodeError:
+        remaining = None
+    if remaining != expected:
+        raise ValueError(f"Cannot safely edit {config}; remove kit {name!r} by hand")
+    config.write_text(text, encoding="utf-8")
+    lock = home / ".meow/kits.lock"
+    try:
+        entries = json.loads(lock.read_text(encoding="utf-8")).get("kits", {})
+    except (OSError, ValueError, AttributeError):
+        return
+    entry = entries.pop(name, {})
+    if entries:
+        lock.write_text(
+            json.dumps({"kits": entries}, indent=2) + "\n", encoding="utf-8"
+        )
+    else:
+        lock.unlink()
+    for sha in {entry.get("sha"), entry.get("hooks_sha")} - {None}:
+        for folder in (home / ".meow/kits").glob(f"*/{sha}"):
+            shutil.rmtree(folder, ignore_errors=True)
+
+
+def ask_kits(home: Path) -> list[str]:
+    names = user_kit_names(home)
+    if names:
+        print("Installed kits (their skills and hooks are removed either way;")
+        print("keeping one means a reinstall of MEOW brings it back):")
+    return [n for n in names if confirmed(f"Remove kit {n!r} and its files? [y/N]: ")]
+
+
 def ask_removal(home: Path) -> tuple[bool, list[Path], bool]:  # ruff: ignore[complex-structure]
     purge = confirmed("Also delete ALL ~/.meow configuration and run data? [y/N]: ")
     print("Optional: un-onboard projects, deleting their entire .meow directories,")
@@ -482,9 +558,10 @@ def main(argv: Sequence[str] = ()) -> int:  # ruff: ignore[complex-structure, to
     try:
         check_python_location(home.resolve() / ".meow")
         if args.non_interactive:
-            purge, projects, bun = False, [], False
+            purge, projects, bun, kits = False, [], False, []
         else:
             purge, projects, bun = ask_removal(home)
+            kits = [] if purge else ask_kits(home)
         scheduled = find_scheduled()
         if scheduled:
             print(f"Will cancel {len(scheduled)} scheduled MEOW run(s) in the OS.")
@@ -499,6 +576,9 @@ def main(argv: Sequence[str] = ()) -> int:  # ruff: ignore[complex-structure, to
             except (OSError, ValueError) as exc:
                 failures += 1
                 print(f"Could not un-onboard {project}: {exc}", file=sys.stderr)
+        for name in kits:
+            print(f"Removing kit {name}...", flush=True)
+            remove_kit(home, name)
         if scheduled:
             print("Cancelling scheduled MEOW runs...", flush=True)
         cancel_scheduled(scheduled)

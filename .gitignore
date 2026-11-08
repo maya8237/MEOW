@@ -231,6 +231,7 @@ __marimo__/
 .meow/*
 !.meow/
 !.meow/config.toml
+!.meow/kits.lock
 !.meow/skills/
 !.meow/agents/
 !.meow/workflows/
