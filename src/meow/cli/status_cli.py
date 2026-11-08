@@ -4,9 +4,10 @@ import json
 import sys
 import time
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
+from meow.common.clock import now, timestamp_key
 from meow.execution.orchestration.model import (
     TERMINAL_PHASES as ORCHESTRATOR_TERMINAL_PHASES,
 )
@@ -124,14 +125,14 @@ def render(  # ruff: ignore[complex-structure, too-many-statements, too-many-bra
     record: RunRecord, *, verbose: bool = False, concerns: tuple[Concern, ...] = ()
 ) -> str:
     started = datetime.fromisoformat(record.created_at)
-    elapsed = max(0, int((datetime.now(UTC) - started).total_seconds()))
+    elapsed = max(0, int((now() - started).total_seconds()))
     totals = usage_totals(record.usage)
 
     def available(value: object) -> str:
         return str(value) if value is not None else "unavailable"
 
     updated = datetime.fromisoformat(record.updated_at)
-    idle = max(0, int((datetime.now(UTC) - updated).total_seconds()))
+    idle = max(0, int((now() - updated).total_seconds()))
     entries = record.usage.get("entries", []) if isinstance(record.usage, dict) else []
     stamps = [e["at"] for e in entries if isinstance(e, dict) and e.get("at")]
     usage_note = ""
@@ -276,7 +277,7 @@ def saved_run_id(working_dir: Path, run_id: str | None) -> str | None:
         latest.id in task.run_ids for parent in parents for task in parent.tasks
     ):
         candidates.append(latest)
-    return max(candidates, key=lambda record: record.updated_at).id
+    return max(candidates, key=lambda record: timestamp_key(record.updated_at)).id
 
 
 def _report_missing_run(

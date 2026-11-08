@@ -7,11 +7,11 @@ import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import asdict
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
 from meow.common.atomic import replace_with_retry
+from meow.common.clock import now_iso, timestamp_key
 from meow.common.process import process_identity
 from meow.execution.orchestration.model import (
     MODES,
@@ -43,7 +43,7 @@ class DriverBusyError(RuntimeError):
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    return now_iso()
 
 
 def _check_record(record: OrchestratorRecord) -> None:
@@ -166,7 +166,7 @@ class OrchestratorStore:
                 loaded.append(self.load(path.name))
             except OrchestratorStateError:
                 continue
-        return sorted(loaded, key=lambda record: record.created_at)
+        return sorted(loaded, key=lambda record: timestamp_key(record.created_at))
 
     def latest(self) -> OrchestratorRecord:
         records = self.records()
@@ -174,7 +174,7 @@ class OrchestratorStore:
             raise OrchestratorStateError(
                 "No orchestrators found. Start one with meow run --orchestrate."
             )
-        return max(records, key=lambda record: record.updated_at)
+        return max(records, key=lambda record: timestamp_key(record.updated_at))
 
 
 class DriverLock:

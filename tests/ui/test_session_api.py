@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import threading
 import time
+from datetime import UTC, datetime
 from http import HTTPStatus
 from pathlib import Path
 
@@ -183,7 +184,7 @@ def test_preview_rejects_unhashable_mode_without_dropping_connection(
 def test_schedule_session_freezes_recipe_lists_and_cancels(  # ruff: ignore[too-many-statements]
     running, project, monkeypatch
 ):
-    from datetime import UTC, datetime, timedelta
+    from datetime import timedelta
     from unittest.mock import Mock
 
     from meow.infrastructure import scheduling
@@ -233,7 +234,9 @@ def test_schedule_session_freezes_recipe_lists_and_cancels(  # ruff: ignore[too-
         },
     )
     assert status == HTTPStatus.OK, body
-    assert body["session"]["schedules"][0]["at"] == "2099-12-01T12:30:00+00:00"
+    assert datetime.fromisoformat(body["session"]["schedules"][0]["at"]) == datetime(
+        2099, 12, 1, 12, 30, tzinfo=UTC
+    )
     assert scheduling.list_schedules(project)[0]["recipe"] == frozen
     status, _ = post(
         running.server_port,

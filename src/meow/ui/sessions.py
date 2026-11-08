@@ -17,7 +17,6 @@ import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, TypedDict
 
@@ -29,6 +28,7 @@ from meow.cli.validation import (
     _validate_run_flags,
 )
 from meow.common.atomic import replace_with_retry
+from meow.common.clock import now_iso, timestamp_key
 from meow.common.process import process_identity
 from meow.execution.run_policy import uses_orchestration
 
@@ -681,7 +681,7 @@ class SessionError(ValueError):
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    return now_iso()
 
 
 @dataclass
@@ -830,7 +830,9 @@ class SessionStore:  # ruff: ignore[too-many-public-methods]
                     sessions.append(self._read_session(path.parent.name))
                 except SessionError:
                     continue
-        return sorted(sessions, key=lambda item: item.updated_at, reverse=True)
+        return sorted(
+            sessions, key=lambda item: timestamp_key(item.updated_at), reverse=True
+        )
 
     def load(self, session_id: str) -> Session:
         return self._read_session(session_id)

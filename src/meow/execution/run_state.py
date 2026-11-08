@@ -8,11 +8,12 @@ import time
 from collections.abc import Callable
 from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import asdict, dataclass, field, fields, replace
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
 from meow.common.atomic import replace_with_retry
+from meow.common.clock import now_iso
 from meow.common.process import process_identity
 from meow.infrastructure.logging import get_logger
 
@@ -71,7 +72,7 @@ class ClaimBusyError(RunStateError):
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    return now_iso()
 
 
 def _safe(value: object, key: str = "") -> object:  # ruff: ignore[complex-structure, too-many-return-statements, too-many-branches]
@@ -774,7 +775,9 @@ def park_lost_native(store: RunStore, record: RunRecord) -> RunRecord:
     `park` applies the no-progress stop rule; a spent resume budget is
     reported by `budget_refusal` when someone tries to continue it.
     """
-    beat = datetime.fromtimestamp(record.results["heartbeat_at"], UTC).isoformat()
+    beat = (
+        datetime.fromtimestamp(record.results["heartbeat_at"]).astimezone().isoformat()
+    )
     return store.park(
         record.id,
         f"native session lost during {record.phase}: no checkpoint since {beat}",

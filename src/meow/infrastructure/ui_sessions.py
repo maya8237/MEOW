@@ -12,9 +12,10 @@ import sys
 import threading
 import time
 from contextlib import nullcontext, suppress
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
+from meow.common.clock import now, now_iso
 from meow.common.process import process_identity, run_windows_tool
 from meow.ui.sessions import (
     Attempt,
@@ -67,7 +68,7 @@ def _attempt_is_starting(repo: Path, session_id: str, attempt: Attempt) -> bool:
         return False
     try:
         created = datetime.fromisoformat(attempt.created_at)
-        age = (datetime.now(UTC) - created).total_seconds()
+        age = (now() - created).total_seconds()
         if 0 <= age <= _UI_WORKER_STARTUP_GRACE_SECONDS:
             return True
         claim = json.loads(
@@ -788,6 +789,4 @@ def worker_main(  # ruff: ignore[complex-structure, too-many-branches, too-many-
 
 
 def _now_worker() -> str:
-    from datetime import UTC, datetime
-
-    return datetime.now(UTC).isoformat()
+    return now_iso()

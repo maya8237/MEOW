@@ -8,6 +8,7 @@ from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from meow.common.clock import timestamp_key
 from meow.infrastructure import ui_sessions
 from meow.infrastructure.scheduling import (
     cancel_schedule,
@@ -240,7 +241,7 @@ def get(server, url: str):  # ruff: ignore[complex-structure, too-many-return-st
             for session in store.list():
                 session = ui_sessions.reconcile_session(repo, session.id)
                 sessions.append(_summary(store, session))
-        sessions.sort(key=lambda item: item["updated_at"], reverse=True)
+        sessions.sort(key=lambda item: timestamp_key(item["updated_at"]), reverse=True)
         return HTTPStatus.OK, {"sessions": sessions}
     if (
         len(parts) == _DETAIL_ROUTE_LENGTH
@@ -261,7 +262,7 @@ def get(server, url: str):  # ruff: ignore[complex-structure, too-many-return-st
         runs = []
         for repo in repos:
             runs.extend(ui_sessions.list_imported_runs(repo))
-        runs.sort(key=lambda item: item["updated_at"], reverse=True)
+        runs.sort(key=lambda item: timestamp_key(item["updated_at"]), reverse=True)
         return HTTPStatus.OK, {"runs": runs}
     if (
         len(parts) == _ACTION_ROUTE_LENGTH

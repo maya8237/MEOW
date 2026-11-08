@@ -17,6 +17,7 @@ from meow.cli.status_cli import (
     render,
     saved_run_id,
 )
+from meow.common.clock import timestamp_key
 from meow.execution.orchestration.model import is_orchestrator_id
 from meow.execution.orchestration.report import render_status
 from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
@@ -345,7 +346,7 @@ def _parked_run_ids(store: RunStore) -> list[str]:
             records.append(store.load(path.stem))
     return [
         record.id
-        for record in sorted(records, key=lambda item: item.updated_at)
+        for record in sorted(records, key=lambda item: timestamp_key(item.updated_at))
         if record.phase == PARKED_PHASE and record.source != "orchestrator"
     ]
 

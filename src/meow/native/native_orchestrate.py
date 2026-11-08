@@ -12,11 +12,11 @@ import asyncio
 import json
 import time
 from dataclasses import asdict
-from datetime import UTC, datetime
 from pathlib import Path
 
 from meow.agents.base import Agent, ProjectContext
 from meow.agents.reviewer import _verdict_status, force_fail
+from meow.common.clock import now_iso
 from meow.execution.delivery import commit_worktree
 from meow.execution.orchestration import review_evidence
 from meow.execution.orchestration.children import failure_evidence
@@ -101,7 +101,7 @@ CHECK_OUTPUT_LIMIT = 2000
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    return now_iso()
 
 
 def _take_lock(store: OrchestratorStore, orch_id: str) -> DriverLock:

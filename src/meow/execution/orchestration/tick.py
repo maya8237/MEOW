@@ -11,10 +11,10 @@ two drivers share.
 
 import subprocess
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from meow.common.clock import now_iso
 from meow.execution.orchestration.children import (
     LIVE_DRIVER,
     Launcher,
@@ -68,7 +68,7 @@ class TickResult:
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    return now_iso()
 
 
 def max_recovery_cycles(config: dict) -> int:

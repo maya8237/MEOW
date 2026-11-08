@@ -3,7 +3,7 @@
 import os
 import subprocess
 from contextlib import suppress
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -59,7 +59,7 @@ def register_linux(  # ruff: ignore[too-many-statements]
     at = datetime.fromisoformat(job["at"])
     timer.write_text(
         "[Unit]\nDescription=Scheduled MEOW run\n\n[Timer]\n"
-        f"OnCalendar={at:%Y-%m-%d %H:%M:%S} UTC\n"
+        f"OnCalendar={at.astimezone(UTC):%Y-%m-%d %H:%M:%S} UTC\n"
         "Persistent=true\nAccuracySec=1s\nRandomizedDelaySec=0\n\n"
         "[Install]\nWantedBy=timers.target\n",
         encoding="utf-8",

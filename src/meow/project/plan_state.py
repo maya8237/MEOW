@@ -7,17 +7,17 @@ import tempfile
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 
 from meow.common.atomic import replace_with_retry
+from meow.common.clock import now_iso
 
 _STALE_LOCK_SECONDS = 30
 STATES = ("draft", "in-progress", "complete")
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    return now_iso()
 
 
 class PlanOwnedError(RuntimeError):

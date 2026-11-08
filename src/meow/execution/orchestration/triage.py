@@ -2,10 +2,10 @@
 
 import json
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from meow.common.clock import now_iso
 from meow.execution.delivery import _git
 from meow.execution.orchestration.integration import _detail, _git_committing
 from meow.execution.orchestration.model import (
@@ -70,7 +70,7 @@ class _DecisionError(ValueError):
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    return now_iso()
 
 
 def _text(raw: dict, key: str, *, required: bool = False, where: str = "") -> str:

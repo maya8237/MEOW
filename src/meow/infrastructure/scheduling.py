@@ -13,6 +13,7 @@ from sys import platform
 from typing import override
 from uuid import uuid4
 
+from meow.common.clock import now_iso, timestamp_key
 from meow.infrastructure import scheduled_tasks
 from meow.ui.sessions import Recipe, _atomic_json, _file_transaction, command_for
 
@@ -30,7 +31,7 @@ def _next_clock(value: str, now: datetime, *, local: bool) -> datetime:
 
 
 def parse_at(value: str, *, now: datetime | None = None) -> datetime:
-    """Resolve a local ISO timestamp or next HH:MM occurrence to UTC."""
+    """Resolve a local ISO timestamp or next HH:MM occurrence to local time."""
     local = now is None
     now = now or datetime.now().astimezone()
     if not isinstance(value, str) or not value.strip():
@@ -44,8 +45,8 @@ def parse_at(value: str, *, now: datetime | None = None) -> datetime:
             at = datetime.fromisoformat(value).astimezone()
     except ValueError as exc:
         raise ValueError("--at must be an ISO timestamp or HH:MM local time") from exc
-    at = at.astimezone(UTC).replace(microsecond=0)
-    if at <= now.astimezone(UTC):
+    at = at.astimezone().replace(microsecond=0)
+    if at <= now.astimezone():
         raise ValueError("Schedule time must be in the future")
     return at
 
@@ -132,7 +133,7 @@ def _register(repo: Path, at: str, payload: dict) -> dict:
         "at": when.isoformat(),
         "backend": "windows" if platform == "win32" else "systemd",
         "state": "registering",
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": now_iso(),
         "path": os.environ.get("PATH", ""),
         "worker_argv": [
             sys.executable,
@@ -167,7 +168,7 @@ def list_schedules(repo: Path) -> list[dict]:
     directory = repo.resolve() / ".meow" / "schedules"
     return sorted(
         (_read(path) for path in directory.glob("*.json")),
-        key=lambda job: job["at"],
+        key=lambda job: timestamp_key(job["at"]),
     )
 
 
@@ -199,7 +200,7 @@ def edit_schedule(repo: Path, schedule_id: str, at: str) -> dict:
                 )
             _atomic_json(path, original)
             raise
-        job.update(state="scheduled", updated_at=datetime.now(UTC).isoformat())
+        job.update(state="scheduled", updated_at=now_iso())
         _atomic_json(path, job)
     return job
 
@@ -257,7 +258,7 @@ def execute_schedule(repo: Path, schedule_id: str) -> int:
             job["at"]
         ):
             return 0
-        job.update(state="running", started_at=datetime.now(UTC).isoformat())
+        job.update(state="running", started_at=now_iso())
         _atomic_json(path, job)
     log = path.with_suffix(".log")
     try:
@@ -265,6 +266,6 @@ def execute_schedule(repo: Path, schedule_id: str) -> int:
     except Exception as exc:
         job.update(state="failed", error=str(exc))
         code = 1
-    job.update(exit_code=code, finished_at=datetime.now(UTC).isoformat(), log=str(log))
+    job.update(exit_code=code, finished_at=now_iso(), log=str(log))
     _atomic_json(path, job)
     return code

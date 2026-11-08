@@ -7,11 +7,11 @@ import os
 import socket
 import time
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from meow.common.atomic import replace_with_retry
+from meow.common.clock import now_iso
 
 _WINDOWS_QUERY_LIMITED_INFORMATION = 0x1000
 _WINDOWS_SYNCHRONIZE = 0x100000
@@ -26,7 +26,7 @@ class QueueStateError(ValueError):
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    return now_iso()
 
 
 def _pid_is_alive(pid: int) -> bool:

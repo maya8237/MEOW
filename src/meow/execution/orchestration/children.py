@@ -5,10 +5,10 @@ import secrets
 import signal
 import time
 from contextlib import suppress
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from meow.common.clock import now_iso
 from meow.common.process import process_identity
 from meow.execution.delivery import commit_worktree
 from meow.execution.orchestration.model import (
@@ -77,7 +77,7 @@ def _record_launch_failure(
         task = record.task(task_id)
         task.status = "failed"
         task.history.append({
-            "at": datetime.now(UTC).isoformat(),
+            "at": now_iso(),
             "action": "launch",
             "cause": "launch-failed",
             "rationale": reason,
@@ -185,7 +185,7 @@ def journal_resume(  # ruff: ignore[too-many-arguments, too-many-positional-argu
     def mutate(record: OrchestratorRecord) -> None:
         task = record.task(task_id)
         task.history.append({
-            "at": datetime.now(UTC).isoformat(),
+            "at": now_iso(),
             "action": action,
             "cause": "",
             "rationale": why,

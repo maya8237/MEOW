@@ -248,7 +248,9 @@ def test_edit_time_preserves_identity_and_command(  # ruff: ignore[too-many-stat
     updated = scheduling.edit_schedule(tmp_path, job["id"], at)
     assert updated["id"] == job["id"]
     assert updated["argv"] == job["argv"]
-    assert updated["at"] == "2099-12-01T12:30:00+00:00"
+    assert datetime.fromisoformat(updated["at"]) == datetime(
+        2099, 12, 1, 12, 30, tzinfo=UTC
+    )
     assert scheduling.list_schedules(tmp_path)[0] == updated
     if platform == "win32":
         xml = ET.parse(scheduling._path(tmp_path, job["id"]).with_suffix(".xml"))
@@ -295,7 +297,10 @@ def test_edit_failure_restores_original_trigger(tmp_path, monkeypatch, backend):
         scheduling.edit_schedule(tmp_path, job["id"], "2099-12-01T12:30Z")
     assert scheduling.list_schedules(tmp_path)[0] == job
     timer = (tmp_path / "units" / f"meow-{job['id']}.timer").read_text()
-    assert datetime.fromisoformat(job["at"]).strftime("%Y-%m-%d %H:%M:%S") in timer
+    assert (
+        datetime.fromisoformat(job["at"]).astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        in timer
+    )
 
 
 def test_cli_edit_changes_time(tmp_path, monkeypatch, backend, capsys):
@@ -314,4 +319,6 @@ def test_cli_edit_changes_time(tmp_path, monkeypatch, backend, capsys):
     ])
     updated = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert updated["id"] == job["id"]
-    assert updated["at"] == "2099-12-01T12:30:00+00:00"
+    assert datetime.fromisoformat(updated["at"]) == datetime(
+        2099, 12, 1, 12, 30, tzinfo=UTC
+    )
