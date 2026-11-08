@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from meow.infrastructure.logging import get_logger
 from meow.project.custom import frontmatter
-from meow.project.custom.agent_files import read_agent_toml
+from meow.project.custom.agent_files import read_agent_toml, read_markdown_settings
 from meow.project.custom.hook_files import read_hook_toml
 from meow.project.custom.sources import (
     AGENT_ROLES,
@@ -210,6 +210,7 @@ def load_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
         tools=tools,
         model=model if model and model != "inherit" else None,
         skills=_names(data.get("skills", []), "skills", agent_file),
+        **read_markdown_settings(data, agent_file),
     )
 
 

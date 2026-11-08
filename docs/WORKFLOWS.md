@@ -45,21 +45,19 @@ Whole files resolve by name, highest priority first:
 | builtin | shipped `project/custom/builtin/agents/` | shipped `project/custom/builtin/workflows/` |
 
 Conventional folders need no config. Extra `[custom]` sources follow
-[CUSTOM.md](CUSTOM.md); workflow sources cannot restrict roles.
-Same-scope duplicates fail; overrides are reported. Resolution uses the run's
-config root even in task worktrees.
+[CUSTOM.md](CUSTOM.md); workflow sources cannot restrict roles. Same-scope
+duplicates fail; overrides are reported; task worktrees use the run's config root.
 
 `meow agents` supports list/show/eject/diff; `meow workflows` supports
 list/show/validate/eject. All accept `--work-dir PATH`. Eject copies the shipped
-definition even when another scope overrides it, defaults to project scope,
-accepts local/user, and refuses overwrite. Copies record
+definition even when another scope overrides it (project scope by default;
+local/user accepted) and refuses overwrite. Copies record
 `ejected_from = "builtin:name@<sha256>"`; run startup and show/validate warn when
 that origin changes or disappears, with paths for inspecting the copy. Workflow
 diagnostics include called workflows and agents, and flag ejected agents the
 selected workflow does not use. Conditional steps, delegates, task workers, and
-delivery fixers count as possible uses. Valid copies continue unchanged across
-upgrades; missing references fail before agents start. Handwritten definitions
-have no drift/unused warning.
+delivery fixers count as possible uses. Valid copies continue across upgrades;
+missing references fail before agents start. Handwritten ones never warn.
 
 ## Agents
 
@@ -82,18 +80,20 @@ Write findings to {{output_file}}.
 ```
 
 Hyphens map to underscores for roles. Model order: `[models].role`, agent,
-role/reviewer fallback; `inherit` supplies none (explorer uses haiku). Default
-and role skill lists combine with definition and discovered skills.
+role/reviewer fallback; `inherit` supplies none (explorer uses haiku). Skill lists
+combine with definition and discovered skills.
 
-`session = "persistent"` retains a role session inside a loop until it ends,
-rendering current values each turn; outside loops invocations own sessions.
-`lint_on_edit` enables post-edit lint. `[variants]` select alternate prompts
-(missing variants use main); `[fragments]` defines reusable text.
+`session = "persistent"` keeps a role session through a loop, rendering current
+values each turn; elsewhere invocations own sessions. `lint_on_edit` enables
+post-edit lint; `[variants]` select alternate prompts; `[fragments]` is reusable text.
 
-Named `agents` delegates are capped to parent tools and exclude Agent.
-Configured custom agents retain planner/generator (or explicit role) compatibility;
-conventional definitions run only when named. Explorer is overridable. Claude Code
-Markdown agents are a frontmatter/body import format; specify tools for stages.
+Named `agents` delegates are capped to parent tools and exclude Agent. Configured
+agents keep planner/generator (or explicit role) compatibility; conventional ones
+run only when named. Explorer is overridable.
+
+Markdown agents (`<name>.md`): body is the prompt; frontmatter sets `description`,
+`tools`, `model`, `skills`, `meow-agents|session|lint-on-edit|ejected-from`
+(unknown `meow-*` errors); variants and fragments need TOML.
 
 ## Templates and expressions
 
