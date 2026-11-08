@@ -41,7 +41,7 @@ def test_run_skill_launch_and_watch_rules():
         "--background",
         "*/7 * * * *",
         "retryable",
-        "budget_left",
+        "retries_left",
         "managed_resumes",
     ):
         assert term in text

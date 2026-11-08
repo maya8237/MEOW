@@ -603,7 +603,7 @@ def test_tick_resumes_parked_child_before_triage(tmp_path, monkeypatch):
     assert not any(e.get("cause") == "worker-died" for e in task.history)
 
 
-def test_tick_triages_after_child_budget(tmp_path, monkeypatch):
+def test_tick_triages_after_child_limit(tmp_path, monkeypatch):
     repo, store, oid, config = real_orchestrator(
         tmp_path, [OrchestratorTask("api", "Build the api")]
     )
@@ -684,7 +684,7 @@ def actions(store, oid, action):
     return [e for e in store.load(oid).task("api").history if e["action"] == action]
 
 
-def test_retry_gets_fresh_managed_budget_but_task_total_caps_it(tmp_path, monkeypatch):
+def test_retry_gets_fresh_managed_retries_but_task_total_caps_it(tmp_path, monkeypatch):
     repo, store, oid, config, spawner, launcher = launched_and_parked(
         tmp_path, monkeypatch, run={"managed_resumes": 1, "max_total_resumes": 2}
     )
@@ -702,7 +702,7 @@ def test_retry_gets_fresh_managed_budget_but_task_total_caps_it(tmp_path, monkey
     park_child(repo, launcher.run_ids("api")[0])
     assert run_tick_once().failures[0].cause == "worker-died"
     retry_and_park()
-    run_tick_once()  # run 2: a fresh managed budget, resumed again
+    run_tick_once()  # run 2: fresh managed retries, resumed again
     assert [call[1] for call in spawner.calls] == launcher.run_ids("api")
     retry_and_park()
 
@@ -754,7 +754,7 @@ def test_live_resumed_worker_keeps_polling_running(tmp_path, monkeypatch):
     assert len(actions(store, oid, "child_resumed")) == 1
 
 
-def test_live_driver_skips_without_spending_budget(tmp_path, monkeypatch):
+def test_live_driver_skips_without_spending_retries(tmp_path, monkeypatch):
     repo, store, oid, config, spawner, launcher = launched_and_parked(
         tmp_path, monkeypatch
     )

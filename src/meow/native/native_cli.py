@@ -604,7 +604,7 @@ UNRECOGNISED_CAUSE = "unrecognised_failure"
 
 def _classify(exc: BaseException) -> tuple[bool, str]:
     """(retryable, cause). Only a recognised transient class is retried: a
-    helper has no run budget to stop a blind retry loop. A helper's own
+    helper has no run retry limit to stop a blind retry loop. A helper's own
     ValueError is bad input or a failed gate."""
     kind, cause = classify_failure(exc)
     if kind == "blocking":

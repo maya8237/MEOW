@@ -408,7 +408,7 @@ def test_blocking_driver_exception_is_recorded_as_blocking(tmp_path, monkeypatch
     assert (error["kind"], error["cause"]) == ("blocking", "auth")
 
 
-def test_resume_of_a_failed_orchestrator_spends_the_retry_budget(tmp_path, monkeypatch):
+def test_resume_of_a_failed_orchestrator_spends_the_retries(tmp_path, monkeypatch):
     from meow.execution.orchestration.runner import prepare_resume
 
     world = one_task_world(tmp_path, monkeypatch, [("hang",)])

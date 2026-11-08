@@ -11,7 +11,7 @@ Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](OR
 | `meow plan` | Plan without implementation |
 | `meow review` | Review existing code; `--fix` enables fixes |
 | `meow status [ID]` | Inspect the latest or named run; `--verbose` includes evidence, `--json` the [retry contract](RUNS.md#managed-runs) |
-| `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates, `--parked` continues every parked run (JSON summary; exit 0 settled, 75 pending, 1 blocked or budget exhausted) |
+| `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates, `--parked` continues every parked run (JSON summary; exit 0 settled, 75 pending, 1 blocked or retries exhausted) |
 | `meow cancel ID` | Cooperatively stop a run, preserving recovery state |
 | `meow worktree` | List, inspect, or safely clean owned worktrees |
 | `meow cleanup [ID]` | [Keep results and remove integrated task artifacts](CLEANUP.md) |
@@ -91,7 +91,7 @@ sprints, `--dry-run` saves the decomposition, and `--no-mr` skips opening an MR.
 Local edits require explicit `--from BRANCH`; execution uses an isolated worktree.
 See [ORCHESTRATION.md](ORCHESTRATION.md) for sources, flags, delivery gates, and recovery.
 Exit code 3 means delivered but `MR not opened` (manual link in output); 0 settled,
-75 parked or retryable (`MEOW_RETRY`), 1 blocked or budget exhausted (`MEOW_BLOCKED`),
+75 parked or retryable (`MEOW_RETRY`), 1 blocked or retries exhausted (`MEOW_BLOCKED`),
 130 interrupted. `meow status ID --json` and `meow resume --parked` drive unattended
 continuation ([managed runs](RUNS.md#managed-runs)); `[run]` keys: [INTEGRATIONS.md](INTEGRATIONS.md#run-retry-ladder).
 

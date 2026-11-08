@@ -121,7 +121,7 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
     """Persist one native phase using the CLI run journal schema.
 
     Phase `parked` records a crash the native driver saw (`failure`) through
-    `RunStore.park`, so it gets a `next_command` and the no-progress budget.
+    `RunStore.park`, so it gets a `next_command` and the no-progress retry limit.
     Every checkpoint stamps the run's heartbeat; `intent` (`run` or `plan`)
     tells reconciliation whether a silent run is a lost session.
     """

@@ -393,7 +393,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
         "--parked",
         action="store_true",
         help=(
-            "Continue every parked run within its retry budget, one after "
+            "Continue every parked run within its retry limit, one after "
             "another, requeue parked queue items, and print a JSON summary."
         ),
     )

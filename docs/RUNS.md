@@ -83,10 +83,10 @@ MEOW stores only role/session references.
 
 `run` and `resume --continue` exit 0 when settled, 75 when parked or retryable
 (stderr `MEOW_RETRY {"run_id", "next_command", "retry_after"}`), 1 when blocked
-or out of budget (`MEOW_BLOCKED {"run_id", "cause", "message", "stop"}`), 3 when
+or out of retries (`MEOW_BLOCKED {"run_id", "cause", "message", "stop"}`), 3 when
 pushed but the MR failed, and 130 when interrupted. `meow status ID --json`
 reports `phase`, `settled`, `retryable`, `cause`, `next_command`, `attempts`,
-`budget_left`, `worker`, `intent` and `heartbeat_age`, plus `not_resumed_reason`
+`retries_left`, `worker`, `intent` and `heartbeat_age`, plus `not_resumed_reason`
 when no resume will be tried. A parked run whose supervisor is alive reports
 `settled: false`, `supervised: true` and no `next_command`: it resumes itself.
 A failure before any run record exists exits 75 only for a recognised transient
@@ -111,7 +111,7 @@ shows `Last agent activity` and flags a run silent past the idle timeout.
 
 A managing session starts runs with `--background` and polls `meow status ID --json`
 (cron `*/7 * * * *`), acting only when `settled` is true: with `retryable: true`
-and `budget_left > 0` it runs `next_command` detached; with `retryable: false`
+and `retries_left > 0` it runs `next_command` detached; with `retryable: false`
 (or `not_resumed_reason` set) it reports `cause`, `last_failure` and evidence, and
 stops. On exit 75 it waits `retry_after`, up to `managed_resumes`, stopping on no
 progress (`attempts`, `no_progress`). A `driver_busy` retry means a live driver owns

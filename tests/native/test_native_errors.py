@@ -189,7 +189,7 @@ def test_fresh_plan_and_legacy_native_runs_are_left_alone(tmp_path):
     assert store.load(plan).phase == "planned"
 
 
-def test_stale_native_run_past_budget_parks_and_reports_stop(tmp_path, capsys):
+def test_stale_native_run_past_limit_parks_and_reports_stop(tmp_path, capsys):
     from meow.cli.run_contract import record_exit
 
     repo = _repo(tmp_path, "[run]\nstale_after = 100\nmax_total_resumes = 1\n")
@@ -202,20 +202,20 @@ def test_stale_native_run_past_budget_parks_and_reports_stop(tmp_path, capsys):
     assert record.phase == "parked"
     assert record.park["cause"] == "native_session_lost"
     assert record.park["total_resumes"] == 1
-    assert "budget_exhausted" not in json.dumps(record.results)
+    assert "retries_exhausted" not in json.dumps(record.results)
     assert record_exit(record) == 1
     blocked = capsys.readouterr().err.split("MEOW_BLOCKED ", 1)[1]
-    assert json.loads(blocked)["stop"] == "budget_exhausted"
+    assert json.loads(blocked)["stop"] == "retries_exhausted"
 
 
 def test_parked_plan_intent_run_is_never_auto_resumed(tmp_path):
-    from meow.cli.resume_cli import budget_refusal
+    from meow.cli.resume_cli import retry_refusal
     from meow.project.config import run_config
 
     repo = _repo(tmp_path)
     store, run_id = _native_run(repo, intent="plan", age=10, phase="planning")
     record = store.park(run_id, "crash", "transient", "native_reported")
-    assert budget_refusal(record, run_config(repo)) == "plan-only native run"
+    assert retry_refusal(record, run_config(repo)) == "plan-only native run"
     assert record.results.get("next_command") is None
 
 

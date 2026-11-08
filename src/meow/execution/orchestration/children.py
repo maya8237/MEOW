@@ -162,7 +162,7 @@ def poll_task(
     except RunStateError:
         return "failed"
     phase = record.phase
-    # A parked child whose supervisor still lives is relaunched within budget.
+    # A parked child whose supervisor still lives is relaunched within the retry limit.
     supervised = (
         phase == PARKED_PHASE
         and inspect_worker(record, include_terminal=True).state == "running"

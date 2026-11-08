@@ -1,7 +1,7 @@
 """The managed-process contract: what a managing agent reads after a command.
 
 Exit codes: 0 settled success, 75 parked or retryable (one stderr line
-`MEOW_RETRY {...}`), 1 blocking or budget exhausted (`MEOW_BLOCKED {...}` with a
+`MEOW_RETRY {...}`), 1 blocking or retries exhausted (`MEOW_BLOCKED {...}` with a
 `stop` field), 3 pushed but the PR/MR failed to open, 130 interrupted.
 `meow status --json` reports the same decision for any saved run.
 """
@@ -13,7 +13,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-from meow.cli.resume_cli import _EXHAUSTED, budget_refusal
+from meow.cli.resume_cli import _EXHAUSTED, retry_refusal
 from meow.execution.run_failures import (
     BLOCKING_CAUSES,
     DRIVER_BUSY,
@@ -94,10 +94,10 @@ def not_resumed_reason(record: RunRecord, config: dict) -> str | None:
     if not _retryable_phase(record):
         cause = failure_cause(record) or record.phase
         return cause if cause in _STOPS else f"blocking: {cause}"
-    return budget_refusal(replace(record, phase=PARKED_PHASE), config)
+    return retry_refusal(replace(record, phase=PARKED_PHASE), config)
 
 
-def budget_left(record: RunRecord, config: dict) -> int:
+def retries_left(record: RunRecord, config: dict) -> int:
     """Manager resumes still allowed under both resume caps."""
     park = record.park if isinstance(record.park, dict) else {}
     return max(
@@ -136,7 +136,7 @@ def status_payload(record: RunRecord, worker: str, *, supervised: bool = False) 
         "cause": failure_cause(record),
         "next_command": _continuation(record) if retryable and not supervised else None,
         "attempts": int(park.get("attempts", 0)),
-        "budget_left": budget_left(record, config),
+        "retries_left": retries_left(record, config),
         "worker": worker,
         "intent": record.results.get("intent"),
         "heartbeat_age": heartbeat_age(record),
@@ -200,7 +200,7 @@ def record_exit(record: RunRecord) -> int:
         return _retry(record.id, _continuation(record), retry_after)
     cause = failure_cause(record) or record.phase
     if reason in _EXHAUSTED:
-        stop = "budget_exhausted"
+        stop = "retries_exhausted"
     elif _retryable_phase(record):  # retryable, but refused (plan-only, source)
         stop = "not_resumable"
     else:
@@ -233,7 +233,7 @@ def outcome_exit(
 ) -> int:
     """Exit code for a run-driving command, from its run record when known.
 
-    Without a record no budget bounds a retry, so only a recognised
+    Without a record no limit bounds a retry, so only a recognised
     transient failure exits 75 (the original command as `next_command`);
     anything else exits 1 with `MEOW_BLOCKED`.
     """
@@ -250,7 +250,7 @@ def outcome_exit(
 
 
 def _record_free_exit(run_id: str | None, exc: BaseException, argv: list[str]) -> int:
-    if is_driver_busy(exc):  # a live driver owns it: keep watching, no budget
+    if is_driver_busy(exc):  # a live driver owns it: keep watching, no retry used
         extra = {"cause": DRIVER_BUSY, "message": str(exc)}
         command = shlex.join(["meow", *argv])
         return _retry(run_id, command, DRIVER_BUSY_RETRY_AFTER, extra)

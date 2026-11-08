@@ -1,4 +1,4 @@
-"""Supervisor: relaunch a crashed or parked run within the `[run]` budget.
+"""Supervisor: relaunch a crashed or parked run within the `[run]` retry limit.
 
 The supervisor never drives agents itself. It runs the driver as a child in
 its own process group (`meow _drive`, later `meow resume RUN_ID --continue`),
@@ -101,7 +101,7 @@ def _run_child(repo: Path, command: list[str], env: dict[str, str]) -> int:
 
 
 def relaunch_delay(record: RunRecord, config: dict) -> float | None:
-    """Seconds to wait before resuming a parked run; None past the budget.
+    """Seconds to wait before resuming a parked run; None past the retry limit.
 
     A park's `retry_after` (rate limit reset) wins over
     `retry_backoff[attempts-1]`.

@@ -244,7 +244,7 @@ class _Supervisor:
         record_task_failure(self.store, self.orch_id, failure, self.max_cycles)
 
     def _resumed(self, task) -> bool:
-        """Resume a parked child within budget before it reaches triage;
+        """Resume a parked child within the retry limit before it reaches triage;
         otherwise journal why not. True means handled (resumed, or a live
         driver still settles it); False sends it to triage."""
         run = self.config.get("run") or run_config(self.repo)

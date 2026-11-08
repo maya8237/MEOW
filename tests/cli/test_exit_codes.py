@@ -127,7 +127,7 @@ def test_status_json_fields(tmp_path, capsys):
         "cause",
         "next_command",
         "attempts",
-        "budget_left",
+        "retries_left",
         "worker",
         "intent",
         "heartbeat_age",
@@ -137,7 +137,7 @@ def test_status_json_fields(tmp_path, capsys):
     assert payload["retryable"] is True
     assert payload["cause"] == "error"
     assert payload["attempts"] == 1
-    assert payload["budget_left"] == MANAGED_RESUMES
+    assert payload["retries_left"] == MANAGED_RESUMES
     assert payload["next_command"].startswith(f"meow resume {record.id}")
     assert payload["worker"] == "not_background"
     assert "not_resumed_reason" not in payload
@@ -176,7 +176,7 @@ def test_status_json_reports_why_not_resumed(tmp_path, capsys):
     assert payload["retryable"] is False
     assert payload["next_command"] is None
     assert payload["not_resumed_reason"] == "managed_resumes reached"
-    assert payload["budget_left"] == 0
+    assert payload["retries_left"] == 0
 
 
 def test_status_json_blocking_failure_is_not_retryable(tmp_path, capsys):
@@ -346,14 +346,14 @@ def test_resume_continue_failure_parks_and_retries(tmp_path, monkeypatch, capsys
     assert _line(capsys.readouterr().err, "MEOW_RETRY ")["run_id"] == record.id
 
 
-def test_record_exit_reports_budget_exhausted(tmp_path, capsys):
+def test_record_exit_reports_retries_exhausted(tmp_path, capsys):
     from meow.cli.run_contract import record_exit
 
     _repo_dir, store, record = _parked(tmp_path)
     store.transition(record.id, "parked", park={**record.park, "total_resumes": 20})
     assert record_exit(store.load(record.id)) == 1
     payload = _line(capsys.readouterr().err, "MEOW_BLOCKED ")
-    assert payload["stop"] == "budget_exhausted"
+    assert payload["stop"] == "retries_exhausted"
     assert "max_total_resumes reached" in payload["message"]
 
 

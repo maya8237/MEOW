@@ -543,7 +543,7 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
                 setattr(record, key, safe_value)
         if phase in _ACTIVE_PHASES or phase in TERMINAL_PHASES:
             # Only a parked run offers a continuation; `park` stays so the
-            # no-progress budget survives the resume.
+            # no-progress retry limit survives the resume.
             record.results.pop("next_command", None)
         _drop_stale_failure(record, phase, patch)
         if "last_failure" not in patch and phase in _ACTIVE_PHASES:
@@ -788,8 +788,8 @@ def _native_silent(record: RunRecord, stale_after: float) -> bool:
 def park_lost_native(store: RunStore, record: RunRecord) -> RunRecord:
     """Park a silent native run, like `park_crashed` parks a dead driver.
 
-    `park` applies the no-progress stop rule; a spent resume budget is
-    reported by `budget_refusal` when someone tries to continue it.
+    `park` applies the no-progress stop rule; a spent resume limit is
+    reported by `retry_refusal` when someone tries to continue it.
     """
     beat = (
         datetime.fromtimestamp(record.results["heartbeat_at"]).astimezone().isoformat()
