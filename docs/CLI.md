@@ -153,7 +153,7 @@ Browser checks and server lifecycle are [configured separately](INTEGRATIONS.md#
 
 ## Native and CLI skill modes
 
-`/meow:run`, plan, review, and lint default to native.
+`/meow:run` defaults to CLI; plan/review/lint default to native.
 Orchestrator task sprints remain detached CLI workers. Native integrations use
 session-connected MCP tools; CLI uses configured launchers.
 Named workflow trees execute through CLI. Onboard/customize configure

@@ -40,8 +40,8 @@ Use the narrowest owning package; package roots contain entry points.
 Role prose belongs in `src/meow/project/custom/builtin/agents/*.toml`;
 `project/prompts.py` owns computed context/verdict contracts.
 
-`skills/*/SKILL.md` owns plugin flows. Run/plan/review/lint
-default to native. Orchestrator tasks
+`skills/*/SKILL.md` owns plugin flows. Run defaults to CLI;
+plan/review/lint default to native. Orchestrator tasks
 remain detached CLI sprints. Schedule uses OS/CLI; onboard adds optional setup,
 and customize edits definitions.
 Keep native/CLI guidance aligned.

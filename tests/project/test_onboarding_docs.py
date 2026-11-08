@@ -71,5 +71,5 @@ def test_architecture_doc_names_the_orchestrator_packages():
 
 def test_agents_file_lists_the_orchestrate_skill_and_package():
     text = _read("AGENTS.md")
-    assert "Run/plan/review/lint" in text
+    assert "Run defaults to CLI" in text
     assert "orchestration/" in text

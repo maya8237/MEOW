@@ -1,6 +1,7 @@
 # Native mode: shared protocol
 
-Read this for native execution. `run`, `plan`, `review`, and `lint` default to native. You execute roles in this session or fresh subagents.
+Read this for native execution. `plan`, `review`, and `lint` default to native;
+`run` defaults to CLI. You execute roles in this session or fresh subagents.
 Orchestrator task sprints remain detached CLI workers. Named workflows,
 including `quick`, execute through CLI; see the Workflows guide in `meow ui` or the [online docs](https://maya8237.github.io/MEOW/).
 Future-time requests use [schedule](../schedule/SKILL.md) first.
