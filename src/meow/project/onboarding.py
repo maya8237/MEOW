@@ -23,7 +23,7 @@ from meow.project.command_detection import (
 )
 from meow.project.config import _merge_config, config_paths
 from meow.project.config_files import GENERATED_SKILL_PATHS
-from meow.project.custom.flat_skills import exclude_local, local_skill_paths
+from meow.project.custom.flat_skills import local_skill_paths
 from meow.project.custom.legacy import legacy_layout
 from meow.project.repos import remember
 
@@ -215,8 +215,6 @@ def protect_generated(root: Path) -> list[str]:
     if not _in_git_repo(root):
         return []
     changed = []
-    if exclude_local(root):
-        changed.append("restored .git/info/exclude for local skills")
     if _legacy_present(root) and repair_boundary(root):
         changed.append(".gitignore: restored MEOW's rules (personal and linked skills)")
     untracked = untrack_generated(root)

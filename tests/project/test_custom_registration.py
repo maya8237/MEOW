@@ -331,9 +331,7 @@ def test_published_local_skill_is_untracked_and_never_committed(project):
     _git(project, "add", "-f", ".claude/skills/mine")
     assert any("stopped tracking" in line for line in protect_generated(project))
     assert _git(project, "ls-files", rel).stdout == ""
-    assert _git(project, "check-ignore", "-q", rel).returncode == 0
 
-    (project / ".git" / "info" / "exclude").write_text("", encoding="utf-8")
     write(project / "real.txt", "y")
     commit_worktree(project, ["-m", "work"])
     tracked = _git(project, "ls-files").stdout.split()
@@ -352,14 +350,11 @@ def test_shared_project_skill_is_left_tracked(project):
     assert _git(project, "ls-files", rel).stdout.strip() == rel
 
 
-def test_check_reports_local_skill_missing_from_exclude(project):
-    from meow.project.onboarding import generated_problems, protect_generated
+def test_check_reports_local_skill_not_ignored(project):
+    from meow.project.onboarding import generated_problems
 
     _local_copy(project)
-    (project / ".git" / "info" / "exclude").write_text("", encoding="utf-8")
     assert any("not ignored" in line for line in generated_problems(project))
-    protect_generated(project)
-    assert not any("not ignored" in line for line in generated_problems(project))
 
 
 def test_flat_local_skill_does_not_rewrite_gitignore(project):

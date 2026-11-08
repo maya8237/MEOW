@@ -179,17 +179,6 @@ def local_skill_paths(project_dir: Path) -> list[str]:
     ]
 
 
-def exclude_local(project_dir: Path) -> bool:
-    """Re-list published local skills in `.git/info/exclude`; True if it changed."""
-    names = [Path(rel).name for rel in local_skill_paths(project_dir)]
-    path = _exclude_file(project_dir)
-    if not names or path is None:
-        return False
-    before = path.read_text(encoding="utf-8") if path.is_file() else ""
-    _write_exclude(project_dir, sorted(names))
-    return path.read_text(encoding="utf-8") != before
-
-
 def publish_native(scope: str, project_dir: Path, user_dir: Path) -> list[str]:
     """Publish the scope's own-folder skills; for callers without a loaded config."""
     wanted = native_wanted(scope, project_dir, user_dir)
