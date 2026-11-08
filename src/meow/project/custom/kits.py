@@ -23,6 +23,7 @@ _KEYS = {
     "name",
     "url",
     "ref",
+    "rev",
     "update",
     "auto_accept_hooks",
     "only",
@@ -51,6 +52,7 @@ class KitSpec:
     only: tuple[str, ...] = ()
     config: bool = False
     check_every: int = DEFAULT_CHECK_SECONDS
+    rev: str | None = None  # project scope: the commit everyone uses, in git
 
 
 def _duration(value: object, where: str) -> int:
@@ -88,6 +90,17 @@ def _update_mode(raw: dict, where: str) -> str:
     return update
 
 
+def _rev(raw: dict, scope: str, where: str) -> str | None:
+    rev = raw.get("rev")
+    if rev is None:
+        return None
+    if scope != "project":
+        raise ValueError(f"{where}: 'rev' pins project kits only")
+    if not isinstance(rev, str) or not re.fullmatch(r"[0-9a-f]{40}", rev):
+        raise ValueError(f"{where}: 'rev' must be a full 40-character commit id")
+    return rev
+
+
 def _spec(raw: object, scope: str, config_file: Path, where: str) -> KitSpec:
     if not isinstance(raw, dict):
         raise ValueError(f"{where} must be a table")
@@ -108,6 +121,7 @@ def _spec(raw: object, scope: str, config_file: Path, where: str) -> KitSpec:
         _only(raw, where),
         bool(raw.get("config")),
         DEFAULT_CHECK_SECONDS if every is None else _duration(every, where),
+        _rev(raw, scope, where),
     )
 
 
@@ -228,10 +242,18 @@ def _locked_root(
     return root if root.is_dir() else None
 
 
+def effective_entry(spec: KitSpec, entry: dict | None) -> dict | None:
+    """A project kit's committed `rev` outranks whatever this machine locked."""
+    if not spec.rev:
+        return entry
+    return {**(entry or {}), "sha": spec.rev, "hooks_sha": spec.rev}
+
+
 def kit_sources(
     spec: KitSpec, entry: dict | None, home: Path
 ) -> tuple[list[CustomSource], dict]:
     """Sources and allowed config for one kit; a placeholder when not fetched."""
+    entry = effective_entry(spec, entry)
     root = _locked_root(spec, entry, home, "sha")
     if root is None:
         placeholder = CustomSource(

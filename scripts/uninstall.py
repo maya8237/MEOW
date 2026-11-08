@@ -471,12 +471,10 @@ def _kit_blocks(lines: list[str]) -> list[list[str]]:
     return blocks
 
 
-def remove_kit(home: Path, name: str) -> None:
-    """Drop a user kit's config entry, lock entry, and cached files."""
-    config = home / ".meow/config.toml"
-    original = config.read_text(encoding="utf-8")
+def _without_kit(text: str, name: str) -> str:
+    """`text` minus the `[[kits]]` block named `name`."""
     kept = []
-    for block in _kit_blocks(original.splitlines(True)):
+    for block in _kit_blocks(text.splitlines(True)):
         if block and block[0].strip().startswith("[[kits]]"):
             try:
                 entry = tomllib.loads("".join(block))["kits"][0]
@@ -485,7 +483,30 @@ def remove_kit(home: Path, name: str) -> None:
             if entry.get("name") == name:
                 continue
         kept.extend(block)
-    text = "".join(kept)
+    return "".join(kept)
+
+
+def _drop_kit_lock(home: Path, name: str) -> None:
+    lock = home / ".meow/kits.lock"
+    try:
+        entries = json.loads(lock.read_text(encoding="utf-8")).get("kits", {})
+    except (OSError, ValueError, AttributeError):
+        return
+    entry = entries.pop(name, {})
+    if entries:
+        text = json.dumps({"kits": entries}, indent=2) + "\n"
+        lock.write_text(text, encoding="utf-8")
+    else:
+        lock.unlink()
+    for sha in {entry.get("sha"), entry.get("hooks_sha")} - {None}:
+        for folder in (home / ".meow/kits").glob(f"*/{sha}"):
+            shutil.rmtree(folder, ignore_errors=True)
+
+
+def remove_kit(home: Path, name: str) -> None:
+    """Drop a user kit's config entry, lock entry, and cached files."""
+    config = home / ".meow/config.toml"
+    text = _without_kit(config.read_text(encoding="utf-8"), name)
     expected = [n for n in user_kit_names(home) if n != name]
     try:
         remaining = [k.get("name") for k in tomllib.loads(text).get("kits", [])]
@@ -494,21 +515,7 @@ def remove_kit(home: Path, name: str) -> None:
     if remaining != expected:
         raise ValueError(f"Cannot safely edit {config}; remove kit {name!r} by hand")
     config.write_text(text, encoding="utf-8")
-    lock = home / ".meow/kits.lock"
-    try:
-        entries = json.loads(lock.read_text(encoding="utf-8")).get("kits", {})
-    except (OSError, ValueError, AttributeError):
-        return
-    entry = entries.pop(name, {})
-    if entries:
-        lock.write_text(
-            json.dumps({"kits": entries}, indent=2) + "\n", encoding="utf-8"
-        )
-    else:
-        lock.unlink()
-    for sha in {entry.get("sha"), entry.get("hooks_sha")} - {None}:
-        for folder in (home / ".meow/kits").glob(f"*/{sha}"):
-            shutil.rmtree(folder, ignore_errors=True)
+    _drop_kit_lock(home, name)
 
 
 def ask_kits(home: Path) -> list[str]:

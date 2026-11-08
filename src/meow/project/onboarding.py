@@ -30,7 +30,6 @@ BOUNDARY = (
     ".meow/*",
     "!.meow/",
     "!.meow/config.toml",
-    "!.meow/kits.lock",
     "!.meow/skills/",
     "!.meow/agents/",
     "!.meow/workflows/",
@@ -60,7 +59,7 @@ _STALE = _BROAD | frozenset(BOUNDARY) | frozenset(_LEGACY_RULES)
 _EXPECTED_IGNORED = {
     ".meow/config.toml": False,
     ".meow/config.local.toml": True,
-    ".meow/kits.lock": False,
+    ".meow/kits.lock": True,
     ".meow/local/kits.lock": True,
     ".meow/skills/x/SKILL.md": False,
     ".claude/skills/meow-project/skills/x/SKILL.md": False,

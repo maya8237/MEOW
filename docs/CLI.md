@@ -18,6 +18,7 @@ Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](OR
 | `meow detach [--log FILE] -- CMD...` | Detach a command; returns PID and log JSON |
 | `meow queue ["request"]` | Add a request, or process pending requests serially |
 | `meow workflows` / `meow agents` | Inspect, eject, validate, or diff definitions |
+| `meow kits add\|list\|show\|update\|uninstall` | Install [kits](KITS.md) from a GitHub/GitLab repo |
 | `meow skills sync`, `hooks sync`, `sync` `[--scope S] [--check]` | Register custom skills, [hooks](HOOKS.md), or both with Claude Code; `--check` only reports; the plugin runs `sync --auto` [at startup](CUSTOM.md#claude-code-registration) |
 | `meow ui` | Read-only catalog, session history, and docs |
 | `meow schedule` | Add, list, edit, or cancel a one-shot trigger |
@@ -185,8 +186,8 @@ Posting mode requires an MR event and validates added/deleted-line locations and
 (reworded, or open with a moved line) are skipped on reruns. Open threads meow
 started (marked `<!-- meow-review -->`) that the reviewer finds fixed are resolved
 with a "Resolved: reason" reply, or "✅ Solved: reason" if resolving is refused.
-Unreadable history or a moved PR/MR head exits 2. Other publishing failures keep the PASS/FAIL exit code and
-appear as `comments_error` in `verdict.json`; partial publishes can leave notes posted.
+Unreadable history or a moved PR/MR head exits 2. Other publishing failures keep the PASS/FAIL exit code and appear as
+`comments_error` in `verdict.json`; partial publishes can leave notes posted.
 
 ## Maintainer and internal commands
 

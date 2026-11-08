@@ -48,6 +48,8 @@ version (single-dash in PowerShell).
 the servers' own credential variables; see [MCP](MCP.md). `--install-missing` lets `--mcp` pip-install Jira's server. `--bun` enables the
 Bun shared store and migrates registered repos. Projects are set up with
 `meow onboard --non-interactive --work-dir PATH`.
+`--kit URL` (repeatable; `-kit` in PowerShell) also installs a [kit](KITS.md) at user
+scope; on an existing setup run `meow kits add URL` instead.
 
 To rerun only MCP registration after installation or from a boot script, use
 `meow mcp atlassian,gitlab`; it does not refresh project configuration.
@@ -107,7 +109,8 @@ curl -fsSL https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstal
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/maya8237/MEOW/main/scripts/uninstall.ps1))) -non-interactive
 ```
 
-Otherwise it asks before changing anything. It removes the MEOW release, `meow`/`mw` on
+Otherwise it asks before changing anything, including whether to remove each
+user [kit](KITS.md). It removes the MEOW release, `meow`/`mw` on
 PATH, the Claude Code plugin and skill registrations, scheduled MEOW runs, and
 (optionally) `~/.meow` data, Bun shared-store settings, and each project's
 `.meow/`, and plugin entries.

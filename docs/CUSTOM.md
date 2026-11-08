@@ -2,7 +2,8 @@
 
 Definitions reload with configuration; no reinstall is required. Conventional
 agent/workflow directories need no registration; see [scopes](WORKFLOWS.md#resolution-and-editing).
-Use `[custom]` only for extra sources:
+Install a git repository of definitions with [kits](KITS.md). Use `[custom]`
+only for extra local sources:
 
 ```toml
 [custom]

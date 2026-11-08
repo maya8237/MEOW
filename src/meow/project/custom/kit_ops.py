@@ -23,6 +23,7 @@ from meow.project.custom.kits import (
     NAME,
     KitSpec,
     contents,
+    effective_entry,
     kits_home,
     lock_file,
     parse_kits,
@@ -114,6 +115,15 @@ def add_entry(  # ruff: ignore[too-many-arguments, too-many-positional-arguments
     path.write_text(tomlkit.dumps(doc), encoding="utf-8")
 
 
+def set_rev(path: Path, name: str, sha: str) -> None:
+    """Write a project kit's pinned commit into the committed config."""
+    doc = tomlkit.parse(path.read_text(encoding="utf-8"))
+    for item in doc.get("kits") or []:
+        if item.get("name") == name:
+            item["rev"] = sha
+    path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+
+
 def remove_entry(path: Path, name: str) -> bool:
     doc = tomlkit.parse(path.read_text(encoding="utf-8"))
     kits = doc.get("kits")
@@ -165,7 +175,9 @@ def install(  # ruff: ignore[too-many-arguments]
     target = config_file(scope, project_dir, user_dir)
     accept = auto_accept_hooks and scope != "project"
     add_entry(target, name, url, ref, update, only, accept, config)
-    _pin(lock_file(scope, project_dir, user_dir), name, remote, ref, sha)
+    if scope == "project":
+        set_rev(target, name, sha)
+    _pin(lock_file(scope, project_dir, user_dir), name, remote, (ref, sha))
     output(f"Added kit {name!r} to {target}")
     return next(
         s
@@ -174,7 +186,8 @@ def install(  # ruff: ignore[too-many-arguments]
     )
 
 
-def _pin(lock: Path, name: str, remote: str, ref: str | None, sha: str) -> None:
+def _pin(lock: Path, name: str, remote: str, ref_sha: tuple[str | None, str]) -> None:
+    ref, sha = ref_sha
     kits = read_lock(lock)
     kits[name] = {
         "url": remote,
@@ -186,8 +199,24 @@ def _pin(lock: Path, name: str, remote: str, ref: str | None, sha: str) -> None:
     write_lock(lock, kits)
 
 
-def _hook_lines_held(spec: KitSpec, home: Path, remote: str, sha: str) -> list[str]:
-    root = kit_dir(home, remote, sha)
+@dataclass(frozen=True)
+class Kit:
+    """A declared kit together with where its commits are cached."""
+
+    spec: KitSpec
+    home: Path
+
+    @property
+    def remote(self) -> str:
+        return normalize_url(self.spec.url)
+
+    def root(self, sha: str) -> Path:
+        return kit_dir(self.home, self.remote, sha)
+
+
+def _hook_lines_held(kit: Kit, sha: str) -> list[str]:
+    spec = kit.spec
+    root = kit.root(sha)
     return [
         f"kit {spec.name}: hook changes are on hold; they would run:",
         *(f"    {line}" for line in hook_lines(root)),
@@ -200,59 +229,56 @@ def _trusts_hooks(spec: KitSpec, accept: bool) -> bool:
     return accept or spec.auto_accept_hooks or spec.scope == "project"
 
 
-def _settle_hooks(
-    spec: KitSpec, entry: dict, home: Path, remote: str, accept: bool
-) -> list[str]:
+def _settle_hooks(kit: Kit, entry: dict, accept: bool) -> list[str]:
     """The kit is current; apply or keep holding hook changes from earlier."""
     sha = entry["sha"]
     held = entry.get("hooks_sha") or sha
-    fetch(home, remote, sha)
+    fetch(kit.home, kit.remote, sha)
     if held == sha:
         return []
-    fetch(home, remote, held)
-    if accept or spec.auto_accept_hooks:
+    fetch(kit.home, kit.remote, held)
+    if accept or kit.spec.auto_accept_hooks:
         entry["hooks_sha"] = sha
-        return [f"kit {spec.name}: hook changes accepted"]
-    return _hook_lines_held(spec, home, remote, sha)
+        return [f"kit {kit.spec.name}: hook changes accepted"]
+    return _hook_lines_held(kit, sha)
 
 
-def _advance(
-    spec: KitSpec, entry: dict, home: Path, remote: str, latest: str, accept: bool
-) -> list[str]:
+def _advance(kit: Kit, entry: dict, latest: str, accept: bool) -> list[str]:
     """Move the kit to `latest`; hook changes may stay on the previous commit."""
+    spec = kit.spec
     old = entry.get("sha")
     held = entry.get("hooks_sha") or old
-    root = fetch(home, remote, latest)
+    root = fetch(kit.home, kit.remote, latest)
     validate_kit(root, spec.only)
     entry["sha"] = latest
-    unchanged = held is not None and tree(kit_dir(home, remote, held) / "hooks") == (
+    unchanged = held is not None and tree(kit.root(held) / "hooks") == (
         tree(root / "hooks")
     )
     if old is None or unchanged or _trusts_hooks(spec, accept):
         entry["hooks_sha"] = latest
         return [f"kit {spec.name}: updated to {latest[:7]}"]
-    fetch(home, remote, held)
+    fetch(kit.home, kit.remote, held)
     entry["hooks_sha"] = held
     return [
         f"kit {spec.name}: updated to {latest[:7]}",
-        *_hook_lines_held(spec, home, remote, latest),
+        *_hook_lines_held(kit, latest),
     ]
 
 
 def refresh_kit(
-    spec: KitSpec, entry: dict | None, home: Path, *, apply: bool, accept: bool
+    kit: Kit, entry: dict | None, *, apply: bool, accept: bool
 ) -> tuple[dict, list[str]]:
     """Compare one kit with its remote; with `apply`, move to the new commit."""
-    remote = normalize_url(spec.url)
+    spec, remote = kit.spec, kit.remote
     latest = remote_sha(remote, spec.ref)
     entry = {**(entry or {}), "url": remote, "ref": spec.ref or "HEAD"}
     entry["checked_at"] = time.time()
     if latest == entry.get("sha"):
-        return entry, _settle_hooks(spec, entry, home, remote, accept)
+        return entry, _settle_hooks(kit, entry, accept)
     if not apply:
         shown = (entry.get("sha") or "none")[:7]
         return entry, [f"kit {spec.name}: update available ({shown} -> {latest[:7]})"]
-    return entry, _advance(spec, entry, home, remote, latest, accept)
+    return entry, _advance(kit, entry, latest, accept)
 
 
 @dataclass(frozen=True)
@@ -275,13 +301,13 @@ class Plan:
 
 
 def _check(spec: KitSpec, entry: dict | None, plan: Plan) -> tuple[dict | None, list]:
+    if entry and entry.get("sha"):  # the pinned copy must be on disk
+        fetch(plan.home, normalize_url(spec.url), entry["sha"])
     if plan.pinned(spec, entry) or not plan.due(spec, entry):
-        if entry and entry.get("sha"):  # only make sure the locked copy is cached
-            fetch(plan.home, normalize_url(spec.url), entry["sha"])
         return None, []
     follows_lock = spec.scope == "project" and entry is not None
     apply = plan.apply and (plan.manual or not follows_lock)
-    return refresh_kit(spec, entry, plan.home, apply=apply, accept=plan.accept)
+    return refresh_kit(Kit(spec, plan.home), entry, apply=apply, accept=plan.accept)
 
 
 def _safe_check(spec: KitSpec, entry: dict | None, plan: Plan):
@@ -303,17 +329,32 @@ def _select(project_dir: Path, user_dir: Path, names: tuple[str, ...]):
     return specs
 
 
+def _write_rev(spec: KitSpec, entry: dict, old: dict | None, plan: Plan) -> list[str]:
+    """Record a project kit's new commit in the committed config."""
+    moved = entry.get("sha") != spec.rev
+    if spec.scope != "project" or not moved or not (plan.manual or old is None):
+        return []
+    set_rev(spec.config_file, spec.name, entry["sha"])
+    return [
+        f"kit {spec.name}: rev is now {entry['sha'][:7]}; commit {spec.config_file}"
+    ]
+
+
 def _visit(project_dir: Path, user_dir: Path, names: tuple[str, ...], plan: Plan):
     specs = _select(project_dir, user_dir, names)
     locks = {s.scope: read_lock(_lock(s, project_dir, user_dir)) for s in specs}
+    before = {s.name: locks[s.scope].get(s.name) for s in specs}
+
+    def effective(spec: KitSpec) -> dict | None:
+        return effective_entry(spec, before[spec.name])
+
     with ThreadPoolExecutor(max_workers=4) as pool:
-        results = list(
-            pool.map(lambda s: _safe_check(s, locks[s.scope].get(s.name), plan), specs)
-        )
+        results = list(pool.map(lambda s: _safe_check(s, effective(s), plan), specs))
     lines: list[str] = []
     for spec, (entry, found) in zip(specs, results, strict=True):
         if entry is not None:
             locks[spec.scope][spec.name] = entry
+            lines += _write_rev(spec, entry, before[spec.name], plan)
         lines += found
     for scope, data in locks.items():
         write_lock(lock_file(scope, project_dir, user_dir), data)
@@ -322,7 +363,7 @@ def _visit(project_dir: Path, user_dir: Path, names: tuple[str, ...], plan: Plan
     return lines
 
 
-def update(
+def update(  # ruff: ignore[too-many-arguments]
     project_dir: Path,
     user_dir: Path,
     names: tuple[str, ...] = (),
@@ -374,17 +415,20 @@ def uninstall(  # ruff: ignore[too-many-arguments]
     return lines
 
 
-def _pinned_shas(project_dir: Path, user_dir: Path) -> set[str]:
+def _pinned_shas(project_dir: Path, user_dir: Path, remote: str) -> set[str]:
     shas = set()
     for s in collect_specs(project_dir, user_dir):
+        if normalize_url(s.url) != remote:
+            continue
         entry = read_lock(_lock(s, project_dir, user_dir)).get(s.name) or {}
         shas |= {v for v in entry.values() if isinstance(v, str)}
+        shas |= {s.rev} if s.rev else set()
     return shas
 
 
 def _prune_cache(project_dir: Path, user_dir: Path, remote: str) -> list[str]:
     """Delete cached commits of `remote` that no lock file here still pins."""
-    used = _pinned_shas(project_dir, user_dir)
+    used = _pinned_shas(project_dir, user_dir, remote)
     repo = kit_dir(kits_home(user_dir), remote, "x").parent
     gone = []
     for folder in repo.iterdir() if repo.is_dir() else ():
@@ -396,25 +440,29 @@ def _prune_cache(project_dir: Path, user_dir: Path, remote: str) -> list[str]:
     return [f"Deleted cached copy {', '.join(sorted(gone))}"] if gone else []
 
 
+def _entry(spec: KitSpec, project_dir: Path, user_dir: Path) -> dict:
+    locked = read_lock(_lock(spec, project_dir, user_dir)).get(spec.name)
+    return effective_entry(spec, locked) or {}
+
+
 def listing(project_dir: Path, user_dir: Path) -> list[str]:
     home = kits_home(user_dir)
     lines = []
     for spec in collect_specs(project_dir, user_dir):
-        entry = read_lock(_lock(spec, project_dir, user_dir)).get(spec.name) or {}
+        entry = _entry(spec, project_dir, user_dir)
         sha = entry.get("sha")
         fetched = bool(sha) and kit_dir(home, normalize_url(spec.url), sha).is_dir()
         state = f"@ {sha[:7]}" if fetched else "not downloaded"
         hold = " (hook changes on hold)" if entry.get("hooks_sha") != sha else ""
-        lines.append(
-            f"{spec.name:<20} {spec.scope:<8} {spec.update:<7} {state}{hold}  {spec.url}"
-        )
+        head = f"{spec.name:<20} {spec.scope:<8} {spec.update:<7}"
+        lines.append(f"{head} {state}{hold}  {spec.url}")
     return lines or ["No kits installed. Add one: meow kits add URL"]
 
 
 def show(project_dir: Path, user_dir: Path, name: str) -> list[str]:
     for spec in collect_specs(project_dir, user_dir):
         if spec.name == name:
-            entry = read_lock(_lock(spec, project_dir, user_dir)).get(name) or {}
+            entry = _entry(spec, project_dir, user_dir)
             root = kit_dir(
                 kits_home(user_dir), normalize_url(spec.url), entry.get("sha", "-")
             )

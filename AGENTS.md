@@ -26,6 +26,7 @@ Reduce words too; do not meet the line limit by minifying prose.
 - [Integrations](docs/INTEGRATIONS.md): configuration and optional services.
 - [Workflows](docs/WORKFLOWS.md): definitions, scopes, templates, recovery.
 - [Tester setup](docs/TESTER.md): browser, dev server, inference, preflight.
+- [Kits](docs/KITS.md): git-hosted skills/agents/workflows/hooks.
 - [Hooks](docs/HOOKS.md): user hook definitions and `meow native hook`.
 - [Architecture](docs/ARCHITECTURE.md): package/module ownership.
 - [Native protocol](skills/_shared/native-mode.md): in-session helpers.
