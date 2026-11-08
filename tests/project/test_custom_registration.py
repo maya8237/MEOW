@@ -314,3 +314,39 @@ def test_commit_worktree_never_commits_generated_skills(project):
     tracked = _git(project, "ls-files").stdout.split()
     assert "real.txt" in tracked
     assert GENERATED not in tracked
+
+
+def _local_copy(project: Path) -> str:
+    rel = ".claude/skills/mine/SKILL.md"
+    write(project / rel, "---\nname: mine\ndescription: Mine.\n---\n")
+    write(project / ".claude/skills/mine/.meow-managed", "local\n")
+    return rel
+
+
+def test_published_local_skill_is_untracked_and_never_committed(project):
+    from meow.execution.delivery import commit_worktree
+    from meow.project.onboarding import protect_generated
+
+    rel = _local_copy(project)
+    _git(project, "add", "-f", ".claude/skills/mine")
+    assert any("stopped tracking" in line for line in protect_generated(project))
+    assert _git(project, "ls-files", rel).stdout == ""
+    assert _git(project, "check-ignore", "-q", rel).returncode == 0
+
+    (project / ".git" / "info" / "exclude").write_text("", encoding="utf-8")
+    write(project / "real.txt", "y")
+    commit_worktree(project, ["-m", "work"])
+    tracked = _git(project, "ls-files").stdout.split()
+    assert "real.txt" in tracked
+    assert rel not in tracked
+
+
+def test_shared_project_skill_is_left_tracked(project):
+    from meow.project.onboarding import protect_generated
+
+    rel = ".claude/skills/team/SKILL.md"
+    write(project / rel, "x")
+    write(project / ".claude/skills/team/.meow-managed", "project\n")
+    _git(project, "add", "-f", ".claude/skills/team")
+    assert protect_generated(project) == []
+    assert _git(project, "ls-files", rel).stdout.strip() == rel
