@@ -1,4 +1,3 @@
-import pytest
 from claude_agent_sdk import ResultMessage, SystemMessage
 
 from meow.agents.base import Agent, ProjectContext, log_stream_message
@@ -74,7 +73,7 @@ def test_agent_options_resumes_and_records_only_session_ids(tmp_path):
     assert "content" not in str(saved)
 
 
-def test_required_resume_session_cannot_start_fresh(tmp_path):
+def test_required_resume_session_missing_starts_fresh(tmp_path):
     store = RunStore(tmp_path)
     record = store.create(
         source="prompt", request="x", repo=tmp_path, worktree=tmp_path, branch="dev"
@@ -82,10 +81,11 @@ def test_required_resume_session_cannot_start_fresh(tmp_path):
     context = _context(tmp_path, store, record.id)
     context.config["_resume_required_roles"] = {"planner"}
 
-    with pytest.raises(RuntimeError, match="planner session is missing"):
-        Agent(context).options(
-            system_prompt="test", allowed_tools=["Read"], role="planner"
-        )
+    options = Agent(context).options(
+        system_prompt="test", allowed_tools=["Read"], role="planner"
+    )
+
+    assert not options.resume
 
 
 def test_saved_sessions_resume_only_once_and_only_when_resuming(tmp_path):

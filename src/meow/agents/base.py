@@ -987,13 +987,14 @@ class Agent:
             # Only `meow resume` continues a saved session, and only for the
             # role's first query: later rounds (e.g. each review) start fresh.
             if role_key in self.context.config.get("_resume_required_roles", ()):
-                if not session_id:
-                    raise RuntimeError(
-                        f"Cannot resume: {role_key} session is missing from run "
-                        f"{run_id}."
-                    )
                 resumed = self.context.config.setdefault("_resumed_roles", set())
-                if role_key not in resumed and "resume" not in extra_options:
+                if not session_id:
+                    # Nothing to continue (never saved): start fresh from the
+                    # plan and on-disk verdicts, as `meow resume` does for
+                    # roles it knows are missing, rather than strand the run.
+                    logger.warning("resume_session_missing", role=role_key)
+                    resumed.add(role_key)
+                elif role_key not in resumed and "resume" not in extra_options:
                     extra_options["resume"] = session_id
                     resumed.add(role_key)
         # Long builds and test suites must not be killed by the CLI's default
