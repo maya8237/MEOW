@@ -60,8 +60,23 @@ Each published folder holds a `.meow-managed` marker: sync replaces or removes
 only folders it marked, and reports (never overwrites) a skill of yours with
 the same name. Hooks go into the settings file Claude Code reads for the scope:
 `.claude/settings.json`, `.claude/settings.local.json`, `~/.claude/settings.json`;
-other settings and hooks there are kept. Agents and workflows need no
-registration.
+other settings and hooks there are kept. Workflows need no registration.
+
+Agents sync only when they opt in with `claude_agent = true` (or
+`meow-claude-agent: true` in Markdown); see [agents](WORKFLOWS.md#agents). Each
+becomes a Claude Code subagent from its standalone prompt, carrying only `name`,
+`description`, `tools`, `model`, and `skills`, plus a `meow-managed` marker:
+
+| Scope | Written to |
+|---|---|
+| Project | `.claude/agents/meow/NAME.md` (commit it) |
+| Local | `.claude/agents/meow-local/NAME.md` (excluded via `.git/info/exclude`) |
+| User | `~/.claude/agents/meow/NAME.md` |
+
+Edit the source, not the copy: sync replaces it. Sync never overwrites a file
+without the marker, and skips an agent whose `name` one of your own agents under
+`.claude/agents/` already uses. Custom skill names lose the `meow-custom:` prefix.
+Use it as `@agent-NAME`, by asking for it, or `claude --agent NAME`.
 
 `meow sync` does all of this. The MEOW plugin runs it as `meow sync --auto`
 when Claude Code starts and right after Claude edits a `.meow/`, `SKILL.md`, or
@@ -70,6 +85,7 @@ and reports what it cannot fix. Plain `meow sync` and every `meow` command do
 the same once `meow-local`/`-linked` folders exist, untrack any already
 committed, and delivery never stages them or any local skill copy (`.meow-managed` = `local`). Commit project changes.
 `meow native verify` reports `skill_registration`, `hook_registration`,
+`agent_registration`,
 `unshared_definitions` (project folders git ignores), and `old_layout`.
 Updating MEOW migrates older installs on the next start: skills and hooks move
 to these locations, and the user plugin-directory entry in

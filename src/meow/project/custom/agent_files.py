@@ -75,6 +75,8 @@ def _choice(data: dict, path: Path) -> tuple[str, bool, bool]:
 
 
 _MD_PREFIX = "meow-"
+# Present in every file `agent_sync` generates; such files are never definitions.
+GENERATED_KEY = "meow-managed"
 _MD_KEYS = {
     "meow-agents": "agents",
     "meow-session": "session",
@@ -99,6 +101,15 @@ def _markdown_values(data: dict, path: Path) -> dict[str, object]:
     if isinstance(values.get("agents"), str):
         values["agents"] = [part.strip() for part in values["agents"].split(",")]
     return values
+
+
+def is_generated(path: Path) -> bool:
+    """Whether `path` is a Claude Code copy MEOW generated, not a definition."""
+    try:
+        head = path.read_text(encoding="utf-8-sig")[:4096]
+    except (OSError, UnicodeError):
+        return False
+    return any(line.startswith(f"{GENERATED_KEY}:") for line in head.splitlines())
 
 
 def read_markdown_settings(data: dict, path: Path) -> dict[str, object]:

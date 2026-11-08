@@ -1,4 +1,4 @@
-"""`meow sync`: register custom skills and hooks with Claude Code in one step."""
+"""`meow sync`: register custom skills, hooks, and opted-in agents with Claude Code."""
 
 from pathlib import Path
 
@@ -53,7 +53,7 @@ def sync_command(args, project_dir: Path) -> None:
             print(problem)
         if problems:
             raise ValueError("Not everything is registered; run: meow sync")
-        print("Custom skills and hooks are registered with Claude Code.")
+        print("Custom skills, hooks, and agents are registered with Claude Code.")
         return
     scopes = SYNC_SCOPES if args.scope == "all" else (args.scope,)
     fixed = [*migrated, *repair_gitignore(project_dir)]
@@ -62,16 +62,16 @@ def sync_command(args, project_dir: Path) -> None:
     for line in fixed:
         print(line)
     print(
-        "Synced custom skills and hooks; run /reload-plugins if Claude Code "
+        "Synced custom skills, hooks, and agents; run /reload-plugins if Claude Code "
         "does not list them yet."
         if fixed
-        else "Custom skills and hooks were already registered."
+        else "Custom skills, hooks, and agents were already registered."
     )
 
 
 def add_sync_parser(subparsers):
     parser = subparsers.add_parser(
-        "sync", help="Register custom skills and hooks with Claude Code."
+        "sync", help="Register custom skills, hooks, and agents with Claude Code."
     )
     add_sync_options(parser)
     parser.add_argument(

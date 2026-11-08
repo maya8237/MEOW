@@ -1,13 +1,15 @@
 """Everything that keeps customizations working in Claude Code, in one place.
 
-Skills and hooks are served to Claude Code by each scope's plugin; agents and
-workflows are read by MEOW on every run and need no registration. Project
+Skills and hooks are served to Claude Code by each scope's plugin, and agents that
+opt in with `claude_agent` are written as subagents; other agents and workflows are
+read by MEOW on every run and need no registration. Project
 definitions must also stay trackable by git so teammates receive them.
 """
 
 import json
 from pathlib import Path
 
+from meow.project.custom.agent_sync import check_agent_registration, sync_agents
 from meow.project.custom.hook_sync import check_hook_registration, sync_hook_plugins
 from meow.project.custom.legacy import legacy_layout
 from meow.project.custom.sources import unshared_project_dirs
@@ -34,6 +36,7 @@ def check_registration(custom, project_dir: Path, user_dir: Path) -> list[str]:
         *old_layout(project_dir),
         *check_skill_registration(custom.skills, project_dir, user_dir),
         *check_hook_registration(custom.hooks, project_dir, user_dir),
+        *check_agent_registration(custom.catalog, project_dir, user_dir),
         *unshared_project_dirs(project_dir),
     ]
 
@@ -41,10 +44,11 @@ def check_registration(custom, project_dir: Path, user_dir: Path) -> list[str]:
 def sync_registration(
     custom, project_dir: Path, user_dir: Path, scopes: tuple[str, ...] = SYNC_SCOPES
 ) -> list[str]:
-    """Register skills and hooks at the selected scopes; returns what changed."""
+    """Register skills, hooks, and opted-in agents at the selected scopes."""
     return [
         *sync_skill_plugins(custom.skills, project_dir, user_dir, scopes),
         *sync_hook_plugins(custom.hooks, project_dir, user_dir, scopes),
+        *sync_agents(custom.catalog, project_dir, user_dir, scopes),
     ]
 
 
@@ -109,8 +113,8 @@ def auto_sync_message(
         lines += ["MEOW updated your custom skills/hooks:", *changed]
         if any(line.startswith(("project", ".gitignore")) for line in changed):
             lines.append(
-                "Commit the .claude/skills/, .claude/settings.json, .meow/, and "
-                ".gitignore changes."
+                "Commit the .claude/skills/, .claude/agents/, .claude/settings.json, "
+                ".meow/, and .gitignore changes."
             )
         lines.append(
             "Running sessions pick these up; if one is not listed, run /reload-plugins."

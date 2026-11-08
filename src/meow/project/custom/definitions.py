@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING
 
 from meow.infrastructure.logging import get_logger
 from meow.project.custom import frontmatter
-from meow.project.custom.agent_files import read_agent_toml, read_markdown_settings
+from meow.project.custom.agent_files import (
+    is_generated,
+    read_agent_toml,
+    read_markdown_settings,
+)
 from meow.project.custom.hook_files import read_hook_toml
 from meow.project.custom.sources import (
     AGENT_ROLES,
@@ -228,7 +232,9 @@ def _definitions(source: CustomSource) -> list:
         files = sorted(
             child
             for child in source.path.iterdir()
-            if child.suffix in {".md", ".toml"} and child.is_file()
+            if child.suffix in {".md", ".toml"}
+            and child.is_file()
+            and not is_generated(child)
         )
         return [load_agent(child, source) for child in files]
     if source.kind == "workflows":

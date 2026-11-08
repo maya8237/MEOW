@@ -146,7 +146,7 @@ registration".
   (golden list); unresolved placeholders fail.
 - Risk: low. Nothing is written to `.claude/` yet.
 
-**P3: sync user, project, and local agents.**
+**P3: sync user, project, and local agents (done; opt-in only).**
 - New `project/custom/agent_sync.py`, mirroring `flat_skills.py`: marker key,
   atomic write, collision report, `.git/info/exclude` for local.
 - Wired into `meow sync` and `--auto`.
