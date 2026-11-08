@@ -141,6 +141,7 @@ kit's config ranks below the file that declares it.
 
 ## Install and uninstall
 
+`meow onboard --kit URL` sets a kit up for a project in one command.
 `install.sh --kit URL` (`install.ps1 -kit URL`; repeatable) installs MEOW and
 adds user kits, and the installer prompts for one in a terminal. On an
 existing setup use `meow kits add`: the installer also updates MEOW itself.

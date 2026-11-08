@@ -5,7 +5,10 @@ import json
 import os
 from pathlib import Path
 
-from meow.project.config import load_config
+from meow.project.config import load_config, user_config_path
+from meow.project.custom import kit_ops
+from meow.project.custom.kit_store import default_name, normalize_url
+from meow.project.custom.registration import sync_registration
 from meow.project.mcp_setup import (
     FAILURES,
     always_install,
@@ -54,6 +57,23 @@ def add_onboard_parser(subparsers):
         "--install-missing",
         action="store_true",
         help="With --mcp, pip-install a missing server (Jira's mcp-atlassian).",
+    )
+    parser.add_argument(
+        "--kit",
+        metavar="URL",
+        action="append",
+        default=[],
+        help=(
+            "Install a kit (owner/repo, github:, gitlab:, or any git URL; "
+            "repeatable). Its skills, agents, workflows, and hooks are listed "
+            "in the JSON result."
+        ),
+    )
+    parser.add_argument(
+        "--kit-scope",
+        choices=("project", "local", "user"),
+        default="project",
+        help="Where --kit is installed (default: project, shared via git).",
     )
     _add_settings(parser)
     _add_integrations(parser)
@@ -172,6 +192,51 @@ def _mcp_results(args, root: Path) -> tuple[list[dict], list[str]]:
     return [result.to_dict() for result in results], notes
 
 
+def _kit_result(url: str, args, root: Path, user_dir: Path) -> dict:
+    """Install one kit; failures and repeats are results, not crashes."""
+    lines: list[str] = []
+    name = default_name(normalize_url(url)) if _valid(url) else url
+    scope = args.kit_scope
+    if any(
+        spec.name == name and spec.scope == scope
+        for spec in kit_ops.collect_specs(root, user_dir)
+    ):
+        return {"url": url, "kit": name, "scope": scope, "status": "unchanged"}
+    try:
+        spec = kit_ops.install(root, user_dir, url, scope=scope, output=lines.append)
+    except (OSError, ValueError) as exc:
+        return {"url": url, "scope": scope, "status": "failed", "detail": str(exc)}
+    return {
+        "url": url,
+        "kit": spec.name,
+        "scope": scope,
+        "status": "installed",
+        "contents": [line.strip() for line in lines[1:]],
+    }
+
+
+def _valid(url: str) -> bool:
+    try:
+        normalize_url(url)
+    except ValueError:
+        return False
+    return True
+
+
+def _kit_results(args, root: Path) -> tuple[list[dict], list[str]]:
+    """Results for each --kit, plus what syncing them with Claude Code changed."""
+    user_dir = user_config_path().parent
+    results = [_kit_result(url, args, root, user_dir) for url in args.kit]
+    synced: list[str] = []
+    if any(item["status"] == "installed" for item in results):
+        try:
+            custom = load_config(root)["customizations"]
+            synced = sync_registration(custom, root, user_dir)
+        except (OSError, ValueError) as exc:
+            synced = [f"sync failed: {exc}"]
+    return results, synced
+
+
 def onboard_command(args, root: Path) -> int:
     try:
         settings = [*_flag_settings(args), *_command_settings(args)]
@@ -191,5 +256,10 @@ def onboard_command(args, root: Path) -> int:
         if notes:
             result["mcp_notes"] = notes
         status = int(any(item["status"] in FAILURES for item in result["mcp"]))
+    if args.kit:
+        result["kits"], synced = _kit_results(args, root)
+        if synced:
+            result["kits_synced"] = synced
+        status = status or int(any(k["status"] == "failed" for k in result["kits"]))
     print(json.dumps(result, indent=2))
     return status

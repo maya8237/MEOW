@@ -24,6 +24,15 @@ The JSON result contains changed paths, configured/skipped feature names, and
 does not mean connected. Use `meow native verify --work-dir PATH` to check
 launcher readiness, then a real MCP tool call to confirm authentication.
 
+## Kits
+
+`meow onboard --non-interactive --kit URL` (repeatable) also installs a
+[kit](KITS.md) at project scope, so a team gets its shared skills, agents,
+workflows, and hooks with the rest of setup. `--kit-scope local|user` keeps it
+private. The commit is pinned as `rev` in `.meow/config.toml`; commit that
+file. The JSON result lists each kit's `status` (`installed`, `unchanged`,
+`failed`, which makes the exit code 1) and the commands its hooks run.
+
 ## Integrations
 
 Reuse an existing Claude stdio MCP registration (Bash):
