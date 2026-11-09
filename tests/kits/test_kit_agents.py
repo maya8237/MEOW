@@ -131,3 +131,32 @@ def test_project_kits_are_trusted_because_the_pin_is_reviewed(
 
     assert data["tools"] == "Read, Bash"
     assert data["meow-managed"] == "project"
+
+
+def kit_agent(tools, claude_tools):
+    return (
+        'description = "Scout."\nclaude_agent = true\nprompt = "Search."\n'
+        f"tools = {tools}\nclaude_tools = {claude_tools}\n"
+    )
+
+
+def test_claude_code_copy_uses_claude_tools_and_approval_follows_them(
+    make_kit, project, user_dir
+):
+    repo = make_kit({"agents/scout.toml": kit_agent('["Read", "Bash"]', '["Read"]')})
+    add(project, user_dir, repo)
+
+    assert sync(project, user_dir) == []
+    assert frontmatter.parse(copy())[0]["tools"] == "Read"
+
+    repo.write({
+        "agents/scout.toml": kit_agent('["Read", "Bash", "Write"]', '["Read"]')
+    })
+    lines = kit_ops.update(project, user_dir)  # run-only tools: nothing to approve
+
+    assert not any("on hold" in line for line in lines)
+
+    repo.write({"agents/scout.toml": kit_agent('["Read"]', '["Read", "Bash"]')})
+    lines = kit_ops.update(project, user_dir)
+
+    assert any("on hold" in line and "Bash" in line for line in lines)

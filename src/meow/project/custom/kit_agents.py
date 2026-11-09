@@ -36,7 +36,8 @@ def kit_agent_tools(
             continue
         agent = load_agent(path, source)
         if agent.claude_agent:
-            found[agent.name] = None if agent.tools is None else list(agent.tools)
+            tools = agent.claude_code_tools
+            found[agent.name] = None if tools is None else list(tools)
     return found
 
 
@@ -78,13 +79,13 @@ def agent_hold(agent: CustomAgent, project_dir: Path, user_dir: Path) -> str | N
     source = agent.source
     if source.kit is None:
         return None
-    if agent.tools is None:
+    if agent.claude_code_tools is None:
         return f"kit agent '{agent.name}': declare tools to sync it to Claude Code"
     waiting: dict[str, list[str]] = {}
     if source.scope != "project":
         approved = _approved(agent, project_dir, user_dir)
         waiting = pending(
-            {agent.name: list(agent.tools)},
+            {agent.name: list(agent.claude_code_tools)},
             {} if approved is None else {agent.name: approved},
         )
     if not waiting:

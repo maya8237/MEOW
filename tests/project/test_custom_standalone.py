@@ -193,3 +193,10 @@ def test_run_prompts_of_the_reviewer_do_not_change():
 
     assert "Sprint Contract" in reviewer.prompt
     assert set(reviewer.variants) == {"prompt", "remote", "branch", "ci", "standalone"}
+
+
+@pytest.mark.parametrize("keys", ["tools = []", "tools = ['Read']\nclaude_tools = []"])
+def test_an_empty_tool_list_cannot_be_synced(project, home, keys):
+    found = agent(project, "a", f"description = 'd'\nprompt = 'p'\n{keys}\n")
+
+    assert any("no tools" in problem for problem in standalone_problems(found))

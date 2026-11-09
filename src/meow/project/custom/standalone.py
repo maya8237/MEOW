@@ -25,7 +25,19 @@ def _template(agent: CustomAgent) -> str:
 
 
 def standalone_problems(agent: CustomAgent) -> list[str]:
-    """`file: ...` lines naming each run-only value the prompt still prints."""
+    """`file: ...` lines naming what keeps the agent from working in Claude Code:
+    each run-only value the prompt prints, or an empty tool list (a blank
+    `tools:` would read as every tool there)."""
+    problems = _prompt_problems(agent)
+    if agent.claude_code_tools == ():
+        problems.append(
+            f"{agent.file}: the Claude Code copy would have no tools; "
+            "name at least one in tools or claude_tools, or omit them"
+        )
+    return problems
+
+
+def _prompt_problems(agent: CustomAgent) -> list[str]:
     try:
         printed = printed_names(
             _template(agent),

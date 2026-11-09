@@ -17,6 +17,10 @@ def _settings(agent: CustomAgent, origin: str | None) -> list[str]:
         (bool(agent.model), f"model: {agent.model}"),
         (bool(agent.skills), "skills:\n" + "\n".join(f"  - {n}" for n in agent.skills)),
         (bool(agent.agents), f"meow-agents: [{', '.join(agent.agents)}]"),
+        (
+            agent.claude_tools is not None,
+            f"meow-claude-tools: {', '.join(agent.claude_tools or ())}",
+        ),
         (agent.session != "one-shot", f"meow-session: {agent.session}"),
         (agent.lint_on_edit, "meow-lint-on-edit: true"),
         (agent.claude_agent, "meow-claude-agent: true"),

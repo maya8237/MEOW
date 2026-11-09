@@ -44,9 +44,9 @@ Whole files resolve by name, highest priority first:
 | user | `~/.meow/agents/` | `~/.meow/workflows/` |
 | builtin | shipped `project/custom/builtin/agents/` | shipped `project/custom/builtin/workflows/` |
 
-Conventional folders need no config. Extra `[custom]` sources follow
-[CUSTOM.md](CUSTOM.md); workflow sources cannot restrict roles. Same-scope
-duplicates fail; overrides are reported; task worktrees use the run's config root.
+Conventional folders need no config; extra `[custom]` sources follow [CUSTOM.md](CUSTOM.md)
+(workflow sources cannot restrict roles). Same-scope duplicates fail; overrides are
+reported; task worktrees use the run's config root.
 
 `meow agents` supports list/show/eject/diff; `meow workflows` supports
 list/show/validate/eject. All accept `--work-dir PATH`. Eject copies the shipped
@@ -85,14 +85,14 @@ fallback; `inherit` supplies none (explorer uses haiku). Skills combine with dis
 values each turn; elsewhere invocations own sessions. `lint_on_edit` enables
 post-edit lint; `[variants]` select alternate prompts; `[fragments]` is reusable text.
 `claude_agent = true` (default false) marks an agent for Claude Code: its prompt must
-render without run values, or config loading fails; `[variants] standalone` replaces it.
+render without run values, or config loading fails; `[variants] standalone` replaces it,
+and `claude_tools` replaces `tools` for that copy (not empty).
 
-Named `agents` delegates are capped to parent tools and exclude Agent. Configured agents
-keep planner/generator (or explicit role) compatibility; conventional ones run only when
-named; explorer is overridable.
+Named `agents` delegates are capped to parent tools and exclude Agent. Configured agents keep
+planner/generator (or explicit role) compatibility; conventional ones run only when named.
 
 Markdown agents (`<name>.md`): the body is the prompt; frontmatter sets `description`, `tools`,
-`model`, `skills`, `meow-agents|session|lint-on-edit|claude-agent|ejected-from` (unknown
+`model`, `skills`, `meow-agents|session|lint-on-edit|claude-agent|claude-tools|ejected-from` (unknown
 `meow-*` errors); variants and fragments need TOML.
 
 ## Templates and expressions

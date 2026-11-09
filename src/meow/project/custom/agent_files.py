@@ -10,7 +10,7 @@ from pathlib import Path
 
 SESSIONS = ("one-shot", "persistent")
 _STRINGS = ("description", "prompt", "model", "ejected_from", "name")
-_LISTS = ("tools", "skills", "agents")
+_LISTS = ("tools", "skills", "agents", "claude_tools")
 _TABLES = ("variants", "fragments")
 _FLAGS = ("lint_on_edit", "claude_agent")
 _KEYS = frozenset({*_STRINGS, *_LISTS, *_TABLES, "session", *_FLAGS})
@@ -82,6 +82,7 @@ _MD_KEYS = {
     "meow-session": "session",
     "meow-lint-on-edit": "lint_on_edit",
     "meow-claude-agent": "claude_agent",
+    "meow-claude-tools": "claude_tools",
     "meow-ejected-from": "ejected_from",
 }
 
@@ -98,8 +99,9 @@ def _markdown_values(data: dict, path: Path) -> dict[str, object]:
         text = values.get(flag)
         if isinstance(text, str) and text.lower() in {"true", "false"}:
             values[flag] = text.lower() == "true"
-    if isinstance(values.get("agents"), str):
-        values["agents"] = [part.strip() for part in values["agents"].split(",")]
+    for key in ("agents", "claude_tools"):
+        if isinstance(values.get(key), str):
+            values[key] = [part.strip() for part in values[key].split(",")]
     return values
 
 
@@ -122,6 +124,7 @@ def read_markdown_settings(data: dict, path: Path) -> dict[str, object]:
     try:
         session, lint_on_edit, claude_agent = _choice(values, path)
         agents = _list(values, "agents", path)
+        claude_tools = _list(values, "claude_tools", path)
     except ValueError as exc:
         text = str(exc)
         for key, field in _MD_KEYS.items():
@@ -132,6 +135,7 @@ def read_markdown_settings(data: dict, path: Path) -> dict[str, object]:
         "session": session,
         "lint_on_edit": lint_on_edit,
         "claude_agent": claude_agent,
+        "claude_tools": claude_tools,
         "ejected_from": _text(values, "ejected_from", path),
     }
 
@@ -151,6 +155,7 @@ def read_agent_toml(path: Path) -> dict[str, object]:
         "session": session,
         "lint_on_edit": lint_on_edit,
         "claude_agent": claude_agent,
+        "claude_tools": _list(data, "claude_tools", path),
         "ejected_from": _text(data, "ejected_from", path),
         "variants": _table(data, "variants", path),
         "fragments": _table(data, "fragments", path),

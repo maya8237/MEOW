@@ -63,9 +63,17 @@ class CustomAgent:
     session: str = "one-shot"
     lint_on_edit: bool = False
     claude_agent: bool = False  # opted in to Claude Code (see `standalone.py`)
+    claude_tools: tuple[str, ...] | None = (
+        None  # the synced copy's tools, if not `tools`
+    )
     ejected_from: str | None = None
     variants: Mapping[str, str] = field(default_factory=dict, hash=False)
     fragments: Mapping[str, str] = field(default_factory=dict, hash=False)
+
+    @property
+    def claude_code_tools(self) -> tuple[str, ...] | None:
+        """Tools of the copy synced to Claude Code (None: all of its tools)."""
+        return self.tools if self.claude_tools is None else self.claude_tools
 
     @property
     def role(self) -> str:

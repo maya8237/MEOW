@@ -130,8 +130,8 @@ def generated_text(agent: CustomAgent, scope: str, project_dir: Path) -> str:
         f"name: {agent.name}",
         f"description: {json.dumps(agent.description, ensure_ascii=False)}",
     ]
-    if agent.tools is not None:
-        lines.append(f"tools: {', '.join(agent.tools)}")
+    if agent.claude_code_tools is not None:
+        lines.append(f"tools: {', '.join(agent.claude_code_tools)}")
     if agent.model:
         lines.append(f"model: {agent.model}")
     if skills := _skills(agent):

@@ -90,6 +90,7 @@ agents = ["explorer"]   # also reviewer, lint-fixer, review-fixer; others need a
 
 A name that is unknown, or whose prompt needs run values, fails config loading.
 An ejected copy of the agent is what gets synced. Remove the name to remove the copy.
+`claude_tools` gives the copy its own tools (the reviewer's has no `Write`).
 
 `meow agents eject NAME --format md` writes the builtin as a Markdown agent
 (frontmatter, prompt as body) that Claude Code also reads; it keeps the

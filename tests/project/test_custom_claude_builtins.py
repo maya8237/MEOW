@@ -165,3 +165,15 @@ def test_reviewer_can_be_listed_and_is_written_for_claude_code(project, home):
 
     assert data["name"] == "reviewer"
     assert "git diff" in body and "Sprint Contract" not in body
+
+
+def test_synced_reviewer_cannot_write_but_the_run_reviewer_can(project, home):
+    from meow.project.custom.rendering import builtin_agent
+
+    picks(project, ["reviewer"])
+
+    sync(project, home)
+    data, _ = frontmatter.parse(project / ".claude" / "agents" / "meow" / "reviewer.md")
+
+    assert data["tools"] == "Read, Grep, Glob, Bash"
+    assert "Write" in builtin_agent("reviewer").tools

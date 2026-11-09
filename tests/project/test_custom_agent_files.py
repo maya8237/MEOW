@@ -228,3 +228,34 @@ def test_markdown_ignores_claude_code_keys(project, home):
     )
 
     assert load_config(project)["customizations"].agent("c").prompt == "p"
+
+
+def test_claude_tools_default_to_none_and_read_in_both_formats(project, home):
+    write(
+        project / ".meow" / "agents" / "a.toml",
+        'description = "d"\nprompt = "p"\ntools = ["Read", "Write"]\n'
+        'claude_tools = ["Read"]\n',
+    )
+    write(
+        project / ".meow" / "agents" / "b.md",
+        "---\ndescription: d\ntools: Read, Write\nmeow-claude-tools: Read\n---\np\n",
+    )
+    write(project / ".meow" / "agents" / "c.toml", 'description = "d"\nprompt = "p"\n')
+
+    custom = load_config(project)["customizations"]
+
+    assert custom.agent("a").claude_tools == custom.agent("b").claude_tools == ("Read",)
+    assert custom.agent("a").claude_code_tools == ("Read",)
+    assert custom.agent("a").tools == ("Read", "Write")
+    assert custom.agent("c").claude_tools is None
+    assert custom.agent("c").claude_code_tools is None
+
+
+def test_claude_tools_must_be_a_list_of_names(project, home):
+    write(
+        project / ".meow" / "agents" / "a.toml",
+        'description = "d"\nprompt = "p"\nclaude_tools = "Read"\n',
+    )
+
+    with pytest.raises(ValueError, match="claude_tools"):
+        load_config(project)

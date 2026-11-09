@@ -1,6 +1,8 @@
 description = "Skeptical QA reviewer that grades work and writes a PASS/FAIL verdict."
 model = "inherit"
 tools = ["Read", "Grep", "Glob", "Bash", "Write"]
+# The Claude Code copy answers in chat, so it gets no Write.
+claude_tools = ["Read", "Grep", "Glob", "Bash"]
 skills = ["superpowers:verification-before-completion"]
 
 # Plan review: grades the code against the plan's Sprint Contract.
