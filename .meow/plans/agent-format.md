@@ -150,8 +150,7 @@ registration".
 - New `project/custom/agent_sync.py`, mirroring `flat_skills.py`: marker key,
   atomic write, collision report, `.git/info/exclude` for local.
 - Wired into `meow sync` and `--auto`.
-- `meow native verify` gains `agent_registration` and warns when synced
-  descriptions pass about 10k tokens.
+- `meow native verify` gains `agent_registration` (no token-budget warning).
 - Discovery skips files that carry `meow-managed`.
 - Tests: new `test_custom_agent_sync.py` (allowlist; never overwrites a user
   file; recursive name clash; removing a source removes its copy; local
@@ -166,16 +165,14 @@ registration".
 - Unknown names and builtins that need run values fail config load.
 - Works today: `explorer`, `lint-fixer`, `review-fixer`. A reviewer needs a
   `standalone` variant first (decision 3).
-- Not done from P3: the ~10k-token warning in `meow native verify`, and a test
-  that `[custom].agents = .claude/agents` does not re-import.
 
-**P5: kit agents** (after the kits branch merges; touches `kit_ops.py`).
-- Kit agents sync through P3 with `tools` required.
-- `agents_sha` holds widened tools.
-- `meow kits update --accept` shows the tool diff.
-- Tests go in `tests/kits/`.
-- Risk: auto-delegation of third-party prompts. The required `tools`, the hold,
-  and the allowlist bound it.
+**P5: kit agents (done).**
+- Opted-in kit agents sync through P3 and must declare `tools`.
+- Approved tools live in the kit lock entry (`agents_ok`), not a second sha.
+  Install approves; project kits are trusted via the reviewed `rev` bump.
+- First sync and added tools wait for `meow kits update NAME --accept` (or
+  `auto_accept_hooks`); narrowing and prose changes apply at once.
+- Tests in `tests/kits/test_kit_agents.py`.
 
 **P6 (optional): `meow agents eject NAME --format md`.** Only for agents with
 no variants or fragments; refused otherwise.

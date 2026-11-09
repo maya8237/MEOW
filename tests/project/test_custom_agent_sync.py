@@ -291,3 +291,19 @@ def test_registration_covers_agents_with_skills_and_hooks(project, home):
     sync_registration(custom, project, home / ".meow", ("project",))
 
     assert copy(project).is_file()
+
+
+def test_agents_source_pointing_at_claude_agents_does_not_reimport_copies(
+    project, home
+):
+    agent_file(project)
+    sync(project, home)
+    generated = copy(project).read_text(encoding="utf-8")
+    write(project / ".claude" / "agents" / "scout.md", generated)  # top level too
+    write(project / ".meow" / "config.toml", '[custom]\nagents = [".claude/agents"]\n')
+
+    custom = load_config(project)["customizations"]
+
+    assert [a.name for a in custom.catalog].count("scout") == 1
+    assert custom.agent("scout").file.suffix == ".toml"
+    assert sync(project, home) == []

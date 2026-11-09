@@ -14,12 +14,14 @@ import hashlib
 import json
 import os
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from meow.project.custom import frontmatter
 from meow.project.custom.agent_files import GENERATED_KEY
 from meow.project.custom.definitions import PLUGIN_NAME, CustomAgent
 from meow.project.custom.flat_skills import write_exclude_block
+from meow.project.custom.kit_agents import agent_hold
 from meow.project.custom.standalone import render_standalone, standalone_problems
 
 AGENT_SCOPES = ("project", "local", "user")
@@ -138,25 +140,43 @@ def generated_text(agent: CustomAgent, scope: str, project_dir: Path) -> str:
     return "\n".join(lines) + "\n" + render_standalone(agent) + "\n"
 
 
-def wanted_agents(
-    catalog: tuple[CustomAgent, ...], scope: str, picks: Picks = ()
-) -> Wanted:
+@dataclass(frozen=True)
+class Plan:
+    """What one scope should hold: agents to write, and agents that must wait."""
+
+    scope: str
+    project_dir: Path
+    wanted: Wanted
+    held: dict[str, str] = field(default_factory=dict)  # name -> why it waits
+
+
+def make_plan(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- one value per input of the plan
+    catalog: tuple[CustomAgent, ...],
+    scope: str,
+    project_dir: Path,
+    user_dir: Path,
+    picks: Picks = (),
+) -> Plan:
     """Winning agents of `scope` that opted in, plus those its config lists.
 
-    Kit agents opt in only through the kit; they are never synced here.
+    A kit agent also needs `tools` and approval (`kit_agents`); until then it
+    is held and any earlier copy stays as it was.
     """
     wanted = {
         agent.name: agent
         for agent in catalog
-        if agent.claude_agent
-        and agent.source.scope == scope
-        and agent.source.kit is None
+        if agent.claude_agent and agent.source.scope == scope
     }
     by_name = {agent.name: agent for agent in catalog}
     for pick_scope, name in picks:
         if pick_scope == scope and name in by_name:
             wanted[name] = by_name[name]
-    return wanted
+    held = {
+        name: reason
+        for name, agent in wanted.items()
+        if (reason := agent_hold(agent, project_dir, user_dir))
+    }
+    return Plan(scope, Path(project_dir), wanted, held)
 
 
 def _foreign_names(folder: Path) -> dict[str, Path]:
@@ -181,37 +201,49 @@ def _write(path: Path, text: str) -> None:
     os.replace(staging, path)
 
 
-def _blocked(scope: str, label: str, target: Path, foreign: Path | None) -> str | None:
-    """Why sync must leave an agent alone: a file of the user's is in the way."""
-    if foreign:
-        return f"{label}: {foreign} already defines it; not synced, rename one"
-    if target.exists() and _owner(target) != scope:
+def _where(plan: Plan, agent: CustomAgent) -> str:
+    target = agents_root(plan.scope, plan.project_dir) / f"{agent.name}.md"
+    return f"{plan.scope} agent '{agent.name}' ({target})"
+
+
+def _blocked(plan: Plan, agent: CustomAgent, foreign: dict[str, Path]) -> str | None:
+    """Why sync must leave an agent alone: it is on hold, or a file of the
+    user's is in the way."""
+    label = _where(plan, agent)
+    target = agents_root(plan.scope, plan.project_dir) / f"{agent.name}.md"
+    if agent.name in plan.held:
+        return f"{label}: {plan.held[agent.name]}"
+    if other := foreign.get(agent.name):
+        return f"{label}: {other} already defines it; not synced, rename one"
+    if target.exists() and _owner(target) != plan.scope:
         return f"{label}: not MEOW's copy; left unchanged, rename one"
     return None
 
 
 def _problem(
-    scope: str, project_dir: Path, agent: CustomAgent, foreign: dict[str, Path]
+    plan: Plan, agent: CustomAgent, foreign: dict[str, Path]
 ) -> tuple[str, bool] | None:
     """(what is wrong with the agent's copy, whether sync may write it), or None."""
-    target = agents_root(scope, project_dir) / f"{agent.name}.md"
-    label = f"{scope} agent '{agent.name}' ({target})"
-    if message := _blocked(scope, label, target, foreign.get(agent.name)):
+    if message := _blocked(plan, agent, foreign):
         return message, False
+    scope, project_dir = plan.scope, plan.project_dir
+    target = agents_root(scope, project_dir) / f"{agent.name}.md"
     if not target.exists():
-        return f"{label}: not synced for Claude Code", True
+        return f"{_where(plan, agent)}: not synced for Claude Code", True
     if target.read_text(encoding="utf-8") != generated_text(agent, scope, project_dir):
-        return f"{label}: out of date; edit the source, not the copy", True
+        return (
+            f"{_where(plan, agent)}: out of date; edit the source, not the copy",
+            True,
+        )
     return None
 
 
-def _wanted_problems(
-    scope: str, project_dir: Path, wanted: Wanted, *, fix: bool
-) -> list[str]:
+def _wanted_problems(plan: Plan, *, fix: bool) -> list[str]:
+    scope, project_dir = plan.scope, plan.project_dir
     foreign = _foreign_names(agents_dir(scope, project_dir))
     found = []
-    for name, agent in sorted(wanted.items()):
-        problem = _problem(scope, project_dir, agent, foreign)
+    for name, agent in sorted(plan.wanted.items()):
+        problem = _problem(plan, agent, foreign)
         if problem is None:
             continue
         message, writable = problem
@@ -222,13 +254,12 @@ def _wanted_problems(
     return found
 
 
-def _stale_problems(
-    scope: str, project_dir: Path, wanted: Wanted, *, fix: bool
-) -> list[str]:
-    root = agents_root(scope, project_dir)
+def _stale_problems(plan: Plan, *, fix: bool) -> list[str]:
+    scope = plan.scope
+    root = agents_root(scope, plan.project_dir)
     found = []
     for path in sorted(root.glob("*.md")) if root.is_dir() else []:
-        if path.stem in wanted or _owner(path) != scope:
+        if path.stem in plan.wanted or _owner(path) != scope:
             continue
         found.append(
             f"{scope} agent '{path.stem}' ({path}): source removed or not opted in"
@@ -240,15 +271,13 @@ def _stale_problems(
     return found
 
 
-def agent_problems(
-    scope: str, project_dir: Path, wanted: Wanted, *, fix: bool
-) -> list[str]:
+def agent_problems(plan: Plan, *, fix: bool) -> list[str]:
     """Describe (and with `fix`, repair) the scope's synced agent copies."""
-    found = _wanted_problems(scope, project_dir, wanted, fix=fix)
-    found += _stale_problems(scope, project_dir, wanted, fix=fix)
-    if fix and scope == "local":
-        rules = ["/.claude/agents/meow-local/"] if wanted else []
-        write_exclude_block(project_dir, _EXCLUDE_BEGIN, _EXCLUDE_END, rules)
+    found = _wanted_problems(plan, fix=fix)
+    found += _stale_problems(plan, fix=fix)
+    if fix and plan.scope == "local":
+        rules = ["/.claude/agents/meow-local/"] if plan.wanted else []
+        write_exclude_block(plan.project_dir, _EXCLUDE_BEGIN, _EXCLUDE_END, rules)
     return found
 
 
@@ -263,8 +292,8 @@ def check_agent_registration(
     problems = []
     for scope in AGENT_SCOPES:
         try:
-            wanted = wanted_agents(catalog, scope, picks)
-            problems += agent_problems(scope, project_dir, wanted, fix=False)
+            plan = make_plan(catalog, scope, project_dir, user_dir, picks)
+            problems += agent_problems(plan, fix=False)
         except (OSError, ValueError) as exc:
             problems.append(f"{scope} agents: {exc}")
     return problems
@@ -278,9 +307,18 @@ def sync_agents(  # ruff: ignore[too-many-arguments] -- mirrors sync_skill_plugi
     scopes: tuple[str, ...] = AGENT_SCOPES,
     picks: Picks = (),
 ) -> list[str]:
-    """Write every selected scope's opted-in agents; returns what changed."""
+    """Write every selected scope's opted-in agents; returns what changed.
+
+    Agents on hold are left alone; `check_agent_registration` reports them.
+    """
     fixed = []
     for scope in scopes:
-        wanted = wanted_agents(catalog, scope, picks)
-        fixed += agent_problems(scope, project_dir, wanted, fix=True)
+        plan = make_plan(catalog, scope, project_dir, user_dir, picks)
+        fixed += _fixes(agent_problems(plan, fix=True), plan)
     return fixed
+
+
+def _fixes(problems: list[str], plan: Plan) -> list[str]:
+    """Drop what is only waiting on the user; the rest was repaired."""
+    waiting = {f"agent '{name}'" for name in plan.held}
+    return [line for line in problems if not any(key in line for key in waiting)]

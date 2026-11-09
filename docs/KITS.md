@@ -68,6 +68,12 @@ shell commands, so a changed hook stays on the old commit until you run
 `meow kits update NAME --accept`, which prints what it would run
 (`auto_accept_hooks = true` skips this).
 
+An agent with `claude_agent = true` is also synced to Claude Code, which can
+delegate to it on its own, so it must declare `tools`. In a user or local kit, a
+new such agent or one that gains a tool waits for `--accept` too, and keeps its
+earlier copy meanwhile; narrowing tools and prose changes apply at once. A project
+kit's reviewed `rev` bump counts as approval. See [registration](CUSTOM.md#claude-code-registration).
+
 ### Project kits
 
 Project kits never move on their own. When a check finds a newer commit MEOW

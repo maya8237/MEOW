@@ -8,6 +8,7 @@ from pathlib import Path
 
 import tomlkit
 
+from meow.project.custom import kit_agents
 from meow.project.custom.kit_pins import active_run_shas
 from meow.project.custom.kit_store import (
     KitUnavailable,
@@ -160,6 +161,7 @@ def install(  # ruff: ignore[too-many-arguments]
     if scope == "project":
         set_rev(target, name, sha)
     _pin(lock_file(scope, project_dir, user_dir), name, remote, (ref, sha))
+    _approve_installed(lock_file(scope, project_dir, user_dir), name, root, only)
     output(f"Added kit {name!r} to {target}")
     return next(
         s
@@ -178,6 +180,15 @@ def _pin(lock: Path, name: str, remote: str, ref_sha: tuple[str | None, str]) ->
         "hooks_sha": sha,
         "checked_at": time.time(),
     }
+    write_lock(lock, kits)
+
+
+def _approve_installed(lock: Path, name: str, root: Path, only: tuple[str, ...]):
+    """Installing shows the kit's contents and asks, so its agents start approved."""
+    kits = read_lock(lock)
+    kits[name][kit_agents.LOCK_KEY] = kit_agents.approved_of(
+        kit_agents.kit_agent_tools(root, only)
+    )
     write_lock(lock, kits)
 
 
@@ -229,6 +240,21 @@ def _settle_hooks(kit: Kit, entry: dict, accept: bool) -> list[str]:
     return _hook_lines_held(kit, sha)
 
 
+def _settle_agents(kit: Kit, entry: dict, accept: bool) -> list[str]:
+    """Approve, or hold, agents the kit's current commit would newly sync."""
+    spec = kit.spec
+    tools = kit_agents.kit_agent_tools(kit.root(entry["sha"]), spec.only)
+    approved = dict(entry.get(kit_agents.LOCK_KEY) or {})
+    waiting = kit_agents.pending(tools, approved)
+    if _trusts_hooks(spec, accept):
+        entry[kit_agents.LOCK_KEY] = kit_agents.approved_of(tools)
+        return [f"kit {spec.name}: agent changes accepted"] * bool(waiting)
+    entry[kit_agents.LOCK_KEY] = {
+        name: wanted for name, wanted in approved.items() if name in tools
+    }
+    return kit_agents.hold_lines(spec.name, waiting) if waiting else []
+
+
 def _advance(kit: Kit, entry: dict, latest: str, accept: bool) -> list[str]:
     """Move the kit to `latest`; hook changes may stay on the previous commit."""
     spec = kit.spec
@@ -261,12 +287,14 @@ def refresh_kit(
     entry["checked_at"] = time.time()
     if latest == entry.get("sha"):
         entry.pop("latest", None)
-        return entry, _settle_hooks(kit, entry, accept)
+        lines = _settle_hooks(kit, entry, accept)
+        return entry, [*lines, *_settle_agents(kit, entry, accept)]
     if not apply:
         entry["latest"] = latest  # remembered, so `list` and startup can say so
         return entry, []
     entry.pop("latest", None)
-    return entry, _advance(kit, entry, latest, accept)
+    lines = _advance(kit, entry, latest, accept)
+    return entry, [*lines, *_settle_agents(kit, entry, accept)]
 
 
 @dataclass(frozen=True)
