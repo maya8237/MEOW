@@ -122,7 +122,7 @@ def test_unknown_builtin_names_the_known_ones(project, home):
 
 
 def test_builtin_that_needs_run_values_fails_naming_the_value(project, home):
-    picks(project, ["reviewer"])
+    picks(project, ["planner"])
 
     with pytest.raises(ValueError, match="plan_file") as error:
         load_config(project)
@@ -153,3 +153,15 @@ def test_an_ejected_override_is_what_gets_synced(project, home):
 
     assert data["description"] == "My scout."
     assert body == "Look around the current working directory."
+
+
+def test_reviewer_can_be_listed_and_is_written_for_claude_code(project, home):
+    picks(project, ["reviewer"])
+
+    sync(project, home)
+    data, body = frontmatter.parse(
+        project / ".claude" / "agents" / "meow" / "reviewer.md"
+    )
+
+    assert data["name"] == "reviewer"
+    assert "git diff" in body and "Sprint Contract" not in body

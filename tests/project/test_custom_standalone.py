@@ -157,7 +157,7 @@ def test_markdown_agent_that_cannot_render_fails_when_opted_in(project, home):
 
 # Which shipped agents work outside a MEOW run today. A prompt change that moves
 # an agent across this line should be a deliberate edit to this list.
-RENDERS_STANDALONE = {"explorer", "lint-fixer", "review-fixer"}
+RENDERS_STANDALONE = {"explorer", "lint-fixer", "review-fixer", "reviewer"}
 
 
 def test_builtin_standalone_support_is_pinned():
@@ -174,3 +174,22 @@ def test_builtins_do_not_opt_in():
 
     for path in (builtin_dir() / "agents").glob("*.toml"):
         assert builtin_agent(path.stem).claude_agent is False
+
+
+def test_standalone_reviewer_reviews_the_tree_and_answers_in_chat():
+    reviewer = builtin_agent("reviewer")
+
+    text = render_standalone(reviewer)
+
+    assert "{{" not in text
+    assert "git diff" in text and "the current working directory" in text
+    assert "SUMMARY:" in text and "STATUS: PASS" in text
+    assert "Do not modify files" in text
+    assert "Sprint Contract" not in text and "verdict file" not in text.lower()
+
+
+def test_run_prompts_of_the_reviewer_do_not_change():
+    reviewer = builtin_agent("reviewer")
+
+    assert "Sprint Contract" in reviewer.prompt
+    assert set(reviewer.variants) == {"prompt", "remote", "branch", "ci", "standalone"}

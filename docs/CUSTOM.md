@@ -85,7 +85,7 @@ file's scope (project, local, or user config):
 
 ```toml
 [claude]
-agents = ["explorer"]   # also lint-fixer, review-fixer; others need a standalone variant
+agents = ["explorer"]   # also reviewer, lint-fixer, review-fixer; others need a standalone variant
 ```
 
 A name that is unknown, or whose prompt needs run values, fails config loading.
