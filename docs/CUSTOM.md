@@ -89,6 +89,11 @@ agents = ["explorer"]   # also lint-fixer, review-fixer; others need a standalon
 A name that is unknown, or whose prompt needs run values, fails config loading.
 An ejected copy of the agent is what gets synced. Remove the name to remove the copy.
 
+`meow agents eject NAME --format md` writes the builtin as a Markdown agent
+(frontmatter, prompt as body) that Claude Code also reads; it keeps the
+`ejected_from` drift check. Agents with variants or fragments (`planner`,
+`reviewer`) stay TOML. The default format is TOML.
+
 `meow sync` does all of this. The MEOW plugin runs it as `meow sync --auto`
 when Claude Code starts and right after Claude edits a `.meow/`, `SKILL.md`, or
 `.toml` file; it also restores MEOW's `.gitignore` rules in an onboarded project

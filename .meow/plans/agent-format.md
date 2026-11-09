@@ -174,8 +174,8 @@ registration".
   `auto_accept_hooks`); narrowing and prose changes apply at once.
 - Tests in `tests/kits/test_kit_agents.py`.
 
-**P6 (optional): `meow agents eject NAME --format md`.** Only for agents with
-no variants or fragments; refused otherwise.
+**P6: `meow agents eject NAME --format md` (done).** Only for agents with no
+variants or fragments (not `planner`, `reviewer`); keeps the drift check.
 
 Each phase runs `python -m pytest -q`, `ruff check .`, `ruff format --check .`.
 AGENTS.md "Role prose" and "Definitions replace whole files" stay true. Add one
