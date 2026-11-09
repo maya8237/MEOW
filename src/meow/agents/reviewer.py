@@ -38,6 +38,8 @@ REMOTE_REVIEW_SPECS = {
     "github": ("github", "GitHub pull request"),
 }
 PLAIN_STATUS_LINE = re.compile(r"^\s*STATUS:\s*(?:PASS|FAIL)\b", re.MULTILINE)
+_STANDALONE_STATUS = re.compile(r"^[ \t]*STATUS:[ \t]*(PASS|FAIL)[ \t]*$", re.MULTILINE)
+_SUMMARY_LINE = re.compile(r"^[ \t]*SUMMARY:", re.MULTILINE)
 
 
 def _prepare_review_file(review_file: Path) -> None:
@@ -205,6 +207,26 @@ def _verdict_status(verdict_text: str) -> str:
     return "PASS" if passed else "FAIL"
 
 
+def ci_verdict(response: str) -> tuple[str, str]:
+    """Status and report of a CI reviewer reply, or ("UNVERIFIED", reply).
+
+    Models sometimes leak reasoning or echo the prompt's `STATUS: PASS or
+    STATUS: FAIL` instruction before the real report. The report is what
+    follows the last `SUMMARY:` line, and it must hold exactly one standalone
+    STATUS line. Without a SUMMARY, the whole reply must hold exactly one.
+    """
+    summaries = list(_SUMMARY_LINE.finditer(response))
+    for summary in reversed(summaries):
+        report = response[summary.start() :]
+        statuses = _STANDALONE_STATUS.findall(report)
+        if len(statuses) == 1:
+            return statuses[0], report.strip()
+    statuses = _STANDALONE_STATUS.findall(response)
+    if len(statuses) == 1:
+        return statuses[0], response
+    return "UNVERIFIED", response
+
+
 _CRITERIA_HEADING = re.compile(r"^#{1,6}\s*Criteria\s*$", re.IGNORECASE | re.MULTILINE)
 _NEXT_HEADING = re.compile(r"^#{1,6}\s", re.MULTILINE)
 
@@ -324,6 +346,13 @@ def branch_review_query(target: str, branch: str, diff: str, lint_report: str) -
     )
 
 
+_CI_RETRY_NOTE = (
+    "\n\nYour previous reply had no single unambiguous verdict. Reply with "
+    "the final report only, no reasoning: first line `SUMMARY:` and a brief "
+    "summary, then exactly one standalone line `STATUS: PASS` or `STATUS: FAIL`."
+)
+
+
 class ReviewerAgent(Agent):
     """Review plans and working trees through a generic project context."""
 
@@ -355,9 +384,7 @@ class ReviewerAgent(Agent):
             review_file.write_text(verdict, encoding="utf-8")
         return verdict
 
-    async def review_ci_branch(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches] -- stream validates each SDK message type
-        self, context: "CiReviewContext"
-    ) -> tuple[str, str]:
+    async def review_ci_branch(self, context: "CiReviewContext") -> tuple[str, str]:
         """Return the final SDK response without granting mutation tools."""
         agent = self.definition("reviewer")
         tools = [t for t in (agent.tools or ()) if t in {"Read", "Grep", "Glob"}]
@@ -377,6 +404,17 @@ class ReviewerAgent(Agent):
             setting_sources=[],
             permission_mode="dontAsk",
         )
+        prompt = self._ci_prompt(context)
+        status, response = await self._ci_query(prompt, options)
+        if status == "UNVERIFIED":
+            logger.warning("CI reviewer verdict was ambiguous; retrying once")
+            status, response = await self._ci_query(prompt + _CI_RETRY_NOTE, options)
+        return status, response
+
+    @staticmethod
+    def _ci_prompt(  # ruff: ignore[complex-structure] -- one optional section per context field
+        context: "CiReviewContext",
+    ) -> str:
         prompt = f"Fixed diff:\n{context.diff or '(empty diff)'}"
         if context.shard_label:
             prompt += (
@@ -409,6 +447,12 @@ class ReviewerAgent(Agent):
                 prompt += "\nThe merge request description was truncated by GitLab."
         if context.plan_text:
             prompt += f"\n\nReview plan:\n{context.plan_text}"
+        return prompt
+
+    @staticmethod
+    async def _ci_query(  # ruff: ignore[complex-structure] -- stream validates each SDK message type
+        prompt: str, options
+    ) -> tuple[str, str]:
         parts = []
         completed = False
         stream = query(prompt=prompt, options=options)
@@ -429,12 +473,7 @@ class ReviewerAgent(Agent):
                         parts = [message.result]
         if not completed:
             raise RuntimeError("CI reviewer returned no completion result")
-        response = "\n".join(parts)
-        statuses = re.findall(r"^STATUS: (PASS|FAIL)\s*$", response, re.MULTILINE)
-        return (
-            _verdict_status(response) if len(statuses) == 1 else "UNVERIFIED",
-            response,
-        )
+        return ci_verdict("\n".join(parts))
 
     async def _lint_evidence(self, *, retry_failed=True) -> LintGateEvidence:
         from meow.infrastructure.review_verification import review_evidence

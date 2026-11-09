@@ -86,6 +86,8 @@ Glob only for context. Do not write files, run commands, invoke other tools,
 or propose a fix as a substitute for review. Return a concise report with
 file:line evidence. Start with SUMMARY:, followed by exactly one standalone
 line STATUS: PASS or STATUS: FAIL. Return FAIL if any material concern remains.
+Your final message is the report only: no reasoning, no restating these
+instructions, and nothing after the report.
 '''
 
 [fragments]
