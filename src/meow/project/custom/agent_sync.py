@@ -1,4 +1,4 @@
-"""Sync agents that opt in with `claude_agent` to Claude Code's subagent folders.
+"""Sync agents that `standalone.syncs` selects to Claude Code's subagent folders.
 
 Claude Code scans `.claude/agents/` (project, local) and `~/.claude/agents/`
 (user) recursively and reloads them live. Each opted-in agent is written as
@@ -22,7 +22,11 @@ from meow.project.custom.agent_files import GENERATED_KEY
 from meow.project.custom.definitions import PLUGIN_NAME, CustomAgent
 from meow.project.custom.flat_skills import write_exclude_block
 from meow.project.custom.kit_agents import agent_hold
-from meow.project.custom.standalone import render_standalone, standalone_problems
+from meow.project.custom.standalone import (
+    render_standalone,
+    standalone_problems,
+    syncs,
+)
 from meow.project.home import is_home_dir
 
 AGENT_SCOPES = ("project", "local", "user")
@@ -187,7 +191,7 @@ def make_plan(  # ruff: ignore[too-many-arguments, too-many-positional-arguments
     wanted = {
         agent.name: agent
         for agent in catalog
-        if agent.claude_agent and agent.source.scope == scope
+        if syncs(agent) and agent.source.scope == scope
     }
     by_name = {agent.name: agent for agent in catalog}
     for pick_scope, name in picks:

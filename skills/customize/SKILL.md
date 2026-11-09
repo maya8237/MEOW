@@ -81,12 +81,15 @@ values fail before an agent starts. A missing dotted key is empty. Explicit
 config. `explorer` is customizable. Markdown agents (`.md`, Claude Code format)
 work too, but TOML is preferred: variants and fragments need it.
 
-To use an agent as a Claude Code subagent as well, set `claude_agent = true` (its
-prompt must render without run values; add a `[variants] standalone` prompt if
-not) and `claude_tools` for that copy's tools, then run `meow sync`. Builtins
-sync only when listed in `[claude] agents = [...]`. Details: `docs/CUSTOM.md`.
+Agents you write (user, project, local) and kit agents become Claude Code
+subagents by default when their prompt renders without run values; run `meow sync`.
+Set `claude_agent = false` to keep one MEOW-only, or `true` to force it (add a
+`[variants] standalone` prompt if it needs run values). `claude_tools` sets that
+copy's tools. Project copies are committed. Builtins and ejected copies of one
+sync only when listed in `[claude] agents = [...]` (suggest `reviewer`; `explorer`
+overlaps Claude's `Explore`). Kit agents must declare `tools`. Details: `docs/CUSTOM.md`.
 
-The standalone prompt: a `claude_agent` runs in Claude Code with no run values
+The standalone prompt: a synced agent runs in Claude Code with no run values
 (`plan_file`, `feedback`, `output_file`, ...), so a prompt printing one fails
 config loading. Add `[variants]` with `standalone = "..."` for that copy only;
 `prompt` still serves MEOW's runs. Example and rules: `docs/CUSTOM.md`.
@@ -145,7 +148,7 @@ A kit bundles `skills/`, `agents/`, `workflows/`, `hooks/` and an optional
   user/local scope only). Run `meow sync` after editing it.
 - `meow kits list | show NAME | update [NAME] [--check] [--accept] | uninstall NAME`.
 - Authoring: `meow kits init DIR`, `meow kits validate .`.
-- Hooks, and `claude_agent` agents that gain tools, wait for `--accept`; project
+- Hooks, and kit agents that gain tools, wait for `--accept`; project
   kits are pinned by a committed `rev`, so commit it after `meow kits update`.
 - Your own files beat a kit's within a scope; `meow native custom` shows overrides.
 

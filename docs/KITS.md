@@ -30,7 +30,7 @@ meow sync                      # after editing the folder: republish skills/hook
 The folder is used in place, never copied or pinned, so edits apply on the next
 sync and `meow kits update` has nothing to fetch. It exists only on your
 machine, so user (default) and local scopes work and `--scope project` is
-refused. Hooks and `claude_agent` agents need no `--accept`: it is your code.
+refused. Hooks and synced agents need no `--accept`: it is your code.
 An absolute path to a git repository is still fetched as a git kit.
 `meow kits uninstall` never deletes your folder.
 
@@ -85,8 +85,8 @@ shell commands, so a changed hook stays on the old commit until you run
 `meow kits update NAME --accept`, which prints what it would run
 (`auto_accept_hooks = true` skips this).
 
-An agent with `claude_agent = true` is also synced to Claude Code, which can
-delegate to it on its own, so it must declare `tools`. In a user or local kit, a
+A kit agent is also synced to Claude Code by default (`claude_agent = false`
+opts out), which can delegate to it on its own, so it must declare `tools`. In a user or local kit, a
 new such agent or one that gains a tool waits for `--accept` too, and keeps its
 earlier copy meanwhile; narrowing tools and prose changes apply at once. A project
 kit's reviewed `rev` bump counts as approval. See [registration](CUSTOM.md#claude-code-registration).

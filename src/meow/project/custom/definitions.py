@@ -62,7 +62,8 @@ class CustomAgent:
     agents: tuple[str, ...] = ()  # delegates, by agent name
     session: str = "one-shot"
     lint_on_edit: bool = False
-    claude_agent: bool = False  # opted in to Claude Code (see `standalone.py`)
+    # None: the default for its source (see `standalone.syncs`)
+    claude_agent: bool | None = None
     claude_tools: tuple[str, ...] | None = (
         None  # the synced copy's tools, if not `tools`
     )

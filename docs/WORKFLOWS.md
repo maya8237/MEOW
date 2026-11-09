@@ -84,9 +84,9 @@ fallback; `inherit` supplies none (explorer uses haiku). Skills combine with dis
 `session = "persistent"` keeps a role session through a loop, rendering current
 values each turn; elsewhere invocations own sessions. `lint_on_edit` enables
 post-edit lint; `[variants]` select alternate prompts; `[fragments]` is reusable text.
-`claude_agent = true` (default false) marks an agent for Claude Code: its prompt must
-render without run values, or config loading fails; `[variants] standalone` replaces it,
-and `claude_tools` replaces `tools` for that copy (not empty).
+`claude_agent`: unset syncs your own and kit agents that render standalone (not
+builtins or ejected copies); `false` opts out; `true` forces it, failing config load
+on run values. `[variants] standalone` replaces the prompt; `claude_tools` the tools.
 
 Named `agents` delegates are capped to parent tools and exclude Agent. Configured agents keep
 planner/generator (or explicit role) compatibility; conventional ones run only when named.

@@ -1,7 +1,7 @@
 """Everything that keeps customizations working in Claude Code, in one place.
 
 Skills and hooks are served to Claude Code by each scope's plugin, and agents that
-opt in with `claude_agent` are written as subagents; other agents and workflows are
+`standalone.syncs` selects are written as subagents; other agents and workflows are
 read by MEOW on every run and need no registration. Project
 definitions must also stay trackable by git so teammates receive them.
 """

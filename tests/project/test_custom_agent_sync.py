@@ -92,8 +92,8 @@ def test_project_agent_is_written_with_only_allowlisted_fields(project, home):
     )
 
 
-def test_agents_without_the_key_are_not_synced(project, home):
-    agent_file(project, text=EXPLORER.replace("claude_agent = true\n", ""))
+def test_agents_that_opt_out_are_not_synced(project, home):
+    agent_file(project, text=EXPLORER.replace("= true\nprompt", "= false\nprompt"))
 
     assert sync(project, home) == []
     assert not (project / ".claude" / "agents").exists()
