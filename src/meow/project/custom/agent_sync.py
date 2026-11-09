@@ -194,6 +194,17 @@ def _foreign_names(folder: Path) -> dict[str, Path]:
     return found
 
 
+def synced_agent_names(project_dir: Path) -> set[str]:
+    """Names of the copies MEOW generated for Claude Code, at every scope."""
+    names = set()
+    for scope in AGENT_SCOPES:
+        root = agents_root(scope, project_dir)
+        for path in sorted(root.glob("*.md")) if root.is_dir() else []:
+            if _owner(path) == scope:
+                names.add(path.stem)
+    return names
+
+
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     staging = path.with_name(f".{path.name}.meow-new")
@@ -314,7 +325,14 @@ def sync_agents(  # ruff: ignore[too-many-arguments] -- mirrors sync_skill_plugi
     fixed = []
     for scope in scopes:
         plan = make_plan(catalog, scope, project_dir, user_dir, picks)
-        fixed += _fixes(agent_problems(plan, fix=True), plan)
+        existed = agents_dir(scope, project_dir).is_dir()
+        changes = _fixes(agent_problems(plan, fix=True), plan)
+        fixed += changes
+        if changes and not existed and agents_dir(scope, project_dir).is_dir():
+            fixed.append(
+                f"created {agents_dir(scope, project_dir)}; restart Claude Code "
+                "once so it starts watching this new folder"
+            )
     return fixed
 
 

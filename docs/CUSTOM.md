@@ -77,6 +77,8 @@ Edit the source, not the copy: sync replaces it. Sync never overwrites a file
 without the marker, and skips an agent whose `name` one of your own agents under
 `.claude/agents/` already uses. Custom skill names lose the `meow-custom:` prefix.
 Use it as `@agent-NAME`, by asking for it, or `claude --agent NAME`.
+The first sync that creates `.claude/agents/` needs one Claude Code restart.
+MEOW's own runs never delegate to synced copies (each is denied by name).
 
 Builtin agents sync only when a config file lists them. The copy goes to that
 file's scope (project, local, or user config):

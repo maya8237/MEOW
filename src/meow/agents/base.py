@@ -46,6 +46,7 @@ from meow.infrastructure.usage import record_result
 from meow.infrastructure.user_hooks import SDK_AGENT_ENV, merge_hooks, sdk_hooks
 from meow.project.config_models import LintCommand
 from meow.project.custom import CustomAgent, Customizations, skill_plugin_dir
+from meow.project.custom.agent_sync import synced_agent_names
 from meow.project.custom.rendering import builtin_agent, render_agent
 from meow.project.permissions import (
     PATH_KEYS,
@@ -963,6 +964,21 @@ class Agent:
         # Wildcard approvals also bypass the callback for explicitly gated tools.
         return [tool for tool in allowed_tools if tool not in gated and "*" not in tool]
 
+    def _deny_synced_agents(self, extra_options: dict) -> None:
+        """Keep a run off the agents MEOW synced for Claude Code.
+
+        Once `skills` is set the SDK reads user and project settings, which
+        include `.claude/agents/`; a synced copy would become a delegate the
+        role's definition never listed. Agents the run passes itself stay.
+        """
+        own = set(extra_options.get("agents") or {})
+        names = synced_agent_names(Path(self.context.active_working_dir())) - own
+        if names:
+            extra_options["disallowed_tools"] = [
+                *(extra_options.get("disallowed_tools") or []),
+                *(f"Agent({name})" for name in sorted(names)),
+            ]
+
     def options(  # ruff: ignore[complex-structure, too-many-statements]
         self,
         *,
@@ -976,6 +992,7 @@ class Agent:
         if "Bash" in allowed_tools and isinstance(system_prompt, str):
             system_prompt = f"{system_prompt}\n\n{DEPENDENCY_GUIDANCE}"
         self._apply_skills(role, extra_options)
+        self._deny_synced_agents(extra_options)
         allowed_tools = self._apply_policy(role, allowed_tools, extra_options)
         self._apply_hooks(role, extra_options)
         journal = self.context.config.get("_run_journal")

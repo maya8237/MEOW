@@ -307,3 +307,38 @@ def test_agents_source_pointing_at_claude_agents_does_not_reimport_copies(
     assert [a.name for a in custom.catalog].count("scout") == 1
     assert custom.agent("scout").file.suffix == ".toml"
     assert sync(project, home) == []
+
+
+def test_synced_agent_names_are_only_the_copies_meow_generated(project, home):
+    from meow.project.custom.agent_sync import synced_agent_names
+
+    agent_file(project)
+    agent_file(project, "local-one", scope="local")
+    write(home / ".meow" / "agents" / "mine.toml", EXPLORER)
+    write(
+        project / ".claude" / "agents" / "theirs.md",
+        "---\nname: theirs\ndescription: d\n---\nbody\n",
+    )
+    sync(project, home)
+
+    assert synced_agent_names(project) == {"scout", "local-one", "mine"}
+
+
+def test_first_sync_into_a_new_agents_folder_says_to_restart_claude_code(project, home):
+    agent_file(project)
+
+    first = sync(project, home)
+
+    assert any("restart Claude Code" in line for line in first)
+
+
+def test_later_syncs_and_existing_folders_do_not_repeat_the_restart_hint(project, home):
+    write(project / ".claude" / "agents" / "mine.md", "---\nname: mine\n---\nx\n")
+    agent_file(project)
+
+    assert not any("restart" in line for line in sync(project, home))
+
+    (project / ".meow" / "agents" / "scout.toml").write_text(
+        EXPLORER.replace("file:line", "path:line"), encoding="utf-8"
+    )
+    assert not any("restart" in line for line in sync(project, home))

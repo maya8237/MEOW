@@ -118,11 +118,12 @@ registration".
 ## Phases (each ships alone)
 
 **P0: verify assumptions (no code).**
-- MEOW's SDK runs leave `setting_sources` unset (SDK 0.2.172 default `None`), so
-  synced agents never appear inside MEOW runs. Add a test that pins this.
-- Confirm that a new subfolder under an existing `.claude/agents/` is
-  live-watched. Otherwise the first sync prints "restart Claude Code once".
-- Confirm the plugin `agents/` folder loads from MEOW's install path.
+- Checked: this assumption was wrong. Setting `skills` makes the SDK read user
+  and project settings, so synced agents did load in runs. Fixed by denying
+  `Agent(name)` per synced copy (`tests/agents/test_synced_agents_in_runs.py`).
+- A fresh Claude Code session lists and uses a synced agent (verified). Live
+  reload of a new folder is untested; the first sync that creates
+  `.claude/agents/` prints "restart Claude Code". No plugin is involved (P4).
 
 **P1: `.md` parity for flat keys.**
 - `load_agent` reads `meow-session`, `meow-lint-on-edit`, `meow-agents`, and
