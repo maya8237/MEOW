@@ -78,8 +78,13 @@ Optional `[variants]` and `[fragments]` keep alternate prompts and reusable
 text. Templates support variables, fragments, and conditional blocks; unknown
 values fail before an agent starts. A missing dotted key is empty. Explicit
 `[models].role` wins over the agent model; hyphens map to underscores in role
-config. `explorer` is customizable. Markdown agents remain a Claude Code import
-format, but TOML is preferred for full role definitions.
+config. `explorer` is customizable. Markdown agents (`.md`, Claude Code format)
+work too, but TOML is preferred: variants and fragments need it.
+
+To use an agent as a Claude Code subagent as well, set `claude_agent = true` (its
+prompt must render without run values; add a `[variants] standalone` prompt if
+not) and `claude_tools` for that copy's tools, then run `meow sync`. Builtins
+sync only when listed in `[claude] agents = [...]`. Details: `docs/CUSTOM.md`.
 
 An agent's `agents` list names explicit delegates. Each delegate's tools are
 capped to its parent and exclude `Agent`. Agents registered through

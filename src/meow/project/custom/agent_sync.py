@@ -63,18 +63,19 @@ def parse_picks(table: object, scope: str, config_path: Path) -> Picks:
 
 def validate_picks(custom, picks: Picks, config_file: str) -> None:
     """Every picked agent must exist and work outside a MEOW run."""
-    for _, name in picks:
+    for scope, name in picks:
+        where = f"{scope} config ({config_file})"
         try:
             agent = custom.agent(name)
         except KeyError as exc:
             known = ", ".join(sorted(item.name for item in custom.catalog))
             raise ValueError(
-                f"{config_file}: [claude].agents names unknown agent {name!r}; "
+                f"{where}: [claude].agents names unknown agent {name!r}; "
                 f"defined agents: {known}"
             ) from exc
         if problems := standalone_problems(agent):
             raise ValueError(
-                f"{config_file}: [claude].agents cannot include {name!r}:\n"
+                f"{where}: [claude].agents cannot include {name!r}:\n"
                 + "\n".join(problems)
             )
 
@@ -91,22 +92,33 @@ def agents_root(scope: str, project_dir: Path) -> Path:
 def _owner(path: Path) -> str | None:
     """The scope that generated `path`, or None when it is not MEOW's."""
     try:
-        match = _OWNER.search(path.read_text(encoding="utf-8")[:4096])
-    except (OSError, UnicodeError):
+        head = path.read_bytes()[:4096].decode("utf-8", errors="replace")
+    except OSError:
         return None
+    match = _OWNER.search(head)
     return match.group(1) if match else None
 
 
 def _label(agent: CustomAgent, project_dir: Path) -> str:
+    """Where the source lives, the same on every machine: a committed copy must
+    not change because a teammate's checkout sits elsewhere."""
     if agent.source.scope == "builtin":
         return f"builtin:{agent.name}"
     path = Path(agent.file)
+    if agent.source.kit:
+        return f"kit/{agent.source.kit}/{path.name}"
     for base, prefix in ((Path(project_dir), ""), (Path.home(), "~/")):
         try:
             return prefix + path.relative_to(base).as_posix()
         except ValueError:
             continue
-    return path.as_posix()
+    return path.name
+
+
+def _source_digest(agent: CustomAgent) -> str:
+    """Hash of the source, with line endings folded so a Windows checkout agrees."""
+    data = Path(agent.file).read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def _skills(agent: CustomAgent) -> list[str]:
@@ -118,7 +130,7 @@ def _skills(agent: CustomAgent) -> list[str]:
 def generated_text(agent: CustomAgent, scope: str, project_dir: Path) -> str:
     """The Claude Code subagent file for `agent`; raises if it cannot render."""
     label = _label(agent, project_dir)
-    digest = hashlib.sha256(Path(agent.file).read_bytes()).hexdigest()
+    digest = _source_digest(agent)
     origin = (
         f"[claude].agents lists {agent.name}"
         if agent.source.scope == "builtin"
@@ -138,6 +150,17 @@ def generated_text(agent: CustomAgent, scope: str, project_dir: Path) -> str:
         lines += ["skills:", *(f"  - {name}" for name in skills)]
     lines += [f"{GENERATED_KEY}: {scope}", f"meow-source: {label}@{digest}", "---"]
     return "\n".join(lines) + "\n" + render_standalone(agent) + "\n"
+
+
+def _shares_user_folder(scope: str, project_dir: Path) -> bool:
+    """Run from the home directory, project and local would write the user's
+    folder; the user scope owns it, so they sit out."""
+    if scope == "user":
+        return False
+    try:
+        return Path(project_dir).resolve() == Path.home().resolve()
+    except OSError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -162,6 +185,8 @@ def make_plan(  # ruff: ignore[too-many-arguments, too-many-positional-arguments
     A kit agent also needs `tools` and approval (`kit_agents`); until then it
     is held and any earlier copy stays as it was.
     """
+    if _shares_user_folder(scope, project_dir):
+        return Plan(scope, Path(project_dir), {})
     wanted = {
         agent.name: agent
         for agent in catalog
@@ -241,7 +266,8 @@ def _problem(
     target = agents_root(scope, project_dir) / f"{agent.name}.md"
     if not target.exists():
         return f"{_where(plan, agent)}: not synced for Claude Code", True
-    if target.read_text(encoding="utf-8") != generated_text(agent, scope, project_dir):
+    current = target.read_text(encoding="utf-8", errors="replace")
+    if current != generated_text(agent, scope, project_dir):
         return (
             f"{_where(plan, agent)}: out of date; edit the source, not the copy",
             True,

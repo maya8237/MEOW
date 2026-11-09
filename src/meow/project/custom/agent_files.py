@@ -108,8 +108,8 @@ def _markdown_values(data: dict, path: Path) -> dict[str, object]:
 def is_generated(path: Path) -> bool:
     """Whether `path` is a Claude Code copy MEOW generated, not a definition."""
     try:
-        head = path.read_text(encoding="utf-8-sig")[:4096]
-    except (OSError, UnicodeError):
+        head = path.read_bytes()[:4096].decode("utf-8-sig", errors="replace")
+    except OSError:
         return False
     return any(line.startswith(f"{GENERATED_KEY}:") for line in head.splitlines())
 

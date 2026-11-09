@@ -46,7 +46,8 @@ top-level alias or compatibility modules.
   plan files/state, prompts, and command policy. Kits (`custom/kits.py` spec and
   sources, `kit_store.py` git cache, `kit_ops.py` install/update) are documented in
   [KITS](KITS.md). `project/custom/` owns scoped agent
-  and workflow loading, expression/template validation, and shipped TOML
+  and workflow loading, syncing opted-in agents to Claude Code (`agent_sync.py`,
+  `standalone.py`, `kit_agents.py`; see [CUSTOM](CUSTOM.md)), expression/template validation, and shipped TOML
   definitions under `builtin/`. `project/prompts.py` supplies computed context
   and verdict contracts; editable role prose belongs in the agent definitions.
 - `installer/`: shared checkout updates and editable installation in the

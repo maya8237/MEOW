@@ -29,11 +29,18 @@ def standalone_problems(agent: CustomAgent) -> list[str]:
     each run-only value the prompt prints, or an empty tool list (a blank
     `tools:` would read as every tool there)."""
     problems = _prompt_problems(agent)
-    if agent.claude_code_tools == ():
+    tools = agent.claude_code_tools
+    if tools == ():
         problems.append(
             f"{agent.file}: the Claude Code copy would have no tools; "
             "name at least one in tools or claude_tools, or omit them"
         )
+    problems += [
+        f"{agent.file}: tool {tool!r} contains a comma, which splits it in the "
+        "Claude Code tools line; use claude_tools without it"
+        for tool in tools or ()
+        if "," in tool
+    ]
     return problems
 
 

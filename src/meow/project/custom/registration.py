@@ -118,7 +118,7 @@ def auto_sync_message(
     changed, remaining = auto_sync(custom, project_dir, user_dir, migrated or [])
     lines = []
     if changed:
-        lines += ["MEOW updated your custom skills/hooks:", *changed]
+        lines += ["MEOW updated your custom skills/hooks/agents:", *changed]
         if any(line.startswith(("project", ".gitignore")) for line in changed):
             lines.append(
                 "Commit the .claude/skills/, .claude/agents/, .claude/settings.json, "

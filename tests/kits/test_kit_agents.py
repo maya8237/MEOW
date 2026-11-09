@@ -160,3 +160,96 @@ def test_claude_code_copy_uses_claude_tools_and_approval_follows_them(
     lines = kit_ops.update(project, user_dir)
 
     assert any("on hold" in line and "Bash" in line for line in lines)
+
+
+def test_project_kit_agent_still_needs_tools(make_kit, project, user_dir):
+    add(
+        project,
+        user_dir,
+        make_kit({"agents/scout.toml": agent(tools=None)}),
+        scope="project",
+    )
+
+    problems = sync(project, user_dir)
+
+    assert not copy("project", project).exists()
+    assert any("declare tools" in line for line in problems)
+
+
+def test_local_kit_agent_goes_to_the_local_folder_and_is_held_like_user_kits(
+    make_kit, project, user_dir
+):
+    repo = make_kit({"agents/scout.toml": agent()})
+    add(project, user_dir, repo, scope="local")
+    sync(project, user_dir)
+    local = project / ".claude" / "agents" / "meow-local" / "scout.md"
+
+    assert local.is_file()
+    repo.write({"agents/scout.toml": agent(tools='["Read", "Bash"]')})
+    lines = kit_ops.update(project, user_dir)
+    sync(project, user_dir)
+
+    assert any("on hold" in line for line in lines)
+    assert frontmatter.parse(local)[0]["tools"] == "Read"
+
+
+def test_agent_removed_from_the_kit_loses_its_copy_and_approval(
+    make_kit, project, user_dir
+):
+    repo = make_kit({
+        "agents/scout.toml": agent(),
+        "agents/keep.toml": agent(opt_in="false"),
+    })
+    add(project, user_dir, repo)
+    sync(project, user_dir)
+    assert copy().is_file()
+    (repo.path / "agents" / "scout.toml").unlink()
+    repo.write({"README.md": "x"})
+
+    kit_ops.update(project, user_dir)
+    sync(project, user_dir)
+
+    assert not copy().exists()
+    from meow.project.custom.kits import lock_file, read_lock
+
+    entry = next(iter(read_lock(lock_file("user", project, user_dir)).values()))
+    assert entry["agents_ok"] == {}
+
+
+def test_repeated_updates_are_quiet_and_keep_approvals(make_kit, project, user_dir):
+    repo = make_kit({"agents/scout.toml": agent(tools='["Read", "Bash"]')})
+    add(project, user_dir, repo)
+    kit_ops.update(project, user_dir)
+    again = kit_ops.update(project, user_dir)
+
+    assert not any("agent" in line for line in again)
+    assert sync(project, user_dir) == []
+    assert frontmatter.parse(copy())[0]["tools"] == "Read, Bash"
+
+
+def test_users_own_agent_of_the_same_name_beats_the_kit_agent(
+    make_kit, project, user_dir
+):
+    add(project, user_dir, make_kit({"agents/scout.toml": agent()}))
+    own = project / ".meow" / "agents"
+    own.mkdir(parents=True)
+    (own / "scout.toml").write_text('description = "mine"\nprompt = "p"\n')
+
+    sync(project, user_dir)
+
+    assert not copy().exists()  # theirs is the winner and did not opt in
+
+
+def test_only_skills_kit_never_syncs_agents(make_kit, project, user_dir):
+    add(
+        project,
+        user_dir,
+        make_kit({
+            "agents/scout.toml": agent(),
+            "skills/s/SKILL.md": "---\nname: s\ndescription: d\n---\nb\n",
+        }),
+        only=("skills",),
+    )
+
+    assert sync(project, user_dir) == []
+    assert not copy().exists()
