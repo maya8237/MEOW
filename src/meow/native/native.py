@@ -35,6 +35,7 @@ from meow.project.config import (
 )
 from meow.project.config_env import unresolved_environment_references
 from meow.project.config_models import resolve_command_cwd
+from meow.project.custom.agent_sync import check_agent_registration
 from meow.project.custom.hook_sync import check_hook_registration
 from meow.project.custom.registration import old_layout
 from meow.project.custom.rendering import effective_models
@@ -125,6 +126,12 @@ def verify(
         ),
         "hook_registration": check_hook_registration(
             config["customizations"].hooks, working_dir, user_config_path().parent
+        ),
+        "agent_registration": check_agent_registration(
+            config["customizations"].catalog,
+            working_dir,
+            user_config_path().parent,
+            picks=config["customizations"].claude_builtins,
         ),
         "unshared_definitions": unshared_project_dirs(working_dir),
         "old_layout": old_layout(working_dir),

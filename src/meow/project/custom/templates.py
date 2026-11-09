@@ -122,6 +122,7 @@ class _Renderer:
         self.where = where
         self.values: list[str] = []
         self.including: list[str] = []
+        self.printed: set[str] = set()
 
     def _evaluate(self, text: str) -> object:
         try:
@@ -136,6 +137,7 @@ class _Renderer:
         if node.kind == "text":
             return node.value
         if node.kind == "var":
+            self.printed |= names(node.value)
             value = self._evaluate(node.value)
             self.values.append("" if value is None else str(value))
             return f"{_SLOT_OPEN}{len(self.values) - 1}{_SLOT_CLOSE}"
@@ -185,6 +187,20 @@ def render(
     renderer = _Renderer(variables, fragments or {}, where)
     folded = fold(renderer.nodes(_parse(text, where)))
     return _SLOT_PATTERN.sub(lambda m: renderer.values[int(m.group(1))], folded)
+
+
+def printed_names(
+    text: str,
+    variables: Mapping[str, object],
+    *,
+    fragments: Mapping[str, str] | None = None,
+    where: str = "",
+) -> set[str]:
+    """Names substituted into the output for `variables`, skipping branches
+    a condition rules out; names read only by conditions are not included."""
+    renderer = _Renderer(variables, fragments or {}, where)
+    renderer.nodes(_parse(text, where))
+    return renderer.printed
 
 
 def _names(

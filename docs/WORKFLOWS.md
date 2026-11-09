@@ -28,9 +28,9 @@ Invalid task graphs get one `task_graph_repair` attempt, else run sequentially
 (reason journaled). `max_parallel_tasks` (default 2) bounds task worktrees.
 
 `--workflow NAME` overrides `[workflow].default` (otherwise `"default"`).
-Repeated `--input name=value` supplies identifier-keyed strings (values may
-contain `=` or be empty; last wins), persisted with journal redaction.
-Workflow flags support Jira/background runs but reject lint-fix.
+Repeated `--input name=value` supplies identifier-keyed strings (values may contain
+`=` or be empty; last wins), persisted with journal redaction. Workflow flags support
+Jira/background runs but reject lint-fix.
 See [verification](VERIFICATION.md) for `auto_test`, `short_plan`, and test selection.
 
 ## Resolution and editing
@@ -44,34 +44,31 @@ Whole files resolve by name, highest priority first:
 | user | `~/.meow/agents/` | `~/.meow/workflows/` |
 | builtin | shipped `project/custom/builtin/agents/` | shipped `project/custom/builtin/workflows/` |
 
-Conventional folders need no config. Extra `[custom]` sources follow
-[CUSTOM.md](CUSTOM.md); workflow sources cannot restrict roles.
-Same-scope duplicates fail; overrides are reported. Resolution uses the run's
-config root even in task worktrees.
+Conventional folders need no config; extra `[custom]` sources follow [CUSTOM.md](CUSTOM.md)
+(workflow sources cannot restrict roles). Same-scope duplicates fail; overrides are
+reported; task worktrees use the run's config root.
 
 `meow agents` supports list/show/eject/diff; `meow workflows` supports
 list/show/validate/eject. All accept `--work-dir PATH`. Eject copies the shipped
-definition even when another scope overrides it, defaults to project scope,
-accepts local/user, and refuses overwrite. Copies record
+definition even when another scope overrides it (project scope by default;
+local/user accepted) and refuses overwrite. Copies record
 `ejected_from = "builtin:name@<sha256>"`; run startup and show/validate warn when
 that origin changes or disappears, with paths for inspecting the copy. Workflow
 diagnostics include called workflows and agents, and flag ejected agents the
-selected workflow does not use. Conditional steps, delegates, task workers, and
-delivery fixers count as possible uses. Valid copies continue unchanged across
-upgrades; missing references fail before agents start. Handwritten definitions
-have no drift/unused warning.
+selected workflow does not use; conditional steps, delegates, task workers, and
+delivery fixers count as possible uses. Valid copies continue across upgrades;
+missing references fail before agents start. Handwritten ones never warn.
 
 ## Agents
 
-Create `<name>.toml`: lowercase letters/digits separated by single hyphens, at
-most 64 characters; optional `name` must match. `description` and `prompt` are required.
+Create `<name>.toml`: lowercase letters/digits and single hyphens, at most 64
+characters; optional `name` must match. `description` and `prompt` are required.
 
 ```toml
 description = "Review API authorization"
 model = "inherit"
 tools = ["Read", "Grep", "Glob", "Write"]
-skills = []
-agents = []
+skills = []  # also agents = [] (delegates)
 session = "one-shot"
 lint_on_edit = false
 prompt = '''
@@ -81,19 +78,22 @@ Write findings to {{output_file}}.
 '''
 ```
 
-Hyphens map to underscores for roles. Model order: `[models].role`, agent,
-role/reviewer fallback; `inherit` supplies none (explorer uses haiku). Default
-and role skill lists combine with definition and discovered skills.
+Hyphens map to underscores for roles. Model order: `[models].role`, agent, role/reviewer
+fallback; `inherit` supplies none (explorer uses haiku). Skills combine with discovered ones.
 
-`session = "persistent"` retains a role session inside a loop until it ends,
-rendering current values each turn; outside loops invocations own sessions.
-`lint_on_edit` enables post-edit lint. `[variants]` select alternate prompts
-(missing variants use main); `[fragments]` defines reusable text.
+`session = "persistent"` keeps a role session through a loop, rendering current
+values each turn; elsewhere invocations own sessions. `lint_on_edit` enables
+post-edit lint; `[variants]` select alternate prompts; `[fragments]` is reusable text.
+`claude_agent = true` (default false) marks an agent for Claude Code: its prompt must
+render without run values, or config loading fails; `[variants] standalone` replaces it,
+and `claude_tools` replaces `tools` for that copy (not empty).
 
-Named `agents` delegates are capped to parent tools and exclude Agent.
-Configured custom agents retain planner/generator (or explicit role) compatibility;
-conventional definitions run only when named. Explorer is overridable. Claude Code
-Markdown agents are a frontmatter/body import format; specify tools for stages.
+Named `agents` delegates are capped to parent tools and exclude Agent. Configured agents keep
+planner/generator (or explicit role) compatibility; conventional ones run only when named.
+
+Markdown agents (`<name>.md`): the body is the prompt; frontmatter sets `description`, `tools`,
+`model`, `skills`, `meow-agents|session|lint-on-edit|claude-agent|claude-tools|ejected-from` (unknown
+`meow-*` errors); variants and fragments need TOML.
 
 ## Templates and expressions
 

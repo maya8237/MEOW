@@ -155,3 +155,107 @@ def test_custom_entry_overriding_a_builtin_is_not_a_delegate(project, home):
 def test_unknown_agent_lookup_names_the_agent(project, home):
     with pytest.raises(KeyError, match="no-such-agent"):
         load_config(project)["customizations"].agent("no-such-agent")
+
+
+MD_FULL = """\
+---
+name: auditor
+description: Audits security.
+model: haiku
+tools: [Read, Grep]
+skills: [superpowers:brainstorming]
+meow-agents: [explorer]
+meow-session: persistent
+meow-lint-on-edit: true
+meow-ejected-from: builtin:auditor@abc
+---
+Audit {{plan_file}}.
+"""
+
+
+def test_markdown_agent_reads_flat_meow_keys(project, home):
+    write(project / ".meow" / "agents" / "auditor.md", MD_FULL)
+
+    found = load_config(project)["customizations"].agent("auditor")
+
+    assert found.agents == ("explorer",)
+    assert found.session == "persistent"
+    assert found.lint_on_edit is True
+    assert found.ejected_from == "builtin:auditor@abc"
+    assert found.variants == {} and found.fragments == {}
+
+
+def test_markdown_defaults_match_toml_defaults(project, home):
+    write(project / ".meow" / "agents" / "a.md", "---\ndescription: d\n---\np\n")
+    write(project / ".meow" / "agents" / "b.toml", MINIMAL)
+
+    custom = load_config(project)["customizations"]
+    a, b = custom.agent("a"), custom.agent("b")
+
+    assert (a.agents, a.session, a.lint_on_edit, a.ejected_from) == (
+        b.agents,
+        b.session,
+        b.lint_on_edit,
+        b.ejected_from,
+    )
+
+
+@pytest.mark.parametrize(
+    "line, message",
+    [
+        ("meow-session: forever", "meow-session"),
+        ("meow-lint-on-edit: maybe", "meow-lint-on-edit"),
+        ("meow-variants: x", "unknown key"),
+        ("meow-typo: 1", "unknown key"),
+    ],
+)
+def test_invalid_markdown_meow_keys_name_the_file(project, home, line, message):
+    path = write(
+        project / ".meow" / "agents" / "bad.md",
+        f"---\ndescription: d\n{line}\n---\np\n",
+    )
+
+    with pytest.raises(ValueError, match=message) as error:
+        load_config(project)
+
+    assert str(path) in str(error.value)
+
+
+def test_markdown_ignores_claude_code_keys(project, home):
+    write(
+        project / ".meow" / "agents" / "c.md",
+        "---\ndescription: d\ncolor: blue\nmaxTurns: 3\n---\np\n",
+    )
+
+    assert load_config(project)["customizations"].agent("c").prompt == "p"
+
+
+def test_claude_tools_default_to_none_and_read_in_both_formats(project, home):
+    write(
+        project / ".meow" / "agents" / "a.toml",
+        'description = "d"\nprompt = "p"\ntools = ["Read", "Write"]\n'
+        'claude_tools = ["Read"]\n',
+    )
+    write(
+        project / ".meow" / "agents" / "b.md",
+        "---\ndescription: d\ntools: Read, Write\nmeow-claude-tools: Read\n---\np\n",
+    )
+    write(project / ".meow" / "agents" / "c.toml", 'description = "d"\nprompt = "p"\n')
+
+    custom = load_config(project)["customizations"]
+
+    assert custom.agent("a").claude_tools == custom.agent("b").claude_tools == ("Read",)
+    assert custom.agent("a").claude_code_tools == ("Read",)
+    assert custom.agent("a").tools == ("Read", "Write")
+    assert custom.agent("c").claude_tools is None
+    assert custom.agent("c").claude_code_tools is None
+
+
+def test_claude_tools_must_be_a_list_of_names(project, home):
+    write(
+        project / ".meow" / "agents" / "a.toml",
+        'description = "d"\nprompt = "p"\nclaude_tools = "Read"\n',
+    )
+
+    with pytest.raises(ValueError, match="claude_tools"):
+        load_config(project)

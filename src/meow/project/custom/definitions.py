@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING
 
 from meow.infrastructure.logging import get_logger
 from meow.project.custom import frontmatter
-from meow.project.custom.agent_files import read_agent_toml
+from meow.project.custom.agent_files import (
+    is_generated,
+    read_agent_toml,
+    read_markdown_settings,
+)
 from meow.project.custom.hook_files import read_hook_toml
 from meow.project.custom.sources import (
     AGENT_ROLES,
@@ -58,9 +62,18 @@ class CustomAgent:
     agents: tuple[str, ...] = ()  # delegates, by agent name
     session: str = "one-shot"
     lint_on_edit: bool = False
+    claude_agent: bool = False  # opted in to Claude Code (see `standalone.py`)
+    claude_tools: tuple[str, ...] | None = (
+        None  # the synced copy's tools, if not `tools`
+    )
     ejected_from: str | None = None
     variants: Mapping[str, str] = field(default_factory=dict, hash=False)
     fragments: Mapping[str, str] = field(default_factory=dict, hash=False)
+
+    @property
+    def claude_code_tools(self) -> tuple[str, ...] | None:
+        """Tools of the copy synced to Claude Code (None: all of its tools)."""
+        return self.tools if self.claude_tools is None else self.claude_tools
 
     @property
     def role(self) -> str:
@@ -106,6 +119,8 @@ class Customizations:
     sources: tuple[CustomSource, ...] = ()
     workflows: tuple["WorkflowFile", ...] = ()
     hooks: tuple[CustomHook, ...] = ()
+    # (scope, agent name) from each config layer's `[claude].agents`.
+    claude_builtins: tuple[tuple[str, str], ...] = ()
 
     def hooks_for(self, event: str, role: str | None = None) -> list[CustomHook]:
         """Hooks on `event`; with `role`, only those that apply to it."""
@@ -210,6 +225,7 @@ def load_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
         tools=tools,
         model=model if model and model != "inherit" else None,
         skills=_names(data.get("skills", []), "skills", agent_file),
+        **read_markdown_settings(data, agent_file),
     )
 
 
@@ -226,7 +242,9 @@ def _definitions(source: CustomSource) -> list:
         files = sorted(
             child
             for child in source.path.iterdir()
-            if child.suffix in {".md", ".toml"} and child.is_file()
+            if child.suffix in {".md", ".toml"}
+            and child.is_file()
+            and not is_generated(child)
         )
         return [load_agent(child, source) for child in files]
     if source.kind == "workflows":

@@ -5,6 +5,7 @@ import hashlib
 from pathlib import Path
 
 from meow.project.config import load_config, user_config_path
+from meow.project.custom.agent_markdown import to_markdown
 from meow.project.custom.definitions import discover
 from meow.project.custom.diagnostics import warn_definition, warn_workflow
 from meow.project.custom.sources import builtin_sources, conventional_dir
@@ -22,21 +23,25 @@ def _shipped(kind, name):
     return _lookup(discover(builtin_sources()), kind, name)
 
 
-def eject(kind, name, scope, project_dir):
+def eject(kind, name, scope, project_dir, fmt="toml"):  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- scope and project_dir predate fmt
     """Copy the shipped file exclusively, preserving its origin hash."""
     item = _shipped(kind, name)
     directory = conventional_dir(scope, kind, project_dir, user_config_path().parent)
     directory.mkdir(parents=True, exist_ok=True)
-    target = directory / item.file.name
-    if target.with_suffix(".md").exists():
-        raise FileExistsError(
-            f"Refusing to overwrite definition {target.with_suffix('.md')}"
-        )
+    target = directory / f"{name}.{fmt}"
+    for existing in (target.with_suffix(".md"), target.with_suffix(".toml")):
+        if existing.exists():
+            raise FileExistsError(f"Refusing to overwrite definition {existing}")
     data = item.file.read_bytes()
     stamp = hashlib.sha256(data).hexdigest()
+    origin = f"builtin:{name}@{stamp}"
+    text = (
+        to_markdown(item, origin)
+        if fmt == "md"
+        else f'ejected_from = "{origin}"\n\n{data.decode("utf-8")}'
+    )
     with target.open("x", encoding="utf-8", newline="\n") as output:
-        output.write(f'ejected_from = "builtin:{name}@{stamp}"\n\n')
-        output.write(data.decode("utf-8"))
+        output.write(text)
     return target
 
 
@@ -69,7 +74,8 @@ def _warn(item, catalog, kind):
 def catalog_command(args, project_dir: Path) -> None:
     kind, action = args.command, args.catalog_action
     if action == "eject":
-        print(eject(kind, args.name, args.scope, project_dir))
+        fmt = getattr(args, "format", "toml")
+        print(eject(kind, args.name, args.scope, project_dir, fmt))
         return
     catalog = load_config(project_dir)["customizations"]
     items = catalog.catalog if kind == "agents" else catalog.workflows
@@ -117,4 +123,11 @@ def add_catalog_parsers(subparsers):
                 entry.add_argument(
                     "--scope", choices=("local", "project", "user"), default="project"
                 )
+                if kind == "agents":
+                    entry.add_argument(
+                        "--format",
+                        choices=("toml", "md"),
+                        default="toml",
+                        help="md: Claude Code Markdown (no variants or fragments)",
+                    )
             entry.add_argument("--work-dir", "-d", dest="working_dir", default=".")

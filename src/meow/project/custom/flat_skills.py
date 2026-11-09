@@ -149,23 +149,30 @@ def _exclude_file(project_dir: Path) -> Path | None:
     return path if path.is_absolute() else Path(project_dir) / path
 
 
-def _write_exclude(project_dir: Path, names: list[str]) -> None:
-    """Keep local copies out of git without touching the shared `.gitignore`."""
+def write_exclude_block(
+    project_dir: Path, begin: str, end: str, rules: list[str]
+) -> None:
+    """Keep generated copies out of git without touching the shared `.gitignore`.
+
+    `rules` replace the block between `begin` and `end`; none removes the block.
+    """
     path = _exclude_file(project_dir)
     if path is None:
         return
     text = path.read_text(encoding="utf-8") if path.is_file() else ""
-    before, _, rest = text.partition(_EXCLUDE_BEGIN)
-    after = rest.partition(_EXCLUDE_END)[2] if rest else ""
-    block = ""
-    if names:
-        rules = [f"/.claude/skills/{name}/" for name in names]
-        block = "\n".join([_EXCLUDE_BEGIN, *rules, _EXCLUDE_END]) + "\n"
+    before, _, rest = text.partition(begin)
+    after = rest.partition(end)[2] if rest else ""
+    block = "\n".join([begin, *rules, end]) + "\n" if rules else ""
     new = before.rstrip("\n") + ("\n" if before.strip() else "") + block
     new += after.lstrip("\n")
     if new != text:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(new, encoding="utf-8")
+
+
+def _write_exclude(project_dir: Path, names: list[str]) -> None:
+    rules = [f"/.claude/skills/{name}/" for name in names]
+    write_exclude_block(project_dir, _EXCLUDE_BEGIN, _EXCLUDE_END, rules)
 
 
 def local_skill_paths(project_dir: Path) -> list[str]:

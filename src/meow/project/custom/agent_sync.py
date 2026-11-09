@@ -1,0 +1,369 @@
+"""Sync agents that opt in with `claude_agent` to Claude Code's subagent folders.
+
+Claude Code scans `.claude/agents/` (project, local) and `~/.claude/agents/`
+(user) recursively and reloads them live. Each opted-in agent is written as
+`meow/<name>.md` (local: `meow-local/`) from its standalone-rendered prompt. Only
+fields on `ALLOWED` are written: never permissions, MCP servers, or hooks, so a
+synced agent cannot grant itself access. Copies carry `meow-managed: <scope>`;
+sync replaces or removes only files that carry it, and never touches an agent of
+the user's with the same name. Local copies are listed in `.git/info/exclude`;
+project copies are meant to be committed.
+"""
+
+import hashlib
+import json
+import os
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from meow.project.custom import frontmatter
+from meow.project.custom.agent_files import GENERATED_KEY
+from meow.project.custom.definitions import PLUGIN_NAME, CustomAgent
+from meow.project.custom.flat_skills import write_exclude_block
+from meow.project.custom.kit_agents import agent_hold
+from meow.project.custom.standalone import render_standalone, standalone_problems
+
+AGENT_SCOPES = ("project", "local", "user")
+FOLDERS = {"project": "meow", "local": "meow-local", "user": "meow"}
+# Every frontmatter key a synced agent may carry.
+ALLOWED = (
+    "name",
+    "description",
+    "tools",
+    "model",
+    "skills",
+    GENERATED_KEY,
+    "meow-source",
+)
+_EXCLUDE_BEGIN = "# >>> MEOW local agents (generated)"
+_EXCLUDE_END = "# <<< MEOW local agents"
+# `\r?` because a Windows checkout with autocrlf gives the copy CRLF endings.
+_OWNER = re.compile(rf"^{GENERATED_KEY}:[ \t]*(\S+)[ \t]*\r?$", re.MULTILINE)
+
+Wanted = dict[str, CustomAgent]
+Picks = tuple[tuple[str, str], ...]  # (scope, agent name) from `[claude].agents`
+
+
+def parse_picks(table: object, scope: str, config_path: Path) -> Picks:
+    """The agents one config layer's `[claude].agents` list asks to sync."""
+    if table is None:
+        return ()
+    names = table.get("agents", []) if isinstance(table, dict) else None
+    if (
+        not isinstance(table, dict)
+        or set(table) - {"agents"}
+        or not isinstance(names, list)
+        or not all(isinstance(name, str) and name for name in names)
+    ):
+        raise ValueError(
+            f"{config_path}: [claude] accepts only 'agents', a list of names"
+        )
+    return tuple((scope, name) for name in dict.fromkeys(names))
+
+
+def validate_picks(custom, picks: Picks, config_file: str) -> None:
+    """Every picked agent must exist and work outside a MEOW run."""
+    for scope, name in picks:
+        where = f"{scope} config ({config_file})"
+        try:
+            agent = custom.agent(name)
+        except KeyError as exc:
+            known = ", ".join(sorted(item.name for item in custom.catalog))
+            raise ValueError(
+                f"{where}: [claude].agents names unknown agent {name!r}; "
+                f"defined agents: {known}"
+            ) from exc
+        if problems := standalone_problems(agent):
+            raise ValueError(
+                f"{where}: [claude].agents cannot include {name!r}:\n"
+                + "\n".join(problems)
+            )
+
+
+def agents_dir(scope: str, project_dir: Path) -> Path:
+    base = Path.home() if scope == "user" else Path(project_dir)
+    return base / ".claude" / "agents"
+
+
+def agents_root(scope: str, project_dir: Path) -> Path:
+    return agents_dir(scope, project_dir) / FOLDERS[scope]
+
+
+def _owner(path: Path) -> str | None:
+    """The scope that generated `path`, or None when it is not MEOW's."""
+    try:
+        head = path.read_bytes()[:4096].decode("utf-8", errors="replace")
+    except OSError:
+        return None
+    match = _OWNER.search(head)
+    return match.group(1) if match else None
+
+
+def _label(agent: CustomAgent, project_dir: Path) -> str:
+    """Where the source lives, the same on every machine: a committed copy must
+    not change because a teammate's checkout sits elsewhere."""
+    if agent.source.scope == "builtin":
+        return f"builtin:{agent.name}"
+    path = Path(agent.file)
+    if agent.source.kit:
+        return f"kit/{agent.source.kit}/{path.name}"
+    for base, prefix in ((Path(project_dir), ""), (Path.home(), "~/")):
+        try:
+            return prefix + path.relative_to(base).as_posix()
+        except ValueError:
+            continue
+    return path.name
+
+
+def _source_digest(agent: CustomAgent) -> str:
+    """Hash of the source, with line endings folded so a Windows checkout agrees."""
+    data = Path(agent.file).read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
+
+
+def _skills(agent: CustomAgent) -> list[str]:
+    """Skill names as Claude Code knows them (MEOW's own plugin prefix dropped)."""
+    prefix = f"{PLUGIN_NAME}:"
+    return [name.removeprefix(prefix) for name in agent.skills]
+
+
+def generated_text(agent: CustomAgent, scope: str, project_dir: Path) -> str:
+    """The Claude Code subagent file for `agent`; raises if it cannot render."""
+    label = _label(agent, project_dir)
+    digest = _source_digest(agent)
+    origin = (
+        f"[claude].agents lists {agent.name}"
+        if agent.source.scope == "builtin"
+        else f"edit {label}"
+    )
+    lines = [
+        "---",
+        f"# generated by meow; {origin}, not this file",
+        f"name: {agent.name}",
+        f"description: {json.dumps(agent.description, ensure_ascii=False)}",
+    ]
+    if agent.claude_code_tools is not None:
+        lines.append(f"tools: {', '.join(agent.claude_code_tools)}")
+    if agent.model:
+        lines.append(f"model: {agent.model}")
+    if skills := _skills(agent):
+        lines += ["skills:", *(f"  - {name}" for name in skills)]
+    lines += [f"{GENERATED_KEY}: {scope}", f"meow-source: {label}@{digest}", "---"]
+    return "\n".join(lines) + "\n" + render_standalone(agent) + "\n"
+
+
+def _shares_user_folder(scope: str, project_dir: Path) -> bool:
+    """Run from the home directory, project and local would write the user's
+    folder; the user scope owns it, so they sit out."""
+    if scope == "user":
+        return False
+    try:
+        return Path(project_dir).resolve() == Path.home().resolve()
+    except OSError:
+        return False
+
+
+@dataclass(frozen=True)
+class Plan:
+    """What one scope should hold: agents to write, and agents that must wait."""
+
+    scope: str
+    project_dir: Path
+    wanted: Wanted
+    held: dict[str, str] = field(default_factory=dict)  # name -> why it waits
+
+
+def make_plan(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- one value per input of the plan
+    catalog: tuple[CustomAgent, ...],
+    scope: str,
+    project_dir: Path,
+    user_dir: Path,
+    picks: Picks = (),
+) -> Plan:
+    """Winning agents of `scope` that opted in, plus those its config lists.
+
+    A kit agent also needs `tools` and approval (`kit_agents`); until then it
+    is held and any earlier copy stays as it was.
+    """
+    if _shares_user_folder(scope, project_dir):
+        return Plan(scope, Path(project_dir), {})
+    wanted = {
+        agent.name: agent
+        for agent in catalog
+        if agent.claude_agent and agent.source.scope == scope
+    }
+    by_name = {agent.name: agent for agent in catalog}
+    for pick_scope, name in picks:
+        if pick_scope == scope and name in by_name:
+            wanted[name] = by_name[name]
+    held = {
+        name: reason
+        for name, agent in wanted.items()
+        if (reason := agent_hold(agent, project_dir, user_dir))
+    }
+    return Plan(scope, Path(project_dir), wanted, held)
+
+
+def _foreign_names(folder: Path) -> dict[str, Path]:
+    """Names of the user's own agents under `folder`, found at any depth."""
+    found = {}
+    for path in sorted(folder.rglob("*.md")) if folder.is_dir() else []:
+        if _owner(path):
+            continue
+        try:
+            name = frontmatter.parse(path)[0].get("name")
+        except (OSError, ValueError, UnicodeError):
+            continue
+        if isinstance(name, str):
+            found.setdefault(name, path)
+    return found
+
+
+def synced_agent_names(project_dir: Path) -> set[str]:
+    """Names of the copies MEOW generated for Claude Code, at every scope."""
+    names = set()
+    for scope in AGENT_SCOPES:
+        root = agents_root(scope, project_dir)
+        for path in sorted(root.glob("*.md")) if root.is_dir() else []:
+            if _owner(path) == scope:
+                names.add(path.stem)
+    return names
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = path.with_name(f".{path.name}.meow-new")
+    staging.write_text(text, encoding="utf-8", newline="\n")
+    os.replace(staging, path)
+
+
+def _where(plan: Plan, agent: CustomAgent) -> str:
+    target = agents_root(plan.scope, plan.project_dir) / f"{agent.name}.md"
+    return f"{plan.scope} agent '{agent.name}' ({target})"
+
+
+def _blocked(plan: Plan, agent: CustomAgent, foreign: dict[str, Path]) -> str | None:
+    """Why sync must leave an agent alone: it is on hold, or a file of the
+    user's is in the way."""
+    label = _where(plan, agent)
+    target = agents_root(plan.scope, plan.project_dir) / f"{agent.name}.md"
+    if agent.name in plan.held:
+        return f"{label}: {plan.held[agent.name]}"
+    if other := foreign.get(agent.name):
+        return f"{label}: {other} already defines it; not synced, rename one"
+    if target.exists() and _owner(target) != plan.scope:
+        return f"{label}: not MEOW's copy; left unchanged, rename one"
+    return None
+
+
+def _problem(
+    plan: Plan, agent: CustomAgent, foreign: dict[str, Path]
+) -> tuple[str, bool] | None:
+    """(what is wrong with the agent's copy, whether sync may write it), or None."""
+    if message := _blocked(plan, agent, foreign):
+        return message, False
+    scope, project_dir = plan.scope, plan.project_dir
+    target = agents_root(scope, project_dir) / f"{agent.name}.md"
+    if not target.exists():
+        return f"{_where(plan, agent)}: not synced for Claude Code", True
+    current = target.read_text(encoding="utf-8", errors="replace")
+    if current != generated_text(agent, scope, project_dir):
+        return (
+            f"{_where(plan, agent)}: out of date; edit the source, not the copy",
+            True,
+        )
+    return None
+
+
+def _wanted_problems(plan: Plan, *, fix: bool) -> list[str]:
+    scope, project_dir = plan.scope, plan.project_dir
+    foreign = _foreign_names(agents_dir(scope, project_dir))
+    found = []
+    for name, agent in sorted(plan.wanted.items()):
+        problem = _problem(plan, agent, foreign)
+        if problem is None:
+            continue
+        message, writable = problem
+        found.append(message)
+        if fix and writable:
+            target = agents_root(scope, project_dir) / f"{name}.md"
+            _write(target, generated_text(agent, scope, project_dir))
+    return found
+
+
+def _stale_problems(plan: Plan, *, fix: bool) -> list[str]:
+    scope = plan.scope
+    root = agents_root(scope, plan.project_dir)
+    found = []
+    for path in sorted(root.glob("*.md")) if root.is_dir() else []:
+        if path.stem in plan.wanted or _owner(path) != scope:
+            continue
+        found.append(
+            f"{scope} agent '{path.stem}' ({path}): source removed or not opted in"
+        )
+        if fix:
+            path.unlink()
+    if fix and root.is_dir() and not any(root.iterdir()):
+        root.rmdir()
+    return found
+
+
+def agent_problems(plan: Plan, *, fix: bool) -> list[str]:
+    """Describe (and with `fix`, repair) the scope's synced agent copies."""
+    found = _wanted_problems(plan, fix=fix)
+    found += _stale_problems(plan, fix=fix)
+    if fix and plan.scope == "local":
+        rules = ["/.claude/agents/meow-local/"] if plan.wanted else []
+        write_exclude_block(plan.project_dir, _EXCLUDE_BEGIN, _EXCLUDE_END, rules)
+    return found
+
+
+def check_agent_registration(
+    catalog: tuple[CustomAgent, ...],
+    project_dir: Path,
+    user_dir: Path,
+    *,
+    picks: Picks = (),
+) -> list[str]:
+    """What keeps opted-in agents from loading in Claude Code; changes nothing."""
+    problems = []
+    for scope in AGENT_SCOPES:
+        try:
+            plan = make_plan(catalog, scope, project_dir, user_dir, picks)
+            problems += agent_problems(plan, fix=False)
+        except (OSError, ValueError) as exc:
+            problems.append(f"{scope} agents: {exc}")
+    return problems
+
+
+def sync_agents(  # ruff: ignore[too-many-arguments] -- mirrors sync_skill_plugins and sync_hook_plugins
+    catalog: tuple[CustomAgent, ...],
+    project_dir: Path,
+    user_dir: Path,
+    *,
+    scopes: tuple[str, ...] = AGENT_SCOPES,
+    picks: Picks = (),
+) -> list[str]:
+    """Write every selected scope's opted-in agents; returns what changed.
+
+    Agents on hold are left alone; `check_agent_registration` reports them.
+    """
+    fixed = []
+    for scope in scopes:
+        plan = make_plan(catalog, scope, project_dir, user_dir, picks)
+        existed = agents_dir(scope, project_dir).is_dir()
+        changes = _fixes(agent_problems(plan, fix=True), plan)
+        fixed += changes
+        if changes and not existed and agents_dir(scope, project_dir).is_dir():
+            fixed.append(
+                f"created {agents_dir(scope, project_dir)}; restart Claude Code "
+                "once so it starts watching this new folder"
+            )
+    return fixed
+
+
+def _fixes(problems: list[str], plan: Plan) -> list[str]:
+    """Drop what is only waiting on the user; the rest was repaired."""
+    waiting = {f"agent '{name}'" for name in plan.held}
+    return [line for line in problems if not any(key in line for key in waiting)]

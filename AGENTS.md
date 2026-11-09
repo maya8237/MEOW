@@ -59,6 +59,8 @@ Keep native/CLI guidance aligned.
   never `orchestrator/<id>/<task>`, beside integration `orchestrator/<id>`.
 - `run_sprint` settles pre-terminal exceptions as parked unless blocking
   (`execution/run_failures.py`); inner steps record phases only.
+- Agents synced to Claude Code are written only by `custom/agent_sync.py`, with
+  allowlisted frontmatter; MEOW's own runs deny them (`Agent(name)`).
 - Definitions replace whole files: local > project > user > builtin.
   Gates/permissions remain code-owned; user hooks may only deny or inform.
 - Claude owns transcripts; journals store role/session IDs, resumed only by `meow resume`.

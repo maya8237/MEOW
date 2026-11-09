@@ -1,6 +1,7 @@
 """Layered MEOW configuration loading and merging."""
 
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 
 from meow.execution.run_failures import InvalidConfigError
@@ -38,6 +39,7 @@ from meow.project.custom import (
     discover,
     parse_sources,
 )
+from meow.project.custom.agent_sync import parse_picks, validate_picks
 from meow.project.custom.kits import (
     kits_home,
     layer_kits,
@@ -158,20 +160,24 @@ def config_root(project_dir: Path, active_dir: Path | None = None) -> Path:
     return active if (active / _CONFIG_FILENAME).is_file() else project
 
 
+def _layer_scope(config_path: Path, project: Path) -> tuple[str, Path]:
+    """The scope a config file belongs to, and the folder its paths resolve from."""
+    resolved = config_path.resolve()
+    if resolved == user_config_path().resolve():
+        return "user", config_path.parent
+    if resolved == (project / _LOCAL_CONFIG_FILENAME).resolve():
+        return "local", project
+    if resolved == (project / _CONFIG_FILENAME).resolve():
+        return "project", project
+    return "user", config_path.parent
+
+
 def _layer_custom_sources(
     layer: dict, config_path: Path, working_dir: Path
 ) -> tuple[list[CustomSource], dict]:
     """Pop and resolve one layer's `[custom]` table against its own scope."""
     project = Path(working_dir)
-    resolved = config_path.resolve()
-    if resolved == user_config_path().resolve():
-        scope, base = "user", config_path.parent
-    elif resolved == (project / _LOCAL_CONFIG_FILENAME).resolve():
-        scope, base = "local", project
-    elif resolved == (project / _CONFIG_FILENAME).resolve():
-        scope, base = "project", project
-    else:
-        scope, base = "user", config_path.parent
+    scope, base = _layer_scope(config_path, project)
     sources = parse_sources(layer.pop("custom", None), scope, base, config_path)
     user_dir = user_config_path().parent
     kit_sources, kit_config = layer_kits(
@@ -192,16 +198,19 @@ def _workflow_config(user_config):
     return {"default": selection}
 
 
-def _layered(working_dir: Path) -> tuple[dict, list[CustomSource]]:
+def _layered(working_dir: Path) -> tuple[dict, list[CustomSource], tuple]:
     user_config: dict = {}
     custom_sources: list[CustomSource] = []
+    picks: tuple = ()
     for config_path in reversed(config_paths(working_dir)):
         with open(config_path, "rb") as f:
             layer = _expand_config_environment(tomllib.load(f))
+        scope = _layer_scope(config_path, Path(working_dir))[0]
+        picks += parse_picks(layer.pop("claude", None), scope, config_path)
         found, kit_config = _layer_custom_sources(layer, config_path, working_dir)
         custom_sources.extend(found)
         user_config = _merge_config(_merge_config(user_config, kit_config), layer)
-    return user_config, custom_sources
+    return user_config, custom_sources, picks
 
 
 def run_config(working_dir: Path) -> dict:
@@ -227,7 +236,7 @@ def _load_config(working_dir: Path) -> dict:
     from meow.infrastructure.worktree_setup import install_timeout, validate_setup
     from meow.project.permissions import parse_policy
 
-    user_config, custom_sources = _layered(working_dir)
+    user_config, custom_sources, picks = _layered(working_dir)
     detected = command_defaults(Path(working_dir), user_config)
     user_config = _merge_config(detected.defaults, user_config)
     config = {**DEFAULT_CONFIG, **user_config}
@@ -289,5 +298,7 @@ def _load_config(working_dir: Path) -> dict:
     from meow.project.custom.rendering import validate_agents
 
     validate_agents(config["customizations"])
+    validate_picks(config["customizations"], picks, _CONFIG_FILENAME)
+    config["customizations"] = replace(config["customizations"], claude_builtins=picks)
 
     return config
