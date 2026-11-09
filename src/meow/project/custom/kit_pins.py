@@ -13,7 +13,13 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from meow.project.custom.kit_store import KitUnavailable, fetch, kit_dir, normalize_url
+from meow.project.custom.kit_store import (
+    KitUnavailable,
+    fetch,
+    kit_dir,
+    local_path,
+    normalize_url,
+)
 from meow.project.custom.kits import (
     PINS_ENV,
     collect_specs,
@@ -33,6 +39,8 @@ def current_pins(project_dir: Path, user_dir: Path) -> dict[str, dict]:
     for spec in collect_specs(project_dir, user_dir):
         locked = read_lock(lock_file(spec.scope, project_dir, user_dir)).get(spec.name)
         entry = pinned_entry(spec, effective_entry(spec, locked), home) or {}
+        if local_path(spec.url):
+            continue  # a linked folder is used as it is, never pinned
         url, sha = normalize_url(spec.url), entry.get("sha")
         if sha and kit_dir(home, url, sha).is_dir():
             hooks = entry.get("hooks_sha") or sha

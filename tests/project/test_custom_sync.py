@@ -307,7 +307,7 @@ def test_a_skill_the_user_wrote_is_never_replaced(project, home):
 
     problems = sync(project, home)
 
-    assert any("not MEOW's copy" in problem for problem in problems)
+    assert any("MEOW did not" in problem for problem in problems)
     assert not (own / ".meow-managed").exists()
 
 

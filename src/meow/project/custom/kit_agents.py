@@ -74,6 +74,12 @@ def _approved(
     return ((entry or {}).get(LOCK_KEY) or {}).get(agent.name)
 
 
+def _local(source: CustomSource, project_dir: Path, user_dir: Path) -> bool:
+    """A kit folder the user linked is their own code: its agents need no approval."""
+    entry = read_lock(lock_file(source.scope, project_dir, user_dir)).get(source.kit)
+    return bool((entry or {}).get("local"))
+
+
 def agent_hold(agent: CustomAgent, project_dir: Path, user_dir: Path) -> str | None:
     """Why a kit agent is not synced yet, or None when it may be."""
     source = agent.source
@@ -82,7 +88,7 @@ def agent_hold(agent: CustomAgent, project_dir: Path, user_dir: Path) -> str | N
     if agent.claude_code_tools is None:
         return f"kit agent '{agent.name}': declare tools to sync it to Claude Code"
     waiting: dict[str, list[str]] = {}
-    if source.scope != "project":
+    if source.scope != "project" and not _local(source, project_dir, user_dir):
         approved = _approved(agent, project_dir, user_dir)
         waiting = pending(
             {agent.name: list(agent.claude_code_tools)},

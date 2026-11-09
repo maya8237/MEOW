@@ -48,11 +48,42 @@ class KitUnavailable(OSError):
     """The remote could not be reached; the current copy stays in use."""
 
 
+LOCAL = "local:"
+
+
+def local_path(url: str) -> Path | None:
+    """The folder of a local kit (`local:/abs/dir`), or None for a git kit."""
+    return Path(url.removeprefix(LOCAL)) if url.startswith(LOCAL) else None
+
+
+def local_location(text: str) -> str | None:
+    """`local:<absolute folder>` when `text` names a folder to use in place.
+
+    Paths starting with `.`, `..`, or `~`, and absolute folders that are not git
+    repositories, are local. An absolute git repository stays a git kit.
+    """
+    text = text.strip()
+    explicit = text.startswith(LOCAL)
+    raw = text.removeprefix(LOCAL)
+    dotted = raw in {".", ".."} or raw.startswith(("./", "../", ".\\", "..\\", "~"))
+    absolute = Path(raw).expanduser().is_absolute() and not explicit
+    if not (explicit or dotted or absolute):
+        return None
+    folder = Path(raw).expanduser().resolve()
+    if absolute and not dotted and ((folder / ".git").exists() or not folder.is_dir()):
+        return None
+    if not folder.is_dir():
+        raise ValueError(f"{raw}: not a folder; a local kit must be a directory")
+    return f"{LOCAL}{folder}"
+
+
 def normalize_url(text: str) -> str:
     """Turn `github:o/r`, `gitlab:g/s/p`, `o/r`, or a full URL into a git URL."""
     text = text.strip()
     if not text or text.startswith("-"):
         raise ValueError(f"not a kit location: {text!r}")
+    if text.startswith(LOCAL):
+        return text
     if match := _SHORTHAND.match(text):
         return f"https://{_HOSTS[match[1]]}/{match[2]}.git"
     if text.startswith(_SCHEMES) or _SCP.match(text) or Path(text).is_absolute():
@@ -61,7 +92,7 @@ def normalize_url(text: str) -> str:
         return f"https://github.com/{text.removesuffix('.git')}.git"
     raise ValueError(
         f"not a kit location: {text!r}; use owner/repo, github:owner/repo, "
-        "gitlab:group/project, a git URL, or an absolute path"
+        "gitlab:group/project, a git URL, or a folder (./path, ~/path)"
     )
 
 

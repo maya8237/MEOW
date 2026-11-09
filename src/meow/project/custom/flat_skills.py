@@ -100,7 +100,11 @@ def _wanted_problems(scope: str, root: Path, wanted: Wanted, *, fix: bool) -> li
         target = root / name
         label = f"{scope} skill '{name}' ({target})"
         if target.exists() and _owner(target) != scope:
-            found.append(f"{label}: not MEOW's copy; left unchanged, rename one")
+            found.append(
+                f"{label}: a skill MEOW did not publish already has this name, so "
+                f"yours is not loaded; rename your skill, or delete {target} if "
+                "it is a leftover"
+            )
         elif not _current(source, files, target):
             found.append(f"{label}: not published for Claude Code")
             if fix:

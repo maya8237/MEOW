@@ -1,6 +1,7 @@
 # Kits
 
-A kit is a git repository (GitHub, GitLab, self-hosted, or a local path) with
+A kit is a git repository (GitHub, GitLab, self-hosted) or, for kit authors, a
+local folder (see [Local kits](#local-kits)), with
 any of `skills/`, `agents/`, `workflows/`, and `hooks/`, plus an optional
 `meow-kit.toml`. The kit does not choose its scope; you do when you install it.
 
@@ -17,6 +18,22 @@ runs), asks to confirm (`--yes` skips), then saves and publishes it. Other
 commands: `meow kits list | show NAME | update [NAME] [--check] [--accept] |
 uninstall NAME [--scope S] [--keep-cache]`.
 
+## Local kits
+
+While writing a kit, use the folder directly; it needs no git and no commit:
+
+```bash
+meow kits add ./my-kit --yes   # also ../kit, ~/kits/my-kit, or a non-git absolute path
+meow sync                      # after editing the folder: republish skills/hooks
+```
+
+The folder is used in place, never copied or pinned, so edits apply on the next
+sync and `meow kits update` has nothing to fetch. It exists only on your
+machine, so user (default) and local scopes work and `--scope project` is
+refused. Hooks and `claude_agent` agents need no `--accept`: it is your code.
+An absolute path to a git repository is still fetched as a git kit.
+`meow kits uninstall` never deletes your folder.
+
 ## Fetching
 
 MEOW runs plain `git` against the clone URL, so your own login (credential
@@ -24,7 +41,7 @@ helper, SSH keys, token) covers private repos and it never prompts for a
 password. `git ls-remote` resolves the ref to a commit; a shallow
 `git fetch --depth 1 URL SHA` downloads it (a full clone is the fallback). The
 commit is stored once in `~/.meow/kits/` without `.git`. Only `https`, `ssh`,
-`git`, and local paths are allowed; kits containing symlinks are rejected.
+`git`, and local git repositories are allowed; kits containing symlinks are rejected.
 
 ## Scopes
 

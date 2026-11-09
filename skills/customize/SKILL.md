@@ -86,6 +86,11 @@ prompt must render without run values; add a `[variants] standalone` prompt if
 not) and `claude_tools` for that copy's tools, then run `meow sync`. Builtins
 sync only when listed in `[claude] agents = [...]`. Details: `docs/CUSTOM.md`.
 
+The standalone prompt: a `claude_agent` runs in Claude Code with no run values
+(`plan_file`, `feedback`, `output_file`, ...), so a prompt printing one fails
+config loading. Add `[variants]` with `standalone = "..."` for that copy only;
+`prompt` still serves MEOW's runs. Example and rules: `docs/CUSTOM.md`.
+
 An agent's `agents` list names explicit delegates. Each delegate's tools are
 capped to its parent and exclude `Agent`. Agents registered through
 `[custom].agents` also retain planner/generator delegate compatibility, with
@@ -127,6 +132,24 @@ Definition `skills` and `[agent_skills]` can also name installed skills.
 Register extra directories with `[custom]` using the configuration example in the
 Integrations guide in `meow ui` or the [online docs](https://maya8237.github.io/MEOW/).
 Workflow sources do not take `roles`.
+
+## Kits
+
+A kit bundles `skills/`, `agents/`, `workflows/`, `hooks/` and an optional
+`meow-kit.toml` ([roles], [config]). Install it into a scope (user default,
+`--scope project|local`), not from the kit itself:
+
+- `meow kits add owner/repo`, `github:`/`gitlab:` shorthand, an https/ssh git
+  URL; `--ref`, `--only skills,agents`, `--yes`, `--update pinned`.
+- `meow kits add ./my-kit` links a local folder in place (kit authors; no git,
+  user/local scope only). Run `meow sync` after editing it.
+- `meow kits list | show NAME | update [NAME] [--check] [--accept] | uninstall NAME`.
+- Authoring: `meow kits init DIR`, `meow kits validate .`.
+- Hooks, and `claude_agent` agents that gain tools, wait for `--accept`; project
+  kits are pinned by a committed `rev`, so commit it after `meow kits update`.
+- Your own files beat a kit's within a scope; `meow native custom` shows overrides.
+
+Details: `docs/KITS.md`. After adding or removing a kit, run `meow sync`.
 
 ## 4. Verify and report
 

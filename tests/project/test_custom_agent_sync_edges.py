@@ -160,7 +160,7 @@ def test_a_binary_file_in_the_way_is_left_alone(project, home):
 
     _, remaining = sync(project, home)
 
-    assert any("not MEOW's copy" in line for line in remaining)
+    assert any("MEOW did not" in line for line in remaining)
     assert blocker.read_bytes() == b"\xff\xfe\x00 not text"
 
 

@@ -18,6 +18,7 @@ from meow.project.custom.flat_skills import (
     publish_native,
 )
 from meow.project.custom.sources import scope_plugin_dir
+from meow.project.home import is_home_dir
 
 SYNC_SCOPES = FLAT_SCOPES
 
@@ -55,6 +56,8 @@ def _scope_problems(
 ) -> list[str]:
     """Describe (and unless `CHECK`, fix) what keeps a scope's skills from loading."""
     scope, project_dir, user_dir = target
+    if scope != "user" and is_home_dir(project_dir):
+        return []  # run from home, project and local would write the user's folder
     wanted = configured_wanted(scope, project_dir, skills)
     found = flat_problems(scope, project_dir, wanted, fix=mode != CHECK)
     if scope == "user":

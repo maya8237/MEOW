@@ -244,7 +244,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         try:
             registrars[args.command](args, working_dir)
         except (OSError, ValueError) as exc:
-            print(str(exc), file=sys.stderr)
+            print(f"meow {args.command} failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc
         return
     if args.command == "ui":

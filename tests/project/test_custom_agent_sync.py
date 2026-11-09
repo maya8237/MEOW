@@ -184,7 +184,7 @@ def test_a_users_file_at_the_target_is_never_overwritten(project, home):
     problems = check(project, home)
     sync(project, home)
 
-    assert any("not MEOW's copy" in line for line in problems)
+    assert any("MEOW did not" in line for line in problems)
     assert "my prompt" in mine.read_text(encoding="utf-8")
 
 
@@ -329,7 +329,7 @@ def test_first_sync_into_a_new_agents_folder_says_to_restart_claude_code(project
 
     first = sync(project, home)
 
-    assert any("restart Claude Code" in line for line in first)
+    assert any("/reload-plugins" in line for line in first)
 
 
 def test_later_syncs_and_existing_folders_do_not_repeat_the_restart_hint(project, home):

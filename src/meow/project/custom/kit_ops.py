@@ -11,10 +11,13 @@ import tomlkit
 from meow.project.custom import kit_agents
 from meow.project.custom.kit_pins import active_run_shas
 from meow.project.custom.kit_store import (
+    LOCAL,
     KitUnavailable,
     default_name,
     fetch,
     kit_dir,
+    local_location,
+    local_path,
     normalize_url,
     remote_sha,
     remove_tree,
@@ -143,11 +146,11 @@ def install(  # ruff: ignore[too-many-arguments]
     output=print,
 ) -> KitSpec | None:
     """Fetch a kit, show what it contains, and (once confirmed) declare and pin it."""
-    name = name or default_name(normalize_url(url))
-    if not NAME.match(name):
-        raise ValueError(f"invalid kit name {name!r}; use lowercase letters/digits/-")
-    if _declared(project_dir, user_dir, name, scope):
-        raise ValueError(f"kit {name!r} is already installed in {scope} scope")
+    url, name = _claim(project_dir, user_dir, url, name, scope)
+    if folder := local_path(url):
+        return _install_local(
+            (project_dir, user_dir), (folder, name, scope, only), confirm, output
+        )
     remote, sha, root = fetch_new(url, ref, user_dir)
     output(f"Fetched {name} @ {sha[:7]} ({ref or 'default branch'}) from {remote}")
     for line in describe(root) or ["  (empty)"]:
@@ -163,6 +166,55 @@ def install(  # ruff: ignore[too-many-arguments]
     _pin(lock_file(scope, project_dir, user_dir), name, remote, (ref, sha))
     _approve_installed(lock_file(scope, project_dir, user_dir), name, root, only)
     output(f"Added kit {name!r} to {target}")
+    return next(
+        s
+        for s in collect_specs(project_dir, user_dir)
+        if s.name == name and s.scope == scope
+    )
+
+
+def _claim(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+    project_dir: Path, user_dir: Path, url: str, name: str | None, scope: str
+) -> tuple[str, str]:
+    """The kit's location and name, once nothing already uses that name."""
+    url = local_location(url) or url
+    name = name or default_name(normalize_url(url))
+    if not NAME.match(name):
+        raise ValueError(f"invalid kit name {name!r}; use lowercase letters/digits/-")
+    if _declared(project_dir, user_dir, name, scope):
+        raise ValueError(f"kit {name!r} is already installed in {scope} scope")
+    return url, name
+
+
+def _install_local(
+    dirs: tuple[Path, Path],
+    kit: tuple[Path, str, str, tuple[str, ...]],
+    confirm,
+    output,
+) -> KitSpec | None:
+    """Link a kit folder in place: edits apply on the next sync, with no git."""
+    project_dir, user_dir = dirs
+    folder, name, scope, only = kit
+    if scope == "project":
+        raise ValueError(
+            "a local folder kit exists only on this machine, so it cannot be a "
+            "project kit; use --scope user (default) or --scope local, or push "
+            "the kit to git for the team"
+        )
+    validate_kit(folder, only)
+    output(f"Linking {name} from the local folder {folder} (used in place, no git)")
+    for line in describe(folder) or ["  (empty)"]:
+        output(line)
+    if confirm is not None and not confirm(f"Install into {scope} scope? [y/N] "):
+        output("Cancelled; nothing changed.")
+        return None
+    target = config_file(scope, project_dir, user_dir)
+    add_entry(target, name, f"{LOCAL}{folder}", None, "pinned", only, False, False)
+    lock = lock_file(scope, project_dir, user_dir)
+    kits = read_lock(lock)
+    kits[name] = {"url": f"{LOCAL}{folder}", "local": True}
+    write_lock(lock, kits)
+    output(f"Added kit {name!r} to {target}; edit the folder, then run: meow sync")
     return next(
         s
         for s in collect_specs(project_dir, user_dir)
@@ -318,6 +370,9 @@ class Plan:
 
 
 def _check(spec: KitSpec, entry: dict | None, plan: Plan) -> tuple[dict | None, list]:
+    if local_path(spec.url):
+        note = [f"kit {spec.name}: local folder, always current"]
+        return None, note * plan.manual
     kit = Kit(spec, plan.home, plan.timeout)
     if entry and entry.get("sha"):  # the pinned copy must be on disk
         kit.fetch(entry["sha"])
@@ -384,6 +439,12 @@ def _write_rev(spec: KitSpec, entry: dict, old: dict | None, plan: Plan) -> list
     ]
 
 
+def _prune_all(project_dir: Path, user_dir: Path, specs: list[KitSpec]) -> None:
+    for spec in specs:
+        if not local_path(spec.url):
+            _prune_cache(project_dir, user_dir, normalize_url(spec.url))
+
+
 def _visit(project_dir: Path, user_dir: Path, names: tuple[str, ...], plan: Plan):
     specs = _select(project_dir, user_dir, names)
     locks = {s.scope: read_lock(_lock(s, project_dir, user_dir)) for s in specs}
@@ -403,8 +464,7 @@ def _visit(project_dir: Path, user_dir: Path, names: tuple[str, ...], plan: Plan
         lines += found
     for scope, data in locks.items():
         write_lock(lock_file(scope, project_dir, user_dir), data)
-    for spec in specs:
-        _prune_cache(project_dir, user_dir, normalize_url(spec.url))
+    _prune_all(project_dir, user_dir, specs)
     return lines
 
 
@@ -456,7 +516,7 @@ def uninstall(  # ruff: ignore[too-many-arguments]
     remove_entry(spec.config_file, name)
     write_lock(lock, kits)
     lines = [f"Removed kit {name!r} from {spec.config_file}"]
-    if not keep_cache:
+    if not keep_cache and not local_path(spec.url):
         lines += _prune_cache(project_dir, user_dir, normalize_url(spec.url))
     return lines
 
@@ -496,6 +556,11 @@ def listing(project_dir: Path, user_dir: Path) -> list[str]:
     lines = []
     for spec in collect_specs(project_dir, user_dir):
         entry = _entry(spec, project_dir, user_dir)
+        if folder := local_path(spec.url):
+            state = "linked folder" if folder.is_dir() else "folder missing"
+            head = f"{spec.name:<20} {spec.scope:<8} {'local':<7}"
+            lines.append(f"{head} {state}  {folder}")
+            continue
         sha = entry.get("sha")
         fetched = bool(sha) and kit_dir(home, normalize_url(spec.url), sha).is_dir()
         state = f"@ {sha[:7]}" if fetched else "not downloaded"
@@ -511,6 +576,9 @@ def show(project_dir: Path, user_dir: Path, name: str) -> list[str]:
     for spec in collect_specs(project_dir, user_dir):
         if spec.name == name:
             entry = _entry(spec, project_dir, user_dir)
+            if folder := local_path(spec.url):
+                body = describe(folder) if folder.is_dir() else ["  folder missing"]
+                return [f"{name} ({spec.scope} scope) local folder {folder}", *body]
             root = kit_dir(
                 kits_home(user_dir), normalize_url(spec.url), entry.get("sha", "-")
             )

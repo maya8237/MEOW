@@ -21,6 +21,14 @@ def _no_python_installs(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_claude_cli(monkeypatch):
+    """Tests must never run the developer's real `claude` binary."""
+    from meow.project import claude_settings
+
+    monkeypatch.setattr(claude_settings, "_claude_binary", lambda: None)
+
+
+@pytest.fixture(autouse=True)
 def _restore_logging():
     """`configure_logging()` binds a handler to whatever stderr is current; a
     test that leaves it behind would later write to a closed capture stream."""

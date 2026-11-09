@@ -15,7 +15,11 @@ from meow.installer.bun import (
     shared_store_configured,
     start_bun_migration,
 )
-from meow.project.claude_settings import path_key, register_checkout_plugin
+from meow.project.claude_settings import (
+    path_key,
+    refresh_installed_plugin,
+    register_checkout_plugin,
+)
 from meow.project.mcp_setup import (
     CONFLUENCE_AUTH,
     always_install,
@@ -213,13 +217,15 @@ def _parser() -> argparse.ArgumentParser:
 
 def _register_plugin(repo_dir: Path, output: Callable[[str], None]) -> bool:
     try:
-        register_checkout_plugin(_settings_path(), repo_dir)
+        name = register_checkout_plugin(_settings_path(), repo_dir)
     except (OSError, ValueError) as exc:
         output(f"Could not update Claude user settings: {exc}")
         return False
+    if warning := refresh_installed_plugin(name):
+        output(f"Claude Code may still load an older MEOW plugin: {warning}")
     output(
         f"Registered MEOW as a user-wide Claude plugin: {repo_dir}\n"
-        "Restart Claude Code to load /meow:* skills (including /meow:run)."
+        "Run /reload-plugins in Claude Code to load /meow:* skills."
     )
     return True
 

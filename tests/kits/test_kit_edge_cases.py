@@ -226,7 +226,7 @@ def test_your_own_skill_with_the_same_name_is_never_overwritten(
     (mine / "SKILL.md").write_text("mine", encoding="utf-8")
     cli(project, "add", str(kit(make_kit).path), "--yes")
     assert (mine / "SKILL.md").read_text() == "mine"
-    assert "not MEOW's copy" in capsys.readouterr().out
+    assert "MEOW did not" in capsys.readouterr().out
 
 
 def test_kit_config_applies_only_when_opted_in(make_kit, project, user_dir):

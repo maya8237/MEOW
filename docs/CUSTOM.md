@@ -77,7 +77,7 @@ Edit the source, not the copy: sync replaces it. Sync never overwrites a file
 without the marker, and skips an agent whose `name` one of your own agents under
 `.claude/agents/` already uses. Custom skill names lose the `meow-custom:` prefix.
 Use it as `@agent-NAME`, by asking for it, or `claude --agent NAME`.
-The first sync that creates `.claude/agents/` needs one Claude Code restart.
+Run `/reload-plugins` after the first sync creates `.claude/agents/`; no restart is needed.
 MEOW's own runs never delegate to synced copies (each is denied by name).
 
 Builtin agents sync only when a config file lists them. The copy goes to that
@@ -91,6 +91,23 @@ agents = ["explorer"]   # also reviewer, lint-fixer, review-fixer; others need a
 A name that is unknown, or whose prompt needs run values, fails config loading.
 An ejected copy of the agent is what gets synced. Remove the name to remove the copy.
 `claude_tools` gives the copy its own tools (the reviewer's has no `Write`).
+
+### Standalone prompt
+
+A synced agent runs in Claude Code, where no run values (`plan_file`, `feedback`,
+`output_file`, ...) exist. If the main prompt prints one, config loading fails
+and names it. Fix it with a `[variants] standalone` prompt, used only for the
+Claude Code copy; MEOW's own runs keep `prompt`. Conditions on unset values are
+false, `{{> fragment}}` is inlined, and `{{active_dir}}` reads "the current
+working directory":
+
+```toml
+claude_agent = true
+claude_tools = ["Read", "Grep", "Glob"]
+prompt = "Review {{plan_file}} in {{active_dir}}. {{verdict_format}}"
+[variants]
+standalone = "Review the changes in {{active_dir}} and report concrete defects."
+```
 
 `meow agents eject NAME --format md` writes the builtin as a Markdown agent
 (frontmatter, prompt as body) that Claude Code also reads; it keeps the

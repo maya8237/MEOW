@@ -169,12 +169,19 @@ _README = """\
 
 A MEOW kit: skills, agents, workflows, and hooks, installed from git.
 
-Check it, publish it, then install it from any machine:
+Check it, and try it from this folder while you edit (no git needed):
 
     meow kits validate .
+    meow kits add . --yes          # used in place; run `meow sync` after edits
+
+Publish it, then install it from any machine with any of these forms:
+
     git init && git add -A && git commit -m "Initial kit"
     # push to GitHub or GitLab, then:
     meow kits add owner/{name}
+    meow kits add github:owner/{name}
+    meow kits add https://github.com/owner/{name}.git
+    meow kits add git@github.com:owner/{name}.git
 
 Folders (all optional): `skills/`, `agents/`, `workflows/`, `hooks/`.
 See the MEOW kits guide for details.

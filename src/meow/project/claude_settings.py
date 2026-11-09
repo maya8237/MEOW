@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -249,7 +251,39 @@ def plugin_dir_registered(
     return wanted in {_entry_path(entry, base) for entry in entries}
 
 
-def register_checkout_plugin(settings_path: Path, checkout: Path) -> None:
+def _claude_binary() -> str | None:
+    return shutil.which("claude")
+
+
+def refresh_installed_plugin(name: str) -> str | None:
+    """Ask Claude Code to re-read a directory marketplace and update its plugin.
+
+    Claude Code caches a plugin per version, so after MEOW moves to a new release
+    folder it can keep loading the old cached version (say 0.1.37 beside an
+    installed 0.1.38). Returns a warning when the refresh did not run, else None.
+    """
+    claude = _claude_binary() if name else None
+    if claude is None:
+        return "claude CLI not found; run `/plugin marketplace update` in Claude Code"
+    for command in (
+        ["plugin", "marketplace", "update", name],
+        ["plugin", "update", f"{name}@{name}"],
+    ):
+        try:
+            result = subprocess.run(
+                [claude, *command], capture_output=True, text=True, timeout=120
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return f"`claude {' '.join(command)}` did not run: {exc}"
+        if result.returncode:
+            detail = (result.stderr or result.stdout).strip().splitlines()
+            return (
+                f"`claude {' '.join(command)}` failed: {detail[-1] if detail else ''}"
+            )
+    return None
+
+
+def register_checkout_plugin(settings_path: Path, checkout: Path) -> str:
     """Enable MEOW's own checkout as a user-wide plugin through its marketplace.
 
     The checkout root carries `.claude-plugin/marketplace.json`, so it is
@@ -262,3 +296,4 @@ def register_checkout_plugin(settings_path: Path, checkout: Path) -> None:
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise ValueError(f"{manifest} is missing or has no marketplace name") from exc
     register_marketplace(settings_path, str(name), checkout, keep_disabled=True)
+    return str(name)

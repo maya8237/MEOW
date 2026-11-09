@@ -15,7 +15,10 @@ from pathlib import Path
 
 from meow.common.atomic import move_directory, replace_with_retry
 from meow.installer import maintenance
-from meow.project.claude_settings import register_checkout_plugin
+from meow.project.claude_settings import (
+    refresh_installed_plugin,
+    register_checkout_plugin,
+)
 
 DISTRIBUTION = "meow-harness"
 RELEASE_DATA = Path(__file__).resolve().parents[1] / "_release"
@@ -141,14 +144,19 @@ def release_python(release: Path) -> Path:
 
 def _register_plugin(plugin: Path) -> None:
     try:
-        register_checkout_plugin(settings_path(), plugin)
+        name = register_checkout_plugin(settings_path(), plugin)
     except ValueError as exc:  # an unreadable settings file must not fail an update
         print(f"Warning: Claude Code plugin not registered: {exc}", file=sys.stderr)
         return
+    if warning := refresh_installed_plugin(name):
+        print(
+            f"Warning: Claude Code may still load an older MEOW plugin: {warning}",
+            file=sys.stderr,
+        )
     print(
         f"Registered MEOW's Claude Code plugin in {settings_path()}\n"
         f"Plugin directory: {plugin}\n"
-        "Restart Claude Code to load /meow:* skills (including /meow:run)."
+        "Run /reload-plugins in Claude Code to load /meow:* skills."
     )
 
 

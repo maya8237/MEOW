@@ -15,7 +15,7 @@ from pathlib import Path
 
 from meow.common.atomic import replace_with_retry
 from meow.project.config_files import CONFIG_FILENAME, LOCAL_CONFIG_FILENAME
-from meow.project.custom.kit_store import kit_dir, normalize_url
+from meow.project.custom.kit_store import kit_dir, local_path, normalize_url
 from meow.project.custom.sources import KINDS, SKILL_ROLES, CustomSource
 
 MANIFEST = "meow-kit.toml"
@@ -266,6 +266,8 @@ def contents(root: Path) -> dict[str, list[str]]:
 def _locked_root(
     spec: KitSpec, entry: dict | None, home: Path, key: str
 ) -> Path | None:
+    if folder := local_path(spec.url):  # used in place: no commit, no cache
+        return folder if folder.is_dir() else None
     sha = (entry or {}).get(key) or (entry or {}).get("sha")
     if not sha:
         return None

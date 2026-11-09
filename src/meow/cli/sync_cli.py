@@ -1,5 +1,6 @@
 """`meow sync`: register custom skills, hooks, and opted-in agents with Claude Code."""
 
+import sys
 from pathlib import Path
 
 from meow.cli.hooks_cli import add_sync_options
@@ -37,6 +38,44 @@ def _auto(project_dir: Path, event: str) -> None:
         print(output)
 
 
+def _check(custom, project_dir: Path, user_dir: Path) -> None:
+    problems = [
+        *ignore_problems(project_dir),
+        *check_registration(custom, project_dir, user_dir),
+    ]
+    for problem in problems:
+        print(problem)
+    if problems:
+        raise ValueError(
+            f"{len(problems)} registration problem(s) (listed above); run: meow sync"
+        )
+    print("Custom skills, hooks, and agents are registered with Claude Code.")
+
+
+def _sync(custom, project_dir: Path, scopes: tuple[str, ...], migrated: list[str]):
+    user_dir = user_config_path().parent
+    attempted = [*migrated, *repair_gitignore(project_dir)]
+    attempted += sync_registration(custom, project_dir, user_dir, scopes)
+    attempted += repair_gitignore(project_dir)  # folders created just now
+    remaining = check_registration(custom, project_dir, user_dir)
+    fixed = [line for line in attempted if line not in remaining]
+    for line in fixed:
+        print(line)
+    if remaining:  # a conflict sync cannot resolve: `--check` would fail too
+        for line in remaining:
+            print(line, file=sys.stderr)
+        raise ValueError(
+            f"{len(remaining)} problem(s) left unresolved (listed above); fix them, "
+            "then run: meow sync"
+        )
+    print(
+        "Synced custom skills, hooks, and agents; run /reload-plugins if Claude Code "
+        "does not list them yet."
+        if fixed
+        else "Custom skills, hooks, and agents were already registered."
+    )
+
+
 def sync_command(args, project_dir: Path) -> None:
     if getattr(args, "auto", None):
         _auto(project_dir, args.auto)
@@ -45,28 +84,10 @@ def sync_command(args, project_dir: Path) -> None:
     custom = load_config(project_dir)["customizations"]
     user_dir = user_config_path().parent
     if args.check:
-        problems = [
-            *ignore_problems(project_dir),
-            *check_registration(custom, project_dir, user_dir),
-        ]
-        for problem in problems:
-            print(problem)
-        if problems:
-            raise ValueError("Not everything is registered; run: meow sync")
-        print("Custom skills, hooks, and agents are registered with Claude Code.")
-        return
-    scopes = SYNC_SCOPES if args.scope == "all" else (args.scope,)
-    fixed = [*migrated, *repair_gitignore(project_dir)]
-    fixed += sync_registration(custom, project_dir, user_dir, scopes)
-    fixed += repair_gitignore(project_dir)  # folders created just now
-    for line in fixed:
-        print(line)
-    print(
-        "Synced custom skills, hooks, and agents; run /reload-plugins if Claude Code "
-        "does not list them yet."
-        if fixed
-        else "Custom skills, hooks, and agents were already registered."
-    )
+        _check(custom, project_dir, user_dir)
+    else:
+        scopes = SYNC_SCOPES if args.scope == "all" else (args.scope,)
+        _sync(custom, project_dir, scopes, migrated)
 
 
 def add_sync_parser(subparsers):

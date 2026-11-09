@@ -20,6 +20,7 @@ from meow.project.custom.definitions import CustomHook
 from meow.project.custom.hook_files import SDK_EVENTS
 from meow.project.custom.sources import git_ignored, scope_plugin_dir
 from meow.project.custom.sync import CHECK, SHARED, SYNC_SCOPES
+from meow.project.home import is_home_dir
 
 _DESCRIPTION = "MEOW hook definitions."
 # Every generated command sets this; it marks MEOW's entries in a shared file.
@@ -211,6 +212,8 @@ def _scope_problems(
 ) -> list[str]:
     """Describe (and unless `CHECK`, fix) what keeps a scope's hooks from running."""
     scope = target[0]
+    if scope != "user" and is_home_dir(target[1]):
+        return []  # home is the user scope, not a project
     chosen = [h for h in hooks if h.source.scope == scope and syncable(h)]
     return _settings_problems(target, chosen, mode)
 

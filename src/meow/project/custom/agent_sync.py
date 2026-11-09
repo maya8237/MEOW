@@ -23,6 +23,7 @@ from meow.project.custom.definitions import PLUGIN_NAME, CustomAgent
 from meow.project.custom.flat_skills import write_exclude_block
 from meow.project.custom.kit_agents import agent_hold
 from meow.project.custom.standalone import render_standalone, standalone_problems
+from meow.project.home import is_home_dir
 
 AGENT_SCOPES = ("project", "local", "user")
 FOLDERS = {"project": "meow", "local": "meow-local", "user": "meow"}
@@ -156,12 +157,7 @@ def generated_text(agent: CustomAgent, scope: str, project_dir: Path) -> str:
 def _shares_user_folder(scope: str, project_dir: Path) -> bool:
     """Run from the home directory, project and local would write the user's
     folder; the user scope owns it, so they sit out."""
-    if scope == "user":
-        return False
-    try:
-        return Path(project_dir).resolve() == Path.home().resolve()
-    except OSError:
-        return False
+    return scope != "user" and is_home_dir(project_dir)
 
 
 @dataclass(frozen=True)
@@ -251,9 +247,16 @@ def _blocked(plan: Plan, agent: CustomAgent, foreign: dict[str, Path]) -> str | 
     if agent.name in plan.held:
         return f"{label}: {plan.held[agent.name]}"
     if other := foreign.get(agent.name):
-        return f"{label}: {other} already defines it; not synced, rename one"
+        return (
+            f"{label}: {other} already defines an agent with this name, so MEOW "
+            "did not write its copy; rename one of the two"
+        )
     if target.exists() and _owner(target) != plan.scope:
-        return f"{label}: not MEOW's copy; left unchanged, rename one"
+        return (
+            f"{label}: that file exists but MEOW did not create it, so it was left "
+            "unchanged and your agent is not synced; rename your agent, or delete "
+            "the file if it is a leftover"
+        )
     return None
 
 
@@ -360,7 +363,7 @@ def sync_agents(  # ruff: ignore[too-many-arguments] -- mirrors sync_skill_plugi
         fixed += changes
         if changes and not existed and agents_dir(scope, project_dir).is_dir():
             fixed.append(
-                f"created {agents_dir(scope, project_dir)}; restart Claude Code "
-                "once so it starts watching this new folder"
+                f"created {agents_dir(scope, project_dir)}; run /reload-plugins in "
+                "Claude Code to load it (no restart needed)"
             )
     return fixed

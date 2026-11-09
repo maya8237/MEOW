@@ -18,6 +18,7 @@ from meow.project.custom.sync import (
     check_skill_registration,
     sync_skill_plugins,
 )
+from meow.project.home import is_home_dir
 
 SESSION_START = "SessionStart"
 
@@ -27,11 +28,14 @@ def old_layout(project_dir: Path, apply: bool = False) -> list[str]:
 
     Run it before loading configuration: a config may name an old folder.
     """
+    if is_home_dir(project_dir):
+        return []
     return legacy_layout(project_dir, apply=apply)
 
 
 def check_registration(custom, project_dir: Path, user_dir: Path) -> list[str]:
     """Every problem hiding customizations from Claude Code or teammates."""
+    shared = [] if is_home_dir(project_dir) else unshared_project_dirs(project_dir)
     return [
         *old_layout(project_dir),
         *check_skill_registration(custom.skills, project_dir, user_dir),
@@ -39,7 +43,7 @@ def check_registration(custom, project_dir: Path, user_dir: Path) -> list[str]:
         *check_agent_registration(
             custom.catalog, project_dir, user_dir, picks=custom.claude_builtins
         ),
-        *unshared_project_dirs(project_dir),
+        *shared,
     ]
 
 
@@ -67,11 +71,14 @@ def repair_gitignore(project_dir: Path) -> list[str]:
     """
     from meow.project.onboarding import (
         CONFIG_RELPATH,
+        _in_git_repo,
         boundary_ok,
         protect_generated,
         repair_boundary,
     )
 
+    if is_home_dir(project_dir) or not _in_git_repo(project_dir):
+        return []  # never write a .gitignore outside a git project
     changed = []
     onboarded = (project_dir / CONFIG_RELPATH).is_file()
     if onboarded and not boundary_ok(project_dir) and repair_boundary(project_dir):
@@ -85,6 +92,8 @@ def ignore_problems(project_dir: Path) -> list[str]:
     """What `repair_gitignore` would fix, without changing anything."""
     from meow.project.onboarding import generated_problems
 
+    if is_home_dir(project_dir):
+        return []
     return generated_problems(project_dir)
 
 

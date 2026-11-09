@@ -25,6 +25,7 @@ from meow.project.config import _merge_config, config_paths
 from meow.project.config_files import GENERATED_SKILL_PATHS
 from meow.project.custom.flat_skills import local_skill_paths
 from meow.project.custom.legacy import legacy_layout
+from meow.project.home import is_home_dir
 from meow.project.repos import remember
 
 BOUNDARY = (
@@ -364,6 +365,11 @@ def _apply(
 def onboard_project(root: Path, *, write_config: bool = True) -> OnboardingReport:
     """Refresh the boundary and missing configs; preserve existing config files."""
     root = Path(root)
+    if is_home_dir(root):
+        raise ValueError(
+            f"{root} is your home directory, not a project; run meow in a project "
+            "folder (user-wide settings live in ~/.meow/config.toml)"
+        )
     explicit: dict = {}
     for table in reversed(_config_tables(root)):
         explicit = _merge_config(explicit, table)
@@ -540,6 +546,8 @@ def onboard_if_needed(active_dir: Path, config_dir: Path) -> dict | None:
     (with `error` set on failure), or None when nothing needed doing.
     """
     active_dir, config_dir = Path(active_dir), Path(config_dir)
+    if is_home_dir(config_dir) or is_home_dir(active_dir):
+        return None  # the home directory is the user scope, never a project
     if not is_onboarded(config_dir) and is_onboarded(active_dir):
         config_dir = active_dir
     write_config = not (config_dir / CONFIG_RELPATH).is_file()
