@@ -1,6 +1,7 @@
 """Registering custom skills with Claude Code at every scope."""
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -206,7 +207,7 @@ def test_the_old_user_plugin_directory_entry_is_removed(project, home):
     path.write_text(
         json.dumps({
             "model": "x",
-            "env": {"CLAUDE_CODE_PLUGIN_DIRS": f"{plugin_dir}:{other}"},
+            "env": {"CLAUDE_CODE_PLUGIN_DIRS": f"{plugin_dir}{os.pathsep}{other}"},
         }),
         encoding="utf-8",
     )
