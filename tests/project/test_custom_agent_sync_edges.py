@@ -219,3 +219,29 @@ def test_config_error_names_the_scope_of_the_layer(project, home):
         load_config(project)
 
     assert "nonesuch" in str(error.value)
+
+
+def test_a_crlf_checkout_of_a_committed_copy_is_still_ours(project, home):
+    """Windows with autocrlf checks the committed copy out with CRLF endings."""
+    scout(project)
+    sync(project, home)
+    target = copy(project)
+    target.write_bytes(target.read_bytes().replace(b"\n", b"\r\n"))
+
+    fixed, remaining = sync(project, home)
+
+    assert remaining == [] and fixed == []
+    assert b"\r\n" in target.read_bytes()  # left exactly as checked out
+
+
+def test_a_crlf_copy_that_was_hand_edited_is_reported_then_replaced(project, home):
+    scout(project)
+    sync(project, home)
+    target = copy(project)
+    target.write_bytes(target.read_bytes().replace(b"\n", b"\r\n") + b"extra\r\n")
+
+    _, remaining = sync(project, home)  # sync repaired it; check ran afterwards
+    fixed, _ = sync(project, home)
+
+    assert fixed == [] and b"extra" not in target.read_bytes()
+    assert remaining == []

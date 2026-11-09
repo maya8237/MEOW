@@ -38,7 +38,8 @@ ALLOWED = (
 )
 _EXCLUDE_BEGIN = "# >>> MEOW local agents (generated)"
 _EXCLUDE_END = "# <<< MEOW local agents"
-_OWNER = re.compile(rf"^{GENERATED_KEY}:[ \t]*(\S+)[ \t]*$", re.MULTILINE)
+# `\r?` because a Windows checkout with autocrlf gives the copy CRLF endings.
+_OWNER = re.compile(rf"^{GENERATED_KEY}:[ \t]*(\S+)[ \t]*\r?$", re.MULTILINE)
 
 Wanted = dict[str, CustomAgent]
 Picks = tuple[tuple[str, str], ...]  # (scope, agent name) from `[claude].agents`
