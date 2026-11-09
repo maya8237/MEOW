@@ -36,7 +36,9 @@ def check_registration(custom, project_dir: Path, user_dir: Path) -> list[str]:
         *old_layout(project_dir),
         *check_skill_registration(custom.skills, project_dir, user_dir),
         *check_hook_registration(custom.hooks, project_dir, user_dir),
-        *check_agent_registration(custom.catalog, project_dir, user_dir),
+        *check_agent_registration(
+            custom.catalog, project_dir, user_dir, picks=custom.claude_builtins
+        ),
         *unshared_project_dirs(project_dir),
     ]
 
@@ -48,7 +50,13 @@ def sync_registration(
     return [
         *sync_skill_plugins(custom.skills, project_dir, user_dir, scopes),
         *sync_hook_plugins(custom.hooks, project_dir, user_dir, scopes),
-        *sync_agents(custom.catalog, project_dir, user_dir, scopes),
+        *sync_agents(
+            custom.catalog,
+            project_dir,
+            user_dir,
+            scopes=scopes,
+            picks=custom.claude_builtins,
+        ),
     ]
 
 

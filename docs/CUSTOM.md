@@ -78,6 +78,17 @@ without the marker, and skips an agent whose `name` one of your own agents under
 `.claude/agents/` already uses. Custom skill names lose the `meow-custom:` prefix.
 Use it as `@agent-NAME`, by asking for it, or `claude --agent NAME`.
 
+Builtin agents sync only when a config file lists them. The copy goes to that
+file's scope (project, local, or user config):
+
+```toml
+[claude]
+agents = ["explorer"]   # also lint-fixer, review-fixer; others need a standalone variant
+```
+
+A name that is unknown, or whose prompt needs run values, fails config loading.
+An ejected copy of the agent is what gets synced. Remove the name to remove the copy.
+
 `meow sync` does all of this. The MEOW plugin runs it as `meow sync --auto`
 when Claude Code starts and right after Claude edits a `.meow/`, `SKILL.md`, or
 `.toml` file; it also restores MEOW's `.gitignore` rules in an onboarded project

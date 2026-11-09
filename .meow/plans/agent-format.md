@@ -160,14 +160,14 @@ registration".
 - Risk: medium. It writes into the user's `.claude/`; the marker discipline
   limits the damage.
 
-**P4: builtin plugin agents.**
-- `meow:explorer` (and the reviewer `standalone` variant, if approved) is
-  generated into the repo-root plugin `agents/`.
-- A test fails when the generated file is stale, and offers a
-  `python -m meow...` regeneration command.
-- Gated by `[claude].agents`. If the plugin cannot be filtered per config, ship
-  only explorer.
-- Risk: description-budget creep; keep the list short.
+**P4: builtin agents via `[claude].agents` (done).**
+- Changed from the plugin design: a plugin loads for everyone, which breaks
+  "off by default". Each config layer's list syncs to that layer's scope.
+- Unknown names and builtins that need run values fail config load.
+- Works today: `explorer`, `lint-fixer`, `review-fixer`. A reviewer needs a
+  `standalone` variant first (decision 3).
+- Not done from P3: the ~10k-token warning in `meow native verify`, and a test
+  that `[custom].agents = .claude/agents` does not re-import.
 
 **P5: kit agents** (after the kits branch merges; touches `kit_ops.py`).
 - Kit agents sync through P3 with `tools` required.

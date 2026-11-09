@@ -111,6 +111,8 @@ class Customizations:
     sources: tuple[CustomSource, ...] = ()
     workflows: tuple["WorkflowFile", ...] = ()
     hooks: tuple[CustomHook, ...] = ()
+    # (scope, agent name) from each config layer's `[claude].agents`.
+    claude_builtins: tuple[tuple[str, str], ...] = ()
 
     def hooks_for(self, event: str, role: str | None = None) -> list[CustomHook]:
         """Hooks on `event`; with `role`, only those that apply to it."""

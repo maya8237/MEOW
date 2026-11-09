@@ -128,7 +128,10 @@ def verify(
             config["customizations"].hooks, working_dir, user_config_path().parent
         ),
         "agent_registration": check_agent_registration(
-            config["customizations"].catalog, working_dir, user_config_path().parent
+            config["customizations"].catalog,
+            working_dir,
+            user_config_path().parent,
+            picks=config["customizations"].claude_builtins,
         ),
         "unshared_definitions": unshared_project_dirs(working_dir),
         "old_layout": old_layout(working_dir),

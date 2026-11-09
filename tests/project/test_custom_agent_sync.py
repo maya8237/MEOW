@@ -62,7 +62,7 @@ def agent_file(project, name="scout", text=EXPLORER, scope="project"):
 
 def sync(project, home, scopes=("project", "local", "user")):
     custom = load_config(project)["customizations"]
-    return sync_agents(custom.catalog, project, home / ".meow", scopes)
+    return sync_agents(custom.catalog, project, home / ".meow", scopes=scopes)
 
 
 def check(project, home):
