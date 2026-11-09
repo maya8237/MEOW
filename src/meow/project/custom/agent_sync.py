@@ -285,8 +285,10 @@ def _wanted_problems(plan: Plan, *, fix: bool) -> list[str]:
         if problem is None:
             continue
         message, writable = problem
+        if fix and not writable:
+            continue  # waiting on the user: nothing was repaired
         found.append(message)
-        if fix and writable:
+        if fix:
             target = agents_root(scope, project_dir) / f"{name}.md"
             _write(target, generated_text(agent, scope, project_dir))
     return found
@@ -310,7 +312,8 @@ def _stale_problems(plan: Plan, *, fix: bool) -> list[str]:
 
 
 def agent_problems(plan: Plan, *, fix: bool) -> list[str]:
-    """Describe (and with `fix`, repair) the scope's synced agent copies."""
+    """Describe the scope's synced agent copies; with `fix`, repair them and list
+    only what was repaired (agents waiting on the user stay for the check)."""
     found = _wanted_problems(plan, fix=fix)
     found += _stale_problems(plan, fix=fix)
     if fix and plan.scope == "local":
@@ -353,7 +356,7 @@ def sync_agents(  # ruff: ignore[too-many-arguments] -- mirrors sync_skill_plugi
     for scope in scopes:
         plan = make_plan(catalog, scope, project_dir, user_dir, picks)
         existed = agents_dir(scope, project_dir).is_dir()
-        changes = _fixes(agent_problems(plan, fix=True), plan)
+        changes = agent_problems(plan, fix=True)
         fixed += changes
         if changes and not existed and agents_dir(scope, project_dir).is_dir():
             fixed.append(
@@ -361,9 +364,3 @@ def sync_agents(  # ruff: ignore[too-many-arguments] -- mirrors sync_skill_plugi
                 "once so it starts watching this new folder"
             )
     return fixed
-
-
-def _fixes(problems: list[str], plan: Plan) -> list[str]:
-    """Drop what is only waiting on the user; the rest was repaired."""
-    waiting = {f"agent '{name}'" for name in plan.held}
-    return [line for line in problems if not any(key in line for key in waiting)]
