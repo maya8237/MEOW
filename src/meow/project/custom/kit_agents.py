@@ -18,6 +18,7 @@ from pathlib import Path
 from meow.project.custom.definitions import CustomAgent, load_agent
 from meow.project.custom.kits import lock_file, read_lock
 from meow.project.custom.sources import CustomSource
+from meow.project.custom.standalone import syncs
 
 LOCK_KEY = "agents_ok"
 
@@ -35,7 +36,7 @@ def kit_agent_tools(
         if path.suffix not in {".md", ".toml"} or not path.is_file():
             continue
         agent = load_agent(path, source)
-        if agent.claude_agent:
+        if syncs(agent):
             tools = agent.claude_code_tools
             found[agent.name] = None if tools is None else list(tools)
     return found

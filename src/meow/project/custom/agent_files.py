@@ -67,11 +67,20 @@ def _flag(data: dict, key: str, path: Path) -> bool:
     return value
 
 
-def _choice(data: dict, path: Path) -> tuple[str, bool, bool]:
+def _optional_flag(data: dict, key: str, path: Path) -> bool | None:
+    """True or False as written; None when the key is absent (use the default)."""
+    return None if key not in data else _flag(data, key, path)
+
+
+def _choice(data: dict, path: Path) -> tuple[str, bool, bool | None]:
     session = data.get("session", "one-shot")
     if session not in SESSIONS:
         raise ValueError(f"{path}: 'session' must be one of {list(SESSIONS)}")
-    return session, _flag(data, "lint_on_edit", path), _flag(data, "claude_agent", path)
+    return (
+        session,
+        _flag(data, "lint_on_edit", path),
+        _optional_flag(data, "claude_agent", path),
+    )
 
 
 _MD_PREFIX = "meow-"

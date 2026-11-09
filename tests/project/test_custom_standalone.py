@@ -4,7 +4,11 @@ import pytest
 
 from meow.project.config import load_config
 from meow.project.custom.rendering import builtin_agent
-from meow.project.custom.standalone import render_standalone, standalone_problems
+from meow.project.custom.standalone import (
+    render_standalone,
+    standalone_problems,
+    syncs,
+)
 
 
 @pytest.fixture
@@ -34,10 +38,11 @@ def agent(project, name, text, suffix="toml"):
     return load_config(project)["customizations"].agent(name)
 
 
-def test_claude_agent_defaults_to_off(project, home):
+def test_claude_agent_is_unset_by_default(project, home):
     found = agent(project, "a", 'description = "d"\nprompt = "p"\n')
 
-    assert found.claude_agent is False
+    assert found.claude_agent is None
+    assert syncs(found)
 
 
 @pytest.mark.parametrize(
@@ -173,7 +178,7 @@ def test_builtins_do_not_opt_in():
     from meow.project.custom import builtin_dir
 
     for path in (builtin_dir() / "agents").glob("*.toml"):
-        assert builtin_agent(path.stem).claude_agent is False
+        assert not syncs(builtin_agent(path.stem))
 
 
 def test_standalone_reviewer_reviews_the_tree_and_answers_in_chat():

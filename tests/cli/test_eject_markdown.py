@@ -8,6 +8,7 @@ from meow.cli.cli import cli_main
 from meow.project.config import load_config
 from meow.project.custom.rendering import builtin_agent
 from meow.project.custom.sources import builtin_dir
+from meow.project.custom.standalone import syncs
 
 USAGE_ERROR = 2  # argparse's exit code for a rejected option
 NAMES = sorted(path.stem for path in (builtin_dir() / "agents").glob("*.toml"))
@@ -50,7 +51,8 @@ def test_ejected_markdown_loads_like_the_builtin(tmp_path, name):
     assert found.source.scope == "project"
     assert all(getattr(found, f) == getattr(shipped, f) for f in FIELDS)
     assert found.prompt.strip() == shipped.prompt.strip()
-    assert found.claude_agent is False
+    assert found.claude_agent is None
+    assert not syncs(found)
 
 
 @pytest.mark.parametrize("name", ["planner", "reviewer"])

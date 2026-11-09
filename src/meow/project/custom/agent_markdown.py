@@ -23,7 +23,10 @@ def _settings(agent: CustomAgent, origin: str | None) -> list[str]:
         ),
         (agent.session != "one-shot", f"meow-session: {agent.session}"),
         (agent.lint_on_edit, "meow-lint-on-edit: true"),
-        (agent.claude_agent, "meow-claude-agent: true"),
+        (
+            agent.claude_agent is not None,
+            f"meow-claude-agent: {str(agent.claude_agent).lower()}",
+        ),
         (bool(origin), f"meow-ejected-from: {origin}"),
     ]
     return [line for wanted, line in optional if wanted]

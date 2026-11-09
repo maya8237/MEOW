@@ -8,7 +8,9 @@ from meow.project.custom.agent_sync import check_agent_registration, sync_agents
 
 
 def agent(tools='["Read"]', prose="Search {{active_dir}}.", opt_in="true"):
-    lines = ['description = "Scout."', f"claude_agent = {opt_in}"]
+    lines = ['description = "Scout."']
+    if opt_in is not None:
+        lines.append(f"claude_agent = {opt_in}")
     if tools is not None:
         lines.append(f"tools = {tools}")
     return "\n".join([*lines, f'prompt = "{prose}"']) + "\n"
@@ -48,6 +50,14 @@ def test_kit_agent_without_tools_is_not_synced(make_kit, project, user_dir):
 
     assert not copy().exists()
     assert any("scout" in line and "declare tools" in line for line in problems)
+
+
+def test_kit_agent_syncs_by_default_behind_approval(make_kit, project, user_dir):
+    add(project, user_dir, make_kit({"agents/scout.toml": agent(opt_in=None)}))
+
+    sync(project, user_dir)
+
+    assert copy().exists()
 
 
 def test_kit_agent_that_did_not_opt_in_is_not_synced(make_kit, project, user_dir):

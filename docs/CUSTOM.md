@@ -62,9 +62,12 @@ the same name. Hooks go into the settings file Claude Code reads for the scope:
 `.claude/settings.json`, `.claude/settings.local.json`, `~/.claude/settings.json`;
 other settings and hooks there are kept. Workflows need no registration.
 
-Agents sync only when they opt in with `claude_agent = true` (or
-`meow-claude-agent: true` in Markdown); see [agents](WORKFLOWS.md#agents). Each
-becomes a Claude Code subagent from its standalone prompt, carrying only `name`,
+Your own agents (user, project, local) and kit agents sync by default when their
+prompt renders without run values; one that does not is skipped quietly.
+`claude_agent = false` (`meow-claude-agent: false` in Markdown) opts out and
+`true` forces it (an error if the prompt needs run values). Builtins and ejected
+copies of one sync only when `[claude] agents` lists them or they set `true`; see
+[agents](WORKFLOWS.md#agents). Each becomes a Claude Code subagent from its standalone prompt, carrying only `name`,
 `description`, `tools`, `model`, and `skills`, plus a `meow-managed` marker:
 
 | Scope | Written to |
