@@ -471,3 +471,52 @@ def test_omitted_files_go_to_the_first_shard_only(checkout):
     with patch("meow.integrations.ci_review.ReviewerAgent.review_ci_branch", review):
         asyncio.run(_review(repo, {}, context))
     assert seen == {"diff a": ("z",), "diff b": ()}
+
+
+@pytest.mark.parametrize(
+    ("reply", "status"),
+    [
+        ("SUMMARY: ok\nSTATUS: PASS", "PASS"),
+        ("thinking\nSTATUS: PASS\nSTATUS: FAIL\nSUMMARY: bad\nSTATUS: FAIL\n", "FAIL"),
+        (
+            "Start with SUMMARY: then STATUS: PASS or STATUS: FAIL\n---\n"
+            "SUMMARY: real\n\nSTATUS: PASS\n\nfile.py:1 fine",
+            "PASS",
+        ),
+        ("SUMMARY: a\nSTATUS: PASS\nSTATUS: FAIL", "UNVERIFIED"),
+        ("no verdict", "UNVERIFIED"),
+    ],
+)
+def test_ci_verdict_picks_the_real_report(reply, status):
+    from meow.agents.reviewer import ci_verdict
+
+    verdict, report = ci_verdict(reply)
+    assert verdict == status
+    if status != "UNVERIFIED":
+        assert report.startswith("SUMMARY:") or "SUMMARY:" not in reply
+
+
+def test_ci_reviewer_retries_once_when_unverified(checkout):
+    import asyncio
+
+    from meow.agents.base import ProjectContext
+    from meow.agents.reviewer import ReviewerAgent
+
+    repo, _, _, env = checkout
+    context = prepare_ci_review(repo, env)
+    agent = ReviewerAgent(ProjectContext(repo, {"models": {"reviewer": None}}))
+    replies_list = ["rambling", "SUMMARY: Fine\nSTATUS: PASS"]
+    replies = iter(replies_list)
+    prompts = []
+
+    async def fake(prompt, options):  # ruff: ignore[unused-async] -- async seam
+        prompts.append(prompt)
+        text = next(replies)
+        from meow.agents.reviewer import ci_verdict
+
+        return ci_verdict(text)
+
+    with patch.object(ReviewerAgent, "_ci_query", staticmethod(fake)):
+        status, _ = asyncio.run(agent.review_ci_branch(context))
+    assert status == "PASS"
+    assert len(prompts) == len(replies_list)
