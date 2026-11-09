@@ -114,7 +114,8 @@ standalone = "Review the changes in {{active_dir}} and report concrete defects."
 `ejected_from` drift check. Agents with variants or fragments (`planner`,
 `reviewer`) stay TOML. The default format is TOML.
 
-`meow sync` does all of this. The MEOW plugin runs it as `meow sync --auto`
+`meow sync` does all of this, and refreshes Claude Code's cached MEOW plugin when it
+lags the installed release (also checked at every start). The MEOW plugin runs it as `meow sync --auto`
 when Claude Code starts and right after Claude edits a `.meow/`, `SKILL.md`, or
 `.toml` file; it also restores MEOW's `.gitignore` rules in an onboarded project
 and reports what it cannot fix. Plain `meow sync` and every `meow` command do

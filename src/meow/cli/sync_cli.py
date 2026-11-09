@@ -16,6 +16,7 @@ from meow.project.custom.registration import (
     sync_registration,
 )
 from meow.project.custom.sync import SYNC_SCOPES
+from meow.project.plugin_drift import plugin_drift
 
 
 def _auto(project_dir: Path, event: str) -> None:
@@ -30,6 +31,7 @@ def _auto(project_dir: Path, event: str) -> None:
         )
         if event == "SessionStart":
             notice = kit_ops.pending_updates(project_dir, user_config_path().parent)
+            notice += plugin_drift(fix=True)
             message = "\n".join(part for part in (message, *notice) if part) or None
     except Exception as exc:  # reported, never raised: startup must go on
         message = f"MEOW could not sync customizations: {exc}"
@@ -42,6 +44,7 @@ def _check(custom, project_dir: Path, user_dir: Path) -> None:
     problems = [
         *ignore_problems(project_dir),
         *check_registration(custom, project_dir, user_dir),
+        *plugin_drift(fix=False, timeout=30),
     ]
     for problem in problems:
         print(problem)
@@ -57,6 +60,7 @@ def _sync(custom, project_dir: Path, scopes: tuple[str, ...], migrated: list[str
     attempted = [*migrated, *repair_gitignore(project_dir)]
     attempted += sync_registration(custom, project_dir, user_dir, scopes)
     attempted += repair_gitignore(project_dir)  # folders created just now
+    attempted += plugin_drift(fix=True, timeout=120)
     remaining = check_registration(custom, project_dir, user_dir)
     fixed = [line for line in attempted if line not in remaining]
     for line in fixed:

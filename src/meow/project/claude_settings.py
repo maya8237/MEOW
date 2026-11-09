@@ -255,7 +255,29 @@ def _claude_binary() -> str | None:
     return shutil.which("claude")
 
 
-def refresh_installed_plugin(name: str) -> str | None:
+def installed_plugin_version(name: str, timeout: float = 10) -> str | None:
+    """The version Claude Code has installed for `name@name`; None if unknown."""
+    claude = _claude_binary()
+    if claude is None:
+        return None
+    try:
+        result = subprocess.run(
+            [claude, "plugin", "list", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        entries = json.loads(result.stdout) if result.returncode == 0 else []
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    for entry in entries if isinstance(entries, list) else ():
+        if isinstance(entry, dict) and entry.get("id") == f"{name}@{name}":
+            version = entry.get("version")
+            return version if isinstance(version, str) else None
+    return None
+
+
+def refresh_installed_plugin(name: str, timeout: float = 120) -> str | None:
     """Ask Claude Code to re-read a directory marketplace and update its plugin.
 
     Claude Code caches a plugin per version, so after MEOW moves to a new release
@@ -271,7 +293,7 @@ def refresh_installed_plugin(name: str) -> str | None:
     ):
         try:
             result = subprocess.run(
-                [claude, *command], capture_output=True, text=True, timeout=120
+                [claude, *command], capture_output=True, text=True, timeout=timeout
             )
         except (OSError, subprocess.SubprocessError) as exc:
             return f"`claude {' '.join(command)}` did not run: {exc}"
