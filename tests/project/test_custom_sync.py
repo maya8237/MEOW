@@ -146,9 +146,9 @@ def test_edited_configured_skill_is_reported_stale_then_resynced(project, home):
     (source / "extra" / "SKILL.md").write_text(
         "---\nname: extra\ndescription: Changed.\n---\n\nNew.\n", encoding="utf-8"
     )
-    assert any("not published" in problem for problem in check(project, home))
+    assert any("out of date" in problem for problem in check(project, home))
 
-    sync(project, home)
+    assert any("stale copy refreshed" in line for line in sync(project, home))
 
     assert "New." in (published(project, "extra") / "SKILL.md").read_text()
     assert check(project, home) == []
@@ -166,7 +166,7 @@ def test_removed_skill_loses_only_its_own_published_copy(project, home):
     (source / "other" / "SKILL.md").unlink()
     (source / "other").rmdir()
 
-    sync(project, home)
+    assert any("published copy removed" in line for line in sync(project, home))
 
     assert published(project, "extra").is_dir()
     assert not published(project, "other").exists()
@@ -296,7 +296,7 @@ def test_deleted_published_copy_is_restored(project, home):
     shutil.rmtree(published(project, "team"))
 
     assert any("not published" in problem for problem in check(project, home))
-    sync(project, home)
+    assert any("published for Claude Code" in line for line in sync(project, home))
     assert check(project, home) == []
 
 

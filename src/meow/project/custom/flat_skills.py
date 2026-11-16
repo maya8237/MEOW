@@ -94,6 +94,13 @@ def configured_wanted(
     }
 
 
+def _drift(target: Path, *, fix: bool) -> str:
+    """Why the copy differs (report) or what the sync did about it (fix)."""
+    if target.exists():
+        return "stale copy refreshed" if fix else "published copy is out of date"
+    return "published for Claude Code" if fix else "not published for Claude Code"
+
+
 def _wanted_problems(scope: str, root: Path, wanted: Wanted, *, fix: bool) -> list[str]:
     found = []
     for name, (source, files) in sorted(wanted.items()):
@@ -106,7 +113,7 @@ def _wanted_problems(scope: str, root: Path, wanted: Wanted, *, fix: bool) -> li
                 "it is a leftover"
             )
         elif not _current(source, files, target):
-            found.append(f"{label}: not published for Claude Code")
+            found.append(f"{label}: {_drift(target, fix=fix)}")
             if fix:
                 _publish(scope, source, files, target)
     return found
@@ -118,7 +125,8 @@ def _stale_problems(scope: str, root: Path, wanted: Wanted, *, fix: bool) -> lis
     for folder in folders:
         if folder.name in wanted or not folder.is_dir() or _owner(folder) != scope:
             continue
-        found.append(f"{scope} skill '{folder.name}' ({folder}): source removed")
+        outcome = "published copy removed" if fix else "source removed"
+        found.append(f"{scope} skill '{folder.name}' ({folder}): {outcome}")
         if fix:
             shutil.rmtree(folder)
     return found
