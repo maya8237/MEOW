@@ -172,7 +172,7 @@ def test_hand_edited_copy_is_reported_then_replaced(project, home):
     )
 
     assert any("out of date" in line for line in check(project, home))
-    sync(project, home)
+    assert any("stale copy refreshed" in line for line in sync(project, home))
 
     assert "extra" not in copy(project).read_text(encoding="utf-8")
 

@@ -127,7 +127,7 @@ def test_auto_sync_picks_up_later_edits(project, home):
 
     message = auto_sync_message(custom(project), project, home / ".meow")
 
-    assert message and "out of date" in message
+    assert message and "refreshed" in message
     assert '"matcher": "^(?:Bash)$"' in (project / ".claude/settings.json").read_text()
     assert (project / ".claude/skills/linked-two/SKILL.md").is_file()
 

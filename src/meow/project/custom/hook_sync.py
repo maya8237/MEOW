@@ -149,7 +149,8 @@ def _has_ours(existing: dict) -> bool:
 def _remove(path: Path, label: str, apply: bool) -> list[str]:
     if apply:
         path.unlink()
-    return [f"{label}: no hook definitions left; removed"]
+        return [f"{label}: no hook definitions left; removed"]
+    return [f"{label}: no hook definitions left; remove it"]
 
 
 def _settings_file(scope: str, project_dir: Path) -> Path:
@@ -178,17 +179,26 @@ def _settings_problems(
     if not isinstance(current, dict):
         raise ValueError(f"{path} must hold a `hooks` object; it was not changed")
     wanted = merged_config({"hooks": current}, chosen)["hooks"]
-    found = [] if wanted == current else [f"{label}: out of date"]
-    if mode != CHECK and found:
-        if wanted:
-            data["hooks"] = wanted
+    found = []
+    if wanted != current:
+        if mode == CHECK:
+            found.append(f"{label}: out of date")
         else:
-            data.pop("hooks", None)
-        if data:
-            _write_settings(path, data)
-        else:
-            path.unlink()
+            _store_hooks(path, data, wanted)
+            found.append(f"{label}: refreshed")
     return found + _old_plugin_hooks(target, mode)
+
+
+def _store_hooks(path: Path, data: dict, wanted: dict) -> None:
+    """Write `wanted` as the file's hooks, dropping the key or file when empty."""
+    if wanted:
+        data["hooks"] = wanted
+    else:
+        data.pop("hooks", None)
+    if data:
+        _write_settings(path, data)
+    else:
+        path.unlink()
 
 
 def _old_plugin_hooks(target: tuple[str, Path, Path], mode: str) -> list[str]:
@@ -204,7 +214,8 @@ def _old_plugin_hooks(target: tuple[str, Path, Path], mode: str) -> list[str]:
         return _remove(path, label, mode != CHECK)
     if mode != CHECK:
         path.write_text(_text(config), encoding="utf-8")
-    return [label]
+        return [f"{label}: MEOW entries removed"]
+    return [f"{label}: holds MEOW entries to remove"]
 
 
 def _scope_problems(

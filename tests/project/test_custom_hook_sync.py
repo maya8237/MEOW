@@ -95,7 +95,7 @@ def test_removed_definition_removes_its_settings_entry_and_empty_file(project, h
     sync(project, home)
     hook.unlink()
 
-    assert any("out of date" in line for line in sync(project, home))
+    assert any("refreshed" in line for line in sync(project, home))
     assert not (project / ".claude/settings.json").exists()
 
 

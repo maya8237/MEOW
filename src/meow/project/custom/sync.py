@@ -45,9 +45,11 @@ def _plugin_dir_leftover(user_dir: Path, mode: str) -> list[str]:
         Path(user_dir) / "linked" / "plugin",
     ):
         if settings.is_file() and plugin_dir_registered(settings, root):
-            found.append(f"user plugin directory ({root}): no longer needed")
-            if mode != CHECK:
+            if mode == CHECK:
+                found.append(f"user plugin directory ({root}): no longer needed")
+            else:
                 remove_plugin_dir(settings, root)
+                found.append(f"user plugin directory ({root}): removed")
     return found
 
 

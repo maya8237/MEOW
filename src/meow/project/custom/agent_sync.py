@@ -265,22 +265,24 @@ def _blocked(plan: Plan, agent: CustomAgent, foreign: dict[str, Path]) -> str | 
 
 
 def _problem(
-    plan: Plan, agent: CustomAgent, foreign: dict[str, Path]
+    plan: Plan, agent: CustomAgent, foreign: dict[str, Path], *, fix: bool
 ) -> tuple[str, bool] | None:
-    """(what is wrong with the agent's copy, whether sync may write it), or None."""
+    """(what is wrong with the agent's copy, or with `fix` what sync does about
+    it; whether sync may write it), or None."""
     if message := _blocked(plan, agent, foreign):
         return message, False
     scope, project_dir = plan.scope, plan.project_dir
     target = agents_root(scope, project_dir) / f"{agent.name}.md"
     if not target.exists():
-        return f"{_where(plan, agent)}: not synced for Claude Code", True
+        outcome = "synced" if fix else "not synced"
+        return f"{_where(plan, agent)}: {outcome} for Claude Code", True
     current = target.read_text(encoding="utf-8", errors="replace")
-    if current != generated_text(agent, scope, project_dir):
-        return (
-            f"{_where(plan, agent)}: out of date; edit the source, not the copy",
-            True,
-        )
-    return None
+    if current == generated_text(agent, scope, project_dir):
+        return None
+    outcome = (
+        "stale copy refreshed" if fix else "out of date; edit the source, not the copy"
+    )
+    return f"{_where(plan, agent)}: {outcome}", True
 
 
 def _wanted_problems(plan: Plan, *, fix: bool) -> list[str]:
@@ -288,7 +290,7 @@ def _wanted_problems(plan: Plan, *, fix: bool) -> list[str]:
     foreign = _foreign_names(agents_dir(scope, project_dir))
     found = []
     for name, agent in sorted(plan.wanted.items()):
-        problem = _problem(plan, agent, foreign)
+        problem = _problem(plan, agent, foreign, fix=fix)
         if problem is None:
             continue
         message, writable = problem
@@ -308,9 +310,8 @@ def _stale_problems(plan: Plan, *, fix: bool) -> list[str]:
     for path in sorted(root.glob("*.md")) if root.is_dir() else []:
         if path.stem in plan.wanted or _owner(path) != scope:
             continue
-        found.append(
-            f"{scope} agent '{path.stem}' ({path}): source removed or not opted in"
-        )
+        outcome = "copy removed" if fix else "source removed or not opted in"
+        found.append(f"{scope} agent '{path.stem}' ({path}): {outcome}")
         if fix:
             path.unlink()
     if fix and root.is_dir() and not any(root.iterdir()):
