@@ -195,6 +195,7 @@ class RunBackend(loops.Backend):  # ruff: ignore[too-many-public-methods]
         record = self.record()
         if record is None:  # nothing created yet: start the run again
             return super().prepare()
+        prompt = run_prompt(record, self.repo, self.settings.get("autopilot_prompt"))
         if record.phase in TERMINAL_PHASES or record.phase == PARKED_PHASE:
             record = self.store.transition(
                 record.id, "resuming", last_failure=record.last_failure
@@ -217,7 +218,6 @@ class RunBackend(loops.Backend):  # ruff: ignore[too-many-public-methods]
         self.state.session = record.results.get("claude_session_id") or (
             self.state.session
         )
-        prompt = run_prompt(record, self.repo, self.settings.get("autopilot_prompt"))
         values = {
             "prompt": prompt,
             "flags": self.state.flags,

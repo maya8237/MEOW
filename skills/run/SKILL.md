@@ -10,6 +10,7 @@ If the user asks to run at a future time, follow
 Register the scheduled automatic run now and report the returned schedule;
 do not begin the sprint or hold this session open until the time arrives.
 Dependency or install problems: [dependencies](../_shared/dependencies.md).
+To keep a build going until it succeeds, use [autopilot](../autopilot/SKILL.md).
 
 CLI mode is the default: `meow run` owns project understanding, planning,
 implementation, verification, review, and checkpoints.
