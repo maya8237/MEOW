@@ -159,13 +159,22 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
     effective_argv = expand_shortcuts(list(sys.argv[1:] if argv is None else argv))
     command_argv = list(sys.argv[1:] if argv is None else argv)
     first = effective_argv[0] if effective_argv else "ipython"
-    if first not in {
-        "-u",
-        "--update",
-        "--check-update",
-        "--latest-pypi",
-        "--beta",
-    } and not first.startswith("_"):
+    if (
+        first
+        not in {
+            "-u",
+            "--update",
+            "--check-update",
+            "--latest-pypi",
+            "--beta",
+        }
+        and not first.startswith("_")
+        and effective_argv[:2]
+        not in (
+            ["autopilot", "hook"],
+            ["autopilot", "_supervise"],
+        )
+    ):
         check_for_updates()
     if argv is None and len(sys.argv) == 1:
         start_ipython()
@@ -255,6 +264,10 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         except OSError as exc:
             print(f"Could not start the catalog page: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc
+    if args.command == "autopilot":
+        from meow.cli.autopilot_cli import autopilot_command
+
+        raise SystemExit(autopilot_command(args.autopilot_argv))
     if args.command == "detach":
         from meow.infrastructure.background import detach_command
 

@@ -24,8 +24,21 @@ def test_run_defaults_filled(tmp_path):
         "stale_after": 7200,
         "agent_idle_timeout": 900,
         "agent_result_grace": 120,
-        "native_auto_continue": True,
-        "native_continue_cap": 0,
+        "autopilot_cap": 0,
+        "autopilot_stall": 1200,
+        "autopilot_answer_wait": 600,
+        "autopilot_command": [
+            "claude",
+            "-p",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "{resume}",
+            "{flags}",
+            "{prompt}",
+        ],
+        "autopilot_prompt": "",
+        "claude_args": [],
     }
     assert load_config(tmp_path)["run"] == RUN_DEFAULTS
     assert run_config(tmp_path) == RUN_DEFAULTS

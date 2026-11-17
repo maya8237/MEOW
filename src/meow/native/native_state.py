@@ -31,7 +31,6 @@ from meow.infrastructure.checks import (
     stage_baseline,
 )
 from meow.infrastructure.worktree import _is_linked_worktree, current_branch
-from meow.native.native_continue import SESSION_ENV
 from meow.project.config import config_paths, config_root, load_config
 from meow.project.plan_files import plan_review_file
 
@@ -95,9 +94,9 @@ def _refuse_live_driver(record: RunRecord) -> None:
     """A CLI process (`meow resume`) took this run over: the native session
     must stop driving it, not race it on the same worktree."""
     from meow.execution.orchestration.store import DriverBusyError
-    from meow.native.native_continue import child_of_supervisor
+    from meow.native.autopilot import may_drive
 
-    if driver_alive(record) is True and not child_of_supervisor(record):
+    if driver_alive(record) is True and not may_drive(record):
         raise DriverBusyError(
             f"run {record.id} is driven by a live CLI process "
             f"(pid {record.driver.get('pid')}); stop editing its worktree and "
@@ -120,6 +119,7 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
     target_branch: str | None = None,
     intent: str | None = None,
     failure: str | None = None,
+    autopilot: bool = False,
 ) -> dict:
     """Persist one native phase using the CLI run journal schema.
 
@@ -218,7 +218,9 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
     results["heartbeat_at"] = time.time()
     if intent is not None:
         results["intent"] = intent
-    if session := os.environ.get(SESSION_ENV):  # the session `continue` resumes
+    if session := os.environ.get(
+        "CLAUDE_CODE_SESSION_ID"
+    ):  # the session `continue` resumes
         results["claude_session_id"] = session
     if phase == PARKED_PHASE:
         if record.phase in TERMINAL_PHASES:  # a late crash report must not revive it
@@ -232,7 +234,13 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
         record = store.park(run_id, failure, "transient", "native_reported")
     else:
         record = store.transition(run_id, phase, **patch)
+    result_autopilot = None
+    if autopilot:
+        from meow.native.autopilot import attach
+
+        result_autopilot = attach(repo, record)
     return {
+        **({"autopilot": result_autopilot} if result_autopilot else {}),
         "run_id": record.id,
         "phase": record.phase,
         "worktree": record.worktree,

@@ -686,9 +686,12 @@ def _validate_max_parallel_tasks(config: dict) -> None:
 # which a native `intent=run` record counts as a lost session and is parked;
 # agent_idle_timeout: silence from an SDK stream before its CLI is killed and
 # the run parks; agent_result_grace: time a stream may stay open after its result;
-# native_auto_continue: a native run whose session hits an API error is resumed
-# in a supervised `claude -p` session until it succeeds; native_continue_cap:
-# most sessions that supervisor launches (0: no limit).
+# autopilot_*: `meow autopilot` loops (cap 0 = no limit; stall: seconds with no
+# activity and no running tool before a session is killed; answer_wait: seconds
+# an unanswered question may wait; command: editable launch template with
+# {prompt} {flags} {resume} {session} {repo} {run_id} {worktree} {attempt};
+# prompt: run continuation prompt, "" = built-in); claude_args: flags added to
+# every launched Claude.
 RUN_DEFAULTS = {
     "auto_retries": 3,
     "retry_backoff": [60, 300, 900],
@@ -700,8 +703,21 @@ RUN_DEFAULTS = {
     "stale_after": 7200,
     "agent_idle_timeout": 900,
     "agent_result_grace": 120,
-    "native_auto_continue": True,
-    "native_continue_cap": 0,
+    "autopilot_cap": 0,
+    "autopilot_stall": 1200,
+    "autopilot_answer_wait": 600,
+    "autopilot_command": [
+        "claude",
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "{resume}",
+        "{flags}",
+        "{prompt}",
+    ],
+    "autopilot_prompt": "",
+    "claude_args": [],
 }
 
 
@@ -710,6 +726,12 @@ def _run_value(table: dict, key: str):
     value = table.get(key, default)
     if isinstance(default, bool):
         valid, need = isinstance(value, bool), "true or false"
+    elif key in {"autopilot_command", "claude_args"}:
+        valid = isinstance(value, list) and all(isinstance(item, str) for item in value)
+        valid = valid and (key == "claude_args" or bool(value))
+        need = "a list of strings" + (" (not empty)" if key != "claude_args" else "")
+    elif key == "autopilot_prompt":
+        valid, need = isinstance(value, str), "a string"
     elif key == "retry_backoff":
         valid = (
             isinstance(value, list)
@@ -728,6 +750,8 @@ def _run_value(table: dict, key: str):
         "stale_after",
         "agent_idle_timeout",
         "agent_result_grace",
+        "autopilot_stall",
+        "autopilot_answer_wait",
     }:
         valid = (
             isinstance(value, (int, float))

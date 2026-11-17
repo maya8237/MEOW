@@ -696,7 +696,7 @@ def run_owner_alive(record: RunRecord) -> bool | None:
 
 
 def _continue_unlimited(record: RunRecord) -> bool:
-    from meow.native.native_continue import unlimited
+    from meow.native.autopilot import unlimited
 
     return unlimited(record)
 
