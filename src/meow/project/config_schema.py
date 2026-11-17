@@ -685,7 +685,10 @@ def _validate_max_parallel_tasks(config: dict) -> None:
 # Code); background runs are always supervised; stale_after: silence after
 # which a native `intent=run` record counts as a lost session and is parked;
 # agent_idle_timeout: silence from an SDK stream before its CLI is killed and
-# the run parks; agent_result_grace: time a stream may stay open after its result.
+# the run parks; agent_result_grace: time a stream may stay open after its result;
+# native_auto_continue: a native run whose session hits an API error is resumed
+# in a supervised `claude -p` session until it succeeds; native_continue_cap:
+# most sessions that supervisor launches (0: no limit).
 RUN_DEFAULTS = {
     "auto_retries": 3,
     "retry_backoff": [60, 300, 900],
@@ -697,6 +700,8 @@ RUN_DEFAULTS = {
     "stale_after": 7200,
     "agent_idle_timeout": 900,
     "agent_result_grace": 120,
+    "native_auto_continue": True,
+    "native_continue_cap": 0,
 }
 
 

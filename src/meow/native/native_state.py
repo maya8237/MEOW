@@ -4,6 +4,7 @@ run-journal checkpoints and gated finalize shared with CLI runs."""
 import asyncio
 import hashlib
 import json
+import os
 import time
 from contextlib import suppress
 from dataclasses import asdict
@@ -30,6 +31,7 @@ from meow.infrastructure.checks import (
     stage_baseline,
 )
 from meow.infrastructure.worktree import _is_linked_worktree, current_branch
+from meow.native.native_continue import SESSION_ENV
 from meow.project.config import config_paths, config_root, load_config
 from meow.project.plan_files import plan_review_file
 
@@ -93,8 +95,9 @@ def _refuse_live_driver(record: RunRecord) -> None:
     """A CLI process (`meow resume`) took this run over: the native session
     must stop driving it, not race it on the same worktree."""
     from meow.execution.orchestration.store import DriverBusyError
+    from meow.native.native_continue import child_of_supervisor
 
-    if driver_alive(record) is True:
+    if driver_alive(record) is True and not child_of_supervisor(record):
         raise DriverBusyError(
             f"run {record.id} is driven by a live CLI process "
             f"(pid {record.driver.get('pid')}); stop editing its worktree and "
@@ -215,6 +218,8 @@ def checkpoint(  # ruff: ignore[too-many-arguments, complex-structure, too-many-
     results["heartbeat_at"] = time.time()
     if intent is not None:
         results["intent"] = intent
+    if session := os.environ.get(SESSION_ENV):  # the session `continue` resumes
+        results["claude_session_id"] = session
     if phase == PARKED_PHASE:
         if record.phase in TERMINAL_PHASES:  # a late crash report must not revive it
             raise RunStateError(

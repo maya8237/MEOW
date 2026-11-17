@@ -610,7 +610,7 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
             auto_retries = run_config(Path(record.repo))["auto_retries"]
         except (OSError, ValueError):
             auto_retries = _DEFAULT_AUTO_RETRIES
-        if unchanged and attempts > auto_retries:
+        if unchanged and attempts > auto_retries and not _continue_unlimited(record):
             park.update(
                 kind="blocking",
                 cause="no_progress",
@@ -693,6 +693,12 @@ def run_owner_alive(record: RunRecord) -> bool | None:
     if (driver := driver_alive(record)) is not None:
         owners.append(driver)
     return any(owners) if owners else None
+
+
+def _continue_unlimited(record: RunRecord) -> bool:
+    from meow.native.native_continue import unlimited
+
+    return unlimited(record)
 
 
 def driver_alive(record: RunRecord) -> bool | None:
