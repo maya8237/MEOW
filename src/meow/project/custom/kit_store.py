@@ -78,7 +78,7 @@ def local_location(text: str) -> str | None:
 
 
 def normalize_url(text: str) -> str:
-    """Turn `github:o/r`, `gitlab:g/s/p`, `o/r`, or a full URL into a git URL."""
+    """Turn `github:o/r`, `gitlab:g/s/p`, `o/r` (GitLab), or a URL into a git URL."""
     text = text.strip()
     if not text or text.startswith("-"):
         raise ValueError(f"not a kit location: {text!r}")
@@ -89,10 +89,11 @@ def normalize_url(text: str) -> str:
     if text.startswith(_SCHEMES) or _SCP.match(text) or Path(text).is_absolute():
         return text
     if _BARE.match(text):
-        return f"https://github.com/{text.removesuffix('.git')}.git"
+        return f"https://gitlab.com/{text.removesuffix('.git')}.git"
     raise ValueError(
-        f"not a kit location: {text!r}; use owner/repo, github:owner/repo, "
-        "gitlab:group/project, a git URL, or a folder (./path, ~/path)"
+        f"not a kit location: {text!r}; use owner/repo (GitLab), "
+        "github:owner/repo, gitlab:group/project, a git URL, "
+        "or a folder (./path, ~/path)"
     )
 
 

@@ -6,7 +6,8 @@ any of `skills/`, `agents/`, `workflows/`, and `hooks/`, plus an optional
 `meow-kit.toml`. The kit does not choose its scope; you do when you install it.
 
 ```bash
-meow kits add acme/meow-kit                              # GitHub shorthand
+meow kits add acme/meow-kit                              # GitLab shorthand (default)
+meow kits add github:acme/meow-kit                       # GitHub
 meow kits add gitlab:platform/tools/meow-kit             # GitLab, subgroups allowed
 meow kits add https://gitlab.example.com/team/meow-kit   # any URL, .git optional
 meow kits add git@gitlab.example.com:team/meow-kit.git   # SSH uses your keys

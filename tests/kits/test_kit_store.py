@@ -14,7 +14,7 @@ from .conftest import SKILL
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("acme/kit", "https://github.com/acme/kit.git"),
+        ("acme/kit", "https://gitlab.com/acme/kit.git"),
         ("github:acme/kit", "https://github.com/acme/kit.git"),
         ("gitlab:platform/tools/kit", "https://gitlab.com/platform/tools/kit.git"),
         ("https://github.com/acme/kit", "https://github.com/acme/kit"),
