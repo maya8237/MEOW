@@ -426,3 +426,14 @@ def test_cli_loop_and_status(repo, monkeypatch, capsys):
     capsys.readouterr()
     assert autopilot_command(["status", state.id, "-d", str(repo)]) == 0
     assert json.loads(capsys.readouterr().out)["id"] == state.id
+
+
+def test_hooks_live_only_in_the_autopilot_skill():
+    root = Path(__file__).resolve().parents[2]
+    text = (root / "skills/autopilot/SKILL.md").read_text(encoding="utf-8")
+    frontmatter = text.split("---")[1]
+    for event in ("Stop", "StopFailure", "Notification"):
+        assert f"\n  {event}:\n" in frontmatter
+        assert f"meow autopilot hook {event} " in frontmatter
+    plugin = (root / "hooks/hooks.json").read_text(encoding="utf-8")
+    assert "autopilot" not in plugin

@@ -1,6 +1,19 @@
 ---
 name: autopilot
 description: Use when the user wants a MEOW build to keep going until it succeeds without them (autopilot, "don't stop", "finish it for me", "keep retrying"), to repeat any prompt or command until a check passes, or to check on or stop an autopilot.
+hooks:
+  Stop:
+    - hooks:
+        - type: command
+          command: 'meow autopilot hook Stop --work-dir "${CLAUDE_PROJECT_DIR:-.}" || true'
+  StopFailure:
+    - hooks:
+        - type: command
+          command: 'meow autopilot hook StopFailure --work-dir "${CLAUDE_PROJECT_DIR:-.}" || true'
+  Notification:
+    - hooks:
+        - type: command
+          command: 'meow autopilot hook Notification --work-dir "${CLAUDE_PROJECT_DIR:-.}" || true'
 ---
 
 # autopilot
