@@ -18,6 +18,7 @@ from claude_agent_sdk import (
     ClaudeSDKClient,
     CLIConnectionError,
     CLINotFoundError,
+    HookMatcher,
     PermissionResultAllow,
     PermissionResultDeny,
     ProcessError,
@@ -43,7 +44,13 @@ from meow.common.process import kill_process_tree
 from meow.execution.run_failures import AgentStalled, TransientRunError
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.usage import record_result
-from meow.infrastructure.user_hooks import SDK_AGENT_ENV, merge_hooks, sdk_hooks
+from meow.infrastructure.user_hooks import (
+    SDK_AGENT_ENV,
+    feedback,
+    merge_hooks,
+    sdk_hooks,
+)
+from meow.project import merge_guard
 from meow.project.config_models import LintCommand
 from meow.project.custom import CustomAgent, Customizations, skill_plugin_dir
 from meow.project.custom.agent_sync import synced_agent_names
@@ -238,6 +245,31 @@ def restrict_writes(
         ),
         interrupt=True,
     )
+
+
+def forbid_merges(options: ClaudeAgentOptions, protected: set[str]) -> None:
+    """Refuse every PR/MR merge and every push to a protected branch.
+
+    A `PreToolUse` hook, not `can_use_tool`: the SDK consults hooks before
+    permission modes, `allowed_tools` and settings-file allow rules, so nothing
+    can approve a merge past it. It runs first, ahead of user hooks.
+    """
+
+    async def deny_merges(input_data, _tool_use_id, _context):  # ruff: ignore[unused-async] -- SDK hooks are coroutines
+        tool_input = input_data.get("tool_input")
+        why = merge_guard.reason(
+            str(input_data.get("tool_name") or ""),
+            tool_input if isinstance(tool_input, dict) else {},
+            protected,
+        )
+        return feedback("PreToolUse", why) if why else {}
+
+    hooks = dict(options.hooks or {})
+    hooks["PreToolUse"] = [
+        HookMatcher(hooks=[deny_merges]),
+        *hooks.get("PreToolUse", []),
+    ]
+    options.hooks = hooks
 
 
 def allow_only_tools(
@@ -979,7 +1011,7 @@ class Agent:
                 *(f"Agent({name})" for name in sorted(names)),
             ]
 
-    def options(  # ruff: ignore[complex-structure, too-many-statements]
+    def options(  # ruff: ignore[complex-structure, too-many-statements, too-many-branches]
         self,
         *,
         system_prompt: str,
@@ -1049,6 +1081,8 @@ class Agent:
                     store.record_activity(run_id, role.lower(), event)
 
             options._meow_activity_callback = stamp_activity
+        if not merge_guard.merge_allowed(self.context.config):
+            forbid_merges(options, merge_guard.protected_branches(self.context.config))
         return options
 
     @staticmethod

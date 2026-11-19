@@ -1,6 +1,12 @@
 ---
 name: run
 description: Use when building features, resolving one or more Jira issues, or coordinating an objective or task file into one reviewed delivery. Defaults to CLI; native execution requires an explicit request.
+hooks:
+  PreToolUse:
+    - matcher: "Bash|mcp__.*"
+      hooks:
+        - type: command
+          command: 'meow native merge-guard --work-dir "${CLAUDE_PROJECT_DIR:-.}"'
 ---
 
 # run
@@ -89,7 +95,8 @@ delivered and verified, or done-and-verified unless the output contains
 the MR/pipeline URLs. Pass `--no-mr` only if the user does not want an MR, and
 `--fix-non-meow-jobs` only if they explicitly ask to fix unrelated (non-MEOW)
 jobs; deploy jobs are never fixed. See `PIPELINE.md` in the Pipeline guide in `meow ui` or the
-[online docs](https://maya8237.github.io/MEOW/) for details.
+[online docs](https://maya8237.github.io/MEOW/) for details. Never merge the PR/MR or push to its
+target unless the user asks; a hook refuses it (`[delivery] allow_merge` lifts it).
 
 Full orchestration uses isolated detached CLI sprints, pushes only after the
 combined objective passes review, and opens one PR unless `--no-mr` is given.
@@ -115,10 +122,9 @@ then fix and review rounds; see `/meow:test`). Without a flag, honor
 `--input name=value` flags. Custom workflows execute through CLI mode;
 the native protocol does not interpret their step trees.
 
-When the user requests `--test`, or asks to run tests, test it, or validate
-behavior, pass `--test` to
-`meow run` (including Jira and `--resume-at review` flows); configured servers
-stay alive throughout tester validation.
+When the user requests `--test`, or asks to run tests, test it, or validate behavior,
+pass `--test` to `meow run` (including Jira and `--resume-at review` flows);
+configured servers stay alive throughout tester validation.
 If the user asks to disable tests, pass `--force-disable-tests`: it overrides
 `--test`, skips the AI tester and configured test/browser gates, and keeps lint/build.
 
@@ -144,8 +150,7 @@ false`, with no stop on `failed` alone. Orchestrator IDs report the
 same fields: settled and retryable, run `next_command` detached; otherwise report
 `not_resumed_reason` (a `blocked` one needs a person) and stop. A `driver_busy` retry (`MEOW_RETRY` or helper
 error) means a live driver owns the run: keep watching, report that reason, and do
-not count it against `managed_resumes`. Scheduled runs still register through
-`/meow:schedule` and never sleep or poll in the session.
+not count it against `managed_resumes`. Scheduled runs use `/meow:schedule`, never in-session polling.
 
 A command exiting `75` (or printing `MEOW_RETRY`) is transient, including bare
 OSError-class failures: wait `retry_after` (it can be long for a rate
@@ -180,18 +185,15 @@ and a `## Sprint Contract`, run `meow run "<request>" --name "<name>"
 which reviews the existing code and generates only what is missing. If there
 is none, or it is incomplete, tell the user and run normally.
 
-Add `-n` / `--no-worktree` to operate in the selected checkout (name optional; not
-applicable to `--jira`, which always uses its own pushable-branch worktree).
+Add `-n` / `--no-worktree` to operate in the selected checkout (name optional; not for `--jira`).
 Runs execute automatically and commit/push verified work from their worktree.
 `-n` leaves changes uncommitted; `-nc` / `--no-worktree-commit` operates in the
 selected checkout and commits only; `-np` / `--no-worktree-push` operates there
 and commits/pushes. Existing linked worktrees selected with `--work-dir` are
 used directly. Add `-m` for plan approval (also when the user asks to review or approve the plan first);
 `--background` rejects manual approval and lint-fix. `meow -u` updates MEOW.
-Successful runs automatically retain the result and clean integrated task artifacts.
-Use `meow cleanup [RUN_ID]` to retry cleanup; omitted IDs scan saved runs.
-Report retained artifacts and their reasons; never force-delete unfinished work.
-Stream its progress (`[planner]`, `[generator]`,
-`[reviewer]`) to the user. Report the plan and review file paths on success
+Success cleans integrated task artifacts (`meow cleanup [RUN_ID]` retries); report
+retained ones and why, never force-delete. Stream `[planner]`/`[generator]`/
+`[reviewer]` progress. Report the plan and review file paths on success
 (or, for `--jira`, the printed `{"issue": ..., "branch": ...}` JSON line), or
 that it failed after `max_rounds` and where the last review is.

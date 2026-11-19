@@ -35,7 +35,7 @@ worktree; keep them consistent.
 | `workflow NAME` / `custom --role ROLE` | Resolved workflow scope, fingerprint, steps / applicable custom skills, capped delegates, scope overrides |
 | `latest-plan` / `latest-review` | Find artifacts in `docs_dir`; review JSON has source `flavor` |
 | `prompt ROLE` | Resolved SDK instructions, query, model, tools, skills, delegates, session; `reviewer-mr` returns a `query_template` instead of a query |
-| `lint` / `hook EVENT` | Project check; `--file PATH` auto-fixes one file, `--fix` project-wide, `--all-blocking` makes advisory commands blocking, `--from-hook` lints a Claude Code hook payload's file / run `hooks/*.toml` for a Claude Code event (payload on stdin; exit 2 blocks) |
+| `lint` / `hook EVENT` / `merge-guard` | `merge-guard`: skills' PreToolUse hook refusing PR/MR merges and target pushes the user did not ask for. Project check; `--file PATH` auto-fixes one file, `--fix` project-wide, `--all-blocking` makes advisory commands blocking, `--from-hook` lints a Claude Code hook payload's file / run `hooks/*.toml` for a Claude Code event (payload on stdin; exit 2 blocks) |
 | `review-checks` | Required verification; `--background` starts a durable job, `--status` reads state and log/result paths |
 | `verdict FILE` | Validate the report and current verification/coverage bindings; returns status/summary |
 | `round ANCHOR` | Advance durable counter; `--show` inspects, `--reset` starts fresh |

@@ -79,7 +79,7 @@ DEFAULT_CONFIG = {
         "integrator": None,
         "pull_request": None,
     },
-    "delivery": {"target_branch": None},
+    "delivery": {"target_branch": None, "allow_merge": False},
     "workflow": {"default": "default"},
 }
 
@@ -265,7 +265,12 @@ def _load_config(working_dir: Path) -> dict:
         raise ValueError(
             f"{_CONFIG_FILENAME}: [delivery].target_branch must be a branch name"
         )
-    config["delivery"] = {"target_branch": target}
+    allow_merge = delivery.get("allow_merge", False)
+    if not isinstance(allow_merge, bool):
+        raise ValueError(
+            f"{_CONFIG_FILENAME}: [delivery].allow_merge must be true or false"
+        )
+    config["delivery"] = {"target_branch": target, "allow_merge": allow_merge}
     config["workflow"] = _workflow_config(user_config)
     config["orchestrator"] = _normalize_orchestrator_config(user_config)
     config["pipeline"] = _normalize_pipeline_config(user_config)

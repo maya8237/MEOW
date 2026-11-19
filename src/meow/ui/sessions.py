@@ -599,7 +599,39 @@ def detect_capabilities(repo: Path) -> Capabilities:
     }
 
 
-def command_for(recipe: Recipe, python: str = sys.executable) -> list[str]:  # ruff: ignore[complex-structure, too-many-statements]
+def _merge_allowed(repo: Path) -> bool:
+    from meow.project.config import load_config
+    from meow.project.merge_guard import merge_allowed
+
+    try:
+        return merge_allowed(load_config(repo))
+    except (OSError, ValueError):
+        return False
+
+
+def merge_guard_settings(repo: Path, python: str = sys.executable) -> str:
+    """`--settings` JSON adding MEOW's merge guard as a `PreToolUse` hook."""
+    command = [
+        python,
+        "-c",
+        "from meow.cli.cli import cli_main; cli_main()",
+        "native",
+        "merge-guard",
+        "--work-dir",
+        str(repo),
+    ]
+    shell = (
+        subprocess.list2cmdline(command)
+        if sys.platform == "win32"
+        else shlex.join(command)
+    )
+    hook = {"type": "command", "command": shell}
+    return json.dumps({
+        "hooks": {"PreToolUse": [{"matcher": "Bash|mcp__.*", "hooks": [hook]}]}
+    })
+
+
+def command_for(recipe: Recipe, python: str = sys.executable) -> list[str]:  # ruff: ignore[complex-structure, too-many-statements, too-many-branches]
     if recipe.mode == "cli":
         argv = _cli_argv(recipe)
         argv[0] = python
@@ -631,6 +663,8 @@ def command_for(recipe: Recipe, python: str = sys.executable) -> list[str]:  # r
     elif capabilities["permission_policy"] == "dontAsk+none":
         # Older Claude versions deny prompts via dontAsk without this extra flag.
         argv.extend(["--permission-prompts", "none"])
+    if not _merge_allowed(Path(recipe.repo)):
+        argv.extend(["--settings", merge_guard_settings(Path(recipe.repo), python)])
     if agent := recipe.options.get("agent"):
         argv.extend(["--agent", str(agent)])
     prompt = (

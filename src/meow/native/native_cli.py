@@ -21,7 +21,7 @@ from meow.execution.run_failures import (
     recognised_transient,
 )
 from meow.execution.run_state import PARKED_PHASE, RunStore, reconcile_quietly
-from meow.native import native
+from meow.native import native, native_hooks
 from meow.native.autopilot import in_autopilot
 from meow.project.config import config_root, load_config
 from meow.project.custom import SKILL_ROLES
@@ -426,6 +426,11 @@ def add_native_parser(  # ruff: ignore[too-many-statements] -- register independ
     workflow.add_argument("name")
     _add_dirs(workflow)
     _add_orchestrate(sub)
+    guard = sub.add_parser(
+        "merge-guard",
+        help="PreToolUse hook: refuse PR/MR merges the user did not ask for.",
+    )
+    _add_dirs(guard)
 
 
 def _resolve(path: str | None, base: Path) -> Path | None:
@@ -603,6 +608,7 @@ _HANDLERS = {
     ),
     "onboard-status": lambda args, wd, active: native.onboard_status(active),
     "run": _orchestrate,
+    "merge-guard": lambda args, wd, active: native_hooks.merge_guard_hook(wd, active),
 }
 
 

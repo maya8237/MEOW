@@ -14,6 +14,11 @@ hooks:
     - hooks:
         - type: command
           command: 'meow autopilot hook Notification --work-dir "${CLAUDE_PROJECT_DIR:-.}" || true'
+  PreToolUse:
+    - matcher: "Bash|mcp__.*"
+      hooks:
+        - type: command
+          command: 'meow native merge-guard --work-dir "${CLAUDE_PROJECT_DIR:-.}"'
 ---
 
 # autopilot
