@@ -33,6 +33,7 @@ from meow.project.custom.kits import (
     kits_home,
     lock_file,
     read_lock,
+    shared_with_user,
     validate_kit,
     write_lock,
 )
@@ -181,6 +182,10 @@ def _claim(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
     name = name or default_name(normalize_url(url))
     if not NAME.match(name):
         raise ValueError(f"invalid kit name {name!r}; use lowercase letters/digits/-")
+    if shared_with_user(scope, project_dir, user_dir):
+        raise ValueError(
+            f"the {scope} config here is your user config; use --scope user"
+        )
     if _declared(project_dir, user_dir, name, scope):
         raise ValueError(f"kit {name!r} is already installed in {scope} scope")
     return url, name

@@ -336,3 +336,26 @@ def test_two_sessions_fetching_the_same_commit_do_not_collide(make_kit, tmp_path
     assert len(set(roots)) == 1
     assert (roots[0] / "agents/reviewer-x.toml").is_file()
     assert not list((roots[0].parent).glob(".fetch-*"))  # no temp folders left
+
+
+def test_home_config_is_user_scope_and_update_never_pins_rev(make_kit, user_dir):
+    """In ~ the project config is the user config: read it once, as user scope."""
+    home = Path.home()
+    repo = kit(make_kit)
+    add(home, user_dir, repo, name="mine")
+    repo.write({"agents/reviewer-x.toml": AGENT.format(d="v2")})
+    kit_ops.update(home, user_dir)
+    assert "rev" not in (user_dir / "config.toml").read_text(encoding="utf-8")
+    assert [s.scope for s in kit_ops.collect_specs(home, user_dir)] == ["user"]
+
+
+def test_project_scope_install_in_home_is_refused(make_kit, user_dir):
+    with pytest.raises(ValueError, match="user config"):
+        add(Path.home(), user_dir, kit(make_kit), name="mine", scope="project")
+
+
+def test_stray_rev_in_user_scope_is_ignored_so_config_stays_usable(tmp_path):
+    sha = "a" * 40
+    entry = {"name": "k", "url": "https://gitlab.com/a/b", "rev": sha}
+    assert parse_kits([entry], "user", tmp_path / "c.toml")[0].rev is None
+    assert parse_kits([entry], "project", tmp_path / "c.toml")[0].rev == sha

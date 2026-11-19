@@ -95,10 +95,8 @@ def _update_mode(raw: dict, where: str) -> str:
 
 def _rev(raw: dict, scope: str, where: str) -> str | None:
     rev = raw.get("rev")
-    if rev is None:
-        return None
-    if scope != "project":
-        raise ValueError(f"{where}: 'rev' pins project kits only")
+    if rev is None or scope != "project":
+        return None  # user/local kits follow their lock; a stray rev must not brick
     if not isinstance(rev, str) or not re.fullmatch(r"[0-9a-f]{40}", rev):
         raise ValueError(f"{where}: 'rev' must be a full 40-character commit id")
     return rev
@@ -183,10 +181,27 @@ def config_file(scope: str, project_dir: Path, user_dir: Path) -> Path:
     return Path(project_dir) / name
 
 
+def shared_with_user(scope: str, project_dir: Path, user_dir: Path) -> bool:
+    """True when this scope's config file is the user config (project in ~)."""
+    if scope == "user":
+        return False
+    path = config_file(scope, project_dir, user_dir)
+    try:
+        return path.resolve() == config_file("user", project_dir, user_dir).resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
 def collect_specs(project_dir: Path, user_dir: Path) -> list[KitSpec]:
-    """Every declared kit, read without loading the rest of the configuration."""
+    """Every declared kit, read without loading the rest of the configuration.
+
+    A file is read in one scope only; the user config stays user scope even when
+    it is also the project's, as in `config._layer_scope`.
+    """
     specs: list[KitSpec] = []
     for scope in SCOPES:
+        if shared_with_user(scope, project_dir, user_dir):
+            continue
         path = config_file(scope, project_dir, user_dir)
         try:
             data = tomllib.loads(path.read_text(encoding="utf-8"))

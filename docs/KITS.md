@@ -62,7 +62,7 @@ at the next Claude Code start and an upgrade is a normal reviewed diff:
 name = "team-kit"
 url = "gitlab:acme/meow-kit"
 ref = "main"                  # what to follow
-rev = "9f3c2a1…40 characters" # written by MEOW; project scope only
+rev = "9f3c2a1…40 characters" # written by MEOW; project scope only; ignored elsewhere
 update = "auto"               # or "pinned": never fetched at startup
 only = ["skills", "agents"]   # optional
 auto_accept_hooks = false     # user and local scope only
