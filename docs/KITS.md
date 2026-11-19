@@ -53,7 +53,8 @@ commit is stored once in `~/.meow/kits/` without `.git`. Only `https`, `ssh`,
 | Commit pin | `~/.meow/kits.lock` | `rev` in `config.toml` (committed) | `.meow/local/kits.lock` |
 | Updates | Automatic | Reported; `meow kits update`, then commit | Automatic |
 
-Lock files are private to a machine and git-ignored. A project kit is pinned
+Lock files are private to a machine and git-ignored; an entry whose commit is
+not a full 40-character id is dropped and fetched afresh. A project kit is pinned
 by `rev` in the committed config, so a teammate downloads exactly that commit
 at the next Claude Code start and an upgrade is a normal reviewed diff:
 

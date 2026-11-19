@@ -15,7 +15,7 @@ from pathlib import Path
 
 from meow.common.atomic import replace_with_retry
 from meow.project.config_files import CONFIG_FILENAME, LOCAL_CONFIG_FILENAME
-from meow.project.custom.kit_store import kit_dir, local_path, normalize_url
+from meow.project.custom.kit_store import is_commit, kit_dir, local_path, normalize_url
 from meow.project.custom.sources import KINDS, SKILL_ROLES, CustomSource
 
 MANIFEST = "meow-kit.toml"
@@ -73,10 +73,10 @@ def _name(raw: dict, where: str) -> str:
 
 
 def _only(raw: dict, where: str) -> tuple[str, ...]:
-    only = tuple(raw.get("only", ()))
-    if not set(only) <= set(KINDS):
+    only = raw.get("only", ())
+    if not isinstance(only, (list, tuple)) or not set(only) <= set(KINDS):
         raise ValueError(f"{where}: 'only' may list {list(KINDS)}")
-    return only
+    return tuple(only)
 
 
 def _ref(raw: dict, where: str) -> str | None:
@@ -148,13 +148,27 @@ def lock_file(scope: str, project_dir: Path, user_dir: Path) -> Path:
     return Path(project_dir) / sub / "kits.lock"
 
 
+def _sound(entry: object) -> bool:
+    """A lock entry whose commits are full ids (a project lock may come from git)."""
+    if not isinstance(entry, dict):
+        return False
+    return all(is_commit(entry[key]) for key in ("sha", "hooks_sha") if key in entry)
+
+
 def read_lock(path: Path) -> dict[str, dict]:
+    """Lock entries; malformed ones are dropped, so they are fetched afresh."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         kits = data.get("kits", {})
     except (OSError, ValueError, AttributeError):
         return {}
-    return kits if isinstance(kits, dict) else {}
+    if not isinstance(kits, dict):
+        return {}
+    sound = {name: dict(e) for name, e in kits.items() if _sound(e)}
+    for entry in sound.values():
+        if "latest" in entry and not is_commit(entry["latest"]):
+            del entry["latest"]
+    return sound
 
 
 def write_lock(path: Path, kits: dict[str, dict]) -> None:
@@ -218,7 +232,10 @@ def kits_home(user_dir: Path) -> Path:
 def _check_roles(table: object, root: Path, only: tuple[str, ...], path: Path):
     if not isinstance(table, dict) or set(table) - {"roles"}:
         raise ValueError(f"{path}: [skills] accepts only [skills.roles]")
-    for skill, wanted in table.get("roles", {}).items():
+    roles = table.get("roles", {})
+    if not isinstance(roles, dict):
+        raise ValueError(f"{path}: [skills.roles] must be a table of skill = [roles]")
+    for skill, wanted in roles.items():
         bad = sorted(set(wanted) - SKILL_ROLES) if isinstance(wanted, list) else None
         if bad is None or bad:
             raise ValueError(f"{path}: [skills.roles].{skill}: unknown role(s) {bad}")
@@ -315,7 +332,9 @@ def env_pins() -> dict[str, dict]:
     return {
         key: pin
         for key, pin in data.items()
-        if isinstance(pin, dict) and isinstance(pin.get("sha"), str)
+        if isinstance(pin, dict)
+        and is_commit(pin.get("sha"))
+        and is_commit(pin.get("hooks_sha") or pin.get("sha"))
     }
 
 
@@ -348,7 +367,8 @@ def kit_sources(
         )
         return [placeholder], {}
     manifest = read_manifest(root, spec.only)
-    hooks_root = _locked_root(spec, entry, home, "hooks_sha") or root
+    # A missing approved-hooks copy means no hooks, never the unapproved commit's.
+    hooks_root = _locked_root(spec, entry, home, "hooks_sha")
     roles = tuple(
         (skill, tuple(wanted))
         for skill, wanted in manifest.get("skills", {}).get("roles", {}).items()
@@ -356,6 +376,8 @@ def kit_sources(
     sources = []
     for kind in KINDS:
         base = hooks_root if kind == "hooks" else root
+        if base is None:
+            continue
         if (not spec.only or kind in spec.only) and (base / kind).is_dir():
             sources.append(
                 CustomSource(

@@ -21,6 +21,7 @@ from meow.project.custom.kit_store import (
     normalize_url,
     remote_sha,
     remove_tree,
+    repo_dir,
     tree,
 )
 from meow.project.custom.kits import (
@@ -32,6 +33,7 @@ from meow.project.custom.kits import (
     effective_entry,
     kits_home,
     lock_file,
+    parse_kits,
     read_lock,
     shared_with_user,
     validate_kit,
@@ -63,16 +65,18 @@ def describe(root: Path) -> list[str]:
     return [*lines, *(f"    hook runs: {line}" for line in hook_lines(root))]
 
 
-def fetch_new(url: str, ref: str | None, user_dir: Path) -> tuple[str, str, Path]:
+def fetch_new(
+    url: str, ref: str | None, user_dir: Path, only: tuple[str, ...] = ()
+) -> tuple[str, str, Path]:
     """Resolve and download a kit before anything is written."""
     remote = normalize_url(url)
     sha = remote_sha(remote, ref)
     root = fetch(kits_home(user_dir), remote, sha)
-    validate_kit(root)
+    validate_kit(root, only)
     return remote, sha, root
 
 
-def add_entry(  # ruff: ignore[too-many-arguments, too-many-positional-arguments]
+def add_entry(  # ruff: ignore[too-many-arguments, too-many-positional-arguments, too-many-statements]
     path: Path, name: str, url: str, ref: str | None, update: str,
     only: tuple[str, ...], auto_accept_hooks: bool, config: bool,
 ) -> None:  # fmt: skip
@@ -93,6 +97,7 @@ def add_entry(  # ruff: ignore[too-many-arguments, too-many-positional-arguments
         table["auto_accept_hooks"] = True
     if config:
         table["config"] = True
+    parse_kits([table.unwrap()], "user", path)  # a bad value must not reach disk
     kits = doc.get("kits")
     if kits is None:
         kits = tomlkit.aot()
@@ -152,7 +157,7 @@ def install(  # ruff: ignore[too-many-arguments]
         return _install_local(
             (project_dir, user_dir), (folder, name, scope, only), confirm, output
         )
-    remote, sha, root = fetch_new(url, ref, user_dir)
+    remote, sha, root = fetch_new(url, ref, user_dir, only)
     output(f"Fetched {name} @ {sha[:7]} ({ref or 'default branch'}) from {remote}")
     for line in describe(root) or ["  (empty)"]:
         output(line)
@@ -161,11 +166,11 @@ def install(  # ruff: ignore[too-many-arguments]
         return None
     target = config_file(scope, project_dir, user_dir)
     accept = auto_accept_hooks and scope != "project"
+    approved = kit_agents.approved_of(kit_agents.kit_agent_tools(root, only))
     add_entry(target, name, url, ref, update, only, accept, config)
     if scope == "project":
         set_rev(target, name, sha)
-    _pin(lock_file(scope, project_dir, user_dir), name, remote, (ref, sha))
-    _approve_installed(lock_file(scope, project_dir, user_dir), name, root, only)
+    _pin(lock_file(scope, project_dir, user_dir), name, remote, (ref, sha, approved))
     output(f"Added kit {name!r} to {target}")
     return next(
         s
@@ -227,8 +232,9 @@ def _install_local(
     )
 
 
-def _pin(lock: Path, name: str, remote: str, ref_sha: tuple[str | None, str]) -> None:
-    ref, sha = ref_sha
+def _pin(lock: Path, name: str, remote: str, pin: tuple[str | None, str, dict]) -> None:
+    """Lock the installed commit; its contents were shown, so agents start approved."""
+    ref, sha, approved = pin
     kits = read_lock(lock)
     kits[name] = {
         "url": remote,
@@ -236,16 +242,8 @@ def _pin(lock: Path, name: str, remote: str, ref_sha: tuple[str | None, str]) ->
         "sha": sha,
         "hooks_sha": sha,
         "checked_at": time.time(),
+        kit_agents.LOCK_KEY: approved,
     }
-    write_lock(lock, kits)
-
-
-def _approve_installed(lock: Path, name: str, root: Path, only: tuple[str, ...]):
-    """Installing shows the kit's contents and asks, so its agents start approved."""
-    kits = read_lock(lock)
-    kits[name][kit_agents.LOCK_KEY] = kit_agents.approved_of(
-        kit_agents.kit_agent_tools(root, only)
-    )
     write_lock(lock, kits)
 
 
@@ -319,14 +317,14 @@ def _advance(kit: Kit, entry: dict, latest: str, accept: bool) -> list[str]:
     held = entry.get("hooks_sha") or old
     root = kit.fetch(latest)
     validate_kit(root, spec.only)
+    if old is None or _trusts_hooks(spec, accept):
+        entry["sha"] = entry["hooks_sha"] = latest
+        return [f"kit {spec.name}: updated to {latest[:7]}"]
+    held_root = kit.fetch(held)
     entry["sha"] = latest
-    unchanged = held is not None and tree(kit.root(held) / "hooks") == (
-        tree(root / "hooks")
-    )
-    if old is None or unchanged or _trusts_hooks(spec, accept):
+    if tree(held_root / "hooks") == tree(root / "hooks"):
         entry["hooks_sha"] = latest
         return [f"kit {spec.name}: updated to {latest[:7]}"]
-    kit.fetch(held)
     entry["hooks_sha"] = held
     return [
         f"kit {spec.name}: updated to {latest[:7]}",
@@ -379,8 +377,9 @@ def _check(spec: KitSpec, entry: dict | None, plan: Plan) -> tuple[dict | None, 
         note = [f"kit {spec.name}: local folder, always current"]
         return None, note * plan.manual
     kit = Kit(spec, plan.home, plan.timeout)
-    if entry and entry.get("sha"):  # the pinned copy must be on disk
-        kit.fetch(entry["sha"])
+    if entry and entry.get("sha"):  # the pinned copies must be on disk
+        for sha in {entry["sha"], entry.get("hooks_sha") or entry["sha"]}:
+            kit.fetch(sha)
     if plan.pinned(spec, entry) or not plan.due(spec, entry):
         return None, []
     follows_lock = spec.scope == "project" and entry is not None
@@ -396,7 +395,7 @@ def _safe_check(spec: KitSpec, entry: dict | None, plan: Plan):
         return None, [
             f"kit {spec.name}: could not reach or fetch ({exc})"
         ] * plan.manual
-    except ValueError as exc:
+    except (OSError, ValueError) as exc:
         return None, [f"kit {spec.name}: {exc}"]
 
 
@@ -453,10 +452,10 @@ def _prune_all(project_dir: Path, user_dir: Path, specs: list[KitSpec]) -> None:
 def _visit(project_dir: Path, user_dir: Path, names: tuple[str, ...], plan: Plan):
     specs = _select(project_dir, user_dir, names)
     locks = {s.scope: read_lock(_lock(s, project_dir, user_dir)) for s in specs}
-    before = {s.name: locks[s.scope].get(s.name) for s in specs}
+    before = {(s.scope, s.name): locks[s.scope].get(s.name) for s in specs}
 
     def effective(spec: KitSpec) -> dict | None:
-        return effective_entry(spec, before[spec.name])
+        return effective_entry(spec, before[spec.scope, spec.name])
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(lambda s: _safe_check(s, effective(s), plan), specs))
@@ -464,7 +463,7 @@ def _visit(project_dir: Path, user_dir: Path, names: tuple[str, ...], plan: Plan
     for spec, (entry, found) in zip(specs, results, strict=True):
         if entry is not None:
             locks[spec.scope][spec.name] = entry
-            lines += _write_rev(spec, entry, before[spec.name], plan)
+            lines += _write_rev(spec, entry, before[spec.scope, spec.name], plan)
             lines += _available(spec, entry) if plan.manual and not plan.apply else []
         lines += found
     for scope, data in locks.items():
@@ -540,7 +539,7 @@ def _pinned_shas(project_dir: Path, user_dir: Path, remote: str) -> set[str]:
 def _prune_cache(project_dir: Path, user_dir: Path, remote: str) -> list[str]:
     """Delete cached commits of `remote` that no lock file here still pins."""
     used = _pinned_shas(project_dir, user_dir, remote)
-    repo = kit_dir(kits_home(user_dir), remote, "x").parent
+    repo = repo_dir(kits_home(user_dir), remote)
     gone = []
     for folder in repo.iterdir() if repo.is_dir() else ():
         if folder.is_dir() and folder.name not in used:
@@ -571,7 +570,8 @@ def listing(project_dir: Path, user_dir: Path) -> list[str]:
         state = f"@ {sha[:7]}" if fetched else "not downloaded"
         if entry.get("latest") and entry["latest"] != sha:
             state += f" (update available: {entry['latest'][:7]})"
-        hold = " (hook changes on hold)" if entry.get("hooks_sha") != sha else ""
+        held = (entry.get("hooks_sha") or sha) != sha
+        hold = " (hook changes on hold)" if held else ""
         head = f"{spec.name:<20} {spec.scope:<8} {spec.update:<7}"
         lines.append(f"{head} {state}{hold}  {spec.url}")
     return lines or ["No kits installed. Add one: meow kits add URL"]
@@ -584,12 +584,11 @@ def show(project_dir: Path, user_dir: Path, name: str) -> list[str]:
             if folder := local_path(spec.url):
                 body = describe(folder) if folder.is_dir() else ["  folder missing"]
                 return [f"{name} ({spec.scope} scope) local folder {folder}", *body]
-            root = kit_dir(
-                kits_home(user_dir), normalize_url(spec.url), entry.get("sha", "-")
-            )
+            sha = entry.get("sha")
+            root = sha and kit_dir(kits_home(user_dir), normalize_url(spec.url), sha)
             body = (
                 describe(root)
-                if root.is_dir()
+                if root and root.is_dir()
                 else ["  not downloaded: meow kits update"]
             )
             return [f"{name} ({spec.scope} scope) {spec.url}", *body]

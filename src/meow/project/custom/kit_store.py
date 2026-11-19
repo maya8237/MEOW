@@ -150,9 +150,21 @@ def remote_sha(url: str, ref: str | None = None, timeout: float = 20) -> str:
     raise ValueError(f"{url}: no branch or tag named {ref!r}")
 
 
-def kit_dir(home: Path, url: str, sha: str) -> Path:
+def is_commit(value: object) -> bool:
+    """A full commit id: the only form a lock, pin, or rev may hand to git."""
+    return isinstance(value, str) and bool(_HEX40.match(value))
+
+
+def repo_dir(home: Path, url: str) -> Path:
+    """The cache folder holding every stored commit of `url`."""
     leaf = re.sub(r"[^\w.-]+", "-", default_name(url))
-    return home / f"{leaf}-{hashlib.sha1(url.encode()).hexdigest()[:10]}" / sha
+    return home / f"{leaf}-{hashlib.sha1(url.encode()).hexdigest()[:10]}"
+
+
+def kit_dir(home: Path, url: str, sha: str) -> Path:
+    if not is_commit(sha):  # an option-like or path-like value must not get further
+        raise ValueError(f"{url}: {sha!r} is not a full commit id")
+    return repo_dir(home, url) / sha
 
 
 def _download(url: str, sha: str, repo: Path, timeout: float) -> None:
