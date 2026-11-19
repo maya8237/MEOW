@@ -1,6 +1,6 @@
 ---
 name: schedule
-description: Use when scheduling a MEOW request, workflow, or Jira issue for later, or listing, rescheduling, or cancelling its OS trigger.
+description: Use when scheduling a MEOW request, workflow, or Jira issue for later, or listing, rescheduling, or cancelling its trigger.
 ---
 
 # schedule
