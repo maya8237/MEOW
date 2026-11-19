@@ -13,6 +13,7 @@ Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](OR
 | `meow status [ID]` | Inspect the latest or named run; `--verbose` includes evidence, `--json` the [retry contract](RUNS.md#managed-runs) |
 | `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates, `--parked` continues every parked run (JSON summary; exit 0 settled, 75 pending, 1 blocked or retries exhausted) |
 | `meow cancel ID` | Cooperatively stop a run, preserving recovery state |
+| `meow autopilot` | [Run until success](RUNS.md#autopilot); `loop`, `stop`, `status`, `resume` |
 | `meow worktree` | List, inspect, or safely clean owned worktrees |
 | `meow cleanup [ID]` | [Keep results and remove integrated task artifacts](CLEANUP.md) |
 | `meow detach [--log FILE] -- CMD...` | Detach a command; returns PID and log JSON |
@@ -28,8 +29,7 @@ Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](OR
 `mw` aliases `meow`. Shortcuts: `r` run, `p` plan, `rv` review, `l` lint (`run --lint-fix`),
 `s` status, `x` cancel, `c` resume, `q` queue, `w` worktree, `i` ipython.
 
-Bare `meow` opens IPython. Use `meow run` to preserve IPython's `%run`;
-other commands work directly or through `%meow`/`!meow`.
+Bare `meow` opens IPython (use `meow run` there; others work via `%meow`/`!meow`).
 
 ## Common options
 

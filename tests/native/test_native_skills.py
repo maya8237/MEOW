@@ -19,6 +19,7 @@ CLI_FALLBACKS = {
     "review": "meow review",
     "lint": "meow run --lint-fix --report-only",
     "schedule": "meow schedule",
+    "autopilot": "meow autopilot",
 }
 
 

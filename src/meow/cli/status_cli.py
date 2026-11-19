@@ -29,6 +29,7 @@ from meow.execution.run_state import (
 from meow.infrastructure.background import inspect_worker, reconcile_worker
 from meow.infrastructure.quality import Concern, QualityStoreError, concerns_for_run
 from meow.infrastructure.usage import usage_totals
+from meow.native.autopilot import active as autopilot_active
 from meow.project.config import load_config, run_config
 from meow.project.tester_setup import browser_default_notice, inferred_tester_lines
 
@@ -314,9 +315,11 @@ def status(
         # Imported here: run_contract builds on resume_cli, which imports us.
         from meow.cli.run_contract import status_payload
 
-        supervised = record.phase == PARKED_PHASE and inspect_worker(
-            record, include_terminal=True
-        ).state in {"running", "starting"}
+        supervised = autopilot_active(record) or (
+            record.phase == PARKED_PHASE
+            and inspect_worker(record, include_terminal=True).state
+            in {"running", "starting"}
+        )
         worker = inspect_worker(record).state
         print(json.dumps(status_payload(record, worker, supervised=supervised)))
         return 0

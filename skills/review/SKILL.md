@@ -1,6 +1,12 @@
 ---
 name: review
 description: Use when reviewing existing code or fixing review findings against a prompt, Jira issue, PR/MR, branch, plan, saved review, or CI checkout. Defaults to native, except CI and tester flows.
+hooks:
+  PreToolUse:
+    - matcher: "Bash|mcp__.*"
+      hooks:
+        - type: command
+          command: 'meow native merge-guard --work-dir "${CLAUDE_PROJECT_DIR:-.}"'
 ---
 
 # review

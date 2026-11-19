@@ -19,6 +19,7 @@ from meow.infrastructure.user_hooks import (
     matching,
     run_hook,
 )
+from meow.project import merge_guard
 from meow.project.config import config_root, load_config
 
 
@@ -66,3 +67,31 @@ def hook(working_dir: Path, active_dir: Path, options: HookOptions) -> dict:
         print(message, file=sys.stderr)
         raise SystemExit(BLOCK_EXIT_CODE)
     return {}
+
+
+def merge_guard_hook(working_dir: Path, active_dir: Path) -> dict:
+    """`PreToolUse` hook of the run/autopilot/review skills: exit 2 (deny) on a
+    PR/MR merge or a push to a protected branch, unless `[delivery]
+    allow_merge` is set or the user's latest typed message asks to merge."""
+    payload = _payload()
+    tool_input = payload.get("tool_input")
+    try:
+        config = load_config(config_root(working_dir, active_dir))
+    except (OSError, ValueError):
+        config = {}
+    why = merge_guard.reason(
+        str(payload.get("tool_name") or ""),
+        tool_input if isinstance(tool_input, dict) else {},
+        merge_guard.protected_branches(config),
+    )
+    if why is None or merge_guard.merge_allowed(config):
+        return {}
+    transcript = payload.get("transcript_path")
+    if merge_guard.asked_to_merge(
+        merge_guard.latest_user_message(
+            transcript if isinstance(transcript, str) else None
+        )
+    ):
+        return {}
+    print(why, file=sys.stderr)
+    raise SystemExit(BLOCK_EXIT_CODE)

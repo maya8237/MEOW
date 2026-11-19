@@ -170,7 +170,9 @@ Native uses connected tools.
 `[run]`: `auto_retries` (3), `retry_backoff` ([60, 300, 900] s), `managed_resumes`
 (6, per parked run and queue item), `max_total_resumes` (20), `api_max_wait` (10800 s),
 `worker_startup_grace` (180 s), `supervise` (false), `stale_after` (7200 s: parks a
-silent native `--intent run`). See [RUNS.md](RUNS.md#managed-runs).
+silent native `--intent run`); [autopilot](RUNS.md#autopilot): `autopilot_cap` (0 =
+none), `autopilot_stall` (1200 s), `autopilot_answer_wait` (600 s),
+`autopilot_command`, `autopilot_prompt`, `claude_args`. See [RUNS.md](RUNS.md#managed-runs).
 
 ## Scheduling automatic runs
 

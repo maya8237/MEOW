@@ -10,6 +10,7 @@ SKILLS = [
     "skills/review/SKILL.md",
     "skills/plan/SKILL.md",
     "skills/schedule/SKILL.md",
+    "skills/autopilot/SKILL.md",
     "skills/_shared/native-mode.md",
 ]
 DOCS = [

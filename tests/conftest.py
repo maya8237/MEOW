@@ -7,6 +7,7 @@ import pytest
 import structlog
 
 from meow.project import repos
+from meow.project.custom import kit_store
 
 
 @pytest.fixture(autouse=True)
@@ -64,6 +65,8 @@ def _isolated_home(tmp_path_factory, monkeypatch):
     for name in ("HOME", "USERPROFILE"):
         monkeypatch.setenv(name, str(home))
     monkeypatch.setattr(repos, "registry_path", lambda: home / "repos.toml")
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    kit_store._sites.cache_clear()
 
 
 def parse_shard(spec):

@@ -92,6 +92,13 @@ downloadable CI artifact. Optionally post inline comments on pull/merge requests
 The job reports findings without applying code fixes.
 Example: `/meow:integrate-ci-review`. [Reference](../skills/integrate-ci-review/SKILL.md)
 
+## /meow:autopilot
+
+Build a request natively and keep going until it succeeds: crashes, API errors,
+stalls and unanswered questions are retried with no limit unless you set one.
+Also repeats any prompt or command until a check passes; `meow autopilot stop ID` ends it.
+Example: `/meow:autopilot Add a dark mode toggle`. [Reference](../skills/autopilot/SKILL.md)
+
 ## /meow:schedule
 
 Schedule a request, workflow, or issue for later, or list, reschedule, and cancel triggers.

@@ -216,6 +216,64 @@ def _warn_site_mismatch(config: dict, provider: str, mcp: dict) -> None:
         )
 
 
+_GIT_SITE_VARIABLES = {
+    "github": ("GITHUB_HOST",),
+    "gitlab": ("GITLAB_API_URL", "GITLAB_URL"),
+}
+
+
+def _git_site(value: str) -> str | None:
+    """`https://host[:port][/prefix]` from a host or API URL; never credentials."""
+    value = value.strip()
+    parsed = urlparse(value if "://" in value else f"https://{value}")
+    try:
+        host, port = parsed.hostname, parsed.port
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"} or not host:
+        return None
+    path = parsed.path.rstrip("/")
+    for suffix in ("/api/v4", "/api/v3"):
+        path = path.removesuffix(suffix)
+    return f"https://{host}{f':{port}' if port else ''}{path.rstrip('/')}"
+
+
+def _server_git_site(server: object, provider: str) -> str | None:
+    """The site a matching server's environment names, if any."""
+    env = server.get("env") if isinstance(server, dict) else None
+    if not isinstance(env, dict) or server.get("disabled"):
+        return None
+    for variable in _GIT_SITE_VARIABLES[provider]:
+        value = env.get(variable)
+        if isinstance(value, str) and value.strip():
+            try:
+                return _git_site(_expand(value))
+            except ValueError:
+                return None
+    return None
+
+
+def provider_git_sites(root: Path, *, home: Path | None = None) -> dict:
+    """Git web roots of GitHub/GitLab MCP servers across every Claude scope.
+
+    Reads `GITHUB_HOST`, `GITLAB_API_URL`, or `GITLAB_URL` from the effective
+    registrations (user, project `.mcp.json`, user project). A provider whose
+    servers name different sites, or none, is left out.
+    """
+    registry = discover_registry(root, home=home)
+    sites = {}
+    for provider, names in _provider_matches(registry).items():
+        if provider not in _GIT_SITE_VARIABLES:
+            continue
+        found = {_server_git_site(registry[name], provider) for name in names}
+        found.discard(None)
+        if len(found) == 1:
+            sites[provider] = found.pop()
+        elif found:
+            logger.warning("mcp_git_site_ambiguous", provider=provider)
+    return sites
+
+
 def provider_mcp_config(config: dict, provider: str) -> dict:
     """Resolve the requested provider and warn about a site mismatch."""
     provider = _CONFIG_ALIASES.get(provider, provider)

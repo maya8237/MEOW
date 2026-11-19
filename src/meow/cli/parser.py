@@ -35,6 +35,7 @@ _VISIBLE_COMMANDS = (
     "schedule",
     "onboard",
     "mcp",
+    "autopilot",
 )
 
 
@@ -398,6 +399,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
         ),
     )
     _add_common_args(resume_parser)
+    autopilot_parser = subparsers.add_parser(
+        "autopilot",
+        help="Keep a MEOW run (or any command) going until it succeeds.",
+        add_help=False,
+    )
+    autopilot_parser.add_argument("autopilot_argv", nargs=argparse.REMAINDER)
     detach_parser = _add_hidden_parser(subparsers, "detach")
     detach_parser.add_argument("--log", metavar="FILE", default=None)
     detach_parser.add_argument("detach_argv", nargs=argparse.REMAINDER)

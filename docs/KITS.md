@@ -37,6 +37,11 @@ An absolute path to a git repository is still fetched as a git kit.
 
 ## Fetching
 
+Shorthands (`owner/repo`, `github:`, `gitlab:`) use the site of a GitHub or
+GitLab MCP server registered in any Claude scope (user, project `.mcp.json`,
+user project) via `GITHUB_HOST`, `GITLAB_API_URL`, or `GITLAB_URL`; otherwise
+github.com/gitlab.com. Servers naming different sites fall back too.
+
 MEOW runs plain `git` against the clone URL, so your own login (credential
 helper, SSH keys, token) covers private repos and it never prompts for a
 password. `git ls-remote` resolves the ref to a commit; a shallow

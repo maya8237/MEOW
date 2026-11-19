@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from meow.project.custom.kit_store import (
@@ -65,3 +68,64 @@ def test_kit_with_symlink_is_rejected(make_kit, tmp_path):
     with pytest.raises(ValueError, match="symbolic link"):
         fetch(tmp_path / "cache", str(repo.path), sha)
     assert not list((tmp_path / "cache").glob("*/*"))
+
+
+def _register(path, servers, project=None):
+    data = {"mcpServers": servers}
+    if project:
+        data = {"projects": {str(project): {"mcpServers": servers}}}
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def _server(name, **env):
+    return {"command": name, "args": [], "env": env}
+
+
+@pytest.fixture
+def workspace(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+def test_shorthands_use_user_scope_mcp_hosts(workspace):
+    _register(
+        Path.home() / ".claude.json",
+        {
+            "gitlab": _server(
+                "gitlab-mcp", GITLAB_API_URL="https://git.acme.io/api/v4"
+            ),
+            "github": _server("github-mcp-server", GITHUB_HOST="gh.acme.io"),
+        },
+    )
+    assert normalize_url("a/kit") == "https://git.acme.io/a/kit.git"
+    assert normalize_url("gitlab:g/s/kit") == "https://git.acme.io/g/s/kit.git"
+    assert normalize_url("github:a/kit") == "https://gh.acme.io/a/kit.git"
+    assert normalize_url("https://x.io/a/kit") == "https://x.io/a/kit"
+
+
+def test_shorthands_use_project_mcp_json_and_user_project_scope(workspace):
+    _register(
+        workspace / ".mcp.json",
+        {"gitlab": _server("npx", GITLAB_URL="https://user:pw@gl.acme.io:8443/sub/")},
+    )
+    _register(
+        Path.home() / ".claude.json",
+        {"github": _server("github-mcp-server", GITHUB_HOST="https://ghe.acme.io")},
+        project=workspace.resolve(),
+    )
+    assert normalize_url("a/kit") == "https://gl.acme.io:8443/sub/a/kit.git"
+    assert normalize_url("github:a/kit") == "https://ghe.acme.io/a/kit.git"
+
+
+def test_shorthands_fall_back_to_public_hosts(workspace, monkeypatch):
+    monkeypatch.delenv("UNSET_GL", raising=False)
+    _register(
+        Path.home() / ".claude.json",
+        {
+            "gitlab-a": _server("gitlab", GITLAB_API_URL="https://a.io/api/v4"),
+            "gitlab-b": _server("gitlab", GITLAB_API_URL="https://b.io/api/v4"),
+            "github": _server("github", GITHUB_HOST="${UNSET_GL}"),
+        },
+    )
+    assert normalize_url("a/kit") == "https://gitlab.com/a/kit.git"
+    assert normalize_url("github:a/kit") == "https://github.com/a/kit.git"

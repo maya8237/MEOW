@@ -13,15 +13,17 @@ import shutil
 import stat
 import subprocess
 import tempfile
+from functools import cache
 from pathlib import Path
 
 from meow.common.atomic import move_directory
+from meow.project.mcp_registry import provider_git_sites
 
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
 _SHORTHAND = re.compile(r"^(github|gitlab):([\w.-]+(?:/[\w.-]+)+?)(?:\.git)?$")
 _BARE = re.compile(r"^[\w.-]+/[\w.-]+?(?:\.git)?$")
 _SCP = re.compile(r"^[\w.-]+@[\w.-]+:[\w./~-]+$")
-_HOSTS = {"github": "github.com", "gitlab": "gitlab.com"}
+_SITES = {"github": "https://github.com", "gitlab": "https://gitlab.com"}
 _SCHEMES = ("https://", "ssh://", "git://", "file://")
 _PROTOCOLS = "file:git:https:ssh"
 
@@ -77,19 +79,30 @@ def local_location(text: str) -> str | None:
     return f"{LOCAL}{folder}"
 
 
+@cache
+def _sites(root: Path) -> dict:
+    """Shorthand hosts: the project's GitHub/GitLab MCP servers, else public."""
+    return {**_SITES, **provider_git_sites(root)}
+
+
 def normalize_url(text: str) -> str:
-    """Turn `github:o/r`, `gitlab:g/s/p`, `o/r` (GitLab), or a URL into a git URL."""
+    """Turn `github:o/r`, `gitlab:g/s/p`, `o/r` (GitLab), or a URL into a git URL.
+
+    Shorthands use the host of a GitHub/GitLab MCP server registered in any
+    Claude scope for the current project, falling back to github.com/gitlab.com.
+    """
     text = text.strip()
     if not text or text.startswith("-"):
         raise ValueError(f"not a kit location: {text!r}")
     if text.startswith(LOCAL):
         return text
     if match := _SHORTHAND.match(text):
-        return f"https://{_HOSTS[match[1]]}/{match[2]}.git"
+        return f"{_sites(Path.cwd().resolve())[match[1]]}/{match[2]}.git"
     if text.startswith(_SCHEMES) or _SCP.match(text) or Path(text).is_absolute():
         return text
     if _BARE.match(text):
-        return f"https://gitlab.com/{text.removesuffix('.git')}.git"
+        site = _sites(Path.cwd().resolve())["gitlab"]
+        return f"{site}/{text.removesuffix('.git')}.git"
     raise ValueError(
         f"not a kit location: {text!r}; use owner/repo (GitLab), "
         "github:owner/repo, gitlab:group/project, a git URL, "
