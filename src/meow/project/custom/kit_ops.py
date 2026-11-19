@@ -32,9 +32,11 @@ from meow.project.custom.kits import (
     contents,
     effective_entry,
     kits_home,
+    known_projects,
     lock_file,
     parse_kits,
     read_lock,
+    remember_project,
     shared_with_user,
     validate_kit,
     write_lock,
@@ -153,6 +155,7 @@ def install(  # ruff: ignore[too-many-arguments]
 ) -> KitSpec | None:
     """Fetch a kit, show what it contains, and (once confirmed) declare and pin it."""
     url, name = _claim(project_dir, user_dir, url, name, scope)
+    remember_project(project_dir, user_dir)
     if folder := local_path(url):
         return _install_local(
             (project_dir, user_dir), (folder, name, scope, only), confirm, output
@@ -451,6 +454,8 @@ def _prune_all(project_dir: Path, user_dir: Path, specs: list[KitSpec]) -> None:
 
 def _visit(project_dir: Path, user_dir: Path, names: tuple[str, ...], plan: Plan):
     specs = _select(project_dir, user_dir, names)
+    if specs:
+        remember_project(project_dir, user_dir)
     locks = {s.scope: read_lock(_lock(s, project_dir, user_dir)) for s in specs}
     before = {(s.scope, s.name): locks[s.scope].get(s.name) for s in specs}
 
@@ -514,6 +519,7 @@ def uninstall(  # ruff: ignore[too-many-arguments]
         scopes = ", ".join(s.scope for s in matches)
         raise ValueError(f"kit {name!r} is installed in {scopes}; pass --scope")
     spec = matches[0]
+    remember_project(project_dir, user_dir)
     lock = _lock(spec, project_dir, user_dir)
     kits = read_lock(lock)
     kits.pop(name, None)
@@ -525,7 +531,7 @@ def uninstall(  # ruff: ignore[too-many-arguments]
     return lines
 
 
-def _pinned_shas(project_dir: Path, user_dir: Path, remote: str) -> set[str]:
+def _project_shas(project_dir: Path, user_dir: Path, remote: str) -> set[str]:
     shas = set()
     for s in collect_specs(project_dir, user_dir):
         if normalize_url(s.url) != remote:
@@ -536,9 +542,18 @@ def _pinned_shas(project_dir: Path, user_dir: Path, remote: str) -> set[str]:
     return shas | active_run_shas(project_dir, remote)
 
 
+def _pinned_shas(project_dir: Path, user_dir: Path, remote: str) -> set[str]:
+    """Commits of `remote` that any project using kits still needs."""
+    projects = {Path(project_dir).resolve(), *known_projects(user_dir)}
+    return set().union(*(_project_shas(p, user_dir, remote) for p in projects))
+
+
 def _prune_cache(project_dir: Path, user_dir: Path, remote: str) -> list[str]:
-    """Delete cached commits of `remote` that no lock file here still pins."""
-    used = _pinned_shas(project_dir, user_dir, remote)
+    """Delete cached commits of `remote` that no known project still pins."""
+    try:
+        used = _pinned_shas(project_dir, user_dir, remote)
+    except (OSError, ValueError):
+        return []  # a project we cannot read may need any commit: keep them all
     repo = repo_dir(kits_home(user_dir), remote)
     gone = []
     for folder in repo.iterdir() if repo.is_dir() else ():

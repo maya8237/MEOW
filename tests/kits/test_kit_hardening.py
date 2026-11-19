@@ -160,3 +160,50 @@ def test_one_failing_kit_does_not_stop_the_others(
     monkeypatch.setattr(kit_ops, "_check", flaky)
     lines = kit_ops.update(project, user_dir)
     assert any("kit a:" in line and "disk says no" in line for line in lines)
+
+
+def _other_project(tmp_path):
+    path = tmp_path / "other"
+    path.mkdir()
+    return path
+
+
+def test_cleanup_keeps_commits_another_project_pins(
+    make_kit, project, user_dir, tmp_path
+):
+    """The cache is shared: one project's update must not delete another's commit."""
+    other = _other_project(tmp_path)
+    repo = kit(make_kit)
+    add(other, user_dir, repo, name="k", scope="local")
+    old = read_lock(_lock(other, user_dir, "local"))["k"]["sha"]
+    add(project, user_dir, repo, name="k", scope="local")
+    repo.write({"skills/s/SKILL.md": SKILL.format(name="s", body="v2")})
+    kit_ops.update(project, user_dir)
+    assert kit_dir(kits_home(user_dir), str(repo.path), old).is_dir()
+    assert "s" in [s.name for s in load_config(other)["customizations"].skills]
+
+
+def test_cleanup_forgets_deleted_projects(make_kit, project, user_dir, tmp_path):
+    other = _other_project(tmp_path)
+    repo = kit(make_kit)
+    add(other, user_dir, repo, name="k", scope="local")
+    old = read_lock(_lock(other, user_dir, "local"))["k"]["sha"]
+    remove_tree(other)
+    add(project, user_dir, repo, name="k", scope="local")
+    repo.write({"skills/s/SKILL.md": SKILL.format(name="s", body="v2")})
+    kit_ops.update(project, user_dir)
+    assert not kit_dir(kits_home(user_dir), str(repo.path), old).is_dir()
+
+
+def test_cleanup_deletes_nothing_when_a_project_is_unreadable(
+    make_kit, project, user_dir, tmp_path
+):
+    other = _other_project(tmp_path)
+    repo = kit(make_kit)
+    add(other, user_dir, repo, name="k", scope="local")
+    old = read_lock(_lock(other, user_dir, "local"))["k"]["sha"]
+    (other / ".meow" / "config.local.toml").write_text("kits = 3\n")
+    add(project, user_dir, repo, name="k", scope="local")
+    repo.write({"skills/s/SKILL.md": SKILL.format(name="s", body="v2")})
+    kit_ops.update(project, user_dir)
+    assert kit_dir(kits_home(user_dir), str(repo.path), old).is_dir()

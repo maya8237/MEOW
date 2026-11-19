@@ -172,5 +172,6 @@ adds user kits, and the installer prompts for one in a terminal. On an
 existing setup use `meow kits add`: the installer also updates MEOW itself.
 The [uninstaller](INSTALL.md#uninstall) asks about each user kit.
 `meow kits uninstall` removes the config entry, lock entry, published skills
-and hooks, and cached commits no lock pins. Editing the files by hand
+and hooks, and cached commits no project using kits still pins (projects are
+listed in `~/.meow/kits/projects.json`). Editing the files by hand
 works too; startup sync notices.

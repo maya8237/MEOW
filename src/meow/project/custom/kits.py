@@ -175,14 +175,41 @@ def write_lock(path: Path, kits: dict[str, dict]) -> None:
     if not kits:
         path.unlink(missing_ok=True)
         return
+    _write_json(path, {"kits": kits})
+
+
+def _write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps({"kits": kits}, indent=2, sort_keys=True) + "\n"
+    text = json.dumps(data, indent=2, sort_keys=True) + "\n"
     pending = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
         pending.write_text(text, encoding="utf-8")
         replace_with_retry(pending, path)  # never half-written, even on Windows
     finally:
         pending.unlink(missing_ok=True)
+
+
+# The commit cache is shared by every project; cleanup must see all their locks.
+_PROJECTS = "projects.json"
+
+
+def known_projects(user_dir: Path) -> list[Path]:
+    """Projects that have used kits and still exist (cleanup checks their locks)."""
+    try:
+        data = json.loads((kits_home(user_dir) / _PROJECTS).read_text("utf-8"))
+    except (OSError, ValueError):
+        return []
+    paths = data.get("projects", []) if isinstance(data, dict) else []
+    return [Path(p) for p in paths if isinstance(p, str) and Path(p).is_dir()]
+
+
+def remember_project(project_dir: Path, user_dir: Path) -> None:
+    """Record that `project_dir` uses kits; deleted projects drop out here."""
+    project = str(Path(project_dir).resolve())
+    found = [str(p) for p in known_projects(user_dir)]
+    if project not in found or len(found) != len(set(found)):
+        found = sorted({*found, project})
+        _write_json(kits_home(user_dir) / _PROJECTS, {"projects": found})
 
 
 SCOPES = ("local", "project", "user")
