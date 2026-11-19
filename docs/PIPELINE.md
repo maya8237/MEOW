@@ -31,6 +31,12 @@ only, inside the deliver step.
 | `--from BRANCH` | Start work from this branch; does not set the MR target |
 | `--fix-non-meow-jobs` | Also fix other failing jobs in a worktree run |
 
+MEOW never merges its PR/MR, and never pushes to the target, `main` or `master`,
+unless you ask. Every MEOW agent and the run/review/autopilot skills refuse
+`gh pr merge`, `glab mr merge`, merge/auto-merge API calls and MCP tools, and
+such pushes. Native sessions allow it when your latest message asks for the
+merge; `[delivery] allow_merge = true` allows it everywhere.
+
 The MR target is `--target`, otherwise `[delivery].target_branch`. Auto-onboarding
 saves `dev` if it exists locally or on origin, otherwise `master`. Existing config
 values are preserved; interactive onboarding offers to change the target.

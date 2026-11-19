@@ -22,6 +22,25 @@ def _retryable(error: OSError) -> bool:
     )
 
 
+def read_text_with_retry(
+    path: Path, *, attempts: int = 10, delay: float = 0.02, max_delay: float = 0.5
+) -> str:
+    """`Path.read_text` that waits out a writer's atomic replace on Windows.
+
+    Reading while another process `os.replace`s the file raises a transient
+    sharing error there; any other error (or the last attempt's) is re-raised.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError as error:
+            if not _retryable(error) or attempt == attempts:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, max_delay)
+    raise AssertionError("unreachable")
+
+
 def replace_with_retry(  # ruff: ignore[too-many-arguments]
     source: Path,
     target: Path,

@@ -92,7 +92,9 @@ def request_cancel(store: RunStore, run_id: str) -> RunRecord:
     """Atomically request cancellation; never signal an unverified process ID."""
     with delivery_lock(store, run_id):
         record = store.load(run_id)
-        if record.phase in TERMINAL_PHASES:
+        from meow.native.autopilot import active
+
+        if record.phase in TERMINAL_PHASES and not active(record):
             raise ValueError(f"Run {run_id} is already {record.phase}.")
         if record.phase == PARKED_PHASE:  # no driver would see a marker
             return store.transition(

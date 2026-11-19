@@ -127,6 +127,25 @@ owned tasks, records `cancelled`, and preserves output/worktree/resume identity;
 it does not signal unrelated PIDs. Explicit continuation validates state and
 reviews interrupted generation first.
 
+### Autopilot
+
+`/meow:autopilot REQUEST` (or `meow autopilot "REQUEST" [-- CLAUDE_FLAGS]`) runs
+the native workflow until the run is `complete` or `delivered`; every other
+outcome is retried, with `[run] retry_backoff` waits (at most 30 min) and no limit
+unless `[run] autopilot_cap` or `--cap N` sets one. A supervisor in
+`.meow/autopilot/` owns the run: it watches the session that started it and takes
+over when Claude exits, hits an API error (`StopFailure` hook), leaves a question
+or permission prompt unanswered past `autopilot_answer_wait` (600 s), or shows no
+activity with no running tool past `autopilot_stall` (1200 s). Running tool calls
+are never killed. It relaunches `[run] autopilot_command` (default `claude -p
+--resume SESSION --fork-session FLAGS PROMPT`) with the session's copied flags
+plus `claude_args`; tester runs continue via `meow resume --continue --repair`.
+Under autopilot, round limits and no-progress parks never end the run, and
+`meow cancel ID` restarts the current session. `meow autopilot stop ID` alone ends
+it; `meow autopilot status [ID]` shows state and logs. `meow autopilot loop
+"PROMPT" --until CMD [--command CMD]` repeats any prompt or command until CMD
+exits 0.
+
 ## Background runs and queues
 
 ```bash

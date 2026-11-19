@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-from meow.common.atomic import replace_with_retry
+from meow.common.atomic import read_text_with_retry, replace_with_retry
 from meow.common.clock import now_iso
 from meow.common.process import process_identity
 from meow.infrastructure.logging import get_logger
@@ -321,7 +321,7 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
         if not path.is_file():
             raise RunStateError(f"Run {run_id} is missing. Inspect with meow status.")
         try:
-            raw = _safe(json.loads(path.read_text(encoding="utf-8")))
+            raw = _safe(json.loads(read_text_with_retry(path)))
             if not isinstance(raw, dict):
                 raise ValueError("record must be an object")
             schema_version = raw.get("schema_version", SCHEMA_VERSION)
@@ -610,7 +610,7 @@ class RunStore:  # ruff: ignore[too-many-public-methods]
             auto_retries = run_config(Path(record.repo))["auto_retries"]
         except (OSError, ValueError):
             auto_retries = _DEFAULT_AUTO_RETRIES
-        if unchanged and attempts > auto_retries:
+        if unchanged and attempts > auto_retries and not _continue_unlimited(record):
             park.update(
                 kind="blocking",
                 cause="no_progress",
@@ -693,6 +693,12 @@ def run_owner_alive(record: RunRecord) -> bool | None:
     if (driver := driver_alive(record)) is not None:
         owners.append(driver)
     return any(owners) if owners else None
+
+
+def _continue_unlimited(record: RunRecord) -> bool:
+    from meow.native.autopilot import unlimited
+
+    return unlimited(record)
 
 
 def driver_alive(record: RunRecord) -> bool | None:

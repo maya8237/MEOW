@@ -21,7 +21,8 @@ from meow.execution.run_failures import (
     recognised_transient,
 )
 from meow.execution.run_state import PARKED_PHASE, RunStore, reconcile_quietly
-from meow.native import native
+from meow.native import native, native_hooks
+from meow.native.autopilot import in_autopilot
 from meow.project.config import config_root, load_config
 from meow.project.custom import SKILL_ROLES
 from meow.project.custom.hook_files import SDK_EVENTS
@@ -211,6 +212,11 @@ def _add_checkpoint(sub) -> None:
     )
     parser.add_argument(
         "--failure", help="With phase parked: the crash the native driver saw."
+    )
+    parser.add_argument(
+        "--autopilot",
+        action="store_true",
+        help="Keep this run going until it succeeds (`/meow:autopilot`).",
     )
     parser.add_argument("--request", default="")
     parser.add_argument("--plan")
@@ -420,6 +426,11 @@ def add_native_parser(  # ruff: ignore[too-many-statements] -- register independ
     workflow.add_argument("name")
     _add_dirs(workflow)
     _add_orchestrate(sub)
+    guard = sub.add_parser(
+        "merge-guard",
+        help="PreToolUse hook: refuse PR/MR merges the user did not ask for.",
+    )
+    _add_dirs(guard)
 
 
 def _resolve(path: str | None, base: Path) -> Path | None:
@@ -461,6 +472,8 @@ def _lint(args, working_dir: Path, active: Path) -> dict:
 def _round(args, working_dir: Path, active: Path) -> dict:
     mode = "reset" if args.reset else "show" if args.show else "next"
     max_rounds = load_config(config_root(working_dir, active))["max_rounds"]
+    if in_autopilot(working_dir):  # autopilot: rounds never end the run
+        max_rounds = sys.maxsize
     return native.round_state(_resolve(args.plan, active), max_rounds, mode)
 
 
@@ -479,6 +492,7 @@ def _checkpoint(args, working_dir: Path, active: Path) -> dict:
         target_branch=args.target_branch,
         intent=args.intent,
         failure=args.failure,
+        autopilot=args.autopilot,
     )
 
 
@@ -594,6 +608,7 @@ _HANDLERS = {
     ),
     "onboard-status": lambda args, wd, active: native.onboard_status(active),
     "run": _orchestrate,
+    "merge-guard": lambda args, wd, active: native_hooks.merge_guard_hook(wd, active),
 }
 
 

@@ -127,8 +127,11 @@ def test_agent_options_append_user_hooks_after_code_owned_ones(tmp_path):
         hooks={"PreToolUse": [builtin]},
     )
 
-    assert options.hooks["PreToolUse"][0] is builtin
-    assert len(options.hooks["PreToolUse"]) == len([builtin, None])
+    # The code-owned merge guard always runs first, then built-ins, then users.
+    merge_guard, first, user = options.hooks["PreToolUse"]
+    assert first is builtin
+    assert merge_guard.hooks[0].__name__ == "deny_merges"
+    assert user is not builtin
 
 
 def test_lifecycle_hooks_run_and_never_raise(tmp_path):
