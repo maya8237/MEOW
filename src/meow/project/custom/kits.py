@@ -15,7 +15,7 @@ from pathlib import Path
 
 from meow.common.atomic import replace_with_retry
 from meow.project.config_files import CONFIG_FILENAME, LOCAL_CONFIG_FILENAME
-from meow.project.custom.kit_store import kit_dir, local_path, normalize_url
+from meow.project.custom.kit_store import is_commit, kit_dir, local_path, normalize_url
 from meow.project.custom.sources import KINDS, SKILL_ROLES, CustomSource
 
 MANIFEST = "meow-kit.toml"
@@ -73,10 +73,10 @@ def _name(raw: dict, where: str) -> str:
 
 
 def _only(raw: dict, where: str) -> tuple[str, ...]:
-    only = tuple(raw.get("only", ()))
-    if not set(only) <= set(KINDS):
+    only = raw.get("only", ())
+    if not isinstance(only, (list, tuple)) or not set(only) <= set(KINDS):
         raise ValueError(f"{where}: 'only' may list {list(KINDS)}")
-    return only
+    return tuple(only)
 
 
 def _ref(raw: dict, where: str) -> str | None:
@@ -95,10 +95,8 @@ def _update_mode(raw: dict, where: str) -> str:
 
 def _rev(raw: dict, scope: str, where: str) -> str | None:
     rev = raw.get("rev")
-    if rev is None:
-        return None
-    if scope != "project":
-        raise ValueError(f"{where}: 'rev' pins project kits only")
+    if rev is None or scope != "project":
+        return None  # user/local kits follow their lock; a stray rev must not brick
     if not isinstance(rev, str) or not re.fullmatch(r"[0-9a-f]{40}", rev):
         raise ValueError(f"{where}: 'rev' must be a full 40-character commit id")
     return rev
@@ -150,27 +148,68 @@ def lock_file(scope: str, project_dir: Path, user_dir: Path) -> Path:
     return Path(project_dir) / sub / "kits.lock"
 
 
+def _sound(entry: object) -> bool:
+    """A lock entry whose commits are full ids (a project lock may come from git)."""
+    if not isinstance(entry, dict):
+        return False
+    return all(is_commit(entry[key]) for key in ("sha", "hooks_sha") if key in entry)
+
+
 def read_lock(path: Path) -> dict[str, dict]:
+    """Lock entries; malformed ones are dropped, so they are fetched afresh."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         kits = data.get("kits", {})
     except (OSError, ValueError, AttributeError):
         return {}
-    return kits if isinstance(kits, dict) else {}
+    if not isinstance(kits, dict):
+        return {}
+    sound = {name: dict(e) for name, e in kits.items() if _sound(e)}
+    for entry in sound.values():
+        if "latest" in entry and not is_commit(entry["latest"]):
+            del entry["latest"]
+    return sound
 
 
 def write_lock(path: Path, kits: dict[str, dict]) -> None:
     if not kits:
         path.unlink(missing_ok=True)
         return
+    _write_json(path, {"kits": kits})
+
+
+def _write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps({"kits": kits}, indent=2, sort_keys=True) + "\n"
+    text = json.dumps(data, indent=2, sort_keys=True) + "\n"
     pending = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
         pending.write_text(text, encoding="utf-8")
         replace_with_retry(pending, path)  # never half-written, even on Windows
     finally:
         pending.unlink(missing_ok=True)
+
+
+# The commit cache is shared by every project; cleanup must see all their locks.
+_PROJECTS = "projects.json"
+
+
+def known_projects(user_dir: Path) -> list[Path]:
+    """Projects that have used kits and still exist (cleanup checks their locks)."""
+    try:
+        data = json.loads((kits_home(user_dir) / _PROJECTS).read_text("utf-8"))
+    except (OSError, ValueError):
+        return []
+    paths = data.get("projects", []) if isinstance(data, dict) else []
+    return [Path(p) for p in paths if isinstance(p, str) and Path(p).is_dir()]
+
+
+def remember_project(project_dir: Path, user_dir: Path) -> None:
+    """Record that `project_dir` uses kits; deleted projects drop out here."""
+    project = str(Path(project_dir).resolve())
+    found = [str(p) for p in known_projects(user_dir)]
+    if project not in found or len(found) != len(set(found)):
+        found = sorted({*found, project})
+        _write_json(kits_home(user_dir) / _PROJECTS, {"projects": found})
 
 
 SCOPES = ("local", "project", "user")
@@ -183,10 +222,27 @@ def config_file(scope: str, project_dir: Path, user_dir: Path) -> Path:
     return Path(project_dir) / name
 
 
+def shared_with_user(scope: str, project_dir: Path, user_dir: Path) -> bool:
+    """True when this scope's config file is the user config (project in ~)."""
+    if scope == "user":
+        return False
+    path = config_file(scope, project_dir, user_dir)
+    try:
+        return path.resolve() == config_file("user", project_dir, user_dir).resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
 def collect_specs(project_dir: Path, user_dir: Path) -> list[KitSpec]:
-    """Every declared kit, read without loading the rest of the configuration."""
+    """Every declared kit, read without loading the rest of the configuration.
+
+    A file is read in one scope only; the user config stays user scope even when
+    it is also the project's, as in `config._layer_scope`.
+    """
     specs: list[KitSpec] = []
     for scope in SCOPES:
+        if shared_with_user(scope, project_dir, user_dir):
+            continue
         path = config_file(scope, project_dir, user_dir)
         try:
             data = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -203,7 +259,10 @@ def kits_home(user_dir: Path) -> Path:
 def _check_roles(table: object, root: Path, only: tuple[str, ...], path: Path):
     if not isinstance(table, dict) or set(table) - {"roles"}:
         raise ValueError(f"{path}: [skills] accepts only [skills.roles]")
-    for skill, wanted in table.get("roles", {}).items():
+    roles = table.get("roles", {})
+    if not isinstance(roles, dict):
+        raise ValueError(f"{path}: [skills.roles] must be a table of skill = [roles]")
+    for skill, wanted in roles.items():
         bad = sorted(set(wanted) - SKILL_ROLES) if isinstance(wanted, list) else None
         if bad is None or bad:
             raise ValueError(f"{path}: [skills.roles].{skill}: unknown role(s) {bad}")
@@ -300,7 +359,9 @@ def env_pins() -> dict[str, dict]:
     return {
         key: pin
         for key, pin in data.items()
-        if isinstance(pin, dict) and isinstance(pin.get("sha"), str)
+        if isinstance(pin, dict)
+        and is_commit(pin.get("sha"))
+        and is_commit(pin.get("hooks_sha") or pin.get("sha"))
     }
 
 
@@ -333,7 +394,8 @@ def kit_sources(
         )
         return [placeholder], {}
     manifest = read_manifest(root, spec.only)
-    hooks_root = _locked_root(spec, entry, home, "hooks_sha") or root
+    # A missing approved-hooks copy means no hooks, never the unapproved commit's.
+    hooks_root = _locked_root(spec, entry, home, "hooks_sha")
     roles = tuple(
         (skill, tuple(wanted))
         for skill, wanted in manifest.get("skills", {}).get("roles", {}).items()
@@ -341,6 +403,8 @@ def kit_sources(
     sources = []
     for kind in KINDS:
         base = hooks_root if kind == "hooks" else root
+        if base is None:
+            continue
         if (not spec.only or kind in spec.only) and (base / kind).is_dir():
             sources.append(
                 CustomSource(
