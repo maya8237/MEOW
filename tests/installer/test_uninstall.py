@@ -177,6 +177,7 @@ def test_interactive_uninstall_only_changes_files_after_confirmation(
         uninstall=lambda home, **kw: calls.append(("uninstall", kw["purge"])),
         un_onboard=lambda project: calls.append(("project", project)),
         find_scheduled=lambda: [],
+        find_waiters=lambda: [],
     )
     assert module["main"]() == 0
     assert calls == (
@@ -196,6 +197,7 @@ def test_non_interactive_uninstall_never_prompts_and_keeps_data(tmp_path, monkey
     module["main"].__globals__.update(
         uninstall=lambda home, **kw: calls.append(("uninstall", kw["purge"])),
         find_scheduled=lambda: [],
+        find_waiters=lambda: [],
     )
     assert module["main"](["--non-interactive"]) == 0
     assert calls == [("uninstall", False)]
@@ -363,3 +365,30 @@ def test_published_skills_and_hook_entries_are_removed_but_the_users_stay(tmp_pa
 
     assert not (skills / "ours").exists() and (skills / "mine").is_dir()
     assert json.loads(settings.read_text()) == {"model": "x", "hooks": {"Stop": [mine]}}
+
+
+def test_schedule_waiters_are_found_and_stopped(monkeypatch):
+    if os.name == "nt":
+        pytest.skip("POSIX ps")
+    module = runpy.run_path(str(SCRIPT))
+    token, other = "a" * 32, "b" * 32
+    listing = (
+        f" 11 /venv/bin/python -m meow _scheduled {token} -d /p --wait {other}\n"
+        f" 12 /venv/bin/python -m meow _scheduled {token} --work-dir /p\n"
+        " 13 vim notes.txt\n"
+    )
+    killed = []
+    globals_ = module["find_waiters"].__globals__
+    globals_["subprocess"] = SimpleNamespace(
+        run=lambda *a, **k: SimpleNamespace(stdout=listing),
+        SubprocessError=Exception,
+    )
+    globals_["os"] = SimpleNamespace(
+        name="posix",
+        getuid=os.getuid,
+        getpid=os.getpid,
+        kill=lambda pid, sig: killed.append(pid),
+    )
+    assert module["find_waiters"]() == [11]
+    module["stop_waiters"]([11])
+    assert killed == [11]

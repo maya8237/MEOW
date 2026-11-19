@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -18,6 +19,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 TASK = re.compile(r"meow-([0-9a-f]{32})", re.IGNORECASE)
+# Detached waiters used when no OS scheduler is available (scheduled_tasks.py).
+WAITER = re.compile(r"-m meow _scheduled [0-9a-f]{32} .*--wait [0-9a-f]{32}")
 
 
 def path_key(value: str | Path) -> str:
@@ -301,6 +304,33 @@ def find_scheduled() -> list[str]:
     return sorted({m[1].lower() for name in names if (m := TASK.fullmatch(name))})
 
 
+def find_waiters() -> list[int]:
+    """PIDs of this user's detached schedule waiters (POSIX; Windows opt-in only)."""
+    if os.name == "nt":
+        return []
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "pid=,args=", "-u", str(os.getuid())],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    pids = []
+    for line in result.stdout.splitlines():
+        pid, _, args = line.strip().partition(" ")
+        if pid.isdigit() and int(pid) != os.getpid() and WAITER.search(args):
+            pids.append(int(pid))
+    return pids
+
+
+def stop_waiters(pids: list[int]) -> None:
+    for pid in pids:
+        with contextlib.suppress(OSError):
+            os.kill(pid, signal.SIGTERM)
+
+
 def cancel_scheduled(ids: list[str]) -> None:
     for schedule_id in ids:
         if os.name == "nt":
@@ -578,9 +608,10 @@ def main(argv: Sequence[str] = ()) -> int:  # ruff: ignore[complex-structure, to
         else:
             purge, projects, bun = ask_removal(home)
             kits = [] if purge else ask_kits(home)
-        scheduled = find_scheduled()
-        if scheduled:
-            print(f"Will cancel {len(scheduled)} scheduled MEOW run(s) in the OS.")
+        scheduled, waiters = find_scheduled(), find_waiters()
+        if scheduled or waiters:
+            count = len(scheduled) + len(waiters)
+            print(f"Will cancel {count} scheduled MEOW run(s).")
         if not args.non_interactive and not confirmed("Uninstall MEOW now? [y/N]: "):
             print("Cancelled. No files changed.")
             return 0
@@ -595,9 +626,10 @@ def main(argv: Sequence[str] = ()) -> int:  # ruff: ignore[complex-structure, to
         for name in kits:
             print(f"Removing kit {name}...", flush=True)
             remove_kit(home, name)
-        if scheduled:
+        if scheduled or waiters:
             print("Cancelling scheduled MEOW runs...", flush=True)
         cancel_scheduled(scheduled)
+        stop_waiters(waiters)
         if bun:
             print("Reverting ~/.bunfig.toml...", flush=True)
             revert_bunfig(home / ".bunfig.toml")
