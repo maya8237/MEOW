@@ -63,11 +63,12 @@ def _uninstall(args, project_dir: Path, user_dir: Path) -> None:
 
 def _validate(args, project_dir: Path, user_dir: Path) -> None:
     target = args.target
-    if not Path(target).is_dir() and not Path(target).exists():
+    folder = Path(target).expanduser()
+    if folder.exists():
+        root = folder
+    else:
         _, sha, root = kit_ops.fetch_new(target, args.ref, user_dir)
         print(f"Checking {target} @ {sha[:7]}")
-    else:
-        root = Path(target)
     report = kit_author.validate_directory(root)
     for line in report.summary:
         print(f"  {line}")

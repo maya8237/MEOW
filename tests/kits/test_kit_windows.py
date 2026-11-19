@@ -92,8 +92,8 @@ def test_git_never_opens_a_login_window_or_prompt(make_kit, monkeypatch):
 
 def test_lock_write_is_atomic_and_leaves_no_temp_files(tmp_path, monkeypatch):
     lock = tmp_path / "kits.lock"
-    write_lock(lock, {"a": {"sha": "1"}})
-    assert read_lock(lock) == {"a": {"sha": "1"}}
+    write_lock(lock, {"a": {"sha": "1" * 40}})
+    assert read_lock(lock) == {"a": {"sha": "1" * 40}}
     assert [p.name for p in tmp_path.iterdir()] == ["kits.lock"]
 
     def blocked(*_args, **_kwargs):
@@ -101,6 +101,6 @@ def test_lock_write_is_atomic_and_leaves_no_temp_files(tmp_path, monkeypatch):
 
     monkeypatch.setattr("meow.project.custom.kits.replace_with_retry", blocked)
     with pytest.raises(PermissionError):
-        write_lock(lock, {"b": {"sha": "2"}})
-    assert read_lock(lock) == {"a": {"sha": "1"}}  # the old lock survives intact
+        write_lock(lock, {"b": {"sha": "2" * 40}})
+    assert read_lock(lock) == {"a": {"sha": "1" * 40}}  # the old lock survives intact
     assert [p.name for p in tmp_path.iterdir()] == ["kits.lock"]

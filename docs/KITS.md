@@ -58,7 +58,8 @@ commit is stored once in `~/.meow/kits/` without `.git`. Only `https`, `ssh`,
 | Commit pin | `~/.meow/kits.lock` | `rev` in `config.toml` (committed) | `.meow/local/kits.lock` |
 | Updates | Automatic | Reported; `meow kits update`, then commit | Automatic |
 
-Lock files are private to a machine and git-ignored. A project kit is pinned
+Lock files are private to a machine and git-ignored; an entry whose commit is
+not a full 40-character id is dropped and fetched afresh. A project kit is pinned
 by `rev` in the committed config, so a teammate downloads exactly that commit
 at the next Claude Code start and an upgrade is a normal reviewed diff:
 
@@ -67,7 +68,7 @@ at the next Claude Code start and an upgrade is a normal reviewed diff:
 name = "team-kit"
 url = "gitlab:acme/meow-kit"
 ref = "main"                  # what to follow
-rev = "9f3c2a1…40 characters" # written by MEOW; project scope only
+rev = "9f3c2a1…40 characters" # written by MEOW; project scope only; ignored elsewhere
 update = "auto"               # or "pinned": never fetched at startup
 only = ["skills", "agents"]   # optional
 auto_accept_hooks = false     # user and local scope only
@@ -176,5 +177,6 @@ adds user kits, and the installer prompts for one in a terminal. On an
 existing setup use `meow kits add`: the installer also updates MEOW itself.
 The [uninstaller](INSTALL.md#uninstall) asks about each user kit.
 `meow kits uninstall` removes the config entry, lock entry, published skills
-and hooks, and cached commits no lock pins. Editing the files by hand
+and hooks, and cached commits no project using kits still pins (projects are
+listed in `~/.meow/kits/projects.json`). Editing the files by hand
 works too; startup sync notices.

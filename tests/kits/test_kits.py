@@ -92,7 +92,6 @@ def test_config_rejects_bad_entries(tmp_path):
         ({"name": "a", "url": "x/y", "bogus": 1}, "unknown key"),
         ({"name": "A!", "url": "x/y"}, "lowercase"),
         ({"name": "a", "url": "x/y", "update": "yolo"}, "update"),
-        ({"name": "a", "url": "x/y", "rev": "a" * 40}, "project kits only"),
     ]:
         with pytest.raises(ValueError, match=message):
             parse_kits([entry], "user", path)
