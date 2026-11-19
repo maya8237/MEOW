@@ -177,11 +177,11 @@ Check it, and try it from this folder while you edit (no git needed):
 Publish it, then install it from any machine with any of these forms:
 
     git init && git add -A && git commit -m "Initial kit"
-    # push to GitHub or GitLab, then:
+    # push to GitLab (or GitHub: github:owner/{name}), then:
     meow kits add owner/{name}
-    meow kits add github:owner/{name}
-    meow kits add https://github.com/owner/{name}.git
-    meow kits add git@github.com:owner/{name}.git
+    meow kits add gitlab:group/subgroup/{name}
+    meow kits add https://gitlab.com/owner/{name}.git
+    meow kits add git@gitlab.com:owner/{name}.git
 
 Folders (all optional): `skills/`, `agents/`, `workflows/`, `hooks/`.
 See the MEOW kits guide for details.
