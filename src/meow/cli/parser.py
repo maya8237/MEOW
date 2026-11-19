@@ -288,6 +288,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
     add_schedule_parser(subparsers)
     scheduled = _add_hidden_parser(subparsers, "_scheduled")
     scheduled.add_argument("schedule_id")
+    scheduled.add_argument("--wait", metavar="TOKEN")
     _add_common_args(scheduled)
     add_catalog_parsers(subparsers)
     add_skills_parser(subparsers)

@@ -22,6 +22,11 @@ def make_due(repo, job):
     scheduling._atomic_json(scheduling._path(repo, job["id"]), job)
 
 
+def use_backend(monkeypatch, platform):
+    name = {"win32": "windows", "linux": "systemd"}.get(platform, platform)
+    monkeypatch.setattr(scheduling.scheduled_tasks, "backend", lambda: name)
+
+
 @pytest.fixture
 def backend(monkeypatch, tmp_path):
     runner = Mock(return_value=Mock(stdout="DOMAIN\\user\n", stderr="", returncode=0))
@@ -47,7 +52,7 @@ def test_time_accepts_offset_and_next_local_clock():
 def test_register_list_cancel_preserves_request(  # ruff: ignore[too-many-statements]
     tmp_path, monkeypatch, backend, platform
 ):
-    monkeypatch.setattr(scheduling, "platform", platform)
+    use_backend(monkeypatch, platform)
     request = 'Fix "search"; $(touch surprise) % & café\nsecond line'
     job = scheduling.schedule_run(
         tmp_path, future(), ["run", request, "--name", "search"]
@@ -111,7 +116,7 @@ def test_scheduled_in_place_run_preserves_delivery_choice(
 
 
 def test_registration_failure_is_saved_and_reported(tmp_path, monkeypatch, backend):
-    monkeypatch.setattr(scheduling, "platform", "linux")
+    use_backend(monkeypatch, "linux")
     backend.side_effect = scheduling.subprocess.CalledProcessError(
         1, ["systemctl"], stderr="No user bus"
     )
@@ -122,7 +127,7 @@ def test_registration_failure_is_saved_and_reported(tmp_path, monkeypatch, backe
 
 
 def test_worker_runs_once_and_records_exit(tmp_path, monkeypatch, backend):
-    monkeypatch.setattr(scheduling, "platform", "linux")
+    use_backend(monkeypatch, "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     make_due(tmp_path, job)
     backend.reset_mock()
@@ -164,7 +169,7 @@ def test_imminent_worker_waits_through_registration(tmp_path, monkeypatch, backe
     default metadata wait, then runs once the registration publishes."""
     from concurrent.futures import ThreadPoolExecutor
 
-    monkeypatch.setattr(scheduling, "platform", "linux")
+    use_backend(monkeypatch, "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     make_due(tmp_path, job)
     lock = scheduling._path(tmp_path, job["id"]).with_suffix(".lock")
@@ -190,7 +195,7 @@ def test_ui_execution_uses_frozen_recipe_after_edit(tmp_path, monkeypatch, backe
     from meow.infrastructure import ui_sessions
     from meow.ui.sessions import Recipe, SessionStore
 
-    monkeypatch.setattr(scheduling, "platform", "linux")
+    use_backend(monkeypatch, "linux")
     monkeypatch.setattr("meow.ui.sessions.process_identity", lambda _pid: "test-owner")
     frozen = Recipe(
         id="a" * 32,
@@ -219,7 +224,7 @@ def test_ui_execution_uses_frozen_recipe_after_edit(tmp_path, monkeypatch, backe
 def test_cli_schedule_does_not_run_now(tmp_path, monkeypatch, backend, capsys):
     from meow.cli.cli import cli_main
 
-    monkeypatch.setattr(scheduling, "platform", "linux")
+    use_backend(monkeypatch, "linux")
     cli_main([
         "schedule",
         "add",
@@ -242,7 +247,7 @@ def test_cli_schedule_does_not_run_now(tmp_path, monkeypatch, backend, capsys):
 def test_edit_time_preserves_identity_and_command(  # ruff: ignore[too-many-statements]
     tmp_path, monkeypatch, backend, platform
 ):
-    monkeypatch.setattr(scheduling, "platform", platform)
+    use_backend(monkeypatch, platform)
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     at = "2099-12-01T15:30:00+03:00"
     updated = scheduling.edit_schedule(tmp_path, job["id"], at)
@@ -269,7 +274,7 @@ def test_edit_time_preserves_identity_and_command(  # ruff: ignore[too-many-stat
 
 
 def test_edit_rejects_invalid_time_and_started_schedule(tmp_path, monkeypatch, backend):
-    monkeypatch.setattr(scheduling, "platform", "linux")
+    use_backend(monkeypatch, "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     backend.reset_mock()
     with pytest.raises(ValueError):
@@ -285,7 +290,7 @@ def test_edit_rejects_invalid_time_and_started_schedule(tmp_path, monkeypatch, b
 
 
 def test_edit_failure_restores_original_trigger(tmp_path, monkeypatch, backend):
-    monkeypatch.setattr(scheduling, "platform", "linux")
+    use_backend(monkeypatch, "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     backend.side_effect = [
         Mock(stdout=""),
@@ -306,7 +311,7 @@ def test_edit_failure_restores_original_trigger(tmp_path, monkeypatch, backend):
 def test_cli_edit_changes_time(tmp_path, monkeypatch, backend, capsys):
     from meow.cli.cli import cli_main
 
-    monkeypatch.setattr(scheduling, "platform", "linux")
+    use_backend(monkeypatch, "linux")
     job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
     cli_main([
         "schedule",
@@ -322,3 +327,63 @@ def test_cli_edit_changes_time(tmp_path, monkeypatch, backend, capsys):
     assert datetime.fromisoformat(updated["at"]) == datetime(
         2099, 12, 1, 12, 30, tzinfo=UTC
     )
+
+
+@pytest.fixture
+def waiter(monkeypatch, backend):
+    use_backend(monkeypatch, "process")
+    spawned = []
+    monkeypatch.setattr(
+        "meow.infrastructure.background.detach_command",
+        lambda repo, argv, log: spawned.append(argv),
+    )
+    return spawned
+
+
+def test_process_backend_without_os_scheduler(tmp_path, waiter):
+    job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
+    assert job["state"] == "scheduled"
+    assert job["backend"] == "process"
+    assert waiter == [[*job["worker_argv"], "--wait", job["waiter"]]]
+    assert not (tmp_path / "units").exists()
+    moved = scheduling.edit_schedule(tmp_path, job["id"], future())
+    assert moved["waiter"] != job["waiter"]
+    # The superseded waiter exits without running.
+    assert scheduling.wait_schedule(tmp_path, job["id"], job["waiter"]) == 0
+    waiter.clear()
+    assert scheduling.cancel_schedule(tmp_path, job["id"])["state"] == "cancelled"
+    assert scheduling.wait_schedule(tmp_path, job["id"], moved["waiter"]) == 0
+    assert not waiter
+
+
+def test_waiter_sleeps_until_due_then_runs_once(tmp_path, monkeypatch, waiter):
+    job = scheduling.schedule_run(tmp_path, future(), ["run", "task", "--name", "x"])
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        make_due(tmp_path, scheduling.list_schedules(tmp_path)[0])
+
+    monkeypatch.setattr(scheduling.time, "sleep", sleep)
+    waiter_token = scheduling.list_schedules(tmp_path)[0]["waiter"]
+    assert scheduling.wait_schedule(tmp_path, job["id"], waiter_token) == 0
+    assert sleeps == [scheduling._WAITER_POLL]
+    assert scheduling.list_schedules(tmp_path)[0]["state"] == "succeeded"
+
+
+def test_backend_falls_back_without_systemd(monkeypatch):
+    tasks = scheduling.scheduled_tasks
+    real_check = tasks.systemd_available
+    monkeypatch.delenv("MEOW_SCHEDULER", raising=False)
+    monkeypatch.setattr(tasks.sys, "platform", "linux")
+    monkeypatch.setattr(tasks, "systemd_available", lambda: False)
+    assert tasks.backend() == "process"
+    monkeypatch.setattr(tasks, "systemd_available", lambda: True)
+    assert tasks.backend() == "systemd"
+    monkeypatch.setenv("MEOW_SCHEDULER", "process")
+    assert tasks.backend() == "process"
+    monkeypatch.delenv("MEOW_SCHEDULER")
+    monkeypatch.setattr(tasks.sys, "platform", "darwin")
+    assert tasks.backend() == "process"
+    monkeypatch.setattr(tasks.shutil, "which", lambda _: None)
+    assert not real_check()

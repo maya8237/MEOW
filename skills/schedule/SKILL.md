@@ -1,6 +1,6 @@
 ---
 name: schedule
-description: Use when scheduling a MEOW request, workflow, or Jira issue for later on Windows/Linux, or listing, rescheduling, or cancelling its OS trigger.
+description: Use when scheduling a MEOW request, workflow, or Jira issue for later, or listing, rescheduling, or cancelling its OS trigger.
 ---
 
 # schedule
@@ -62,9 +62,12 @@ UI session stop controls. CLI output and execution results live under
 `<project>/.meow/schedules/`; regular run journals remain under `.meow/runs/`.
 
 Windows uses Task Scheduler under the current user, without administrator
-privileges or stored passwords. The user must be logged in. Linux requires a
-working systemd user manager and `systemctl`; enable lingering separately if
-runs should start while logged out. The machine must be available; missed
+privileges or stored passwords. The user must be logged in. Linux uses a
+systemd user manager when available; enable lingering separately if runs should
+start while logged out. Without either (macOS, containers, WSL), MEOW starts a
+detached waiter process (`backend: "process"`); tell the user it is lost on
+reboot/logout and `meow schedule edit` re-arms it. `MEOW_SCHEDULER=process`
+forces this backend. The machine must be available; missed
 times are eligible to run when the scheduler becomes available. MEOW and its
 Python environment must remain installed at their registered paths. Credentials
 must be available to the scheduler user (shell-only environment secrets are

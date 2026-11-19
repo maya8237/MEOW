@@ -1,10 +1,13 @@
 """Register MEOW's one-shot triggers with the current user's OS scheduler."""
 
 import os
+import shutil
 import subprocess
+import sys
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 from xml.etree import ElementTree as ET
 
 _WINDOWS_TOOLS = frozenset({"schtasks", "whoami"})
@@ -25,6 +28,45 @@ def scheduler_command(argv: list[str]) -> str:
         detail = getattr(exc, "stderr", None) or str(exc)
         raise ValueError(f"OS scheduler failed: {detail.strip()}") from exc
     return result.stdout.strip()
+
+
+def backend() -> str:
+    """Pick the OS scheduler, or a detached waiter when none is usable."""
+    if os.environ.get("MEOW_SCHEDULER") == "process":
+        return "process"
+    if sys.platform == "win32":
+        return "windows"
+    if sys.platform == "linux" and systemd_available():
+        return "systemd"
+    return "process"
+
+
+def systemd_available() -> bool:
+    """True when a systemd user manager answers (absent in most containers/WSL)."""
+    if not shutil.which("systemctl"):
+        return False
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "show-environment"],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def register_process(job: dict, log: Path) -> None:
+    """Start a detached waiter that fires the job; it lives until reboot/logout.
+
+    A fresh token supersedes earlier waiters, which exit on their next poll.
+    """
+    from meow.infrastructure.background import detach_command
+
+    token = uuid4().hex
+    job["waiter"] = token
+    detach_command(Path(job["repo"]), [*job["worker_argv"], "--wait", token], str(log))
 
 
 def unit_dir() -> Path:
@@ -126,6 +168,8 @@ def register_windows(  # ruff: ignore[too-many-statements]
 
 
 def unregister(job: dict, directory: Path) -> None:
+    if job["backend"] == "process":
+        return  # The waiter exits once the saved state is no longer pending.
     if job["backend"] == "windows":
         scheduler_command(["schtasks", "/Delete", "/TN", f"MEOW-{job['id']}", "/F"])
         return

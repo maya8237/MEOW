@@ -6,10 +6,10 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from sys import platform
 from typing import override
 from uuid import uuid4
 
@@ -123,15 +123,13 @@ def schedule_session(repo: Path, at: str, recipe: Recipe) -> dict:
 
 def _register(repo: Path, at: str, payload: dict) -> dict:
     when = parse_at(at)
-    if platform not in {"win32", "linux"}:
-        raise ValueError("Scheduling supports Windows Task Scheduler and Linux systemd")
     schedule_id = uuid4().hex
     path = _path(repo, schedule_id)
     job = {
         "id": schedule_id,
         "repo": str(repo),
         "at": when.isoformat(),
-        "backend": "windows" if platform == "win32" else "systemd",
+        "backend": scheduled_tasks.backend(),
         "state": "registering",
         "created_at": now_iso(),
         "path": os.environ.get("PATH", ""),
@@ -151,10 +149,7 @@ def _register(repo: Path, at: str, payload: dict) -> dict:
     with _file_transaction(path.with_suffix(".lock"), "schedule"):
         _atomic_json(path, job)
         try:
-            if job["backend"] == "windows":
-                scheduled_tasks.register_windows(job, path.with_suffix(".xml"))
-            else:
-                scheduled_tasks.register_linux(job, _unit_dir())
+            _add_trigger(job, path)
         except (ValueError, OSError) as exc:
             job.update(state="failed", error=str(exc))
             _atomic_json(path, job)
@@ -172,11 +167,17 @@ def list_schedules(repo: Path) -> list[dict]:
     )
 
 
-def _replace_trigger(job: dict, path: Path) -> None:
+def _add_trigger(job: dict, path: Path, *, replace: bool = False) -> None:
     if job["backend"] == "windows":
-        scheduled_tasks.register_windows(job, path.with_suffix(".xml"), replace=True)
+        scheduled_tasks.register_windows(job, path.with_suffix(".xml"), replace=replace)
+    elif job["backend"] == "process":
+        scheduled_tasks.register_process(job, path.with_suffix(".log"))
     else:
-        scheduled_tasks.register_linux(job, _unit_dir(), replace=True)
+        scheduled_tasks.register_linux(job, _unit_dir(), replace=replace)
+
+
+def _replace_trigger(job: dict, path: Path) -> None:
+    _add_trigger(job, path, replace=True)
 
 
 def edit_schedule(repo: Path, schedule_id: str, at: str) -> dict:
@@ -269,3 +270,28 @@ def execute_schedule(repo: Path, schedule_id: str) -> int:
     job.update(exit_code=code, finished_at=now_iso(), log=str(log))
     _atomic_json(path, job)
     return code
+
+
+_WAITER_POLL = 30.0
+
+
+def wait_schedule(repo: Path, schedule_id: str, token: str) -> int:
+    """Process backend: sleep until due, re-reading so edits and cancels apply."""
+    repo = repo.resolve()
+    path = _path(repo, schedule_id)
+    while True:
+        try:
+            job = _read(path)
+        except ValueError:
+            return 0
+        if job.get("waiter") not in {None, token} or job["state"] not in {
+            "registering",
+            "scheduled",
+        }:
+            return 0
+        remaining = (
+            datetime.fromisoformat(job["at"]) - datetime.now(UTC)
+        ).total_seconds()
+        if remaining <= 0 and job["state"] == "scheduled":
+            return execute_schedule(repo, schedule_id)
+        time.sleep(min(max(remaining, 1.0), _WAITER_POLL))

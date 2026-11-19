@@ -226,9 +226,13 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         return
     if args.command in {"schedule", "_scheduled"}:
         from meow.cli.schedule_cli import schedule_command
-        from meow.infrastructure.scheduling import execute_schedule
+        from meow.infrastructure.scheduling import execute_schedule, wait_schedule
 
         try:
+            if args.command == "_scheduled" and args.wait:
+                raise SystemExit(
+                    wait_schedule(working_dir, args.schedule_id, args.wait)
+                )
             if args.command == "_scheduled":
                 raise SystemExit(execute_schedule(working_dir, args.schedule_id))
             schedule_command(args, working_dir)

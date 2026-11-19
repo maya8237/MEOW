@@ -189,7 +189,7 @@ def test_schedule_session_freezes_recipe_lists_and_cancels(  # ruff: ignore[too-
 
     from meow.infrastructure import scheduling
 
-    monkeypatch.setattr(scheduling, "platform", "linux")
+    monkeypatch.setattr(scheduling.scheduled_tasks, "backend", lambda: "systemd")
     monkeypatch.setattr("meow.ui.sessions.process_identity", lambda _pid: "test-owner")
     monkeypatch.setattr(scheduling, "_unit_dir", lambda: project / "units")
     monkeypatch.setattr(

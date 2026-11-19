@@ -35,7 +35,7 @@ top-level alias or compatibility modules.
 - `infrastructure/`: lint/test execution, user hook commands (`user_hooks.py`), checks, logging, cancellation,
   background workers, usage accounting, and worktree lifecycle/setup.
   `scheduling.py` owns durable one-shot schedules and execution claims;
-  `scheduled_tasks.py` registers Windows Task Scheduler and Linux systemd triggers.
+  `scheduled_tasks.py` registers Windows Task Scheduler, Linux systemd, or detached-waiter triggers.
 - `integrations/`: Jira issue solving, GitLab/GitHub/CI review, documentation
   updates. `pipeline_*.py` are the GitLab/GitHub
   pipeline providers behind `pipeline_verify.py`.
