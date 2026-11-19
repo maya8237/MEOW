@@ -128,10 +128,9 @@ meow schedule edit ID --at "10:00" --work-dir /project
 meow schedule cancel ID --work-dir /project
 ```
 
-ISO timestamps must be future; `HH:MM` means the next machine-local occurrence.
-Windows Task Scheduler needs a logged-in user; Linux uses a systemd user manager
-if available. Otherwise (or `MEOW_SCHEDULER=process`) a detached waiter fires the
-run; reboot/logout loses it, so `edit` re-arms. Missed OS triggers may run later.
+Times must be future; `HH:MM` is the next local one. Windows Task Scheduler needs
+login; Linux uses systemd if available. Else (or `MEOW_SCHEDULER=process`) a waiter
+process fires it; reboot/logout loses it (`edit` re-arms). Missed OS triggers run late.
 Keep the registered project/runtime paths and scheduler credentials available.
 
 Only `run` may follow `--`; scheduling rejects manual approval, lint-fix,
