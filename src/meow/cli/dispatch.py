@@ -11,6 +11,7 @@ from meow.cli.review_cli import run_review_command
 from meow.cli.validation import _resolve_input_path, parse_inputs, pipeline_overrides
 from meow.execution.orchestrator import PlanNotApprovedError
 from meow.execution.plan_approval import _prompt_plan_approval
+from meow.execution.run_policy import fetched_ref, fetched_source
 from meow.execution.sprint_runner import run_plan, run_sprint
 from meow.infrastructure.lint_fix import run_lint_fix
 from meow.integrations.issue_solver import IssueUnresolvedError, run_issue_solver
@@ -23,19 +24,22 @@ def _dispatch_lint_fix(args, working_dir: Path) -> None:
         print(report if report else "Lint is clean -- no issues found.")
 
 
-def _dispatch_jira_build(args, working_dir: Path) -> None:
-    bind_provider_references(working_dir, ("jira",))
+def _dispatch_fetched_build(args, working_dir: Path) -> None:
+    source = fetched_source(args)
+    bind_provider_references(working_dir, (source,))
     approve_plan = _prompt_plan_approval if args.manually_approve_plan else None
     try:
         result = asyncio.run(
             run_issue_solver(
                 working_dir,
-                args.jira or None,
+                fetched_ref(args),
+                **({"provider": source} if source != "jira" else {}),
                 approve_plan=approve_plan,
                 **({"test": True} if args.test else {}),
                 **({"force_disable_tests": True} if args.force_disable_tests else {}),
                 **({"workflow": args.workflow} if args.workflow else {}),
                 **({"inputs": parse_inputs(args.input)} if args.input else {}),
+                **({"instructions": args.request} if args.request else {}),
             )
         )
     except IssueUnresolvedError as exc:
@@ -87,8 +91,8 @@ def _dispatch_plain_build(args, working_dir: Path, *, use_worktree: bool) -> str
 def _dispatch_run(args, working_dir: Path, *, use_worktree: bool) -> str | None:
     if args.lint_fix:
         _dispatch_lint_fix(args, working_dir)
-    elif args.jira is not None:
-        _dispatch_jira_build(args, working_dir)
+    elif fetched_source(args):
+        _dispatch_fetched_build(args, working_dir)
     else:
         return _dispatch_plain_build(args, working_dir, use_worktree=use_worktree)
     return None

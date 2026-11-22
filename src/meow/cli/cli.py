@@ -43,6 +43,7 @@ from meow.execution.run_policy import (
     _creates_a_worktree,
     _should_use_worktree,
     check_clean_tree,
+    source_flags,
     uses_orchestration,
 )
 from meow.execution.run_state import RunStateError, RunStore, reconcile_quietly
@@ -460,7 +461,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         args.command == "run"
         and not args.lint_fix
         and not args.manually_approve_plan
-        and args.jira is None  # keeps _dispatch_jira_build's handling
+        and not source_flags(args)  # keeps _dispatch_fetched_build's handling
         and should_supervise(working_dir)
     ):
         created: list[str] = []

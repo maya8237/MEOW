@@ -24,6 +24,8 @@ from meow.infrastructure.worktree import (
     _ensure_clean_tree,
     _require_source_worktree,
 )
+from meow.integrations.github_reviewer import _load_github_config
+from meow.integrations.gitlab_reviewer import _load_gitlab_config
 from meow.integrations.issue_solver import _load_jira_config
 from meow.project.config import load_config
 from meow.project.onboarding import bind_provider_references
@@ -46,30 +48,56 @@ def _drive[T](coroutine: Coroutine[object, object, T]) -> T:
         raise SystemExit(EXIT_CANCELLED) from None
 
 
+_PROVIDER_CONFIG = {
+    "jira": _load_jira_config,
+    "gitlab": _load_gitlab_config,
+    "github": _load_github_config,
+}
+
+
 def _jira_problem(args: argparse.Namespace, working_dir: Path) -> str | None:
-    """Why --jira/--jql cannot run here, or None when they can (or are unused)."""
-    if args.jira is None and args.jql is None:
+    """Why a fetched source cannot run here, or None when it can (or is unused)."""
+    provider = next(
+        (
+            name
+            for name, given in (
+                ("jira", args.jira is not None or args.jql is not None),
+                ("gitlab", getattr(args, "gitlab", None) is not None),
+                ("github", getattr(args, "github", None) is not None),
+            )
+            if given
+        ),
+        None,
+    )
+    if provider is None:
         return None
     try:
-        bind_provider_references(working_dir, ("jira",))
-        _load_jira_config(load_config(working_dir))
+        bind_provider_references(working_dir, (provider,))
+        _PROVIDER_CONFIG[provider](load_config(working_dir))
     except (OSError, ValueError) as exc:
+        flags = "--jira and --jql" if provider == "jira" else f"--{provider}"
         return (
-            f"--jira and --jql need [jira] and [jira.mcp] in .meow/config.toml.\n{exc}"
+            f"{flags} need [{provider}] and [{provider}.mcp] in "
+            f".meow/config.toml.\n{exc}"
         )
     return None
 
 
-def _intake(args: argparse.Namespace, tasks_file: Path | None) -> IntakeRequest:
+def _intake(args: argparse.Namespace, tasks_file: Path | None) -> IntakeRequest:  # ruff: ignore[too-many-return-statements] -- one return per source
+    extra = {"instructions": args.request} if args.request else {}
     if args.jira is not None:
         return IntakeRequest(
             "jira",
             jira_keys=tuple(args.jira) if isinstance(args.jira, list) else (args.jira,),
+            **extra,
         )
     if args.jql is not None:
-        return IntakeRequest("jql", jql=args.jql)
+        return IntakeRequest("jql", jql=args.jql, **extra)
     if tasks_file is not None:
-        return IntakeRequest("tasks", tasks_file=tasks_file)
+        return IntakeRequest("tasks", tasks_file=tasks_file, **extra)
+    for provider in ("gitlab", "github"):
+        if (link := getattr(args, provider, None)) is not None:
+            return IntakeRequest(provider, link=link, **extra)
     return IntakeRequest("objective", objective=args.request)
 
 

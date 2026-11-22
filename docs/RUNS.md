@@ -177,13 +177,15 @@ for retry. Missing Node dependencies are repaired on reused/in-place runs too.
 See [WORKTREE_SETUP.md](WORKTREE_SETUP.md) for copy rules, permission gates,
 package-manager selection, and Bun shared storage.
 
-## Jira and lint-fix
+## Fetched sources and lint-fix
 
-`meow run --jira [KEY]` fetches the named or latest configured project issue,
-builds in its own retained branch/worktree, and commits/pushes after PASS.
-Success prints issue/branch JSON. Jira rejects `--name`, `--no-worktree`,
+`meow run --jira [KEY|URL] ["extra instructions"]` fetches the named (key or
+issue URL) or latest configured project issue; `--gitlab URL` / `--github URL`
+fetch that issue, MR, or PR. Request text is appended as additional
+instructions. The run builds in its own retained branch/worktree, and commits/pushes after PASS.
+Success prints issue/branch JSON. These sources reject `--name`, `--no-worktree`,
 `--from`, `--resume-at`, and `--plan`; manual plan approval is interactive-only.
-Configure the [Jira integration](INTEGRATIONS.md#jira).
+Configure the [integrations](INTEGRATIONS.md#jira).
 
 `meow run --lint-fix` auto-fixes and uses a fixer up to `max_rounds`, in place,
 with a clean-tree requirement. Adding `--report-only` prints findings without

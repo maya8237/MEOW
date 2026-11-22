@@ -25,6 +25,7 @@ from meow.execution.orchestration.intake import (
     IntakeRequest,
     decompose,
     fetch_jira_tasks,
+    instructed,
     load_tasks_file,
 )
 from meow.execution.orchestration.integration import (
@@ -35,6 +36,7 @@ from meow.execution.orchestration.integration import (
     reset_mid_merge,
 )
 from meow.execution.orchestration.model import (
+    LINK_SOURCES,
     TERMINAL_PHASES,
     OrchestratorRecord,
     OrchestratorTask,
@@ -60,7 +62,9 @@ from meow.infrastructure.background import launch_background
 from meow.infrastructure.cancellation import RunCancelled
 from meow.infrastructure.logging import get_logger
 from meow.infrastructure.worktree import current_branch
+from meow.integrations.issue_solver import PROVIDER_LABELS, _fetch_link
 from meow.project.config import load_config
+from meow.project.prompts import with_instructions
 
 logger = get_logger(__name__)
 
@@ -88,12 +92,18 @@ def resolve_base(repo: Path, base_branch: str | None) -> str:
 def objective_for(request: IntakeRequest, keys: tuple[str, ...]) -> str:
     """The objective text recorded for an intake request."""
     if request.source == "jira":
-        return "Resolve Jira issues: " + ", ".join(keys)
-    if request.source == "jql":
-        return f"Resolve the Jira issues matching `{request.jql}`: " + ", ".join(keys)
-    if request.source == "tasks":
-        return f"Run the tasks in {Path(str(request.tasks_file)).name}"
-    return str(request.objective)
+        objective = "Resolve Jira issues: " + ", ".join(keys)
+    elif request.source == "jql":
+        objective = f"Resolve the Jira issues matching `{request.jql}`: " + ", ".join(
+            keys
+        )
+    elif request.source == "tasks":
+        objective = f"Run the tasks in {Path(str(request.tasks_file)).name}"
+    elif request.source in LINK_SOURCES:
+        objective = f"Resolve {request.link}"
+    else:
+        return str(request.objective)
+    return with_instructions(objective, request.instructions)
 
 
 def _history(action: str, rationale: str) -> dict:
@@ -465,11 +475,34 @@ class _Driver:
             )
             self._describe(request, drafts)
         elif request.source == "tasks":
-            loaded = load_tasks_file(Path(str(request.tasks_file)))
+            loaded = instructed(
+                load_tasks_file(Path(str(request.tasks_file))), request.instructions
+            )
             self._describe(request, loaded)
             self._worktree()
             return loaded
+        elif request.source in LINK_SOURCES:
+            await self._fetch_objective()
         return await self._decompose(drafts)
+
+    async def _fetch_objective(self) -> None:
+        """Replace a GitLab/GitHub source's objective with the fetched item."""
+        record = self._load()
+        if record.intake.get("fetched"):
+            return
+        link = record.intake["link"]
+        item = await _fetch_link(self.repo, self.config, record.source, link)
+        label = PROVIDER_LABELS[record.source]
+
+        def mutate(current: OrchestratorRecord) -> None:
+            current.objective = with_instructions(
+                f"Resolve the {label} item {link}: {item['title']}\n\n"
+                f"{item['description']}",
+                current.intake.get("instructions"),
+            )
+            current.intake["fetched"] = True
+
+        self.store.update(self.orch_id, mutate)
 
     async def _decompose(
         self, drafts: list[OrchestratorTask] | None
@@ -535,7 +568,9 @@ class _Driver:
         """The final task list of an orchestrator whose intake did not finish."""
         if record.intake.get("dry_run") and record.tasks:
             return record.tasks
-        if record.source == "objective":
+        if record.source in LINK_SOURCES:
+            await self._fetch_objective()
+        if record.source in {"objective", *LINK_SOURCES}:
             return await self._decompose(None)
         if not record.tasks:
             raise ValueError(
@@ -599,6 +634,12 @@ async def start_orchestrator(  # ruff: ignore[too-many-arguments] -- the pinned 
             "target_branch": target_branch or config["delivery"]["target_branch"],
         },
     )
+    if intake.link or intake.instructions:
+
+        def mutate(current: OrchestratorRecord) -> None:
+            current.intake.update(link=intake.link, instructions=intake.instructions)
+
+        record = store.update(record.id, mutate)
     driver = _Driver(repo, record.id, config, _wiring(agents, launcher, sleep))
     with DriverLock(store.dir_for(record.id), mode="cli"):
         return record.id, await driver.start(intake, dry_run=dry_run)

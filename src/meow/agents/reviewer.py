@@ -27,6 +27,7 @@ from meow.project.prompts import (
     plan_review_prompt,
     prompt_review_prompt,
     remote_review_prompt,
+    with_focus,
 )
 from meow.project.review_scope import coverage_errors, prepare_scope, scope_instructions
 
@@ -559,8 +560,14 @@ class ReviewerAgent(Agent):
             review_file,
         )
 
-    async def review_remote_change(
-        self, title: str, description: str, diff: str, *, provider: str
+    async def review_remote_change(  # ruff: ignore[too-many-arguments]
+        self,
+        title: str,
+        description: str,
+        diff: str,
+        *,
+        provider: str,
+        focus: str | None = None,
     ) -> tuple[str, str]:
         """Grade a remote merge/pull request diff without checking it out.
 
@@ -593,13 +600,20 @@ class ReviewerAgent(Agent):
                 t for t in (agent.tools or ()) if t in {"Read", "Grep", "Glob", "Write"}
             ],
         )
-        query_prompt = remote_review_query(request_label, title, description, diff)
+        query_prompt = with_focus(
+            remote_review_query(request_label, title, description, diff), focus
+        )
         await self.run_definition_query(agent, query_prompt, options, "Reviewer")
         verdict_text = await self._read_verdict(review_file, agent, options)
         return _verdict_status(verdict_text), verdict_text
 
     async def review_branch(
-        self, target: str, branch: str, *, objective: str | None = None
+        self,
+        target: str,
+        branch: str,
+        *,
+        objective: str | None = None,
+        focus: str | None = None,
     ) -> tuple[str, str]:
         """Grade a local branch's diff against a target branch, PASS/FAIL.
 
@@ -633,8 +647,9 @@ class ReviewerAgent(Agent):
                 agent=agent,
             ),
         )
-        query_prompt = branch_review_query(
-            target, branch, diff_text, lint_evidence.report()
+        query_prompt = with_focus(
+            branch_review_query(target, branch, diff_text, lint_evidence.report()),
+            focus,
         )
         await self.run_definition_query(agent, query_prompt, options, "Reviewer")
         verdict_text = await self._read_verdict(review_file, agent, options)

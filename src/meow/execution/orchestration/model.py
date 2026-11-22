@@ -21,7 +21,8 @@ PHASES = (
 )
 TERMINAL_PHASES = frozenset({"delivered", "failed", "cancelled"})
 TASK_STATUSES = ("pending", "running", "passed", "failed", "merged", "blocked")
-SOURCES = ("objective", "jira", "jql", "tasks")
+SOURCES = ("objective", "jira", "jql", "tasks", "gitlab", "github")
+LINK_SOURCES = frozenset({"gitlab", "github"})
 MODES = ("cli", "native")
 SCHEMA_VERSION = 1
 TASK_ENTRY_KEYS = frozenset({

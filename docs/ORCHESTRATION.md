@@ -10,7 +10,9 @@ Explicit native supervision uses the same engine. Configuration is under [orches
 
 ## Input and flags
 
-Choose one objective, `--jira KEY...`, `--jql QUERY`, or `--tasks FILE`.
+Choose one objective, `--jira KEY|URL...`, `--jql QUERY`, `--tasks FILE`, or
+`-o --gitlab URL` / `-o --github URL` (the fetched item becomes the objective).
+Request text beside a source is added to the objective and every task.
 Select orchestration with `--orchestrate` (`-o`); task files, JQL, and multiple
 Jira keys also select it. Starts require a clean checkout unless `--from BRANCH`
 selects a committed base; local edits stay outside the integration worktree.

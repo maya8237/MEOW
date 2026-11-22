@@ -11,6 +11,7 @@ from meow.agents.base import ProjectContext
 from meow.agents.mcp_fetcher import fetch_issue_list, fetch_record
 from meow.agents.orchestration import OrchestratorAgents
 from meow.execution.orchestration.model import (
+    LINK_SOURCES,
     MAX_ORCHESTRATOR_TASKS,
     OrchestratorRecord,
     OrchestratorTask,
@@ -20,6 +21,7 @@ from meow.execution.orchestration.model import (
 from meow.execution.orchestration.store import OrchestratorStore
 from meow.infrastructure.worktree import sanitize_name
 from meow.integrations.issue_solver import _load_jira_config
+from meow.project.prompts import with_instructions
 
 _ATTEMPTS = 2
 _ISSUE_FIELDS = ("key", "summary", "description")
@@ -27,13 +29,20 @@ _ISSUE_FIELDS = ("key", "summary", "description")
 
 @dataclass(frozen=True)
 class IntakeRequest:
-    """What the user asked the orchestrator to work on; exactly one source."""
+    """What the user asked the orchestrator to work on; exactly one source.
+
+    `link` is the GitLab/GitHub URL of a `gitlab`/`github` source.
+    `instructions` (request text given with a non-objective source) are
+    added to the objective and to every task.
+    """
 
     source: str
     objective: str | None = None
     jira_keys: tuple[str, ...] = ()
     jql: str | None = None
     tasks_file: Path | None = None
+    link: str | None = None
+    instructions: str | None = None
 
     def validate(self) -> None:
         """Raise ValueError unless exactly the source named by `source` is given."""
@@ -44,14 +53,17 @@ class IntakeRequest:
                 ("jira", bool(self.jira_keys)),
                 ("jql", bool(self.jql and self.jql.strip())),
                 ("tasks", self.tasks_file is not None),
+                (self.source, self.source in LINK_SOURCES and bool(self.link)),
             )
             if present
         ]
         if given != [self.source]:
             raise ValueError(
                 "Give exactly one input: an objective, --jira KEY ..., "
-                "--jql QUERY, or --tasks FILE"
+                "--jql QUERY, --tasks FILE, --gitlab URL, or --github URL"
             )
+        if self.instructions and self.source == "objective":
+            raise ValueError("An objective takes no separate instructions")
 
 
 def check_task_count(count: int) -> None:
@@ -98,16 +110,27 @@ def dedupe_keys(keys: Sequence[str]) -> tuple[str, ...]:
     return tuple(seen.values())
 
 
-def jira_task(issue: dict) -> OrchestratorTask:
+def jira_task(issue: dict, instructions: str | None = None) -> OrchestratorTask:
     """The task for one fetched Jira issue (`key`, `summary`, `description`)."""
     key = issue["key"]
     return OrchestratorTask(
         id=sanitize_name(key),
-        request=(
-            f"Resolve Jira issue {key}: {issue['summary']}\n\n{issue['description']}"
+        request=with_instructions(
+            f"Resolve Jira issue {key}: {issue['summary']}\n\n{issue['description']}",
+            instructions,
         ),
         source_ref=key,
     )
+
+
+def instructed(
+    tasks: Sequence[OrchestratorTask], instructions: str | None
+) -> list[OrchestratorTask]:
+    """`tasks` with the user's extra instructions added to each request."""
+    return [
+        replace(task, request=with_instructions(task.request, instructions))
+        for task in tasks
+    ]
 
 
 async def fetch_jira_tasks(
@@ -135,7 +158,7 @@ async def fetch_jira_tasks(
     check_task_count(len(issues))
     if not issues:
         raise RuntimeError("No Jira issues matched")
-    return [jira_task(issue) for issue in issues]
+    return [jira_task(issue, request.instructions) for issue in issues]
 
 
 def _restore_drafts(

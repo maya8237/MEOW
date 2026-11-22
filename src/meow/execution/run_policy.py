@@ -18,13 +18,38 @@ def uses_orchestration(args) -> bool:
     )
 
 
+SOURCE_FLAGS = ("jira", "gitlab", "github")
+
+
+def source_flags(args) -> list[str]:
+    """The fetched-source flags (`--jira`, `--gitlab`, `--github`) a run names."""
+    return [
+        f"--{name}" for name in SOURCE_FLAGS if getattr(args, name, None) is not None
+    ]
+
+
+def fetched_source(args) -> str | None:
+    """`jira`, `gitlab` or `github` when one non-orchestrated run fetches its
+    request from that source; the request text then adds instructions."""
+    if getattr(args, "command", None) != "run" or uses_orchestration(args):
+        return None
+    flags = source_flags(args)
+    return flags[0][2:] if flags else None
+
+
+def fetched_ref(args) -> str | None:
+    """The key or URL a `fetched_source` run fetches (None: the latest issue)."""
+    source = fetched_source(args)
+    return (getattr(args, source) or None) if source else None
+
+
 def _is_plain_build(args) -> bool:
-    """True for `run` with neither --lint-fix nor --jira -- the only mode
+    """True for `run` with no --lint-fix or fetched source -- the only mode
     that still plans+implements a brand new feature the original way."""
     return (
         args.command == "run"
         and not args.lint_fix
-        and args.jira is None
+        and not source_flags(args)
         and not uses_orchestration(args)
     )
 
@@ -70,7 +95,7 @@ def _requires_clean_tree(args) -> bool:
         return False
     if args.lint_fix:
         return not args.report_only
-    if args.jira is not None:
+    if source_flags(args):
         return True
     return not (not args.no_worktree and args.source_branch)
 
@@ -83,7 +108,7 @@ def _creates_a_worktree(args, *, use_worktree: bool) -> bool:
     if use_worktree:
         return True
     if args.command == "run":
-        return args.jira is not None
+        return bool(source_flags(args))
     if args.command == "review":
         return args.branch is not None and not args.no_worktree
     return False

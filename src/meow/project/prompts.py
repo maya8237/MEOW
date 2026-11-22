@@ -71,6 +71,20 @@ def mcp_probe_prompt(label: str, token: str, probe: str) -> str:
     )
 
 
+def with_instructions(request: str, instructions: str | None) -> str:
+    """A fetched request plus the user's extra instructions, when given."""
+    if not instructions or not instructions.strip():
+        return request
+    return f"{request}\n\nAdditional instructions:\n{instructions.strip()}"
+
+
+def with_focus(query: str, focus: str | None) -> str:
+    """A review query plus the user's extra focus, when given."""
+    if not focus or not focus.strip():
+        return query
+    return f"{query}\n\nAlso pay particular attention to:\n{focus.strip()}"
+
+
 def mcp_fetch_prompt(  # ruff: ignore[too-many-arguments, too-many-positional-arguments] -- pure builder
     label: str,
     request: str,
