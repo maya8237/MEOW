@@ -10,6 +10,23 @@ from meow.project import repos
 from meow.project.custom import kit_store
 
 
+def pytest_configure(config):
+    """Keep git from starting detached auto-maintenance in test repositories.
+
+    A commit can spawn `git maintenance run --auto --detach`, which creates and
+    removes `.git/objects/maintenance.lock` while a fixture copies a template
+    repository, failing the copy. Command-scope config covers every git call,
+    including session-scoped templates built before function fixtures run.
+    """
+    os.environ.update({
+        "GIT_CONFIG_COUNT": "2",
+        "GIT_CONFIG_KEY_0": "maintenance.auto",
+        "GIT_CONFIG_VALUE_0": "false",
+        "GIT_CONFIG_KEY_1": "gc.auto",
+        "GIT_CONFIG_VALUE_1": "0",
+    })
+
+
 @pytest.fixture(autouse=True)
 def _no_python_installs(monkeypatch):
     """Preparation tests must explicitly fake subprocesses, never install packages."""
