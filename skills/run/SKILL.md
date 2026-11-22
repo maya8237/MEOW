@@ -132,7 +132,7 @@ For ordinary sprints, run from the project root (separate SDK sessions, headless
 
 ```bash
 meow run "<feature request>" --name "<generated-feature-name>" --background --work-dir "<project-path>"
-meow run --jira [ISSUE-KEY] --work-dir "<project-path>"   # Jira-sourced, retained branch
+meow run --jira [ISSUE-KEY|URL] ["<extra instructions>"] --work-dir "<project-path>"   # Jira-sourced, retained branch
 ```
 
 **Launching and watching:** from a managing session, start ordinary runs with

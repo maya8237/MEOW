@@ -141,7 +141,9 @@ def _create_run(
         )
     return store.create(
         source="jira" if args.jira is not None else "prompt",
-        request=args.request or args.jira or "latest Jira issue",
+        request=(
+            args.jira or "latest Jira issue" if args.jira is not None else args.request
+        ),
         repo=repo,
         worktree=repo,
         branch="preparing",
@@ -432,6 +434,7 @@ async def _drive_invocation(repo: Path, run_id: str, args: argparse.Namespace) -
             run_id=run_id,
             **({"workflow": args.workflow} if args.workflow else {}),
             **({"inputs": parse_inputs(args.input)} if args.input else {}),
+            **({"instructions": args.request} if args.request else {}),
         )
     else:
         await run_sprint(

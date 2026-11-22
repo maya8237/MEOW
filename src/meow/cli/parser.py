@@ -1,8 +1,10 @@
 """argparse wiring for the meow command-line interface."""
 
 import argparse
+import re
 import sys
 from importlib.metadata import version
+from urllib.parse import parse_qs, urlparse
 
 from meow.cli.catalog_cli import add_catalog_parsers
 from meow.cli.hooks_cli import add_hooks_parser
@@ -118,13 +120,52 @@ class _Version(argparse.Action):
         setattr(namespace, self.dest, values)
 
 
+_JIRA_KEY = re.compile(r"[A-Za-z][A-Za-z0-9_]*-\d+")
+
+
+def jira_issue_key(value: str) -> str:
+    """An issue key from a key or a Jira issue URL (`.../browse/PROJ-1`)."""
+    value = value.strip()
+    if not value:  # bare --jira: the latest issue
+        return value
+    if _JIRA_KEY.fullmatch(value):
+        return value.upper()
+    if not re.match(r"https?://", value, re.IGNORECASE):
+        raise argparse.ArgumentTypeError(f"not a Jira issue key or URL: {value!r}")
+    parsed = urlparse(value)
+    selected = parse_qs(parsed.query).get("selectedIssue", [])
+    for candidate in (*selected, *reversed(parsed.path.split("/"))):
+        if _JIRA_KEY.fullmatch(candidate):
+            return candidate.upper()
+    raise argparse.ArgumentTypeError(f"no Jira issue key in URL: {value!r}")
+
+
 class _JiraSources(argparse.Action):
-    """Keep single-issue runs scalar; multiple keys select the supervisor."""
+    """Keys or issue URLs; a value with spaces is the run's extra instructions.
+
+    Keep single-issue runs scalar; multiple keys select the supervisor.
+    """
 
     def __call__(self, parser, namespace, values, option_string=None):
-        setattr(
-            namespace, self.dest, values if len(values) > 1 else next(iter(values), "")
-        )
+        text = [value for value in values if re.search(r"\s", value.strip())]
+        if text:
+            if getattr(namespace, "request", None) or len(text) > 1:
+                parser.error("give the request text once")
+            namespace.request = text[0]
+        try:
+            keys = [jira_issue_key(value) for value in values if value not in text]
+        except argparse.ArgumentTypeError as exc:
+            parser.error(f"argument {option_string}: {exc}")
+        setattr(namespace, self.dest, keys if len(keys) > 1 else next(iter(keys), ""))
+
+
+class _Request(argparse.Action):
+    """Keep request text an earlier `--jira` value supplied."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        if values is None and getattr(namespace, self.dest, None) is not None:
+            return
+        setattr(namespace, self.dest, values)
 
 
 class _InPlaceDelivery(argparse.Action):
@@ -451,7 +492,11 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         "request",
         nargs="?",
         default=None,
-        help="Request text (or select --jira, --jql, or --tasks as the source).",
+        action=_Request,
+        help=(
+            "Request text (or select --jira, --jql, or --tasks as the source); "
+            "with one --jira issue, extra instructions for it."
+        ),
     )
     run_parser.add_argument(
         "--plan",
@@ -482,11 +527,12 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         nargs="*",
         action=_JiraSources,
         default=None,
-        metavar="KEY",
+        metavar="KEY|URL",
         help=(
-            "Fetch this Jira issue (omit KEY for the latest in "
+            "Fetch this Jira issue by key or URL (omit KEY for the latest in "
             "[jira].project_key) and build it end to end in a pushed "
-            "worktree branch. Multiple keys select orchestration."
+            "worktree branch; request text adds instructions. Multiple keys "
+            "select orchestration."
         ),
     )
     run_parser.add_argument(
@@ -592,9 +638,10 @@ def _add_review_parser(subparsers: argparse._SubParsersAction) -> None:
         nargs="?",
         const="",
         default=None,
-        metavar="KEY",
+        type=jira_issue_key,
+        metavar="KEY|URL",
         help=(
-            "Fetch this Jira issue (omit KEY for the latest in "
+            "Fetch this Jira issue by key or URL (omit KEY for the latest in "
             "[jira].project_key) and review the current code against what "
             "it asked for."
         ),

@@ -1457,6 +1457,31 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
         )
 
     @staticmethod
+    def test_jira_url_and_extra_instructions_reach_issue_solver():
+        url = "https://acme.atlassian.net/browse/PROJ-7"
+        for argv in (
+            ["run", "--jira", url, "Also add a changelog entry"],
+            ["run", "Also add a changelog entry", "--jira", url],
+        ):
+            with (
+                patch("meow.execution.run_policy._ensure_clean_tree"),
+                patch("meow.cli.cli._boot_repo"),
+                patch(
+                    "meow.cli.dispatch.run_issue_solver", new_callable=AsyncMock
+                ) as mock_issue_solver,
+                patch("sys.argv", ["meow", *argv, "--work-dir", "."]),
+            ):
+                mock_issue_solver.return_value = {"issue": "PROJ-7", "branch": "b"}
+                cli.cli_main()
+
+            mock_issue_solver.assert_awaited_once_with(
+                Path(".").resolve(),
+                "PROJ-7",
+                approve_plan=None,
+                instructions="Also add a changelog entry",
+            )
+
+    @staticmethod
     def test_jira_build_mode_accepts_no_issue_key():
         with (
             patch("meow.execution.run_policy._ensure_clean_tree"),

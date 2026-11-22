@@ -138,3 +138,60 @@ def test_removed_native_command_is_rejected():
     with pytest.raises(SystemExit) as info:
         cli_main(["native", "orchestrate", "status"])
     assert info.value.code == EXIT_USAGE
+
+
+@pytest.mark.parametrize(
+    ("value", "key"),
+    [
+        ("proj-1", "PROJ-1"),
+        ("https://acme.atlassian.net/browse/PROJ-12", "PROJ-12"),
+        ("https://acme.atlassian.net/browse/PROJ-12/", "PROJ-12"),
+        (
+            "https://acme.atlassian.net/jira/software/projects/PROJ/boards/1"
+            "?selectedIssue=PROJ-3",
+            "PROJ-3",
+        ),
+    ],
+)
+def test_jira_accepts_keys_and_issue_urls(value, key):
+    parser = _build_arg_parser()
+    assert parser.parse_args(["run", "--jira", value]).jira == key
+    assert parser.parse_args(["review", "--jira", value]).jira == key
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--jira", "P-1", "Keep the API stable"],
+        ["Keep the API stable", "--jira", "P-1"],
+        ["--jira", "P-1", "--", "Keep the API stable"],
+    ],
+)
+def test_single_jira_issue_takes_extra_instructions(argv):
+    parser = _build_arg_parser()
+    args = parser.parse_args(["run", *argv])
+    _validate_run_flags(parser, args)
+    assert (args.jira, args.request) == ("P-1", "Keep the API stable")
+    assert not uses_orchestration(args)
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--jira", "not a key", "also text"],
+        ["first text", "--jira", "P-1", "second text"],
+        ["--jira", "https://acme.atlassian.net/browse/"],
+        ["--jira", "P1"],
+    ],
+)
+def test_jira_rejects_unclear_sources(argv):
+    with pytest.raises(SystemExit) as info:
+        _build_arg_parser().parse_args(["run", *argv])
+    assert info.value.code == EXIT_USAGE
+
+
+def test_orchestrated_jira_rejects_extra_instructions():
+    parser = _build_arg_parser()
+    args = parser.parse_args(["run", "--jira", "P-1", "P-2", "Extra text"])
+    with pytest.raises(SystemExit):
+        _validate_run_flags(parser, args)

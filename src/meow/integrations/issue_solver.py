@@ -66,8 +66,11 @@ async def run_issue_solver(  # ruff: ignore[too-many-arguments]
     run_id: str | None = None,
     workflow: str | None = None,
     inputs: dict[str, str] | None = None,
+    instructions: str | None = None,
 ) -> dict:
     """Fetch a Jira issue, solve it in a worktree, and return its branch.
+
+    `instructions` (the run's request text) are appended to the issue.
 
     Returns `{"issue": <key>, "branch": <branch name>}` on success. Raises on
     any failure (no active Jira MCP, no matching issue, the plan being
@@ -91,6 +94,7 @@ async def run_issue_solver(  # ruff: ignore[too-many-arguments]
             **({"force_disable_tests": True} if force_disable_tests else {}),
             **({"workflow": workflow} if workflow else {}),
             **({"inputs": inputs} if inputs else {}),
+            **({"instructions": instructions} if instructions else {}),
         )
     except Exception as exc:
         logger.warning("issue_unresolved", issue=issue_key or "latest", reason=str(exc))
@@ -108,6 +112,7 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
     run_id: str | None = None,
     workflow: str | None = None,
     inputs: dict[str, str] | None = None,
+    instructions: str | None = None,
 ) -> dict:
     issue = (
         await cancellable(
@@ -129,6 +134,8 @@ async def _solve_issue(  # ruff: ignore[too-many-arguments, too-many-positional-
         f"Resolve Jira issue {issue['key']}: {issue['summary']}\n\n"
         f"{issue['description']}"
     )
+    if instructions and instructions.strip():
+        request += f"\n\nAdditional instructions:\n{instructions.strip()}"
     if run_id:
         RunStore(working_dir).transition(
             run_id,

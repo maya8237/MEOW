@@ -58,8 +58,6 @@ def _validate_lint_fix_flags(parser: argparse.ArgumentParser, args) -> None:
 
 
 def _validate_build_flags(parser: argparse.ArgumentParser, args) -> None:
-    if args.request and args.jira is not None:
-        parser.error("Give either a request or --jira, not both")
     if not args.request and args.jira is None:
         parser.error("request is required unless --jira is given")
     if args.jira is not None:
@@ -139,6 +137,8 @@ def _validate_orchestration_flags(parser, args):
         args.jql is not None,
         args.tasks_file is not None,
     )
+    if args.request and isinstance(args.jira, list):
+        parser.error("extra instructions need a single --jira issue")
     if sum(sources) != 1:
         parser.error(
             "give exactly one of: a request, --jira KEY ..., --jql QUERY, --tasks FILE"

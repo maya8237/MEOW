@@ -146,6 +146,33 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result, {"issue": "PROJ-1", "branch": "issue/PROJ-1"})
 
+    async def test_appends_extra_instructions_to_the_issue_request(self):
+        config = {"jira": {"project_key": "PROJ", "mcp": {"command": "uvx"}}}
+        issue = {"key": "PROJ-1", "summary": "Fix thing", "description": "Details."}
+        with (
+            patch("meow.integrations.issue_solver.load_config", return_value=config),
+            patch(
+                "meow.integrations.issue_solver._fetch_issue",
+                new=AsyncMock(return_value=issue),
+            ),
+            patch(
+                "meow.integrations.issue_solver._ensure_branch_worktree",
+                return_value=Path("/project/.worktrees/issue-proj-1"),
+            ),
+            patch(
+                "meow.integrations.issue_solver.run_sprint", new=AsyncMock()
+            ) as mock_sprint,
+        ):
+            await issue_solver.run_issue_solver(
+                Path("/project"), "PROJ-1", instructions="  Keep the API stable. "
+            )
+
+        self.assertEqual(
+            mock_sprint.await_args.args[2],
+            "Resolve Jira issue PROJ-1: Fix thing\n\nDetails.\n\n"
+            "Additional instructions:\nKeep the API stable.",
+        )
+
     async def test_passes_approve_plan_through_to_run_sprint(self):
         working_dir = Path("/project")
         config = {

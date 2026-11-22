@@ -36,6 +36,7 @@ def _dispatch_jira_build(args, working_dir: Path) -> None:
                 **({"force_disable_tests": True} if args.force_disable_tests else {}),
                 **({"workflow": args.workflow} if args.workflow else {}),
                 **({"inputs": parse_inputs(args.input)} if args.input else {}),
+                **({"instructions": args.request} if args.request else {}),
             )
         )
     except IssueUnresolvedError as exc:

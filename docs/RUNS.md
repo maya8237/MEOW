@@ -179,8 +179,9 @@ package-manager selection, and Bun shared storage.
 
 ## Jira and lint-fix
 
-`meow run --jira [KEY]` fetches the named or latest configured project issue,
-builds in its own retained branch/worktree, and commits/pushes after PASS.
+`meow run --jira [KEY|URL] ["extra instructions"]` fetches the named (key or
+issue URL) or latest configured project issue, appends any request text as
+additional instructions, builds in its own retained branch/worktree, and commits/pushes after PASS.
 Success prints issue/branch JSON. Jira rejects `--name`, `--no-worktree`,
 `--from`, `--resume-at`, and `--plan`; manual plan approval is interactive-only.
 Configure the [Jira integration](INTEGRATIONS.md#jira).
