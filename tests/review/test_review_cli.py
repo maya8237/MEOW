@@ -54,9 +54,15 @@ class ValidateReviewFlagsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "--review-file"):
             _validate_review_flags(None, "KEY", None, None, None, None, Path("r.md"))
 
-    def test_prompt_with_another_source_raises(self):
-        with self.assertRaisesRegex(ValueError, "not both"):
-            _validate_review_flags("text", None, "link", None, None, None, None)
+    @staticmethod
+    def test_prompt_with_another_source_is_focus():
+        for args in (
+            ("text", "KEY", None, None, None, None, None),
+            ("text", None, "link", None, None, None, None),
+            ("text", None, None, "b", "main", None, None),
+            ("text", None, None, None, None, Path("plan.md"), None),
+        ):
+            _validate_review_flags(*args)
 
     def test_test_requires_an_explicit_plan_file(self):
         with self.assertRaisesRegex(ValueError, "explicit --plan"):
@@ -378,6 +384,66 @@ class GithubSourceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
         mock_fetch.assert_awaited_once()
         mock_review.assert_awaited_once_with("t", "d", "diff", provider="github")
+
+
+class FocusTests(unittest.IsolatedAsyncioTestCase):
+    async def test_prompt_reaches_remote_branch_and_jira_reviews(self):
+        config = _config(
+            gitlab={"mcp": {"command": "uvx"}},
+            jira={"project_key": "PROJ", "mcp": {"command": "uvx"}},
+        )
+        mr = {"title": "t", "description": "d", "diff": "diff"}
+        issue = {"key": "PROJ-1", "summary": "Add X", "description": "Details."}
+
+        def verdict():
+            return AsyncMock(return_value=("PASS", "STATUS: PASS\n"))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            working_dir = Path(tmp)
+            with (
+                patch("meow.cli.review_cli.load_config", return_value=config),
+                patch(
+                    "meow.cli.review_cli._fetch_merge_request",
+                    new=AsyncMock(return_value=mr),
+                ),
+                patch(
+                    "meow.cli.review_cli._fetch_issue",
+                    new=AsyncMock(return_value=issue),
+                ),
+                patch(
+                    "meow.cli.review_cli.ReviewerAgent.review_remote_change",
+                    new=verdict(),
+                ) as remote,
+                patch(
+                    "meow.cli.review_cli.ReviewerAgent.review_branch", new=verdict()
+                ) as branch,
+                patch(
+                    "meow.cli.review_cli.ReviewerAgent.review_prompt", new=verdict()
+                ) as prompt,
+                patch(
+                    "meow.cli.review_cli._ensure_existing_branch_worktree",
+                    return_value=working_dir,
+                ),
+                patch("meow.cli.review_cli.prepare_environment"),
+            ):
+                await review_cli.run_review_command(
+                    working_dir, "Check auth", fix=False, gitlab_link="https://x/mr/1"
+                )
+                await review_cli.run_review_command(
+                    working_dir, "Check auth", fix=False, branch="b", target="main"
+                )
+                await review_cli.run_review_command(
+                    working_dir, "Check auth", fix=False, jira_key="PROJ-1"
+                )
+        remote.assert_awaited_once_with(
+            "t", "d", "diff", provider="gitlab", focus="Check auth"
+        )
+        branch.assert_awaited_once_with("main", "b", focus="Check auth")
+        self.assertTrue(
+            prompt.await_args.args[0].endswith(
+                "Also pay particular attention to:\nCheck auth"
+            )
+        )
 
 
 class JiraSourceTests(unittest.IsolatedAsyncioTestCase):

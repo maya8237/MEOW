@@ -586,3 +586,48 @@ def test_jira_source_keeps_fetched_requests_and_titles_the_pr_with_keys(
         record.task("PROJ-1").request == "Resolve Jira issue PROJ-1: Fix login\n\nSteps"
     )
     assert script.pull_request.calls[0][0] == "Orchestrator: PROJ-1"
+
+
+def test_tasks_file_instructions_reach_every_task(tmp_path, monkeypatch):
+    world = one_task_world(tmp_path, monkeypatch, [PASS_API])
+    tasks_file = tmp_path / "tasks.toml"
+    tasks_file.write_text(
+        '[[tasks]]\nid = "api"\nrequest = "Build api"\n', encoding="utf-8"
+    )
+
+    oid, _ = world.start(
+        intake=IntakeRequest(
+            "tasks", tasks_file=tasks_file, instructions="Use type hints"
+        ),
+        dry_run=True,
+    )
+
+    record = world.record(oid)
+    assert record.objective == (
+        "Run the tasks in tasks.toml\n\nAdditional instructions:\nUse type hints"
+    )
+    assert record.tasks[0].request == (
+        "Build api\n\nAdditional instructions:\nUse type hints"
+    )
+
+
+def test_gitlab_link_is_fetched_into_the_objective(tmp_path, monkeypatch):
+    world = one_task_world(tmp_path, monkeypatch, [PASS_API])
+    link = "https://gitlab.com/g/p/-/issues/4"
+    fetch = AsyncMock(return_value={"title": "Add SSO", "description": "Use OIDC"})
+    monkeypatch.setattr(runner_module, "_fetch_link", fetch)
+
+    oid, _ = world.start(
+        intake=IntakeRequest("gitlab", link=link, instructions="Keep it small"),
+        dry_run=True,
+    )
+
+    record = world.record(oid)
+    assert fetch.await_args.args[2:] == ("gitlab", link)
+    expected = (
+        f"Resolve the GitLab item {link}: Add SSO\n\nUse OIDC\n\n"
+        "Additional instructions:\nKeep it small"
+    )
+    assert record.objective == expected
+    assert record.intake["fetched"] is True
+    assert world.script.decomposer_calls == [expected]

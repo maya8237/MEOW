@@ -30,7 +30,7 @@ from meow.cli.validation import (
 from meow.common.atomic import replace_with_retry
 from meow.common.clock import now_iso, timestamp_key
 from meow.common.process import process_identity
-from meow.execution.run_policy import uses_orchestration
+from meow.execution.run_policy import source_flags, uses_orchestration
 
 
 class RecipeError(ValueError):
@@ -219,7 +219,7 @@ def _validate_arguments(recipe: Recipe, generated: list[str]) -> None:
     if (
         recipe.command in {"run", "plan"}
         and not uses_orchestration(parsed)
-        and getattr(parsed, "jira", None) is None
+        and not source_flags(parsed)
         and getattr(parsed, "feature_name", None) != recipe.name
     ):
         raise RecipeError("Arguments cannot replace the recipe name")
@@ -465,7 +465,7 @@ def _generated_cli_options(recipe: Recipe) -> list[str]:
     if (
         recipe.command in {"run", "plan"}
         and not uses_orchestration(source)
-        and getattr(source, "jira", None) is None
+        and not source_flags(source)
     ):
         generated.extend(["--name", recipe.name])
     if recipe.workflow is not None and recipe.command != "run":

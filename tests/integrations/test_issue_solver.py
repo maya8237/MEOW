@@ -224,3 +224,45 @@ class RunIssueSolverTests(unittest.IsolatedAsyncioTestCase):
             await issue_solver.run_issue_solver(Path("/project"))
 
         mock_fetch.assert_not_awaited()
+
+
+class LinkSolverTests(unittest.IsolatedAsyncioTestCase):
+    async def test_gitlab_link_is_fetched_and_built_on_its_own_branch(self):
+        link = "https://gitlab.com/group/proj/-/issues/12"
+        item = {"title": "Add SSO", "description": "Use OIDC"}
+        with (
+            patch("meow.integrations.issue_solver.load_config", return_value={}),
+            patch(
+                "meow.integrations.issue_solver._fetch_link",
+                new=AsyncMock(return_value=item),
+            ) as fetch,
+            patch(
+                "meow.integrations.issue_solver._ensure_branch_worktree",
+                return_value=Path("/p/.worktrees/gitlab-proj-issues-12"),
+            ) as worktree,
+            patch(
+                "meow.integrations.issue_solver.run_sprint", new=AsyncMock()
+            ) as sprint,
+        ):
+            result = await issue_solver.run_issue_solver(
+                Path("/p"), link, provider="gitlab", instructions="Keep it small"
+            )
+
+        fetch.assert_awaited_once_with(Path("/p"), {}, "gitlab", link)
+        worktree.assert_called_once_with(
+            Path("/p"), "gitlab-proj-issues-12", "issue/gitlab-proj-issues-12"
+        )
+        self.assertEqual(
+            sprint.await_args.args[2],
+            f"Resolve the GitLab item {link}: Add SSO\n\nUse OIDC\n\n"
+            "Additional instructions:\nKeep it small",
+        )
+        self.assertEqual(sprint.await_args.kwargs["source"], "gitlab")
+        self.assertEqual(
+            result, {"issue": link, "branch": "issue/gitlab-proj-issues-12"}
+        )
+
+    def test_link_slug(self):
+        self.assertEqual(
+            issue_solver.link_slug("https://github.com/o/repo/pull/7/"), "repo-pull-7"
+        )

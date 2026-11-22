@@ -140,6 +140,13 @@ def jira_issue_key(value: str) -> str:
     raise argparse.ArgumentTypeError(f"no Jira issue key in URL: {value!r}")
 
 
+def web_link(value: str) -> str:
+    """An http(s) URL, as given."""
+    if not re.match(r"https?://\S+$", value.strip(), re.IGNORECASE):
+        raise argparse.ArgumentTypeError(f"not an http(s) URL: {value!r}")
+    return value.strip()
+
+
 class _JiraSources(argparse.Action):
     """Keys or issue URLs; a value with spaces is the run's extra instructions.
 
@@ -474,7 +481,8 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
         "run",
         help=(
             "Plan, implement, and review a request. Use --orchestrate/-o for "
-            "complete sprints delivered in one PR, --jira for issues, or "
+            "complete sprints delivered in one PR, --jira/--gitlab/--github "
+            "for issues (plus optional instructions), or "
             "--lint-fix for lint."
         ),
     )
@@ -535,6 +543,21 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> None:
             "select orchestration."
         ),
     )
+    for provider, label, item in (
+        ("gitlab", "GitLab", "issue or merge request"),
+        ("github", "GitHub", "issue or pull request"),
+    ):
+        run_parser.add_argument(
+            f"--{provider}",
+            type=web_link,
+            default=None,
+            metavar="URL",
+            help=(
+                f"Fetch the {label} {item} at URL and build it like --jira; "
+                "request text adds instructions. With --orchestrate it is "
+                "the objective."
+            ),
+        )
     run_parser.add_argument(
         "--background",
         action="store_true",

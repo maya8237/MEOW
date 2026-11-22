@@ -65,12 +65,12 @@ meow plan "Add a dark mode toggle" --name dark-mode
 
 Normal runs use a worktree and commit/push after verification.
 `-n` / `--no-worktree` uses the selected checkout without committing or pushing;
-`-nc` / `--no-worktree-commit` commits without pushing; `-np` / `--no-worktree-push`
-commits/pushes. These options are exclusive.
+`-nc` / `--no-worktree-commit` commits without pushing; `-np` / `--no-worktree-push` commits/pushes. These options are exclusive.
 Omit `--name` to derive a short request name. `--from BRANCH` (`-b`) selects the starting branch.
 `--from` chooses the start in a new worktree. An existing linked worktree selected with `-d PATH` is used directly, without `--from`. `--target` overrides `[delivery].target_branch` (auto-onboarded to existing `dev`, otherwise `master`). Targets survive resume; [MR/pipeline options](PIPELINE.md).
 `--plan PATH` supplies a plan; `--resume-at review` reviews existing work first.
 `--manually-approve-plan` (`-m`) pauses before implementation; plan-only rejects it.
+[`--jira KEY|URL`, `--gitlab URL`, `--github URL`](RUNS.md#fetched-sources-and-lint-fix) build an issue/MR/PR; request text adds instructions.
 `--background` detaches a run and rejects manual approval and lint-fix. First use onboards the
 project; checks and review precede commits and pushes. See [runs and recovery](RUNS.md), [test selection](VERIFICATION.md).
 
@@ -78,15 +78,15 @@ project; checks and review precede commits and pushes. See [runs and recovery](R
 
 ```bash
 meow run --orchestrate "Add SSO and audit logs" --max-parallel 3
-meow run --jira PROJ-1 PROJ-2
+meow run --jira PROJ-1 PROJ-2 "Share one migration"
 meow run --jql "project = PROJ"
 meow run --tasks tasks.toml --dry-run
 meow resume ID --continue
 meow resume ORCH_ID --continue --task T --request "Updated request"
 ```
 
-Task files, JQL, and multiple Jira keys select orchestration automatically.
-`--orchestrate` (`-o`) selects it explicitly; `--max-parallel N` limits concurrent
+Task files, JQL, and multiple Jira keys select orchestration automatically; request text beside
+any source adds instructions. `-o` selects it explicitly; `--max-parallel N` limits concurrent
 sprints, `--dry-run` saves the decomposition, and `--no-mr` skips opening an MR.
 Local edits require explicit `--from BRANCH`; execution uses an isolated worktree.
 See [ORCHESTRATION.md](ORCHESTRATION.md) for sources, flags, delivery gates, and recovery.
@@ -97,9 +97,9 @@ continuation ([managed runs](RUNS.md#managed-runs)); `[run]` keys: [INTEGRATIONS
 
 ## Review
 
-Select one source: prompt, `--jira [KEY]`, `--gitlab URL`, `--github URL`,
-`--branch BRANCH --target TARGET`, `--plan PATH`, `--review-file PATH`, or `--ci`.
-No source selects the latest plan, then the diff/whole project if none exists.
+Select one source: prompt, `--jira [KEY|URL]`, `--gitlab URL`, `--github URL`,
+`--branch BRANCH --target TARGET`, `--plan PATH`, `--review-file PATH`, or `--ci`;
+prompt text beside another (not `--ci`) adds focus. None: latest plan, else diff/project.
 
 Reviews are report-only unless `--fix` is given; remote MR and CI sources
 reject fixes. Fix loops stop at `max_rounds`. Branch reviews use a worktree;

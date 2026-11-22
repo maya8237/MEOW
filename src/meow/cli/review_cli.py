@@ -37,9 +37,15 @@ from meow.project.plan_files import (
     _latest_plan_file,
     reviewed_plan_file,
 )
+from meow.project.prompts import with_focus
 from meow.project.review_scope import coverage_errors, saved_scope_mode
 
 logger = get_logger(__name__)
+
+
+def _focus(focus: str | None) -> dict:
+    """`focus=` keyword arguments, only when the user gave focus text."""
+    return {"focus": focus} if focus and focus.strip() else {}
 
 
 def _review_sources(  # ruff: ignore[too-many-arguments]
@@ -76,10 +82,9 @@ def _validate_review_flags(  # ruff: ignore[too-many-arguments, too-many-positio
     github_link: str | None = None,
     test: bool = False,
 ) -> None:
-    """Enforce "at most one review source", with `--review-file` (resuming
-    an existing verdict) as the one case where `prompt` is a modifier
-    (supplementary focus text) rather than a competing source -- exactly
-    today's `review-fix-review <prompt> --review-file <path>` shape."""
+    """Enforce "at most one review source"; `prompt` given with a source
+    (`--review-file`, `--jira`, `--gitlab`, `--github`, `--branch`, `--plan`)
+    is supplementary focus text rather than a competing source."""
     if (branch is None) != (target is None):
         raise ValueError("--branch and --target must be given together")
 
@@ -95,10 +100,7 @@ def _validate_review_flags(  # ruff: ignore[too-many-arguments, too-many-positio
         raise ValueError(f"Give at most one review source, got: {joined}")
     if other_sources and review_file is not None:
         raise ValueError(f"--review-file can't be combined with {other_sources[0]}")
-    if prompt and other_sources:
-        raise ValueError(f"Give either a prompt or {other_sources[0]}, not both")
     test_has_other_source = any((
-        prompt,
         jira_key,
         gitlab_link,
         github_link,
@@ -140,12 +142,18 @@ async def _prompt_review(
 
 
 async def _plan_review(  # ruff: ignore[too-many-arguments]
-    working_dir: Path, config: dict, plan_file: Path, *, fix: bool, test: bool = False
+    working_dir: Path,
+    config: dict,
+    plan_file: Path,
+    *,
+    fix: bool,
+    test: bool = False,
+    focus: str | None = None,
 ) -> None:
     sprint = build_sprint(working_dir, config)
     if not fix:
         if test:
-            result = await review_then_test(sprint, plan_file, 1)
+            result = await review_then_test(sprint, plan_file, 1, **_focus(focus))
             logger.info(
                 "plan_review_finished",
                 plan_file=str(plan_file),
@@ -153,10 +161,12 @@ async def _plan_review(  # ruff: ignore[too-many-arguments]
                 tester_status=result.tester_status,
             )
         else:
-            status, _ = await ReviewerAgent(sprint).review_plan(plan_file)
+            status, _ = await ReviewerAgent(sprint).review_plan(
+                plan_file, **_focus(focus)
+            )
             logger.info("plan_review_finished", plan_file=str(plan_file), status=status)
         return
-    passed = await _run_review_rounds(sprint, plan_file, test=test)
+    passed = await _run_review_rounds(sprint, plan_file, test=test, **_focus(focus))
     _raise_if_not_passed(passed, config, f"Review of {plan_file}")
 
 
@@ -182,7 +192,14 @@ async def _plan_or_prompt_review(  # ruff: ignore[too-many-arguments] -- pass-th
             resolved_plan_file = None
 
     if resolved_plan_file is not None:
-        await _plan_review(working_dir, config, resolved_plan_file, fix=fix, test=test)
+        await _plan_review(
+            working_dir,
+            config,
+            resolved_plan_file,
+            fix=fix,
+            test=test,
+            **_focus(prompt if plan_file is not None else None),
+        )
     else:
         await _prompt_review(working_dir, config, prompt, fix=fix)
 
@@ -195,6 +212,7 @@ async def _branch_review(  # ruff: ignore[too-many-arguments] -- mirrors the CLI
     *,
     fix: bool,
     use_worktree: bool,
+    focus: str | None = None,
 ) -> None:
     if use_worktree:
         feature_name = f"branch-review-{sanitize_name(branch)}"
@@ -214,45 +232,56 @@ async def _branch_review(  # ruff: ignore[too-many-arguments] -- mirrors the CLI
         store.transition(run_id, "reviewing", worktree=str(active_dir), branch=branch)
 
     context = ProjectContext(active_dir, config, use_worktree=use_worktree)
-    status, verdict = await ReviewerAgent(context).review_branch(target, branch)
+    status, verdict = await ReviewerAgent(context).review_branch(
+        target, branch, **_focus(focus)
+    )
     if not fix:
         logger.info("branch_review_finished", branch=branch, status=status)
         return
     passed = await _run_prompt_fix_rounds(
         context,
         (status, verdict),
-        re_review=lambda: ReviewerAgent(context).review_branch(target, branch),
+        re_review=lambda: ReviewerAgent(context).review_branch(
+            target, branch, **_focus(focus)
+        ),
     )
     label = f"branch-review of {branch!r} against {target!r}"
     _raise_if_not_passed(passed, config, label)
 
 
-async def _gitlab_review(working_dir: Path, config: dict, gitlab_link: str) -> None:
+async def _gitlab_review(
+    working_dir: Path, config: dict, gitlab_link: str, focus: str | None = None
+) -> None:
     gitlab_config = _load_gitlab_config(config)
     context = ProjectContext(working_dir, config)
     mr = await _fetch_merge_request(working_dir, config, gitlab_config, gitlab_link)
     status, _ = await ReviewerAgent(context).review_remote_change(
-        mr["title"], mr["description"], mr["diff"], provider="gitlab"
+        mr["title"], mr["description"], mr["diff"], provider="gitlab", **_focus(focus)
     )
     logger.info("gitlab_review_finished", status=status)
 
 
-async def _github_review(working_dir: Path, config: dict, github_link: str) -> None:
+async def _github_review(
+    working_dir: Path, config: dict, github_link: str, focus: str | None = None
+) -> None:
     github_config = _load_github_config(config)
     context = ProjectContext(working_dir, config)
     pr = await _fetch_pull_request(working_dir, config, github_config, github_link)
     status, _ = await ReviewerAgent(context).review_remote_change(
-        pr["title"], pr["description"], pr["diff"], provider="github"
+        pr["title"], pr["description"], pr["diff"], provider="github", **_focus(focus)
     )
     logger.info("github_review_finished", status=status)
 
 
-async def _jira_review_prompt(working_dir: Path, config: dict, jira_key: str) -> str:
+async def _jira_review_prompt(
+    working_dir: Path, config: dict, jira_key: str, focus: str | None = None
+) -> str:
     jira_config = _load_jira_config(config)
     issue = await _fetch_issue(working_dir, config, jira_config, jira_key or None)
-    return (
+    return with_focus(
         f"Review whether the current code satisfies Jira issue {issue['key']}: "
-        f"{issue['summary']}\n\n{issue['description']}"
+        f"{issue['summary']}\n\n{issue['description']}",
+        focus,
     )
 
 
@@ -404,8 +433,13 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
     store = RunStore(working_dir) if working_dir.is_dir() else None
     record = None
     if store:
-        request = prompt or jira_key or gitlab_link or github_link or branch
-        request = request or str(plan_file or review_file or "latest")
+        source = jira_key or gitlab_link or github_link or branch
+        source = source or (
+            str(plan_file or review_file) if plan_file or review_file else None
+        )
+        request = (
+            f"{source}: {prompt}" if source and prompt else source or prompt or "latest"
+        )
         record = store.create(
             source="review",
             request=request,
@@ -440,15 +474,23 @@ async def run_review_command(  # ruff: ignore[too-many-arguments, too-many-state
         if review_file is not None:
             await _resume_review_file(working_dir, config, prompt, review_file)
         elif gitlab_link is not None:
-            await _gitlab_review(working_dir, config, gitlab_link)
+            await _gitlab_review(working_dir, config, gitlab_link, prompt)
         elif github_link is not None:
-            await _github_review(working_dir, config, github_link)
+            await _github_review(working_dir, config, github_link, prompt)
         elif branch is not None:
             await _branch_review(
-                working_dir, config, branch, target, fix=fix, use_worktree=use_worktree
+                working_dir,
+                config,
+                branch,
+                target,
+                fix=fix,
+                use_worktree=use_worktree,
+                **_focus(prompt),
             )
         elif jira_key is not None:
-            jira_prompt = await _jira_review_prompt(working_dir, config, jira_key)
+            jira_prompt = await _jira_review_prompt(
+                working_dir, config, jira_key, prompt
+            )
             await _prompt_review(working_dir, config, jira_prompt, fix=fix)
         elif scope != "auto":
             await _prompt_review(working_dir, config, prompt, fix=fix)

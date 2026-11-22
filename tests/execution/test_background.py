@@ -1056,3 +1056,28 @@ def test_background_jira_run_keeps_its_extra_instructions(tmp_path, monkeypatch)
     )
     assert calls[0][0] == "ABC-1"
     assert calls[0][1]["instructions"] == "Keep it small"
+
+
+def test_background_link_run_records_its_provider(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        background.subprocess, "Popen", lambda *_a, **_k: SimpleNamespace(pid=1)
+    )
+    monkeypatch.setattr(background, "_process_identity", lambda _pid: "birth")
+    link = "https://gitlab.com/g/p/-/merge_requests/3"
+    run_id = background.launch_background(
+        tmp_path, ["run", "--background", "--gitlab", link, "Fix review notes"]
+    )
+    record = RunStore(tmp_path).load(run_id)
+    assert (record.source, record.request) == ("gitlab", link)
+    solver = AsyncMock()
+    monkeypatch.setattr("meow.integrations.issue_solver.run_issue_solver", solver)
+    import asyncio
+
+    asyncio.run(
+        background._drive_invocation(
+            tmp_path, run_id, background._saved_invocation(record)
+        )
+    )
+    assert solver.await_args.args[1] == link
+    assert solver.await_args.kwargs["provider"] == "gitlab"
+    assert solver.await_args.kwargs["instructions"] == "Fix review notes"

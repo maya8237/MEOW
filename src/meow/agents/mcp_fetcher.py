@@ -120,12 +120,19 @@ class McpFetcherAgent(Agent):
             )
         logger.info("mcp_preflight_passed", server=self.server)
 
-    async def _fetch(
-        self, lookup: str, fields: str, forbidden: str, output_file: Path
+    async def _fetch(  # ruff: ignore[too-many-arguments]
+        self,
+        lookup: str,
+        fields: str,
+        forbidden: str,
+        output_file: Path,
+        *,
+        kind: str | None = None,
     ) -> None:
+        kind = kind or self.request
         options = self._options(
             system_prompt=mcp_fetch_prompt(
-                self.label, self.request, lookup, fields, output_file, forbidden
+                self.label, kind, lookup, fields, output_file, forbidden
             ),
             allowed_tools=[*self._tools, "Write"],
         )
@@ -134,7 +141,7 @@ class McpFetcherAgent(Agent):
             prepare_output_file(output_file)
             calls = _ServerCalls(self.server)
             await self.run_query(
-                f"Fetch the {self.label} {self.request}.",
+                f"Fetch the {self.label} {kind}.",
                 options,
                 self.role,
                 observe=calls,
@@ -152,8 +159,19 @@ class McpFetcherAgent(Agent):
         if not output_file.is_file():
             raise RuntimeError(
                 f"{self.role} did not write {output_file} -- the {self.label} MCP "
-                f"may not have returned a matching {self.request}."
+                f"may not have returned a matching {kind}."
             )
+
+    async def fetch_item(self, link: str, output_file: Path) -> None:
+        """Write `{"title", "description"}` for the issue, MR or PR at `link`."""
+        await self._fetch(
+            f"Fetch the issue, {self.request}, or work item at {link} -- its "
+            "title and description.",
+            '"title" and "description" (description as plain text, not markup)',
+            " (no comments, approvals, merges, or edits)",
+            output_file,
+            kind="work item",
+        )
 
 
 class IssueFetcherAgent(McpFetcherAgent):

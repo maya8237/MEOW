@@ -133,16 +133,19 @@ def _create_run(
         if args.no_worktree
         else {}
     )
-    if not args.no_worktree and args.jira is None:
+    from meow.execution.run_policy import fetched_source
+
+    source = fetched_source(args)
+    if not args.no_worktree and source is None:
         delivery.update(
             base=args.target_branch or load_config(repo)["delivery"]["target_branch"],
             source_branch=args.source_branch,
             pipeline_options=pipeline_overrides(args),
         )
     return store.create(
-        source="jira" if args.jira is not None else "prompt",
+        source=source or "prompt",
         request=(
-            args.jira or "latest Jira issue" if args.jira is not None else args.request
+            (getattr(args, source) or "latest Jira issue") if source else args.request
         ),
         repo=repo,
         worktree=repo,
@@ -418,6 +421,7 @@ async def _drive_invocation(repo: Path, run_id: str, args: argparse.Namespace) -
         parse_inputs,
         pipeline_overrides,
     )
+    from meow.execution.run_policy import fetched_ref, fetched_source
     from meow.execution.sprint_runner import run_sprint
     from meow.integrations.issue_solver import run_issue_solver
 
@@ -425,10 +429,11 @@ async def _drive_invocation(repo: Path, run_id: str, args: argparse.Namespace) -
         from meow.execution.orchestration.task_worker import run_task_attempt
 
         await run_task_attempt(repo, run_id, args)
-    elif args.jira is not None:
+    elif source := fetched_source(args):
         await run_issue_solver(
             repo,
-            args.jira or None,
+            fetched_ref(args),
+            **({"provider": source} if source != "jira" else {}),
             test=args.test,
             **({"force_disable_tests": True} if args.force_disable_tests else {}),
             run_id=run_id,

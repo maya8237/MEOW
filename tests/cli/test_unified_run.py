@@ -190,8 +190,44 @@ def test_jira_rejects_unclear_sources(argv):
     assert info.value.code == EXIT_USAGE
 
 
-def test_orchestrated_jira_rejects_extra_instructions():
+def test_orchestrated_sources_take_extra_instructions():
     parser = _build_arg_parser()
-    args = parser.parse_args(["run", "--jira", "P-1", "P-2", "Extra text"])
-    with pytest.raises(SystemExit):
+    for argv in (
+        ["--jira", "P-1", "P-2", "Extra text"],
+        ["--jql", "project = P", "Extra text"],
+        ["--tasks", "tasks.toml", "Extra text"],
+        ["-o", "--gitlab", "https://gitlab.com/g/p/-/issues/3", "Extra text"],
+        ["-o", "--jira", "P-1", "Extra text"],
+    ):
+        args = parser.parse_args(["run", *argv])
         _validate_run_flags(parser, args)
+        assert uses_orchestration(args)
+        assert args.request == "Extra text"
+
+
+@pytest.mark.parametrize("provider", ["gitlab", "github"])
+def test_link_sources_build_one_item_with_instructions(provider):
+    from meow.execution.run_policy import fetched_ref, fetched_source
+
+    link = f"https://{provider}.com/o/r/issues/5"
+    parser = _build_arg_parser()
+    args = parser.parse_args(["run", f"--{provider}", link, "Keep it small"])
+    _validate_run_flags(parser, args)
+    assert (fetched_source(args), fetched_ref(args)) == (provider, link)
+    assert args.request == "Keep it small"
+    assert not uses_orchestration(args)
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--gitlab", "not-a-url"],
+        ["--gitlab", "https://g/x", "--github", "https://h/y"],
+        ["--gitlab", "https://g/x", "--name", "n"],
+        ["--lint-fix", "--github", "https://h/y"],
+    ],
+)
+def test_link_sources_reject_bad_combinations(argv):
+    parser = _build_arg_parser()
+    with pytest.raises(SystemExit):
+        _validate_run_flags(parser, parser.parse_args(["run", *argv]))

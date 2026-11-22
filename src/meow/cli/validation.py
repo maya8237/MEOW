@@ -9,6 +9,7 @@ from meow.execution.run_policy import (
     _MISUSE_CHECKS,
     _is_plain_build,
     _misused_flags,
+    source_flags,
     uses_orchestration,
 )
 from meow.infrastructure.worktree import _is_linked_worktree, _require_source_worktree
@@ -43,8 +44,8 @@ def _validate_feature_name_requirement(
 
 
 def _validate_lint_fix_flags(parser: argparse.ArgumentParser, args) -> None:
-    if args.request or args.jira is not None:
-        parser.error("--lint-fix takes no request text and no --jira")
+    if args.request or source_flags(args):
+        parser.error("--lint-fix takes no request text, --jira, --gitlab or --github")
     if getattr(args, "test", False):
         parser.error("--test cannot be combined with --lint-fix")
     checks = (
@@ -58,13 +59,16 @@ def _validate_lint_fix_flags(parser: argparse.ArgumentParser, args) -> None:
 
 
 def _validate_build_flags(parser: argparse.ArgumentParser, args) -> None:
-    if not args.request and args.jira is None:
-        parser.error("request is required unless --jira is given")
-    if args.jira is not None:
+    sources = source_flags(args)
+    if not args.request and not sources:
+        parser.error("request is required unless --jira, --gitlab or --github is given")
+    if len(sources) > 1:
+        parser.error("give one of " + ", ".join(sources))
+    if sources:
         misused = _misused_flags(args, _MISUSE_CHECKS)
         if misused:
             parser.error(
-                "--jira uses its own pushable-branch worktree; drop "
+                f"{sources[0]} uses its own pushable-branch worktree; drop "
                 + ", ".join(misused)
             )
 
@@ -88,7 +92,7 @@ def _validate_target_flag(parser, args):
         if (
             args.no_worktree
             or args.lint_fix
-            or (args.jira is not None and not uses_orchestration(args))
+            or (source_flags(args) and not uses_orchestration(args))
         ):
             parser.error("--target requires a worktree feature run")
 
@@ -99,7 +103,7 @@ def _validate_workflow_flags(parser, args):
             "--max-parallel and --dry-run require --orchestrate or a collection source"
         )
     if args.fix_non_meow_jobs and (
-        args.no_worktree or args.lint_fix or args.jira is not None
+        args.no_worktree or args.lint_fix or source_flags(args)
     ):
         parser.error("--fix-non-meow-jobs requires a worktree run")
     try:
@@ -132,16 +136,16 @@ def _validate_run_flags(parser: argparse.ArgumentParser, args) -> None:
 
 def _validate_orchestration_flags(parser, args):
     sources = (
-        bool(args.request),
-        args.jira is not None,
-        args.jql is not None,
-        args.tasks_file is not None,
+        *source_flags(args),
+        *(["--jql"] if args.jql is not None else []),
+        *(["--tasks"] if args.tasks_file is not None else []),
     )
-    if args.request and isinstance(args.jira, list):
-        parser.error("extra instructions need a single --jira issue")
-    if sum(sources) != 1:
+    # Request text is the objective alone, or instructions for another source.
+    if len(sources) > 1 or not (sources or args.request):
         parser.error(
-            "give exactly one of: a request, --jira KEY ..., --jql QUERY, --tasks FILE"
+            "give exactly one of: a request, --jira KEY ..., --jql QUERY, "
+            "--tasks FILE, --gitlab URL, --github URL (plus optional request "
+            "text as instructions)"
         )
     if args.jira == "":
         parser.error("orchestration --jira requires at least one issue key")

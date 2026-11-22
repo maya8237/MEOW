@@ -60,8 +60,8 @@ engine names. Briefly state the choice before launching:
   repo. Report one line per run (repo, MR URL or failure); a failed run does
   not stop the others.
 - `--tasks FILE`, `--jql QUERY`, and multiple `--jira KEY...` select full
-  orchestration automatically; no additional flag is needed. A single Jira
-  issue stays an ordinary sprint unless `--orchestrate` is explicit.
+  orchestration automatically. One `--jira`/`--gitlab`/`--github` source stays
+  an ordinary sprint unless `-o`. Extra user text beside any source is the request.
 - Honor a named `--workflow`, supplied `--plan`, manual plan approval, or
   `--no-worktree` using the ordinary sprint flow; these are incompatible with
   full orchestration. If the user explicitly requests incompatible modes,
@@ -132,7 +132,7 @@ For ordinary sprints, run from the project root (separate SDK sessions, headless
 
 ```bash
 meow run "<feature request>" --name "<generated-feature-name>" --background --work-dir "<project-path>"
-meow run --jira [ISSUE-KEY|URL] ["<extra instructions>"] --work-dir "<project-path>"   # Jira-sourced, retained branch
+meow run --jira [KEY|URL] | --gitlab|--github "<issue/MR/PR URL>" ["<extra instructions>"] --work-dir "<project-path>"
 ```
 
 **Launching and watching:** from a managing session, start ordinary runs with
@@ -185,7 +185,7 @@ and a `## Sprint Contract`, run `meow run "<request>" --name "<name>"
 which reviews the existing code and generates only what is missing. If there
 is none, or it is incomplete, tell the user and run normally.
 
-Add `-n` / `--no-worktree` to operate in the selected checkout (name optional; not for `--jira`).
+Add `-n` / `--no-worktree` to operate in the selected checkout (name optional; not with fetched sources).
 Runs execute automatically and commit/push verified work from their worktree.
 `-n` leaves changes uncommitted; `-nc` / `--no-worktree-commit` operates in the
 selected checkout and commits only; `-np` / `--no-worktree-push` operates there
@@ -195,5 +195,5 @@ used directly. Add `-m` for plan approval (also when the user asks to review or 
 Success cleans integrated task artifacts (`meow cleanup [RUN_ID]` retries); report
 retained ones and why, never force-delete. Stream `[planner]`/`[generator]`/
 `[reviewer]` progress. Report the plan and review file paths on success
-(or, for `--jira`, the printed `{"issue": ..., "branch": ...}` JSON line), or
+(or, for fetched sources, the printed `{"issue": ..., "branch": ...}` JSON line), or
 that it failed after `max_rounds` and where the last review is.

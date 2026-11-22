@@ -1482,6 +1482,31 @@ class CliCommandTests(  # ruff: ignore[too-many-public-methods]
             )
 
     @staticmethod
+    def test_github_link_and_instructions_reach_issue_solver():
+        url = "https://github.com/o/r/issues/9"
+        with (
+            patch("meow.execution.run_policy._ensure_clean_tree"),
+            patch("meow.cli.cli._boot_repo"),
+            patch(
+                "meow.cli.dispatch.run_issue_solver", new_callable=AsyncMock
+            ) as mock_issue_solver,
+            patch(
+                "sys.argv",
+                ["meow", "run", "--github", url, "Add tests", "--work-dir", "."],
+            ),
+        ):
+            mock_issue_solver.return_value = {"issue": url, "branch": "b"}
+            cli.cli_main()
+
+        mock_issue_solver.assert_awaited_once_with(
+            Path(".").resolve(),
+            url,
+            provider="github",
+            approve_plan=None,
+            instructions="Add tests",
+        )
+
+    @staticmethod
     def test_jira_build_mode_accepts_no_issue_key():
         with (
             patch("meow.execution.run_policy._ensure_clean_tree"),

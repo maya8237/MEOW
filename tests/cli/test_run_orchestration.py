@@ -113,9 +113,8 @@ def delivered(repo: Path, **fields):
     "argv",
     [
         (),
-        ("Add login", "--jira", "PROJ-1"),
         ("--jira", "PROJ-1", "--jql", "project = PROJ"),
-        ("--tasks", "tasks.toml", "Add login"),
+        ("--tasks", "tasks.toml", "--gitlab", "https://gitlab.com/g/p/-/issues/1"),
     ],
 )
 def test_requires_exactly_one_source(repo, capsys, monkeypatch, argv):

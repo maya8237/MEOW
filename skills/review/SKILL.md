@@ -31,6 +31,9 @@ disables the tester/test/browser gates, and retains lint/build checks.
 | A branch name + a target branch | branch | isolated worktree (default) or in place |
 | A plan file path, or nothing at all and a plan exists in `docs_dir` | plan | current checkout, as-is |
 | An existing review file to resume | review-file | whatever that file's own flavor needs (plan/prompt only -- see step 5) |
+
+Extra text with another source is focus: plan takes `--focus`; append `\n\nAlso pay particular
+attention to:\n<text>` to the jira basis or gitlab/github/branch task message (CLI: prompt arg).
 | Nothing at all, and no plan exists either | prompt (empty) | current checkout -- reviews the git diff, or the whole project if the diff is empty |
 
 Only one source may be given. The `ci` source is CLI-only because it validates
@@ -169,9 +172,8 @@ sources. Without `--test`, keep the native flow above.
 meow review "<prompt>" --work-dir "<project-path>"              # prompt source, report-only
 meow review --scope project --fix --work-dir "<project-path>"  # review and fix every repository area
 meow review --fix "<prompt>" --work-dir "<project-path>"        # prompt source, loop to max_rounds
-meow review --jira [KEY] [--fix] --work-dir "<project-path>"
-meow review --gitlab "<mr-url>" --work-dir "<project-path>"     # always report-only
-meow review --github "<pr-url>" --work-dir "<project-path>"     # always report-only
+meow review --jira [KEY|URL] ["<focus>"] [--fix] --work-dir "<project-path>"
+meow review --gitlab|--github "<mr/pr-url>" ["<focus>"] --work-dir "<project-path>"  # report-only
 meow review --ci [--target-ref "<ref>"] [--artifact-dir "<path>"]  # GitLab CI, report-only
 meow review --branch "<branch>" --target "<target>" [--fix] [--no-worktree] --work-dir "<project-path>"
 meow review --plan "<path>" [--fix] --work-dir "<project-path>"   # omit for auto-discovery
@@ -179,14 +181,12 @@ meow review --plan "<path>" --test [--fix] --work-dir "<project-path>"
 meow review --review-file "<path>" ["<focus prompt>"] --work-dir "<project-path>"  # always fixes
 ```
 
-Omitting every source flag reviews the latest plan in `docs_dir` (default
-`.meow/plans`), falling back to the git diff (or whole project) if none exists.
-`--gitlab` and `--github` combined with `--fix` are rejected -- there is no
-local checkout to fix. `--ci` is mutually exclusive with prompt text, other
-sources, `--fix`, `--test`, and `--no-worktree`; it reviews the exact detached
-CI checkout and writes report/verdict artifacts. Stream `[reviewer]`/`[generator]`/
-`[review_fixer]` progress; report PASS or, after `max_rounds`, the review
-file path.
+No source flag reviews the latest plan in `docs_dir` (default `.meow/plans`),
+else the git diff (or whole project). `--gitlab`/`--github` reject `--fix` (no
+local checkout). `--ci` excludes prompt text, other sources, `--fix`, `--test`,
+and `--no-worktree`; it reviews the detached CI checkout and writes report/verdict
+artifacts. Stream `[reviewer]`/`[generator]`/`[review_fixer]` progress; report
+PASS or, after `max_rounds`, the review file path.
 
 ## Continuation
 

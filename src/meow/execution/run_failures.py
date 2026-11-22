@@ -40,7 +40,14 @@ BLOCKING_CAUSES = frozenset({
     "no_progress",
 })
 # Sources `meow resume --continue` can drive; others are rerun from scratch.
-RESUMABLE_SOURCES = frozenset({"prompt", "jira", "native", "orchestrator"})
+RESUMABLE_SOURCES = frozenset({
+    "prompt",
+    "jira",
+    "gitlab",
+    "github",
+    "native",
+    "orchestrator",
+})
 # ERROR_NOT_ENOUGH_MEMORY, ERROR_OUTOFMEMORY, ERROR_NO_SYSTEM_RESOURCES,
 # ERROR_COMMITMENT_LIMIT (paging file too small).
 _RESOURCE_WINERRORS = frozenset({8, 14, 1450, 1455})
