@@ -211,9 +211,16 @@ def _layered(working_dir: Path) -> tuple[dict, list[CustomSource]]:
 
 
 def agent_definition_dirs(working_dir: Path) -> list[Path]:
-    """Your agent folders (configured and conventional), without loading them."""
+    """Your agent folders (configured and conventional), without loading them.
+
+    A config that does not parse still yields the conventional folders.
+    """
+    try:
+        configured = _layered(working_dir)[1]
+    except (OSError, ValueError):
+        configured = []
     sources = [
-        *_layered(working_dir)[1],
+        *configured,
         *conventional_sources(working_dir, user_config_path().parent),
     ]
     return [

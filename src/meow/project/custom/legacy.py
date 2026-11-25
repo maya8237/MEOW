@@ -7,6 +7,9 @@ registry per user, so every checkout and worktree claimed the same `meow-*`
 names and broke the others ("Marketplace file not found"). Those plugins now
 live in `.claude/skills/meow-<scope>/` (`sources.scope_plugin_dir`).
 
+Agents written in TOML move to Claude Code Markdown beside them, and the
+retired `[claude]` table (which exposed builtin agents) is deleted.
+
 The old layout is migrated, not supported: MEOW no longer reads it. Migration
 runs before configuration loads (any MEOW command's onboarding check, `meow
 sync`, and the plugin's startup sync), so a config naming an old folder is
@@ -223,10 +226,47 @@ def _rewrite_configs(project_dir: Path, apply: bool) -> list[str]:
     return found
 
 
+def _drop_claude_tables(project_dir: Path, apply: bool) -> list[str]:
+    """`[claude] agents` exposed builtins; builtins are now always private."""
+    from meow.project.config import config_paths
+
+    found = []
+    for path in config_paths(project_dir):
+        try:
+            document = tomlkit.parse(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if "claude" not in document:
+            continue
+        found.append(f"{path}: removed retired [claude] table")
+        if apply:
+            del document["claude"]
+            path.write_text(tomlkit.dumps(document), encoding="utf-8")
+    return found
+
+
+def _toml_agents(project_dir: Path, apply: bool) -> list[str]:
+    """Agents you own move from retired TOML to Claude Code Markdown."""
+    from meow.project.config import agent_definition_dirs
+    from meow.project.custom.agent_markdown import migrate_toml_agents
+
+    try:
+        directories = agent_definition_dirs(project_dir)
+    except (OSError, ValueError):
+        return []
+    return [
+        line
+        for line in migrate_toml_agents(directories, apply=apply)
+        if line.startswith(("migrated", "will migrate"))
+    ]
+
+
 def legacy_layout(project_dir: Path, apply: bool = False) -> list[str]:
     """Describe (and with `apply`, migrate) everything in the old layout."""
     project_dir = Path(project_dir)
-    found = _rewrite_configs(project_dir, apply)
+    found = _drop_claude_tables(project_dir, apply)
+    found += _toml_agents(project_dir, apply)
+    found += _rewrite_configs(project_dir, apply)
     for scope in ("project", "local"):
         found += _move_plugin(scope, project_dir, apply)
         found += _drop_linked(scope, project_dir, apply)

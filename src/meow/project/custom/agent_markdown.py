@@ -10,6 +10,7 @@ fragments follow the prompt as sections, each opened by a marker line:
 A section runs to the next marker or the end of the file.
 """
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -43,26 +44,72 @@ def split_sections(body: str, path: Path) -> tuple[str, dict[str, str], dict[str
     return prompt.strip(), found["variants"], found["fragments"]
 
 
-def migrate_toml_agents(directories: list[Path]) -> list[str]:
-    """Rewrite each retired `.toml` agent in `directories` as `.md`."""
+_SAME = ("prompt", "variants", "fragments", "tools", "model", "skills", "agents")
+_ORIGIN = re.compile(r"builtin:([a-z0-9]+(?:-[a-z0-9]+)*)@[0-9a-f]{64}")
+
+
+def _content(agent: "CustomAgent") -> tuple:
+    """What an agent does, ignoring whitespace around its texts."""
+    return (
+        agent.description,
+        agent.prompt.strip(),
+        {name: text.strip() for name, text in agent.variants.items()},
+        {name: text.strip() for name, text in agent.fragments.items()},
+        *(getattr(agent, key) for key in _SAME[3:]),
+    )
+
+
+def _restamped(agent: "CustomAgent") -> "CustomAgent":
+    """An unmodified ejected copy points at the shipped `.md`, so the format
+    change alone is not reported as drift; an edited copy keeps its origin."""
+    from dataclasses import replace
+
+    from meow.project.custom.rendering import builtin_agent
+
+    origin = _ORIGIN.fullmatch(agent.ejected_from or "")
+    if origin is None:
+        return agent
+    try:
+        shipped = builtin_agent(origin[1])
+    except (OSError, ValueError):
+        return agent
+    if _content(agent) != _content(shipped):
+        return agent
+    digest = hashlib.sha256(shipped.file.read_bytes()).hexdigest()
+    return replace(agent, ejected_from=f"builtin:{origin[1]}@{digest}")
+
+
+def migrate_toml_agents(directories: list[Path], apply: bool = True) -> list[str]:
+    """Rewrite each retired `.toml` agent in `directories` as `.md`.
+
+    The Markdown copy is written and checked before the TOML is removed; a
+    file that cannot be read or converted is reported and left as it was.
+    """
     from meow.project.custom.agent_files import read_agent_toml
     from meow.project.custom.definitions import CustomAgent
 
     done = []
-    for directory in directories:
-        for path in (
-            sorted(Path(directory).glob("*.toml")) if Path(directory).is_dir() else []
-        ):
+    for directory in dict.fromkeys(Path(d) for d in directories):
+        for path in sorted(directory.glob("*.toml")) if directory.is_dir() else []:
             target = path.with_suffix(".md")
             if target.exists():
                 done.append(f"skipped {path}: {target.name} already exists")
                 continue
-            agent = CustomAgent(
-                name=path.stem, file=path, source=None, **read_agent_toml(path)
+            try:
+                fields = read_agent_toml(path)
+                agent = _restamped(
+                    CustomAgent(name=path.stem, file=path, source=None, **fields)
+                )
+                text = to_markdown(agent)
+            except (OSError, ValueError) as exc:
+                done.append(f"skipped {path}: {exc}")
+                continue
+            done.append(
+                f"{'migrated' if apply else 'will migrate'} {path} -> {target.name}"
             )
-            target.write_text(to_markdown(agent), encoding="utf-8", newline="\n")
-            path.unlink()
-            done.append(f"migrated {path} -> {target.name}")
+            if apply:
+                target.write_text(text, encoding="utf-8", newline="\n")
+                path.unlink()
     return done
 
 
