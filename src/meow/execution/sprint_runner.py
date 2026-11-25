@@ -305,6 +305,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
     inputs: dict[str, str] | None = None,
     pipeline_options: dict[str, bool] | None = None,
     resume_feedback: str = "",
+    resume_notes: str = "",
 ) -> None:
     """Plan (unless `plan_file` is given) then implement it in a round loop.
 
@@ -506,6 +507,7 @@ async def _drive_sprint(  # ruff: ignore[too-many-arguments, too-many-statements
             "plan_given": plan_given,
             "resume_review": resume_at == "review",
             "resume_feedback": resume_feedback,
+            "resume_notes": resume_notes,
             "label_feature_name": feature_name,
             "short_plan": definition.short_plan,
             "test_requested": test_requested,

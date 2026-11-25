@@ -42,3 +42,36 @@ def test_hand_edited_verdict_seeds_the_first_fix_round(tmp_path):
 def test_no_resume_feedback_skips_the_first_fix_round(tmp_path):
     _, fixes = run_loop(tmp_path, {})
     assert fixes == []
+
+
+def test_resume_notes_seed_the_first_fix_round(tmp_path):
+    state, fixes = run_loop(tmp_path, {"resume_notes": "Notes: use v2"})
+    assert fixes == [(1, "Notes: use v2")]
+    assert "resume_notes" not in state.flags
+    assert state.flags["notes_pending"] is True  # generate consumes it
+
+
+def test_resume_notes_come_before_edited_verdicts(tmp_path):
+    _, fixes = run_loop(
+        tmp_path, {"resume_notes": "Notes: use v2", "resume_feedback": "Verdict: x"}
+    )
+    assert fixes == [(1, "Notes: use v2\n\nVerdict: x")]
+
+
+def test_generate_names_the_users_notes_once():
+    from types import SimpleNamespace
+
+    from meow.execution.workflow.builtin_steps import _generate_instruction
+
+    state = SimpleNamespace(
+        feedback="Notes: use v2",
+        flags={"notes_pending": True},
+        test=False,
+        plan_file="plan.md",
+    )
+    first = _generate_instruction(state)
+    assert "paused" in first and "Notes: use v2" in first
+    assert "reviewer found issues" not in first
+    assert "notes_pending" not in state.flags
+    state.feedback = "SUMMARY: bad\nSTATUS: FAIL"
+    assert "reviewer found issues" in _generate_instruction(state)

@@ -431,6 +431,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-sta
         ),
     )
     resume_parser.add_argument(
+        "--note",
+        dest="notes",
+        action="append",
+        metavar="TEXT",
+        help=(
+            "Guidance for a paused sprint run, followed from its next step "
+            "(repeatable); requires --continue."
+        ),
+    )
+    resume_parser.add_argument(
         "--repair",
         action="store_true",
         help=(

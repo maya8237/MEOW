@@ -17,7 +17,7 @@ from meow.cli.status_cli import (
     render,
     saved_run_id,
 )
-from meow.common.clock import timestamp_key
+from meow.common.clock import now_iso, timestamp_key
 from meow.execution.orchestration.model import is_orchestrator_id
 from meow.execution.orchestration.report import render_status
 from meow.execution.orchestration.store import OrchestratorStateError, OrchestratorStore
@@ -602,19 +602,21 @@ async def resume(  # ruff: ignore[too-many-arguments]
     *,
     continue_run: bool = False,
     request: str | None = None,
+    notes: list[str] | None = None,
     repair: bool = False,
     task_id: str | None = None,
 ) -> int:
     """Inspect or continue a run; a continued run keeps its kit versions."""
     pins = _recorded_pins(working_dir, run_id) if continue_run or repair else {}
-    with pinned(pins, working_dir, user_config_path().parent) as notes:
-        for note in notes:
-            print(note, file=sys.stderr)
+    with pinned(pins, working_dir, user_config_path().parent) as pin_notices:
+        for notice in pin_notices:
+            print(notice, file=sys.stderr)
         return await _resume_run(
             working_dir,
             run_id,
             continue_run=continue_run,
             request=request,
+            notes=notes,
             repair=repair,
             task_id=task_id,
         )
@@ -626,11 +628,22 @@ async def _resume_run(  # ruff: ignore[too-many-arguments, complex-structure, to
     *,
     continue_run: bool = False,
     request: str | None = None,
+    notes: list[str] | None = None,
     repair: bool = False,
     task_id: str | None = None,
 ) -> int:
     run_id = saved_run_id(working_dir, run_id)
+    if notes is not None and (problem := _notes_problem(notes, continue_run)):
+        print(problem, file=sys.stderr)
+        return 1
     if run_id is not None and is_orchestrator_id(run_id):
+        if notes:
+            print(
+                "--note applies to sprint runs; for a blocked orchestration task "
+                "use --task with --request.",
+                file=sys.stderr,
+            )
+            return 1
         return await _resume_orchestration(
             working_dir,
             run_id,
@@ -690,6 +703,14 @@ async def _resume_run(  # ruff: ignore[too-many-arguments, complex-structure, to
             stop="retries_exhausted" if reason in _EXHAUSTED else "not_resumable",
         )
     if continue_run and _never_prepared(record):
+        if notes:
+            print(
+                f"Run {record.id} stopped before it was prepared, so it has no "
+                "step to follow notes from; start it again with the notes in "
+                "its request.",
+                file=sys.stderr,
+            )
+            return 1
         return await _restart_unprepared(working_dir, store, record)
     if repair and record.phase != "complete":
         patch, actions = _repair(record, working_dir)
@@ -750,6 +771,10 @@ async def _resume_run(  # ruff: ignore[too-many-arguments, complex-structure, to
         store.update_results(
             record.id, resume_feedback={"files": [str(path) for path, _ in edited]}
         )
+    notes_block = _journal_notes(store, record, notes or [])
+    request = record.request
+    if notes_block and not record.plan_file:  # the planner has not run yet
+        request = f"{record.request}\n\n{notes_block}"
     if missing_sessions:
         print(
             "Notice: no saved Claude session for "
@@ -763,7 +788,7 @@ async def _resume_run(  # ruff: ignore[too-many-arguments, complex-structure, to
     await run_sprint(
         Path(record.worktree),
         record.results.get("feature_name"),
-        record.request,
+        request,
         use_worktree=False,
         plan_file=Path(record.plan_file) if record.plan_file else None,
         resume_at=resume_at,
@@ -774,8 +799,34 @@ async def _resume_run(  # ruff: ignore[too-many-arguments, complex-structure, to
         resume_feedback="\n\n".join(
             f"Verdict edited by hand ({path.name}):\n{text}" for path, text in edited
         ),
+        resume_notes=notes_block,
     )
     return 0
+
+
+def _notes_problem(notes: list[str], continue_run: bool) -> str | None:
+    if not continue_run:
+        return "--note requires --continue."
+    if any(not note.strip() for note in notes):
+        return "--note cannot be empty."
+    return None
+
+
+def _journal_notes(store: RunStore, record: RunRecord, notes: list[str]) -> str:
+    """Append this resume's notes to the run's history; return their prompt block."""
+    if not notes:
+        return ""
+    added = [{"at": now_iso(), "text": note.strip()} for note in notes]
+    store.update_results(
+        record.id, user_notes=[*record.results.get("user_notes", []), *added]
+    )
+    print(f"Notice: the run will follow {len(added)} note(s) from its next step.")
+    lines = "\n".join(f"- {note['text']}" for note in added)
+    return (
+        "Notes from the user, added while this run was paused. Follow them; "
+        "where they conflict with the plan or earlier feedback, the notes win:\n"
+        f"{lines}"
+    )
 
 
 def _verdict_files(record: RunRecord) -> list[Path]:

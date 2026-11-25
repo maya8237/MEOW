@@ -149,13 +149,21 @@ async def _generator(state):
     return factory()
 
 
+def _generate_instruction(state):
+    if state.flags.pop("notes_pending", False):
+        return (
+            "This run was paused and resumed with the feedback below. Continue "
+            f"the tasks in {state.plan_file}, applying it, then stop.\n\n"
+            f"{state.feedback}"
+        )
+    if state.feedback:
+        return _fix_instruction(state.feedback, test=state.test)
+    return f"Implement the tasks in {state.plan_file}."
+
+
 async def generate(state):
     generator = await _generator(state)
-    instruction = (
-        _fix_instruction(state.feedback, test=state.test)
-        if state.feedback
-        else f"Implement the tasks in {state.plan_file}."
-    )
+    instruction = _generate_instruction(state)
     if state.plan_file:
 
         async def operation():

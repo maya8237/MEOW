@@ -278,9 +278,14 @@ class WorkflowRun:
                 state.sprint.config["_workflow_pool"] = old_pool
 
     def _seed_resume_feedback(self, step, number):
-        """A verdict edited by hand while parked seeds the first fix round."""
+        """User notes and verdicts edited while paused seed the first fix round."""
         if number == 1 and _generates(step):
-            self.state.feedback = self.state.flags.pop("resume_feedback", "") or ""
+            flags = self.state.flags
+            notes = flags.pop("resume_notes", "") or ""
+            edited = flags.pop("resume_feedback", "") or ""
+            if notes:
+                flags["notes_pending"] = True
+            self.state.feedback = "\n\n".join(part for part in (notes, edited) if part)
 
     def _blocking_failures(self):
         return [

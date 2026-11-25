@@ -352,8 +352,16 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
         print(report.render(args.verbose))
         return
     if args.command == "resume" and args.parked:
-        if args.run_id or args.continue_run or args.task_id or args.request:
-            parser.error("--parked takes no run ID, --continue, --task or --request")
+        if (
+            args.run_id
+            or args.continue_run
+            or args.task_id
+            or args.request
+            or args.notes
+        ):
+            parser.error(
+                "--parked takes no run ID, --continue, --task, --request or --note"
+            )
         try:
             raise SystemExit(asyncio.run(resume_parked(working_dir)))
         except KeyboardInterrupt:
@@ -367,6 +375,7 @@ def cli_main(argv=None):  # ruff: ignore[too-many-statements, too-many-return-st
                     args.run_id,
                     continue_run=args.continue_run,
                     request=args.request,
+                    notes=args.notes,
                     repair=args.repair,
                     **({"task_id": args.task_id} if args.task_id is not None else {}),
                 )

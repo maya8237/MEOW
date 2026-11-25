@@ -961,3 +961,97 @@ def test_unprepared_restart_respects_the_manager_limit(tmp_path, capsys):
         code = asyncio.run(resume(tmp_path, record.id, continue_run=True))
     assert code == EXIT_BLOCKED
     redrive.assert_not_called()
+
+
+def test_resume_notes_reach_the_first_step_and_are_journaled(tmp_path):
+    store, record = _record(tmp_path)
+    store.transition(record.id, "generator_started")
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        code = asyncio.run(
+            resume(
+                tmp_path,
+                record.id,
+                continue_run=True,
+                notes=["Use the v2 API", "Skip the CSV export"],
+            )
+        )
+    assert code == 0
+    kwargs = run.await_args.kwargs
+    assert "Use the v2 API" in kwargs["resume_notes"]
+    assert "Skip the CSV export" in kwargs["resume_notes"]
+    assert run.await_args.args[2] == "x"  # a planned run keeps its request
+    saved = store.load(record.id).results["user_notes"]
+    assert [note["text"] for note in saved] == ["Use the v2 API", "Skip the CSV export"]
+
+
+def test_resume_notes_before_a_plan_also_reach_the_planner(tmp_path):
+    store, record = _record(tmp_path)
+    store.transition(record.id, "planning", plan_file=None)
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert (
+            asyncio.run(
+                resume(tmp_path, record.id, continue_run=True, notes=["Keep it small"])
+            )
+            == 0
+        )
+    request = run.await_args.args[2]
+    assert request.startswith("x")
+    assert "Keep it small" in request
+
+
+def test_resume_notes_accumulate_across_resumes(tmp_path):
+    store, record = _record(tmp_path)
+    store.update_results(record.id, user_notes=[{"at": "t0", "text": "first"}])
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        asyncio.run(resume(tmp_path, record.id, continue_run=True, notes=["second"]))
+    assert "second" in run.await_args.kwargs["resume_notes"]
+    assert "first" not in run.await_args.kwargs["resume_notes"]
+    texts = [note["text"] for note in store.load(record.id).results["user_notes"]]
+    assert texts == ["first", "second"]
+
+
+def test_resume_without_notes_passes_none(tmp_path):
+    store, record = _record(tmp_path)
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        asyncio.run(resume(tmp_path, record.id, continue_run=True))
+    assert run.await_args.kwargs["resume_notes"] == ""
+    assert "user_notes" not in store.load(record.id).results
+
+
+def test_notes_require_continue(tmp_path, capsys):
+    _, record = _record(tmp_path)
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert asyncio.run(resume(tmp_path, record.id, notes=["x"])) == 1
+    run.assert_not_awaited()
+    assert "--note requires --continue" in capsys.readouterr().err
+
+
+def test_blank_notes_are_rejected(tmp_path, capsys):
+    _, record = _record(tmp_path)
+    with patch("meow.cli.resume_cli.run_sprint", new_callable=AsyncMock) as run:
+        assert (
+            asyncio.run(resume(tmp_path, record.id, continue_run=True, notes=["  "]))
+            == 1
+        )
+    run.assert_not_awaited()
+    assert "empty" in capsys.readouterr().err
+
+
+def test_cli_passes_repeated_note_flags(tmp_path):
+    with (
+        patch("meow.cli.cli.resume", new_callable=AsyncMock, return_value=0) as run,
+        patch("meow.cli.cli._resume_target", return_value=None),
+        pytest.raises(SystemExit),
+    ):
+        cli_main([
+            "resume",
+            "abc",
+            "--continue",
+            "--note",
+            "one",
+            "--note",
+            "two",
+            "--work-dir",
+            str(tmp_path),
+        ])
+    assert run.await_args.kwargs["notes"] == ["one", "two"]

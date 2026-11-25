@@ -11,7 +11,7 @@ Use `meow COMMAND --help` for flags. Guides: [runs](RUNS.md), [orchestration](OR
 | `meow plan` | Plan without implementation |
 | `meow review` | Review existing code; `--fix` enables fixes |
 | `meow status [ID]` | Inspect the latest or named run; `--verbose` includes evidence, `--json` the [retry contract](RUNS.md#managed-runs) |
-| `meow resume [ID]` | Inspect; `--continue` resumes, `--repair` re-baselines blocked gates, `--parked` continues every parked run (JSON summary; exit 0 settled, 75 pending, 1 blocked or retries exhausted) |
+| `meow resume [ID]` | Inspect; `--continue` resumes (`--note TEXT`, repeatable, redirects its next step), `--repair` re-baselines blocked gates, `--parked` continues every parked run (JSON summary; exit 0 settled, 75 pending, 1 blocked or retries exhausted) |
 | `meow cancel ID` | Cooperatively stop a run, preserving recovery state |
 | `meow autopilot` | [Run until success](RUNS.md#autopilot); `loop`, `stop`, `status`, `resume` |
 | `meow worktree` | List, inspect, or safely clean owned worktrees |
@@ -81,7 +81,7 @@ meow run --orchestrate "Add SSO and audit logs" --max-parallel 3
 meow run --jira PROJ-1 PROJ-2 "Share one migration"
 meow run --jql "project = PROJ"
 meow run --tasks tasks.toml --dry-run
-meow resume ID --continue
+meow resume ID --continue --note "Use the v2 API"
 meow resume ORCH_ID --continue --task T --request "Updated request"
 ```
 

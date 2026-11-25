@@ -170,13 +170,13 @@ detached or leave it to the hourly OS job. Use `COMMAND --help` for flags. Pass
 `--work-dir PATH` for the project root and `--active-dir PATH` for the prepared
 worktree; keep them consistent.
 
-**Resuming in CLI mode:** if the user asks to continue, resume, pick up, or
-build on existing code, a worktree, or an earlier plan (any wording), do not
-start a fresh run -- a plain `meow run --name X` plans from scratch in its own
-new worktree. When a saved run ID is available, inspect it with
+**Resuming in CLI mode:** if the user asks to continue, resume, pick up, or build on
+existing code, a worktree, or an earlier plan (any wording), do not start a fresh
+run -- a plain `meow run --name X` plans from scratch in its own new worktree. When a saved run ID is available, inspect it with
 `meow status <run_id> --json --work-dir "<project-path>"`. Continue saved
 runs (only when status gives no stop reason) with `meow resume <run_id> --continue --work-dir
-"<project-path>"`. If there is no saved run, look in
+"<project-path>"`; to redirect a run, `meow cancel <run_id>`, then resume it adding
+`--note "<the user's words>"` per note. If there is no saved run, look in
 `<project-path>/.worktrees/<name>/<docs_dir>` for a plan
 (`meow native latest-plan --work-dir "<project-path>" --active-dir
 "<project-path>/.worktrees/<name>"`). If one exists with a numbered task list
