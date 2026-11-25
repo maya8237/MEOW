@@ -40,7 +40,7 @@ def test_installed_kit_agent_is_synced_with_its_tools(make_kit, project, user_di
     data, _ = frontmatter.parse(copy())
 
     assert data["tools"] == "Read"
-    assert data["meow-managed"] == "user"
+    assert copy().parent.name == "meow"
 
 
 def test_kit_agent_without_tools_is_not_synced(make_kit, project, user_dir):
@@ -140,7 +140,6 @@ def test_project_kits_are_trusted_because_the_pin_is_reviewed(
     data, _ = frontmatter.parse(copy("project", project))
 
     assert data["tools"] == "Read, Bash"
-    assert data["meow-managed"] == "project"
 
 
 def kit_agent(tools, claude_tools):

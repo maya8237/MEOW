@@ -97,7 +97,7 @@ def test_an_agent_from_outside_the_project_leaks_no_absolute_path(tmp_path, home
     text = copy(root, folder="meow-local").read_text(encoding="utf-8")
 
     assert str(tmp_path) not in text
-    assert "scout.toml@" in text
+    assert "shared-agents" not in text
 
 
 def test_project_scope_config_cannot_reach_outside_the_repository(tmp_path, home):
@@ -119,9 +119,7 @@ def test_hostile_description_round_trips(project, home):
     data, _ = frontmatter.parse(copy(project))
 
     assert data["description"] == description
-    assert set(data) == {
-        "name", "description", "tools", "meow-managed", "meow-source",
-    }  # fmt: skip
+    assert set(data) == {"name", "description", "tools"}
 
 
 def test_prompt_containing_a_fence_line_survives(project, home):
@@ -149,7 +147,7 @@ def test_a_copy_with_invalid_utf8_is_replaced_not_a_crash(project, home):
     assert b"\xff" not in target.read_bytes()
 
 
-def test_a_binary_file_in_the_way_is_left_alone(project, home):
+def test_a_binary_file_in_meows_folder_is_replaced(project, home):
     scout(project)
     blocker = copy(project)
     blocker.parent.mkdir(parents=True)
@@ -157,8 +155,8 @@ def test_a_binary_file_in_the_way_is_left_alone(project, home):
 
     _, remaining = sync(project, home)
 
-    assert any("MEOW did not" in line for line in remaining)
-    assert blocker.read_bytes() == b"\xff\xfe\x00 not text"
+    assert remaining == []
+    assert "name: scout" in blocker.read_text(encoding="utf-8")
 
 
 def test_project_that_is_the_home_directory_does_not_fight_the_user_scope(

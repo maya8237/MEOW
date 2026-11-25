@@ -84,8 +84,6 @@ def _choice(data: dict, path: Path) -> tuple[str, bool, bool | None]:
 
 
 _MD_PREFIX = "meow-"
-# Present in every file `agent_sync` generates; such files are never definitions.
-GENERATED_KEY = "meow-managed"
 _MD_KEYS = {
     "meow-agents": "agents",
     "meow-session": "session",
@@ -114,13 +112,18 @@ def _markdown_values(data: dict, path: Path) -> dict[str, object]:
     return values
 
 
+# Folders under `.claude/agents/` that hold MEOW's synced copies, never definitions.
+SYNC_FOLDERS = frozenset({"meow", "meow-local"})
+
+
 def is_generated(path: Path) -> bool:
-    """Whether `path` is a Claude Code copy MEOW generated, not a definition."""
-    try:
-        head = path.read_bytes()[:4096].decode("utf-8-sig", errors="replace")
-    except OSError:
-        return False
-    return any(line.startswith(f"{GENERATED_KEY}:") for line in head.splitlines())
+    """Whether `path` is a Claude Code copy MEOW synced, not a definition."""
+    folder = path.parent
+    return (
+        folder.name in SYNC_FOLDERS
+        and folder.parent.name == "agents"
+        and folder.parent.parent.name == ".claude"
+    )
 
 
 def read_markdown_settings(data: dict, path: Path) -> dict[str, object]:
