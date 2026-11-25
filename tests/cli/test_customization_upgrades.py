@@ -69,7 +69,7 @@ def test_removed_agent_warns_and_keeps_valid_custom_definition(
     empty_workflow(project)
     path = eject("agents", "planner", "project", project)
     original = path.read_bytes()
-    (shipped / "agents" / "planner.toml").unlink()
+    (shipped / "agents" / "planner.md").unlink()
 
     inspect_or_run(project, action)
 
@@ -144,7 +144,7 @@ def test_unchanged_and_handwritten_definitions_do_not_warn(installation, capsys)
     inspect_or_run(project, "validate")
     assert capsys.readouterr().err == ""
     # A handwritten definition has no provenance from which to infer drift.
-    path.write_text('description="Custom"\nprompt="Plan"\n', encoding="utf-8")
+    path.write_text("---\ndescription: Custom\n---\nPlan\n", encoding="utf-8")
     empty_workflow(project)
     inspect_or_run(project, "run")
     assert capsys.readouterr().err == ""
@@ -168,7 +168,7 @@ def test_removed_workflow_origin_does_not_remove_custom_workflow(installation, c
 def test_removed_builtin_agent_can_still_be_used_as_custom_agent(installation, capsys):
     project, shipped = installation
     agent = eject("agents", "planner", "project", project)
-    (shipped / "agents" / "planner.toml").unlink()
+    (shipped / "agents" / "planner.md").unlink()
     path = empty_workflow(project)
     path.write_text(
         'description="Custom"\n[[steps]]\nid="planning"\nagent="planner"\n',
@@ -206,8 +206,9 @@ def test_renamed_ejected_definition_compares_its_recorded_origin(
     installation, capsys, kind, name
 ):
     project, shipped = installation
+    suffix = ".md" if kind == "agents" else ".toml"
     path = eject(kind, name, "project", project).rename(
-        project / ".meow" / kind / "personal.toml"
+        project / ".meow" / kind / f"personal{suffix}"
     )
     workflow = empty_workflow(project)
     step = 'id="personal"\nagent="personal"' if kind == "agents" else 'call="personal"'
@@ -215,7 +216,7 @@ def test_renamed_ejected_definition_compares_its_recorded_origin(
 
     inspect_or_run(project, "show")
     assert capsys.readouterr().err == ""
-    origin = shipped / kind / f"{name}.toml"
+    origin = shipped / kind / f"{name}{suffix}"
     origin.write_bytes(origin.read_bytes() + b"\n# upgraded\n")
 
     inspect_or_run(project, "show")

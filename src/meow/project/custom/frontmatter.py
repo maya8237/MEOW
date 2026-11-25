@@ -65,7 +65,7 @@ def _nested(lines: list[str], start: int) -> bool:
 
 
 def _split(path: Path) -> tuple[list[str], str]:
-    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    lines = path.read_bytes().decode("utf-8-sig").splitlines()
     if not lines or lines[0].strip() != _FENCE:
         raise ValueError(f"{path}: must start with a '---' frontmatter block")
     try:

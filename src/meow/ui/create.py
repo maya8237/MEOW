@@ -3,9 +3,11 @@
 import json
 import re
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 from meow.project.config import user_config_path
+from meow.project.custom.agent_markdown import to_markdown
 from meow.project.custom.definitions import discover, load_agent
 from meow.project.custom.sources import CustomSource, conventional_dir, git_ignored
 from meow.project.custom.sync import register_scope_plugin
@@ -46,6 +48,9 @@ def create_definition(working_dir: Path, kind: str, payload: dict) -> dict:
         _publish_skill(scope, working_dir)
         return created
     directory = conventional_dir(scope, kind, working_dir, user_config_path().parent)
+    if kind == "agents":
+        text = _agent_markdown(item, name, description)
+        return _create_file(directory / f"{name}.md", kind, scope, text)
     text = _with_identity(item["text"], name, description)
     return _create_file(directory / f"{name}.toml", kind, scope, text)
 
@@ -163,6 +168,15 @@ def _publish_skill(scope: str, working_dir: Path) -> None:
         raise CreateError(
             422, f"Created the skill but could not publish it to Claude Code: {exc}"
         ) from exc
+
+
+def _agent_markdown(item: dict, name: str, description: str) -> str:
+    """A copy of the source agent under a new name, as Claude Code Markdown."""
+    path = Path(item["file"])
+    agent = load_agent(path, CustomSource("agents", path.parent, "builtin", None))
+    return to_markdown(
+        replace(agent, name=name, description=description, ejected_from=None)
+    )
 
 
 def _with_identity(text: str, name: str, description: str) -> str:

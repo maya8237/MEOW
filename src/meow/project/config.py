@@ -1,7 +1,6 @@
 """Layered MEOW configuration loading and merging."""
 
 import tomllib
-from dataclasses import replace
 from pathlib import Path
 
 from meow.execution.run_failures import InvalidConfigError
@@ -39,7 +38,6 @@ from meow.project.custom import (
     discover,
     parse_sources,
 )
-from meow.project.custom.agent_sync import parse_picks, validate_picks
 from meow.project.custom.kits import (
     kits_home,
     layer_kits,
@@ -198,19 +196,31 @@ def _workflow_config(user_config):
     return {"default": selection}
 
 
-def _layered(working_dir: Path) -> tuple[dict, list[CustomSource], tuple]:
+def _layered(working_dir: Path) -> tuple[dict, list[CustomSource]]:
     user_config: dict = {}
     custom_sources: list[CustomSource] = []
-    picks: tuple = ()
     for config_path in reversed(config_paths(working_dir)):
         with open(config_path, "rb") as f:
             layer = _expand_config_environment(tomllib.load(f))
-        scope = _layer_scope(config_path, Path(working_dir))[0]
-        picks += parse_picks(layer.pop("claude", None), scope, config_path)
+        # Retired: builtins are never exposed; migration deletes the table.
+        layer.pop("claude", None)
         found, kit_config = _layer_custom_sources(layer, config_path, working_dir)
         custom_sources.extend(found)
         user_config = _merge_config(_merge_config(user_config, kit_config), layer)
-    return user_config, custom_sources, picks
+    return user_config, custom_sources
+
+
+def agent_definition_dirs(working_dir: Path) -> list[Path]:
+    """Your agent folders (configured and conventional), without loading them."""
+    sources = [
+        *_layered(working_dir)[1],
+        *conventional_sources(working_dir, user_config_path().parent),
+    ]
+    return [
+        source.path
+        for source in sources
+        if source.kind == "agents" and not source.kit and not source.missing
+    ]
 
 
 def run_config(working_dir: Path) -> dict:
@@ -236,7 +246,7 @@ def _load_config(working_dir: Path) -> dict:
     from meow.infrastructure.worktree_setup import install_timeout, validate_setup
     from meow.project.permissions import parse_policy
 
-    user_config, custom_sources, picks = _layered(working_dir)
+    user_config, custom_sources = _layered(working_dir)
     detected = command_defaults(Path(working_dir), user_config)
     user_config = _merge_config(detected.defaults, user_config)
     config = {**DEFAULT_CONFIG, **user_config}
@@ -303,7 +313,5 @@ def _load_config(working_dir: Path) -> dict:
     from meow.project.custom.rendering import validate_agents
 
     validate_agents(config["customizations"])
-    validate_picks(config["customizations"], picks, _CONFIG_FILENAME)
-    config["customizations"] = replace(config["customizations"], claude_builtins=picks)
 
     return config

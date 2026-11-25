@@ -85,13 +85,13 @@ def prompt_context(values):
 def builtin_agent(name: str) -> CustomAgent:
     """MEOW's shipped definition of `name`, ignoring every override."""
     source = CustomSource("agents", builtin_dir() / "agents", "builtin", None)
-    return load_agent(builtin_dir() / "agents" / f"{name}.toml", source)
+    return load_agent(builtin_dir() / "agents" / f"{name}.md", source)
 
 
 def builtin_role_agent(role: str) -> CustomAgent | None:
     """Resolve the shipped definition for a config role, when one exists."""
     name = role.replace("_", "-")
-    if not (builtin_dir() / "agents" / f"{name}.toml").is_file():
+    if not (builtin_dir() / "agents" / f"{name}.md").is_file():
         return None
     return builtin_agent(name)
 

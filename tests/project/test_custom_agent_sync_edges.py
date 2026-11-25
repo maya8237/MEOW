@@ -42,11 +42,8 @@ def write(path, text, newline=None):
 
 def sync(root, home):
     custom = load_config(root)["customizations"]
-    picks = custom.claude_builtins
-    fixed = sync_agents(custom.catalog, root, home / ".meow", picks=picks)
-    return fixed, check_agent_registration(
-        custom.catalog, root, home / ".meow", picks=picks
-    )
+    fixed = sync_agents(custom.catalog, root, home / ".meow")
+    return fixed, check_agent_registration(custom.catalog, root, home / ".meow")
 
 
 def copy(root, name="scout", folder="meow"):
@@ -200,25 +197,6 @@ def test_comma_in_a_tool_name_is_fine_for_agents_that_did_not_opt_in(project, ho
 
     assert standalone_problems(custom.agent("scout"))  # would block if opted in
     assert sync(project, home)[0] == []
-
-
-def test_listing_the_same_builtin_in_two_configs_syncs_both_scopes(project, home):
-    write(project / ".meow" / "config.toml", '[claude]\nagents = ["explorer"]\n')
-    write(home / ".meow" / "config.toml", '[claude]\nagents = ["explorer"]\n')
-
-    sync(project, home)
-
-    assert copy(project, "explorer").is_file()
-    assert (home / ".claude" / "agents" / "meow" / "explorer.md").is_file()
-
-
-def test_config_error_names_the_scope_of_the_layer(project, home):
-    write(home / ".meow" / "config.toml", '[claude]\nagents = ["nonesuch"]\n')
-
-    with pytest.raises(ValueError, match="user config") as error:
-        load_config(project)
-
-    assert "nonesuch" in str(error.value)
 
 
 def test_a_crlf_checkout_of_a_committed_copy_is_still_ours(project, home):

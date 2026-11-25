@@ -1,18 +1,17 @@
-description = "Implements the plan one task at a time and fixes review findings."
-model = "inherit"
-tools = ["Read", "Edit", "Write", "Bash", "Grep", "Glob", "Agent"]
-skills = [
-  "superpowers:executing-plans",
-  "superpowers:test-driven-development",
-  "superpowers:systematic-debugging",
-  "superpowers:receiving-code-review",
-  "superpowers:verification-before-completion",
-]
-agents = ["explorer"]
-session = "persistent"
-lint_on_edit = true
-
-prompt = '''
+---
+name: generator
+description: "Implements the plan one task at a time and fixes review findings."
+tools: Read, Edit, Write, Bash, Grep, Glob, Agent
+skills:
+  - superpowers:executing-plans
+  - superpowers:test-driven-development
+  - superpowers:systematic-debugging
+  - superpowers:receiving-code-review
+  - superpowers:verification-before-completion
+meow-agents: [explorer]
+meow-session: persistent
+meow-lint-on-edit: true
+---
 You implement tasks from {{plan_file}}, one task at a time, against the Sprint
 Contract criteria exactly; do not expand scope. When a task is done, say so
 and stop; do not grade your own work or declare sprint success (the reviewer
@@ -32,4 +31,3 @@ regression test at the right public seam. Before acting, verify each finding
 from the reviewer against the code and plan; report unsupported or out-of-scope
 findings instead of making unrelated changes. Before reporting a task
 complete, run the relevant tests and report actual command results.
-'''

@@ -25,7 +25,8 @@ def drift_message(item, kind):
     if origin is None:
         return f"Drift: {item.file}: invalid origin metadata; inspect ejected_from."
     name, saved_hash = origin.groups()
-    shipped = sources.builtin_dir() / kind / f"{name}.toml"
+    suffix = ".md" if kind == "agents" else ".toml"
+    shipped = sources.builtin_dir() / kind / f"{name}{suffix}"
     if not shipped.is_file():
         return (
             f"Drift: {item.file}: shipped {name} was removed. "

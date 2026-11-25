@@ -162,23 +162,20 @@ def test_markdown_agent_that_cannot_render_fails_when_opted_in(project, home):
 
 # Which shipped agents work outside a MEOW run today. A prompt change that moves
 # an agent across this line should be a deliberate edit to this list.
-RENDERS_STANDALONE = {"explorer", "lint-fixer", "review-fixer", "reviewer"}
+BUILTIN_AGENTS = 12
 
 
-def test_builtin_standalone_support_is_pinned():
+def test_builtins_are_never_exposed_even_when_opted_in():
+    from dataclasses import replace
+
     from meow.project.custom import builtin_dir
 
-    names = sorted(path.stem for path in (builtin_dir() / "agents").glob("*.toml"))
-    renders = {name for name in names if not standalone_problems(builtin_agent(name))}
-
-    assert renders == RENDERS_STANDALONE
-
-
-def test_builtins_do_not_opt_in():
-    from meow.project.custom import builtin_dir
-
-    for path in (builtin_dir() / "agents").glob("*.toml"):
-        assert not syncs(builtin_agent(path.stem))
+    paths = sorted((builtin_dir() / "agents").glob("*.md"))
+    assert len(paths) == BUILTIN_AGENTS
+    for path in paths:
+        agent = builtin_agent(path.stem)
+        assert not syncs(agent)
+        assert not syncs(replace(agent, claude_agent=True))
 
 
 def test_standalone_reviewer_reviews_the_tree_and_answers_in_chat():

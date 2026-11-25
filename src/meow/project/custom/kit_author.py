@@ -52,7 +52,7 @@ def _files(root: Path, kind: str) -> list[Path]:
         return []
     if kind == "skills":
         return sorted(p for p in folder.iterdir() if p.is_dir())
-    suffixes = {".md", ".toml"} if kind == "agents" else {".toml"}
+    suffixes = {".md", ".toml"} if kind == "agents" else {".toml"}  # .toml: retired
     return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix in suffixes)
 
 
@@ -156,12 +156,13 @@ Say hello, then mention that this skill comes from the {name} kit.
 """
 
 _AGENT = """\
-description = "Read-only helper that explains how a module works."
-tools = ["Read", "Grep", "Glob"]
-prompt = '''
+---
+name: explainer
+description: Read-only helper that explains how a module works.
+tools: Read, Grep, Glob
+---
 Explain how the code the user names works. Read it first and cite file paths.
 Do not modify anything.
-'''
 """
 
 _README = """\
@@ -200,7 +201,7 @@ def scaffold(directory: Path, name: str | None = None) -> list[str]:
         MANIFEST: _MANIFEST.format(name=name),
         "README.md": _README.format(name=name),
         "skills/hello/SKILL.md": _SKILL.format(name=name),
-        "agents/explainer.toml": _AGENT,
+        "agents/explainer.md": _AGENT,
     }
     for relative, text in files.items():
         target = directory / relative

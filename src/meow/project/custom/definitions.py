@@ -13,6 +13,7 @@ from meow.project.custom.agent_files import (
     read_agent_toml,
     read_markdown_settings,
 )
+from meow.project.custom.agent_markdown import split_sections
 from meow.project.custom.hook_files import read_hook_toml
 from meow.project.custom.sources import (
     AGENT_ROLES,
@@ -120,8 +121,6 @@ class Customizations:
     sources: tuple[CustomSource, ...] = ()
     workflows: tuple["WorkflowFile", ...] = ()
     hooks: tuple[CustomHook, ...] = ()
-    # (scope, agent name) from each config layer's `[claude].agents`.
-    claude_builtins: tuple[tuple[str, str], ...] = ()
 
     def hooks_for(self, event: str, role: str | None = None) -> list[CustomHook]:
         """Hooks on `event`; with `role`, only those that apply to it."""
@@ -190,13 +189,6 @@ def _load_skill(directory: Path, source: CustomSource) -> CustomSkill:
     return CustomSkill(name, _description(data, skill_file), directory, source)
 
 
-def _load_toml_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
-    name = _name(agent_file.stem, agent_file)
-    return CustomAgent(
-        name=name, file=agent_file, source=source, **read_agent_toml(agent_file)
-    )
-
-
 def load_hook(hook_file: Path, source: CustomSource) -> CustomHook:
     validate_source_path(hook_file, source)
     name = _name(hook_file.stem, hook_file)
@@ -207,11 +199,17 @@ def load_hook(hook_file: Path, source: CustomSource) -> CustomHook:
 
 def load_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
     validate_source_path(agent_file, source)
-    if agent_file.suffix == ".toml":
-        return _load_toml_agent(agent_file, source)
+    if agent_file.suffix == ".toml":  # retired format, still read until migrated
+        return CustomAgent(
+            name=_name(agent_file.stem, agent_file),
+            file=agent_file,
+            source=source,
+            **read_agent_toml(agent_file),
+        )
     data, body = frontmatter.parse(agent_file)
     name = _name(data.get("name", agent_file.stem), agent_file)
-    if not body:
+    prompt, variants, fragments = split_sections(body or "", agent_file)
+    if not prompt:
         raise ValueError(f"{agent_file}: the body after the frontmatter is the prompt")
     tools = _names(data["tools"], "tools", agent_file) if "tools" in data else None
     model = data.get("model")
@@ -220,12 +218,14 @@ def load_agent(agent_file: Path, source: CustomSource) -> CustomAgent:
     return CustomAgent(
         name=name,
         description=_description(data, agent_file),
-        prompt=body,
+        prompt=prompt,
         file=agent_file,
         source=source,
         tools=tools,
         model=model if model and model != "inherit" else None,
         skills=_names(data.get("skills", []), "skills", agent_file),
+        variants=variants,
+        fragments=fragments,
         **read_markdown_settings(data, agent_file),
     )
 

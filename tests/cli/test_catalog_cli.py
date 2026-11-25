@@ -64,10 +64,11 @@ def test_catalog_lists_shipped_workflows_and_shows_resolved_override(tmp_path, c
 def test_eject_stamps_origin_refuses_overwrite_and_warns_on_drift(
     tmp_path, capsys, kind, name
 ):
+    suffix = ".md" if kind == "agents" else ".toml"
     command(tmp_path, kind, "eject", name, "--scope", "local")
-    file = tmp_path / ".meow" / "local" / kind / f"{name}.toml"
+    file = tmp_path / ".meow" / "local" / kind / f"{name}{suffix}"
     origin = hashlib.sha256(
-        (builtin_dir() / kind / f"{name}.toml").read_bytes()
+        (builtin_dir() / kind / f"{name}{suffix}").read_bytes()
     ).hexdigest()
     text = file.read_text(encoding="utf-8")
     assert f"builtin:{name}@{origin}" in text
@@ -87,13 +88,13 @@ def test_agents_list_and_diff(tmp_path, capsys):
     command(tmp_path, "agents", "list")
     assert "explorer (builtin)" in capsys.readouterr().out
     command(tmp_path, "agents", "eject", "explorer")
-    file = tmp_path / ".meow" / "agents" / "explorer.toml"
+    file = tmp_path / ".meow" / "agents" / "explorer.md"
     file.write_text(
-        file.read_text().replace('model = "haiku"', 'model = "sonnet"'),
+        file.read_text().replace("model: haiku", "model: sonnet"),
         encoding="utf-8",
     )
     command(tmp_path, "agents", "diff", "explorer")
-    assert '+model = "sonnet"' in capsys.readouterr().out
+    assert "+model: sonnet" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(

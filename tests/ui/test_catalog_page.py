@@ -25,7 +25,12 @@ def project(tmp_path):
 
     agents = tmp_path / ".meow" / "agents"
     agents.mkdir(parents=True)
-    shutil.copy(builtin_dir() / "agents" / "explorer.toml", agents / "triage.toml")
+    (agents / "triage.md").write_text(
+        (builtin_dir() / "agents" / "explorer.md")
+        .read_text(encoding="utf-8")
+        .replace("name: explorer", "name: triage", 1),
+        encoding="utf-8",
+    )
 
     skill = tmp_path / "tools" / "skills" / "notes"
     skill.mkdir(parents=True)
@@ -203,11 +208,11 @@ def test_create_agent_copies_existing_definition(running, project):
     )
 
     assert status == HTTPStatus.CREATED
-    created = project / ".meow" / "agents" / "helper.toml"
+    created = project / ".meow" / "agents" / "helper.md"
     assert body["file"] == str(created)
     text = created.read_text(encoding="utf-8")
-    assert text.startswith('name = "helper"\ndescription = "Helps out."\n')
-    assert "ejected_from" not in text
+    assert text.startswith('---\nname: helper\ndescription: "Helps out."\n')
+    assert "ejected" not in text
     agents = {item["name"]: item for item in build_catalog(project)["agents"]}
     assert agents["helper"]["scope"] == "project"
 
@@ -255,19 +260,22 @@ def test_remember_unicode_repository_preserves_existing_choices(project, tmp_pat
     ]
 
 
+def _fresh_definition(folder, kind):
+    if kind == "skills":
+        target = folder / "fresh" / "SKILL.md"
+        target.parent.mkdir()
+        return target, "---\nname: fresh\ndescription: Before.\n---\nBody.\n"
+    suffix, template = (".md", "explorer") if kind == "agents" else (".toml", "quick")
+    text = (builtin_dir() / kind / f"{template}{suffix}").read_text(encoding="utf-8")
+    return folder / f"fresh{suffix}", text.replace("name: explorer", "name: fresh", 1)
+
+
 @pytest.mark.parametrize("kind", ["skills", "agents", "workflows"])
 @pytest.mark.parametrize("scope", ["project", "user"])
 def test_catalog_refreshes_table_form_custom_sources(project, tmp_path, kind, scope):
     folder = tmp_path / "definitions"
     folder.mkdir()
-    if kind == "skills":
-        target = folder / "fresh" / "SKILL.md"
-        target.parent.mkdir()
-        text = "---\nname: fresh\ndescription: Before.\n---\nBody.\n"
-    else:
-        target = folder / "fresh.toml"
-        template = "explorer" if kind == "agents" else "quick"
-        text = (builtin_dir() / kind / f"{template}.toml").read_text(encoding="utf-8")
+    target, text = _fresh_definition(folder, kind)
     target.write_text(text, encoding="utf-8")
     config = (
         project / ".meow" / "config.toml"
@@ -371,7 +379,7 @@ def test_create_at_local_scope(running, project):
     )
 
     assert status == HTTPStatus.CREATED
-    assert (project / ".meow" / "local" / "agents" / "localhelper.toml").is_file()
+    assert (project / ".meow" / "local" / "agents" / "localhelper.md").is_file()
 
 
 def test_create_at_user_scope(running, project, tmp_path, monkeypatch):
@@ -430,8 +438,8 @@ def test_create_in_chosen_repo(running, project, tmp_path, monkeypatch):
     )
 
     assert status == HTTPStatus.CREATED
-    assert (other / ".meow" / "agents" / "helper.toml").is_file()
-    assert not (project / ".meow" / "agents" / "helper.toml").exists()
+    assert (other / ".meow" / "agents" / "helper.md").is_file()
+    assert not (project / ".meow" / "agents" / "helper.md").exists()
 
 
 def test_create_rejects_repo_not_in_list(running, tmp_path, monkeypatch):
@@ -500,7 +508,7 @@ def test_create_rejects_bad_requests(running, project):
     )
     assert status == HTTPStatus.FORBIDDEN
 
-    assert not (project / ".meow" / "agents" / "fresh.toml").exists()
+    assert not (project / ".meow" / "agents" / "fresh.md").exists()
 
 
 def test_user_skill_loads_when_the_repo_is_the_home_folder(tmp_path, monkeypatch):

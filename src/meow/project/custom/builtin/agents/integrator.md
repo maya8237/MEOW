@@ -1,8 +1,8 @@
-description = "Resolves git merge conflicts in the orchestrator's integration worktree."
-model = "inherit"
-tools = ["Read", "Grep", "Glob", "Edit", "Write"]
-
-prompt = '''
+---
+name: integrator
+description: "Resolves git merge conflicts in the orchestrator's integration worktree."
+tools: Read, Grep, Glob, Edit, Write
+---
 You resolve git merge conflicts for the MEOW orchestrator. Work only inside
 {{active_dir}}, an integration worktree where one finished task branch is
 being merged into the branch that already holds the earlier tasks. The merge
@@ -23,4 +23,3 @@ Edit only the files listed above. Do not edit, create, or delete any other
 file, and do not try to run git or any other command: you have no shell, and
 MEOW finishes the merge itself. When no listed file contains a conflict marker
 any more, say so and stop.
-'''

@@ -1,4 +1,4 @@
-"""`meow agents eject NAME --format md`: a builtin as a Claude Code Markdown agent."""
+"""`meow agents eject NAME`: a builtin as a Claude Code Markdown agent."""
 
 import hashlib
 
@@ -11,10 +11,8 @@ from meow.project.custom.sources import builtin_dir
 from meow.project.custom.standalone import syncs
 
 USAGE_ERROR = 2  # argparse's exit code for a rejected option
-NAMES = sorted(path.stem for path in (builtin_dir() / "agents").glob("*.toml"))
-PORTABLE = [
-    n for n in NAMES if not (builtin_agent(n).variants or builtin_agent(n).fragments)
-]
+BUILTIN_AGENTS = 12
+NAMES = sorted(path.stem for path in (builtin_dir() / "agents").glob("*.md"))
 FIELDS = (
     "description",
     "model",
@@ -23,6 +21,9 @@ FIELDS = (
     "agents",
     "session",
     "lint_on_edit",
+    "prompt",
+    "variants",
+    "fragments",
 )
 
 
@@ -34,15 +35,14 @@ def ejected(tmp_path, name):
     return tmp_path / ".meow" / "agents" / f"{name}.md"
 
 
-def test_there_are_agents_in_both_groups():
-    assert "explorer" in PORTABLE and {"planner", "reviewer"} <= set(NAMES) - set(
-        PORTABLE
-    )
+def test_every_builtin_ships_as_markdown():
+    assert len(NAMES) == BUILTIN_AGENTS
+    assert not list((builtin_dir() / "agents").glob("*.toml"))
 
 
-@pytest.mark.parametrize("name", PORTABLE)
+@pytest.mark.parametrize("name", NAMES)
 def test_ejected_markdown_loads_like_the_builtin(tmp_path, name):
-    command(tmp_path, "agents", "eject", name, "--format", "md")
+    command(tmp_path, "agents", "eject", name)
 
     found = load_config(tmp_path)["customizations"].agent(name)
     shipped = builtin_agent(name)
@@ -50,33 +50,15 @@ def test_ejected_markdown_loads_like_the_builtin(tmp_path, name):
     assert found.file == ejected(tmp_path, name)
     assert found.source.scope == "project"
     assert all(getattr(found, f) == getattr(shipped, f) for f in FIELDS)
-    assert found.prompt.strip() == shipped.prompt.strip()
     assert found.claude_agent is None
     assert not syncs(found)
 
 
-@pytest.mark.parametrize("name", ["planner", "reviewer"])
-def test_agents_with_variants_or_fragments_are_refused(tmp_path, name):
-    with pytest.raises(SystemExit) as error:
-        command(tmp_path, "agents", "eject", name, "--format", "md")
-
-    assert error.value.code == 1
-    assert not ejected(tmp_path, name).exists()
-
-
-def test_refusal_names_what_blocks_it(tmp_path, capsys):
-    with pytest.raises(SystemExit):
-        command(tmp_path, "agents", "eject", "reviewer", "--format", "md")
-
-    err = capsys.readouterr().err
-    assert "reviewer" in err and "variants" in err and "TOML" in err
-
-
-def test_origin_hash_is_the_shipped_toml_and_drift_is_reported(tmp_path, capsys):
-    command(tmp_path, "agents", "eject", "explorer", "--format", "md")
+def test_origin_hash_is_the_shipped_file_and_drift_is_reported(tmp_path, capsys):
+    command(tmp_path, "agents", "eject", "explorer")
     file = ejected(tmp_path, "explorer")
     origin = hashlib.sha256(
-        (builtin_dir() / "agents" / "explorer.toml").read_bytes()
+        (builtin_dir() / "agents" / "explorer.md").read_bytes()
     ).hexdigest()
     text = file.read_text(encoding="utf-8")
 
@@ -88,45 +70,29 @@ def test_origin_hash_is_the_shipped_toml_and_drift_is_reported(tmp_path, capsys)
     assert "drift" in capsys.readouterr().err.lower()
 
 
-def test_existing_definition_in_the_scope_is_never_overwritten(tmp_path):
-    command(tmp_path, "agents", "eject", "explorer")  # the TOML copy
-    toml = tmp_path / ".meow" / "agents" / "explorer.toml"
-    before = toml.read_text(encoding="utf-8")
+@pytest.mark.parametrize("existing", ["explorer.md", "explorer.toml"])
+def test_existing_definition_in_the_scope_is_never_overwritten(tmp_path, existing):
+    folder = tmp_path / ".meow" / "agents"
+    folder.mkdir(parents=True)
+    (folder / existing).write_text("mine\n", encoding="utf-8")
 
     with pytest.raises(SystemExit) as error:
-        command(tmp_path, "agents", "eject", "explorer", "--format", "md")
-
-    assert error.value.code == 1
-    assert not ejected(tmp_path, "explorer").exists()
-    assert toml.read_text(encoding="utf-8") == before
-
-
-def test_markdown_copy_blocks_a_later_toml_eject(tmp_path):
-    command(tmp_path, "agents", "eject", "explorer", "--format", "md")
-
-    with pytest.raises(SystemExit):
         command(tmp_path, "agents", "eject", "explorer")
 
-    assert not (tmp_path / ".meow" / "agents" / "explorer.toml").exists()
+    assert error.value.code == 1
+    assert (folder / existing).read_text(encoding="utf-8") == "mine\n"
 
 
 def test_scope_option_applies(tmp_path):
-    command(
-        tmp_path, "agents", "eject", "explorer", "--format", "md", "--scope", "local"
-    )
+    command(tmp_path, "agents", "eject", "explorer", "--scope", "local")
 
     assert (tmp_path / ".meow" / "local" / "agents" / "explorer.md").is_file()
 
 
-def test_default_format_is_still_toml(tmp_path):
-    command(tmp_path, "agents", "eject", "explorer")
-
-    assert (tmp_path / ".meow" / "agents" / "explorer.toml").is_file()
-    assert not ejected(tmp_path, "explorer").exists()
-
-
-def test_workflows_have_no_format_option(tmp_path):
+@pytest.mark.parametrize("kind", ["agents", "workflows"])
+def test_there_is_no_format_option(tmp_path, kind):
+    name = "explorer" if kind == "agents" else "quick"
     with pytest.raises(SystemExit) as error:
-        command(tmp_path, "workflows", "eject", "quick", "--format", "md")
+        command(tmp_path, kind, "eject", name, "--format", "md")
 
     assert error.value.code == USAGE_ERROR

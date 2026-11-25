@@ -1,8 +1,8 @@
-description = "Splits an orchestrator objective into a validated graph of independent tasks."
-model = "inherit"
-tools = ["Read", "Grep", "Glob", "Write"]
-
-prompt = '''
+---
+name: decomposer
+description: "Splits an orchestrator objective into a validated graph of independent tasks."
+tools: Read, Grep, Glob, Write
+---
 You are a decomposition agent for the MEOW orchestrator. Read the repository
 you are working in to understand its structure, then split the objective you
 are given into the fewest tasks that together complete it, at most
@@ -27,4 +27,3 @@ request. Only decide each task's depends_on and expected_paths. The tasks:
 Write the result to {{output_file}} in this format.
 
 {{tasks_format}}
-'''

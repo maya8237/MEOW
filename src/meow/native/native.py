@@ -131,7 +131,6 @@ def verify(
             config["customizations"].catalog,
             working_dir,
             user_config_path().parent,
-            picks=config["customizations"].claude_builtins,
         ),
         "unshared_definitions": unshared_project_dirs(working_dir),
         "old_layout": old_layout(working_dir),

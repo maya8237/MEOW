@@ -70,13 +70,16 @@ def _prompt_problems(agent: CustomAgent) -> list[str]:
 def syncs(agent: CustomAgent) -> bool:
     """Whether the agent is synced to Claude Code as a subagent.
 
-    `claude_agent` decides when set. Otherwise your own agents (user, project,
-    local) and kit agents sync if their prompt renders standalone; builtins and
-    ejected copies of one sync only when `[claude] agents` lists them.
+    MEOW's builtin agents are never exposed. Otherwise `claude_agent` decides
+    when set, and your own agents (user, project, local) and kit agents sync if
+    their prompt renders standalone; an ejected copy of a builtin syncs only
+    when it sets `claude_agent` to true.
     """
+    if agent.source.scope == "builtin":
+        return False
     if agent.claude_agent is not None:
         return agent.claude_agent
-    if agent.source.scope == "builtin" or agent.ejected_from:
+    if agent.ejected_from:
         return False
     return not standalone_problems(agent)
 
