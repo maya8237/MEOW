@@ -79,16 +79,58 @@ def _restamped(agent: "CustomAgent") -> "CustomAgent":
     return replace(agent, ejected_from=f"builtin:{origin[1]}@{digest}")
 
 
-def migrate_toml_agents(directories: list[Path], apply: bool = True) -> list[str]:
-    """Rewrite each retired `.toml` agent in `directories` as `.md`.
+_EJECT_HEADER = re.compile(
+    rb'\Aejected_from = "builtin:([a-z0-9]+(?:-[a-z0-9]+)*)@([0-9a-f]{64})"\r?\n\r?\n'
+)
 
-    The Markdown copy is written and checked before the TOML is removed; a
-    file that cannot be read or converted is reported and left as it was.
+
+def _untouched_eject(path: Path) -> "CustomAgent | None":
+    """The current builtin, stamped as its eject, when `path` is a byte-for-byte
+    eject an older release wrote and nobody edited; otherwise None.
+
+    Such a copy only pins an old prompt (which may name variables MEOW no longer
+    has), so it is safe to bring up to date.
     """
+    from dataclasses import replace
+
+    from meow.project.custom.rendering import builtin_agent
+
+    data = path.read_bytes()
+    header = _EJECT_HEADER.match(data)
+    if header is None:
+        return None
+    if hashlib.sha256(data[header.end() :]).hexdigest() != header[2].decode():
+        return None
+    try:
+        shipped = builtin_agent(header[1].decode())
+    except (OSError, ValueError):
+        return None
+    digest = hashlib.sha256(shipped.file.read_bytes()).hexdigest()
+    return replace(
+        shipped, name=path.stem, ejected_from=f"builtin:{shipped.name}@{digest}"
+    )
+
+
+def _migrated(path: Path) -> tuple[str, str]:
+    """The Markdown text for TOML agent `path`, and a note on what changed."""
     from meow.project.custom.agent_files import read_agent_toml
     from meow.project.custom.definitions import CustomAgent
 
+    if current := _untouched_eject(path):
+        return to_markdown(current), " (never edited: updated to the shipped version)"
+    fields = read_agent_toml(path)
+    agent = CustomAgent(name=path.stem, file=path, source=None, **fields)
+    return to_markdown(_restamped(agent)), ""
+
+
+def migrate_toml_agents(directories: list[Path], apply: bool = True) -> list[str]:
+    """Rewrite each retired `.toml` agent in `directories` as `.md`.
+
+    The Markdown copy is written before the TOML is removed; a file that cannot
+    be read or converted, or whose `.md` name is taken, is reported and left.
+    """
     done = []
+    verb = "migrated" if apply else "will migrate"
     for directory in dict.fromkeys(Path(d) for d in directories):
         for path in sorted(directory.glob("*.toml")) if directory.is_dir() else []:
             target = path.with_suffix(".md")
@@ -96,17 +138,11 @@ def migrate_toml_agents(directories: list[Path], apply: bool = True) -> list[str
                 done.append(f"skipped {path}: {target.name} already exists")
                 continue
             try:
-                fields = read_agent_toml(path)
-                agent = _restamped(
-                    CustomAgent(name=path.stem, file=path, source=None, **fields)
-                )
-                text = to_markdown(agent)
+                text, note = _migrated(path)
             except (OSError, ValueError) as exc:
                 done.append(f"skipped {path}: {exc}")
                 continue
-            done.append(
-                f"{'migrated' if apply else 'will migrate'} {path} -> {target.name}"
-            )
+            done.append(f"{verb} {path} -> {target.name}{note}")
             if apply:
                 target.write_text(text, encoding="utf-8", newline="\n")
                 path.unlink()

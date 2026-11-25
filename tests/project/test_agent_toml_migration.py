@@ -179,3 +179,19 @@ def test_the_retired_claude_table_is_deleted_and_the_rest_kept(project):
     assert "[claude]" not in text
     assert "# my settings" in text and "max_rounds = 4" in text
     assert old_layout(project) == []
+
+
+def test_a_never_edited_eject_from_0_1_19_is_brought_up_to_date(project):
+    """0.1.19's planner names template variables MEOW later removed; left as
+    is, it would stop every command from loading the configuration."""
+    path = project / ".meow" / "agents" / "planner.toml"
+    shutil.copy(FIXTURES / "ejected_planner_0_1_19.toml", path)
+
+    lines = old_layout(project, apply=True)
+
+    assert lines == [
+        f"migrated {path} -> planner.md (never edited: updated to the shipped version)"
+    ]
+    agent = _agents(project).agent("planner")
+    assert drift_message(agent, "agents") is None
+    assert _content(agent) == _content(builtin_agent("planner"))
