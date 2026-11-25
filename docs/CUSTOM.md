@@ -64,11 +64,11 @@ other settings and hooks there are kept. Workflows need no registration.
 
 Your own agents (user, project, local) and kit agents sync by default when their
 prompt renders without run values; one that does not is skipped quietly.
-`claude_agent = false` (`meow-claude-agent: false` in Markdown) opts out and
-`true` forces it (an error if the prompt needs run values). Builtins and ejected
-copies of one sync only when `[claude] agents` lists them or they set `true`; see
-[agents](WORKFLOWS.md#agents). Each becomes a Claude Code subagent from its standalone prompt, carrying only `name`,
-`description`, `tools`, `model`, and `skills`, plus a `meow-managed` marker:
+`meow-claude-agent: false` opts out and `true` forces it (an error if the prompt
+needs run values). MEOW's builtin agents are never synced; an ejected copy of one
+syncs only when it sets `true`; see [agents](WORKFLOWS.md#agents). Each becomes a
+plain Claude Code subagent from its standalone prompt, carrying only `name`,
+`description`, `tools`, `model`, and `skills`, in a folder MEOW owns:
 
 | Scope | Written to |
 |---|---|
@@ -76,46 +76,45 @@ copies of one sync only when `[claude] agents` lists them or they set `true`; se
 | Local | `.claude/agents/meow-local/NAME.md` (excluded via `.git/info/exclude`) |
 | User | `~/.claude/agents/meow/NAME.md` |
 
-Edit the source, not the copy: sync replaces it. Sync never overwrites a file
-without the marker, and skips an agent whose `name` one of your own agents under
-`.claude/agents/` already uses. Custom skill names lose the `meow-custom:` prefix.
+Edit the source, not the copy: sync replaces or removes any file in those
+folders, never touches your agents elsewhere under `.claude/agents/`, and skips
+an agent whose `name` one of those already uses. Custom skill names lose the `meow-custom:` prefix.
 Use it as `@agent-NAME`, by asking for it, or `claude --agent NAME`.
 Run `/reload-plugins` after the first sync creates `.claude/agents/`; no restart is needed.
 MEOW's own runs never delegate to synced copies (each is denied by name).
 
-Builtin agents sync only when a config file lists them. The copy goes to that
-file's scope (project, local, or user config):
-
-```toml
-[claude]
-agents = ["reviewer"]   # also explorer (overlaps native Explore), lint-fixer, review-fixer; others need a standalone variant
-```
-
-A name that is unknown, or whose prompt needs run values, fails config loading.
-An ejected copy of the agent is what gets synced. Remove the name to remove the copy.
-`claude_tools` gives the copy its own tools (the reviewer's has no `Write`).
+`meow-claude-tools` gives the copy its own tools. The retired `[claude] agents`
+table is ignored; the next sync deletes it and the builtin copies it made.
 
 ### Standalone prompt
 
 A synced agent runs in Claude Code, where no run values (`plan_file`, `feedback`,
 `output_file`, ...) exist. If the main prompt prints one, config loading fails
-and names it. Fix it with a `[variants] standalone` prompt, used only for the
-Claude Code copy; MEOW's own runs keep `prompt`. Conditions on unset values are
+and names it. Fix it with a `standalone` variant, used only for the Claude Code
+copy; MEOW's own runs keep the main prompt. Conditions on unset values are
 false, `{{> fragment}}` is inlined, and `{{active_dir}}` reads "the current
 working directory":
 
-```toml
-claude_agent = true
-claude_tools = ["Read", "Grep", "Glob"]
-prompt = "Review {{plan_file}} in {{active_dir}}. {{verdict_format}}"
-[variants]
-standalone = "Review the changes in {{active_dir}} and report concrete defects."
+```markdown
+---
+name: change-review
+description: Reviews changes.
+meow-claude-agent: true
+meow-claude-tools: Read, Grep, Glob
+---
+Review {{plan_file}} in {{active_dir}}. {{verdict_format}}
+
+<!-- meow:variant standalone -->
+Review the changes in {{active_dir}} and report concrete defects.
 ```
 
-`meow agents eject NAME --format md` writes the builtin as a Markdown agent
-(frontmatter, prompt as body) that Claude Code also reads; it keeps the
-`ejected_from` drift check. Agents with variants or fragments (`planner`,
-`reviewer`) stay TOML. The default format is TOML.
+`meow agents eject NAME` writes the builtin as a Markdown agent, variants and
+fragments included, with its `meow-ejected-from` drift check.
+
+TOML agents from earlier releases still load, and the next `meow` command or
+`meow sync` rewrites every one you own as `.md` (`meow agents migrate` does it
+on demand). An eject nobody edited is brought up to the shipped version; an
+edited one keeps its text and still reports drift.
 
 `meow sync` does all of this, and refreshes Claude Code's cached MEOW plugin when it
 lags the installed release (also checked at every start). The MEOW plugin runs it as `meow sync --auto`

@@ -55,43 +55,40 @@ the new file will create. Update drift is reported by `show` and workflow
 
 ## 3. Write the definition
 
-**Agent:** `<name>.toml`, with lowercase letters/digits separated by single
-hyphens (at most 64 characters). `description` and `prompt` are required.
+**Agent:** `<name>.md` (Claude Code Markdown), with lowercase letters/digits
+separated by single hyphens (at most 64 characters). `description` and the body
+(the prompt) are required.
 
-```toml
-description = "Check migrations for locking and rollback safety"
-model = "inherit"
-tools = ["Read", "Grep", "Glob", "Write"]
-skills = []
-agents = []
-session = "one-shot"
-lint_on_edit = false
-prompt = '''
+```markdown
+---
+name: migration-check
+description: Check migrations for locking and rollback safety
+tools: Read, Grep, Glob, Write
+---
 Review migrations in {{active_dir}}. {{feedback}}
 Write the verdict to {{output_file}}.
 {{verdict_format}}
-'''
 ```
 
-Use `session = "persistent"` to retain a role session within a workflow loop.
-Optional `[variants]` and `[fragments]` keep alternate prompts and reusable
-text. Templates support variables, fragments, and conditional blocks; unknown
+Use `meow-session: persistent` to retain a role session within a workflow loop.
+Trailing `<!-- meow:variant NAME -->` and `<!-- meow:fragment NAME -->`
+sections keep alternate prompts and reusable text. Templates support variables, fragments, and conditional blocks; unknown
 values fail before an agent starts. A missing dotted key is empty. Explicit
 `[models].role` wins over the agent model; hyphens map to underscores in role
-config. `explorer` is customizable. Markdown agents (`.md`, Claude Code format)
-work too, but TOML is preferred: variants and fragments need it.
+config. `explorer` is customizable. TOML agents are retired; MEOW rewrites
+them as `.md` on its next run (`meow agents migrate`).
 
 Agents you write (user, project, local) and kit agents become Claude Code
 subagents by default when their prompt renders without run values; run `meow sync`.
-Set `claude_agent = false` to keep one MEOW-only, or `true` to force it (add a
-`[variants] standalone` prompt if it needs run values). `claude_tools` sets that
-copy's tools. Project copies are committed. Builtins and ejected copies of one
-sync only when listed in `[claude] agents = [...]` (suggest `reviewer`; `explorer`
-overlaps Claude's `Explore`). Kit agents must declare `tools`. Details: `docs/CUSTOM.md`.
+Set `meow-claude-agent: false` to keep one MEOW-only, or `true` to force it (add
+a `standalone` variant if it needs run values). `meow-claude-tools` sets that
+copy's tools. Project copies are committed. MEOW's builtin agents are never
+exposed; an ejected copy only with `true`. Kit agents must declare `tools`.
+Details: `docs/CUSTOM.md`.
 
 The standalone prompt: a synced agent runs in Claude Code with no run values
 (`plan_file`, `feedback`, `output_file`, ...), so a prompt printing one fails
-config loading. Add `[variants]` with `standalone = "..."` for that copy only;
+config loading. Add a `<!-- meow:variant standalone -->` section for that copy only;
 `prompt` still serves MEOW's runs. Example and rules: `docs/CUSTOM.md`.
 
 An agent's `agents` list names explicit delegates. Each delegate's tools are
@@ -178,7 +175,7 @@ chosen scope's path rules when moving definitions.
 ## Changing MEOW source
 
 Editable shipped role prose lives in
-`src/meow/project/custom/builtin/agents/*.toml`, shipped workflows beside them
+`src/meow/project/custom/builtin/agents/*.md`, shipped workflows beside them
 under `builtin/workflows/`. `project/prompts.py` owns computed context and gate
 contracts. Engine and permission changes belong in their owning packages.
 Update the CLI/native documentation together when changing shared behavior.

@@ -61,39 +61,39 @@ missing references fail before agents start. Handwritten ones never warn.
 
 ## Agents
 
-Create `<name>.toml`: lowercase letters/digits and single hyphens, at most 64
-characters; optional `name` must match. `description` and `prompt` are required.
+Agents are Claude Code Markdown, `<name>.md` (lowercase letters/digits, single
+hyphens, at most 64 characters; a frontmatter `name` must match). `description`
+and the body (the prompt) are required. Trailing sections run to the next marker:
 
-```toml
-description = "Review API authorization"
-model = "inherit"
-tools = ["Read", "Grep", "Glob", "Write"]
-skills = []  # also agents = [] (delegates)
-session = "one-shot"
-lint_on_edit = false
-prompt = '''
-Review {{inputs.topic}} in {{active_dir}}.
-Write findings to {{output_file}}.
-{{verdict_format}}
-'''
+```markdown
+---
+name: api-auth
+description: Review API authorization
+tools: Read, Grep, Glob, Write
+---
+Review {{inputs.topic}} in {{active_dir}}; write findings to {{output_file}}.
+{{> rules}} {{verdict_format}}
+
+<!-- meow:fragment rules -->
+Cite file:line for every finding.
+<!-- meow:variant quick -->
+Skim {{active_dir}} for missing authorization checks.
 ```
 
-Hyphens map to underscores for roles. Model order: `[models].role`, agent, role/reviewer
-fallback; `inherit` supplies none (explorer uses haiku). Skills combine with discovered ones.
+Frontmatter also takes `model`, `skills`, and `meow-agents|session|lint-on-edit|
+claude-agent|claude-tools|ejected-from` (unknown `meow-*` errors). Hyphens map to
+underscores for roles. Model order: `[models].role`, agent, role/reviewer fallback;
+`inherit` supplies none (explorer uses haiku). Skills combine with discovered ones.
+`meow-session: persistent` keeps a role session through a loop, rendering current
+values each turn. `meow-lint-on-edit` enables post-edit lint. `meow-claude-agent`:
+unset syncs your own and kit agents that render standalone (never builtins; ejected
+copies only when `true`); `false` opts out; `true` forces it, failing config load on
+run values. Variant `standalone` replaces that copy's prompt; `meow-claude-tools` its tools.
 
-`session = "persistent"` keeps a role session through a loop, rendering current
-values each turn; elsewhere invocations own sessions. `lint_on_edit` enables
-post-edit lint; `[variants]` select alternate prompts; `[fragments]` is reusable text.
-`claude_agent`: unset syncs your own and kit agents that render standalone (not
-builtins or ejected copies); `false` opts out; `true` forces it, failing config load
-on run values. `[variants] standalone` replaces the prompt; `claude_tools` the tools.
-
-Named `agents` delegates are capped to parent tools and exclude Agent. Configured agents keep
-planner/generator (or explicit role) compatibility; conventional ones run only when named.
-
-Markdown agents (`<name>.md`): the body is the prompt; frontmatter sets `description`, `tools`,
-`model`, `skills`, `meow-agents|session|lint-on-edit|claude-agent|claude-tools|ejected-from` (unknown
-`meow-*` errors); variants and fragments need TOML.
+Named `meow-agents` delegates are capped to parent tools and exclude Agent. Configured
+agents keep planner/generator (or explicit role) compatibility; conventional ones run
+only when named. TOML agents are retired: MEOW still reads them, and the next `meow`
+command or `meow sync` rewrites yours as `.md` (`meow agents migrate` does it now).
 
 ## Templates and expressions
 

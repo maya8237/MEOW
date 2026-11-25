@@ -38,7 +38,7 @@ to `.meow/plans/`, and project docs stay in `docs/`.
 ## Ownership
 
 Use the narrowest owning package; package roots contain entry points.
-Role prose belongs in `src/meow/project/custom/builtin/agents/*.toml`;
+Role prose belongs in `src/meow/project/custom/builtin/agents/*.md`;
 `project/prompts.py` owns computed context/verdict contracts.
 
 `skills/*/SKILL.md` owns plugin flows. Run defaults to CLI;
