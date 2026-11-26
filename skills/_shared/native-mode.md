@@ -32,7 +32,7 @@ worktree; keep them consistent.
 | `prepare` | Guards, onboarding, setup, worktree; retain returned `name`, `active_dir`, `use_worktree`, `docs_dir`, `plan_file`, `review_file`, `max_rounds` |
 | `verify` | Config/launcher readiness without starting tests, servers, agents, or MCP; `ready_unchecked` is not execution/connectivity proof |
 | `onboard-status` / `run COMMAND` | Base setup state and add-on gaps / supervisor helpers (below) |
-| `workflow NAME` / `custom --role ROLE` | Resolved workflow scope, fingerprint, steps / applicable custom skills, capped delegates, scope overrides |
+| `workflow NAME` / `stage STEP` / `custom --role ROLE` | Resolved workflow scope, fingerprint, steps / one agent or gate step's rendered prompt and report path, for `.js` workflows run in Claude Code / applicable custom skills, capped delegates, scope overrides |
 | `latest-plan` / `latest-review` | Find artifacts in `docs_dir`; review JSON has source `flavor` |
 | `prompt ROLE` | Resolved SDK instructions, query, model, tools, skills, delegates, session; `reviewer-mr` returns a `query_template` instead of a query |
 | `lint` / `hook EVENT` / `merge-guard` | `merge-guard`: skills' PreToolUse hook refusing PR/MR merges and target pushes the user did not ask for. Project check; `--file PATH` auto-fixes one file, `--fix` project-wide, `--all-blocking` makes advisory commands blocking, `--from-hook` lints a Claude Code hook payload's file / run `hooks/*.toml` for a Claude Code event (payload on stdin; exit 2 blocks) |
