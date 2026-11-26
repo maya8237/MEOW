@@ -19,8 +19,8 @@ meow run "Audit the API" --workflow review-and-fix --no-worktree --input topic=A
   `--test` works without a plan, using the request as its basis.
 - `test-fix`: ≤4 rounds of fix → verify → tester → review on existing code; no delivery.
 
-Plan reviewers/testers also get the original request (even on resume) and verify
-each criterion by observed behavior; ejected copies need equivalent prose.
+Plan reviewers/testers get the original request (even on resume) and verify each
+criterion by observed behavior; ejected copies need equivalent prose.
 
 `plan-check` (skipped for given plans/resume) gates the plan with read-only
 `plan-checker`: FAIL only for lost requirements, untestable criteria, or graph
@@ -47,17 +47,15 @@ Whole files resolve by name, highest priority first:
 | user | `~/.meow/agents/` | `~/.meow/workflows/` |
 | builtin | shipped `project/custom/builtin/agents/` | shipped `project/custom/builtin/workflows/` |
 
-Conventional folders need no config; extra `[custom]` sources follow [CUSTOM.md](CUSTOM.md)
-(workflow sources cannot restrict roles). Same-scope duplicates fail; overrides are
-reported; task worktrees use the run's config root.
+Conventional folders need no config; `[custom]` sources follow [CUSTOM.md](CUSTOM.md) (no
+workflow `roles`). Same-scope duplicates fail; overrides are reported.
 
 `meow agents` supports list/show/eject/diff/migrate; `meow workflows`
-list/show/validate/eject/migrate, all with `--work-dir PATH`. Eject copies the
-shipped definition (project scope by default; local/user accepted), never
-overwrites, and records `ejected_from` "builtin:name@<sha256>"; startup and
-show/validate warn when that origin changes or disappears. Workflow diagnostics
-cover called workflows and agents and flag ejected agents the workflow cannot use.
-Valid copies continue across upgrades; missing references fail before agents start.
+list/show/validate/eject/migrate, all with `--work-dir PATH`. Eject copies the shipped
+definition (project scope by default; local/user accepted), never overwrites, and
+records `ejected_from` "builtin:name@<sha256>"; startup and show/validate warn when that
+origin changes or disappears, also for called workflows and agents, and flag ejected
+agents the workflow cannot use. Missing references fail before agents start.
 
 ## Agents
 
@@ -157,8 +155,8 @@ const MEOW = /*meow:workflow*/ {"steps": [
 // ...the generated runtime, as `meow workflows eject` writes it
 ```
 
-Edit only `meta` and the JSON between the markers. Retired TOML workflows still
-load until the next `meow` command or `meow sync` rewrites them (`meow workflows migrate`).
+Edit only `meta` and the JSON; retired TOML workflows load until the next `meow`
+command or `meow sync` rewrites them (`meow workflows migrate`).
 
 Gate `blocks` defaults to loop inside loops, delivery outside:
 
