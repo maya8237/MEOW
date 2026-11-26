@@ -224,3 +224,33 @@ def test_stage_refuses_a_builtin_step(project):
 
     with pytest.raises(ValueError, match="no agent or gate step 'plan'"):
         stage(project, project, "plan", workflow_name="default", run_id=record.id)
+
+
+@pytest.mark.parametrize(
+    "written, status",
+    [("SUMMARY: fine\nSTATUS: PASS\n", "PASS"), (None, "FAIL"), ("garbled", "FAIL")],
+)
+def test_stage_verdict_reads_a_gate_report_like_meow_run(project, written, status):
+    (project / ".meow" / "config.toml").write_text("", encoding="utf-8")
+    record = RunStore(project).create(
+        source="prompt", request="x", repo=project, worktree=project, branch="main"
+    )
+    plan = project / ".meow" / "plans" / "csv.md"
+    report = plan.with_name("csv.plan-checker.stage.md")
+    if written is not None:
+        report.parent.mkdir(parents=True)
+        report.write_text(written, encoding="utf-8")
+
+    out = stage(
+        project,
+        project,
+        "plan-checker",
+        workflow_name="default",
+        run_id=record.id,
+        plan=plan,
+        verdict=True,
+    )
+
+    assert out["status"] == status
+    if written is not None:
+        assert report.read_text(encoding="utf-8") == written  # never rewritten

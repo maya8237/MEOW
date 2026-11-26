@@ -45,9 +45,11 @@ def stage(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native stage
     run_id: str,
     plan: Path | None = None,
     round_number: int = 1,
+    verdict: bool = False,
 ) -> dict:
     """The rendered prompt and report path of one agent or gate step, exactly as
-    `meow run` would give it, for a workflow running in Claude Code."""
+    `meow run` would give it, for a workflow running in Claude Code; with
+    `verdict`, the step's report read the way `meow run` reads a gate's."""
     from meow.execution.run_state import RunStore
     from meow.project.custom.rendering import render_agent
     from meow.project.custom.templates import render
@@ -65,6 +67,8 @@ def stage(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native stage
     agent = catalog.agent(step.target)
     docs = active_dir / config["docs_dir"]
     output = plan_stage_file(plan, step.id) if plan else stage_file(docs, step.id)
+    if verdict:
+        return _stage_verdict(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     record = RunStore(working_dir).load(run_id)
     values = {
@@ -98,6 +102,20 @@ def stage(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native stage
         "report_file": str(output),
         "tools": None if agent.tools is None else list(agent.tools),
         "model": agent.model,
+    }
+
+
+def _stage_verdict(output: Path) -> dict:
+    from meow.agents.reviewer import _verdict_status
+
+    try:
+        text = output.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        text = "SUMMARY: Stage did not produce a readable verdict.\nSTATUS: FAIL"
+    return {
+        "status": _verdict_status(text),
+        "report": text,
+        "report_file": str(output),
     }
 
 

@@ -342,7 +342,7 @@ Return its system_prompt, task and report_file verbatim.`,
     state.steps[step.id] = { status: 'done' }
     return
   }
-  const result = await ask(`verdict ${step.id}`, `\`meow native verdict "${brief.report_file}" ${where()}\`; a missing or malformed report is FAIL. Return the status and the full report text.`, verdict)
+  const result = await ask(`verdict ${step.id}`, `\`meow native stage ${step.id} --verdict --workflow ${NAME} --run-id ${state.run.run_id} ${state.plan ? `--plan "${state.plan}" ` : ''}${where()}\`; return its status and report verbatim.`, verdict)
   gate(step, result.status, result.report)
 }
 

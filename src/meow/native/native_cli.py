@@ -434,6 +434,9 @@ def add_native_parser(  # ruff: ignore[too-many-statements] -- register independ
     stage.add_argument("--run-id", dest="run_id", required=True)
     stage.add_argument("--plan", default=None)
     stage.add_argument("--round", dest="round_number", type=int, default=1)
+    stage.add_argument(
+        "--verdict", action="store_true", help="Read the step's report instead."
+    )
     _add_dirs(stage)
     _add_orchestrate(sub)
     guard = sub.add_parser(
@@ -602,6 +605,7 @@ _HANDLERS = {
         run_id=args.run_id,
         plan=_resolve(args.plan, active) if args.plan else None,
         round_number=args.round_number,
+        verdict=args.verdict,
     ),
     "prepare": _prepare,
     "verify": _verify,
