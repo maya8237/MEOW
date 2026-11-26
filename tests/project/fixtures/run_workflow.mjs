@@ -15,7 +15,8 @@ async function agent(prompt, options = {}) {
   const answer = queue.length > 1 ? queue.shift() : queue[0]
   return answer === null ? null : answer
 }
-const src = readFileSync(script, 'utf8').replace('export const meta', 'const meta')
+// Like Claude Code's runner, the script cannot see its own `meta`.
+const src = readFileSync(script, 'utf8').replace(/^export const meta = .*$/m, '')
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 const run = new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'args', src)
 const result = await run(agent, null, null, () => {}, () => {}, JSON.parse(rawArgs))

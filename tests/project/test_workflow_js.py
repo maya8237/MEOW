@@ -162,6 +162,11 @@ def test_whitespace_and_comments_do_not_change_the_fingerprint(project):
         ("const x = 1\n", "export const meta"),
         ('export const meta = {"name": "w", "description": "d"}\n', "definition"),
         (
+            'export const meta = {"name": "w", "description": "d"}\nconst NAME = "x"\n'
+            'const MEOW = /*meow:workflow*/ {"steps": []} /*meow:end*/\n',
+            "repeat",
+        ),
+        (
             'export const meta = {"name": "w", "description": "d", "x": 1}\n'
             'const MEOW = /*meow:workflow*/ {"steps": []} /*meow:end*/\n',
             "only name",

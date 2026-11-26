@@ -23,7 +23,7 @@ def project(tmp_path):
     (workflows / "nightly.js").write_text(
         (builtin_dir() / "workflows" / "quick.js")
         .read_text(encoding="utf-8")
-        .replace('"name": "quick"', '"name": "nightly"', 1),
+        .replace('"quick"', '"nightly"', 2),
         encoding="utf-8",
     )
 
@@ -183,7 +183,7 @@ def test_catalog_bytes_follow_file_changes(project):
         (project / ".meow" / "workflows" / "fresh.js").write_text(
             (builtin_dir() / "workflows" / "quick.js")
             .read_text(encoding="utf-8")
-            .replace('"name": "quick"', '"name": "fresh"', 1),
+            .replace('"quick"', '"fresh"', 2),
             encoding="utf-8",
         )
         assert b'"fresh"' in server.catalog_bytes()
@@ -274,9 +274,7 @@ def _fresh_definition(folder, kind):
     suffix, template = (".md", "explorer") if kind == "agents" else (".js", "quick")
     text = (builtin_dir() / kind / f"{template}{suffix}").read_text(encoding="utf-8")
     text = text.replace("name: explorer", "name: fresh", 1)
-    return folder / f"fresh{suffix}", text.replace(
-        '"name": "quick"', '"name": "fresh"', 1
-    )
+    return folder / f"fresh{suffix}", text.replace('"quick"', '"fresh"', 2)
 
 
 @pytest.mark.parametrize("kind", ["skills", "agents", "workflows"])

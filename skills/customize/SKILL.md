@@ -102,16 +102,17 @@ Resolved tools remain subject to `[permissions]`; prompts never bypass policy.
 grant permissions. Events and `meow native hook` are covered in the Hooks guide in
 `meow ui` or the [online docs](https://maya8237.github.io/MEOW/).
 
-**Workflow:** `<name>.toml`, with `description` and a `steps` list. Choose from
-`uses = "builtin.name"`, `agent`, `gate`, `loop`, `parallel`, and `call`.
+**Workflow:** `<name>.js`, a Claude Code workflow script. Start from a copy
+(`meow workflows eject default`, or the UI) and edit only `meta` (name,
+description) and the JSON `steps` between `/*meow:workflow*/` and `/*meow:end*/`;
+the runtime below them is generated. Steps use `uses` ("builtin.NAME"), `agent`,
+`gate`, `loop`, `parallel`, and `call`:
 
-```toml
-description = "Review migrations and run configured checks"
-[[steps]]
-id = "migrations"
-gate = "migration-checker"
-[[steps]]
-uses = "builtin.checks"
+```js
+const MEOW = /*meow:workflow*/ {"steps": [
+  {"id": "migrations", "gate": "migration-checker"},
+  {"uses": "builtin.checks"}
+]} /*meow:end*/
 ```
 
 Blocking loops require a gate or `builtin.review`. Parallel branches must use

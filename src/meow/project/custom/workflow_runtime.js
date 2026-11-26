@@ -10,11 +10,11 @@
 const input = typeof args === 'string' ? { request: args } : args || {}
 const request = String(input.request || '').trim()
 if (!request && !input.plan) {
-  throw new Error(`Pass the request, e.g. /${meta.name} Add CSV export to reports`)
+  throw new Error(`Pass the request, e.g. /${NAME} Add CSV export to reports`)
 }
 const NOTES = '.meow/workflow-notes.md'
 const RULES = [
-  `You are one step of the MEOW workflow "${meta.name}". Use the \`meow native\``,
+  `You are one step of the MEOW workflow "${NAME}". Use the \`meow native\``,
   'helpers named below for MEOW state; they print JSON. Never commit, push,',
   'merge, or open a PR/MR unless this step says so. If a helper exits 75',
   '(MEOW_RETRY), wait its `retry_after` and rerun it, at most 3 times. On any',
@@ -197,7 +197,7 @@ ${state.feedback}
 ${request}
 </request>
 1. \`meow native round "${state.plan}" --reset ${where()}\`, then ${checkpoint('planning')}.
-2. \`meow native prompt planner ${where()}\`; follow its instructions and skills.${MEOW.short_plan ? ' Keep the plan short.' : ''}
+2. \`meow native prompt planner --plan "${state.plan}" ${where()}\`; follow its instructions and skills.${MEOW.short_plan ? ' Keep the plan short.' : ''}
 3. Write ${state.plan}: numbered tasks and a \`## Sprint Contract\` of testable criteria.
 4. ${checkpoint('planned', `--plan "${state.plan}" `)}.`, shape({}))
     state.steps[step.id] = { status: 'done' }
@@ -246,7 +246,7 @@ Return PASS only when the current required evidence passed, else FAIL with the f
     }
   },
   async 'builtin.test'(step) {
-    throw new Stop(step.id, `the tester runs only under \`meow run\`: use \`meow run --workflow ${meta.name}\``)
+    throw new Stop(step.id, `the tester runs only under \`meow run\`: use \`meow run --workflow ${NAME}\``)
   },
   async 'builtin.checks'(step) {
     await BUILTIN['builtin.verify']({ ...step, blocks: step.blocks || 'delivery' })
@@ -263,7 +263,7 @@ Return PASS only when the current required evidence passed, else FAIL with the f
 }
 
 async function stage(step) {
-  const brief = await ask(`brief ${step.id}`, `\`meow native stage ${step.id} --workflow ${meta.name} --run-id ${state.run.run_id} --round ${state.round || 1} ${state.plan ? `--plan "${state.plan}" ` : ''}${where()}\`
+  const brief = await ask(`brief ${step.id}`, `\`meow native stage ${step.id} --workflow ${NAME} --run-id ${state.run.run_id} --round ${state.round || 1} ${state.plan ? `--plan "${state.plan}" ` : ''}${where()}\`
 Return its system_prompt, task and report_file verbatim.`,
   shape({ system_prompt: text, task: text, report_file: text }, ['system_prompt', 'task', 'report_file']))
   const feedback = state.feedback ? `\n\nFeedback from the previous round:\n${state.feedback}` : ''

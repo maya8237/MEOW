@@ -1,7 +1,10 @@
 # Workflows and agent definitions
 
-A run executes a named TOML workflow; MEOW keeps preparation, worktree/setup,
-onboarding, plan ownership, and terminal-state policy.
+A run executes a named workflow, `<name>.js`, which is also a Claude Code
+workflow: `meow run` executes its steps with MEOW's engine, and in Claude Code its
+runtime runs them through `meow native` helpers (`/meow:default` ships; args
+`noWorktree`, `plan`, `stopAfterPlan`, `inputs`; tester CLI-only; task graphs
+sequential). MEOW keeps preparation, worktree, plan ownership, and terminal policy.
 
 ```bash
 meow run "Add a dark mode toggle" --name dark-mode --workflow quick
@@ -48,16 +51,13 @@ Conventional folders need no config; extra `[custom]` sources follow [CUSTOM.md]
 (workflow sources cannot restrict roles). Same-scope duplicates fail; overrides are
 reported; task worktrees use the run's config root.
 
-`meow agents` supports list/show/eject/diff; `meow workflows` supports
-list/show/validate/eject. All accept `--work-dir PATH`. Eject copies the shipped
-definition even when another scope overrides it (project scope by default;
-local/user accepted) and refuses overwrite. Copies record
-`ejected_from = "builtin:name@<sha256>"`; run startup and show/validate warn when
-that origin changes or disappears, with paths for inspecting the copy. Workflow
-diagnostics include called workflows and agents, and flag ejected agents the
-selected workflow does not use; conditional steps, delegates, task workers, and
-delivery fixers count as possible uses. Valid copies continue across upgrades;
-missing references fail before agents start. Handwritten ones never warn.
+`meow agents` supports list/show/eject/diff/migrate; `meow workflows`
+list/show/validate/eject/migrate, all with `--work-dir PATH`. Eject copies the
+shipped definition (project scope by default; local/user accepted), never
+overwrites, and records `ejected_from` "builtin:name@<sha256>"; startup and
+show/validate warn when that origin changes or disappears. Workflow diagnostics
+cover called workflows and agents and flag ejected agents the workflow cannot use.
+Valid copies continue across upgrades; missing references fail before agents start.
 
 ## Agents
 
@@ -92,8 +92,7 @@ run values. Variant `standalone` replaces that copy's prompt; `meow-claude-tools
 
 Named `meow-agents` delegates are capped to parent tools and exclude Agent. Configured
 agents keep planner/generator (or explicit role) compatibility; conventional ones run
-only when named. TOML agents are retired: MEOW still reads them, and the next `meow`
-command or `meow sync` rewrites yours as `.md` (`meow agents migrate` does it now).
+only when named. Retired TOML agents migrate like workflows (`meow agents migrate`).
 
 ## Templates and expressions
 
@@ -145,18 +144,21 @@ the run limit and stop early on a stall ([runs](RUNS.md#verification-and-deliver
 Calls preserve condition/timeout as resolved sequence groups; cycles or
 duplicate expanded IDs fail.
 
-```toml
-description = "Review API security, then check"
-[[steps]]
-id = "security-rounds"
-max_rounds = 3
-loop = [
-  { id = "fix", uses = "builtin.generate", when = "round > 1" },
-  { id = "security", gate = "security-reviewer", task = "Review {{inputs.topic}}. {{feedback}}" },
-]
-[[steps]]
-uses = "builtin.checks"
+```js
+export const meta = {"name": "security", "description": "Review API security, then check"}
+
+const MEOW = /*meow:workflow*/ {"steps": [
+  {"id": "security-rounds", "max_rounds": 3, "loop": [
+    {"id": "fix", "uses": "builtin.generate", "when": "round > 1"},
+    {"id": "security", "gate": "security-reviewer", "task": "Review {{inputs.topic}}. {{feedback}}"}
+  ]},
+  {"uses": "builtin.checks"}
+]} /*meow:end*/
+// ...the generated runtime, as `meow workflows eject` writes it
 ```
+
+Edit only `meta` and the JSON between the markers. Retired TOML workflows still
+load until the next `meow` command or `meow sync` rewrites them (`meow workflows migrate`).
 
 Gate `blocks` defaults to loop inside loops, delivery outside:
 

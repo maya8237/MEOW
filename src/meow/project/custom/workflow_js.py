@@ -4,6 +4,7 @@ A workflow file is `<name>.js`, a Claude Code dynamic workflow:
 
     export const meta = {"name": "...", "description": "..."}
 
+    const NAME = "..."  // meta is not in scope while the script runs
     const MEOW = /*meow:workflow*/ {"steps": [...]} /*meow:end*/
 
     // ---- MEOW runtime ... (generated)
@@ -25,6 +26,7 @@ from pathlib import Path
 
 BEGIN, END = "/*meow:workflow*/", "/*meow:end*/"
 _META = re.compile(r"\A\s*export const meta = (\{[^\n]*\})\s*\n")
+_NAME = re.compile(r'^const NAME = ("[^"\n]*")', re.MULTILINE)
 _BLOCK = re.compile(re.escape(BEGIN) + r"(.*?)" + re.escape(END), re.DOTALL)
 _BLOCK_KEYS = frozenset({"steps", "auto_test", "short_plan", "ejected_from"})
 
@@ -34,9 +36,8 @@ def runtime() -> str:
     return (Path(__file__).with_name("workflow_runtime.js")).read_text(encoding="utf-8")
 
 
-def read_workflow_js(path: Path) -> dict:
-    """The workflow's data, keyed like a TOML workflow's top-level table."""
-    text = path.read_bytes().decode("utf-8-sig")
+def _parts(path: Path, text: str) -> tuple[object, object]:
+    """The parsed `meta` and definition block of a workflow script."""
     meta, block = _META.match(text), _BLOCK.search(text)
     if meta is None:
         raise ValueError(
@@ -45,13 +46,22 @@ def read_workflow_js(path: Path) -> dict:
     if block is None:
         raise ValueError(f"{path}: missing the {BEGIN} ... {END} definition")
     try:
-        header, data = json.loads(meta[1]), json.loads(block[1])
+        return json.loads(meta[1]), json.loads(block[1])
     except ValueError as exc:
         raise ValueError(
             f"{path}: meta and the definition must be JSON: {exc}"
         ) from exc
+
+
+def read_workflow_js(path: Path) -> dict:
+    """The workflow's data, keyed like a TOML workflow's top-level table."""
+    text = path.read_bytes().decode("utf-8-sig")
+    header, data = _parts(path, text)
     if not isinstance(header, dict) or set(header) - {"name", "description"}:
         raise ValueError(f"{path}: meta holds only name and description")
+    named = _NAME.search(text)
+    if named is None or json.loads(named[1]) != header.get("name"):
+        raise ValueError(f"{path}: `const NAME = ...` must repeat meta's name")
     if not isinstance(data, dict) or set(data) - _BLOCK_KEYS:
         raise ValueError(f"{path}: the definition holds only {sorted(_BLOCK_KEYS)}")
     return {**header, **data}
@@ -74,6 +84,7 @@ def to_js(name: str, data: dict) -> str:
         "// The MEOW workflow definition: edit the JSON between the markers.\n"
         f"// `meow run --workflow {name}` runs it with MEOW's engine; in Claude Code\n"
         "// the runtime below runs it as a workflow command.\n"
+        f"const NAME = {json.dumps(name)}  // meta is not in scope while it runs\n"
         f"const MEOW = {BEGIN} {json.dumps(block, indent=2, ensure_ascii=False)}"
         f" {END}\n\n" + runtime()
     )

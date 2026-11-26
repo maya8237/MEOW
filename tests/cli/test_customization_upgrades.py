@@ -224,9 +224,7 @@ def test_renamed_ejected_definition_compares_its_recorded_origin(
         project / ".meow" / kind / f"personal{suffix}"
     )
     path.write_text(
-        path.read_text(encoding="utf-8").replace(
-            f'"name": "{name}"', '"name": "personal"'
-        ),
+        path.read_text(encoding="utf-8").replace(f'"{name}"', '"personal"', 2),
         encoding="utf-8",
     )
     workflow = empty_workflow(project)
