@@ -27,8 +27,8 @@ LAUNCH_PID = 123
 def project(tmp_path):
     (tmp_path / ".meow" / "workflows").mkdir(parents=True)
     shutil.copy(
-        builtin_dir() / "workflows" / "quick.toml",
-        tmp_path / ".meow" / "workflows" / "quick.toml",
+        builtin_dir() / "workflows" / "quick.js",
+        tmp_path / ".meow" / "workflows" / "quick.js",
     )
     return tmp_path
 

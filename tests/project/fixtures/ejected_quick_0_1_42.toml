@@ -1,3 +1,5 @@
+ejected_from = "builtin:quick@be3121fab1de53f044d9d932c7f9e5b8a367544e87208e5f102b7e52915a61a9"
+
 description = "Short plan, implement, run checks before review, then deliver."
 auto_test = false
 short_plan = true

@@ -10,6 +10,8 @@ from meow.cli.parser import _build_arg_parser
 from meow.execution.run_state import RunStore
 from meow.execution.sprint_runner import run_sprint
 from meow.project.custom import sources
+from meow.project.custom.workflow_js import to_js
+from meow.project.custom.workflows import read_workflow_data
 
 
 @pytest.fixture
@@ -45,10 +47,15 @@ def test_changed_workflow_warns_without_modifying_or_blocking_copy(
 ):
     project, shipped = installation
     path = eject("workflows", "default", "project", project)
-    origin = path.read_text(encoding="utf-8").splitlines()[0]
-    path.write_text(f'{origin}\ndescription="Custom"\nsteps=[]\n', encoding="utf-8")
+    origin = read_workflow_data(path)["ejected_from"]
+    path.write_text(
+        to_js(
+            "default", {"description": "Custom", "steps": [], "ejected_from": origin}
+        ),
+        encoding="utf-8",
+    )
     original = path.read_bytes()
-    builtin = shipped / "workflows" / "default.toml"
+    builtin = shipped / "workflows" / "default.js"
     builtin.write_bytes(builtin.read_bytes() + b"\n# new release\n")
 
     inspect_or_run(project, action)
@@ -85,8 +92,9 @@ def test_removed_stage_warns_even_when_its_agent_definition_is_unchanged(
 ):
     project, shipped = installation
     path = eject("agents", "planner", "project", project)
-    (shipped / "workflows" / "default.toml").write_text(
-        'description="Upgraded default"\nsteps=[]\n', encoding="utf-8"
+    (shipped / "workflows" / "default.js").write_text(
+        to_js("default", {"description": "Upgraded default", "steps": []}),
+        encoding="utf-8",
     )
 
     inspect_or_run(project, "run")
@@ -153,9 +161,14 @@ def test_unchanged_and_handwritten_definitions_do_not_warn(installation, capsys)
 def test_removed_workflow_origin_does_not_remove_custom_workflow(installation, capsys):
     project, shipped = installation
     path = eject("workflows", "default", "project", project)
-    origin = path.read_text(encoding="utf-8").splitlines()[0]
-    path.write_text(f'{origin}\ndescription="Custom"\nsteps=[]\n', encoding="utf-8")
-    (shipped / "workflows" / "default.toml").unlink()
+    origin = read_workflow_data(path)["ejected_from"]
+    path.write_text(
+        to_js(
+            "default", {"description": "Custom", "steps": [], "ejected_from": origin}
+        ),
+        encoding="utf-8",
+    )
+    (shipped / "workflows" / "default.js").unlink()
 
     inspect_or_run(project, "run")
 
@@ -206,9 +219,15 @@ def test_renamed_ejected_definition_compares_its_recorded_origin(
     installation, capsys, kind, name
 ):
     project, shipped = installation
-    suffix = ".md" if kind == "agents" else ".toml"
+    suffix = ".md" if kind == "agents" else ".js"
     path = eject(kind, name, "project", project).rename(
         project / ".meow" / kind / f"personal{suffix}"
+    )
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            f'"name": "{name}"', '"name": "personal"'
+        ),
+        encoding="utf-8",
     )
     workflow = empty_workflow(project)
     step = 'id="personal"\nagent="personal"' if kind == "agents" else 'call="personal"'

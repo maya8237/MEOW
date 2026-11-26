@@ -6,7 +6,7 @@ from pathlib import Path
 from meow.native.native_models import resolve_native_model
 from meow.project.config import config_root, load_config
 from meow.project.custom import AGENT_ROLES, Customizations, CustomSource
-from meow.project.custom.workflows import expand, fingerprint, select_workflow
+from meow.project.custom.workflows import expand, fingerprint, select_workflow, walk
 
 
 def _step_json(step):
@@ -33,6 +33,71 @@ def workflow(working_dir: Path, active_dir: Path, name: str) -> dict:
         "file": str(item.file),
         "fingerprint": fingerprint(item, catalog),
         "steps": [_step_json(step) for step in expand(item, catalog)],
+    }
+
+
+def stage(  # ruff: ignore[too-many-arguments] -- mirrors the `meow native stage` flags
+    working_dir: Path,
+    active_dir: Path,
+    step_id: str,
+    *,
+    workflow_name: str,
+    run_id: str,
+    plan: Path | None = None,
+    round_number: int = 1,
+) -> dict:
+    """The rendered prompt and report path of one agent or gate step, exactly as
+    `meow run` would give it, for a workflow running in Claude Code."""
+    from meow.execution.run_state import RunStore
+    from meow.project.custom.rendering import render_agent
+    from meow.project.custom.templates import render
+    from meow.project.plan_files import plan_stage_file, stage_file
+    from meow.project.prompts import lint_instructions, verdict_format
+
+    config = load_config(config_root(working_dir, active_dir))
+    catalog = config["customizations"]
+    item = select_workflow(config, workflow_name)
+    step = next((s for s in walk(expand(item, catalog)) if s.id == step_id), None)
+    if step is None or step.kind not in {"agent", "gate"}:
+        raise ValueError(
+            f"workflow {item.name!r} has no agent or gate step {step_id!r}"
+        )
+    agent = catalog.agent(step.target)
+    docs = active_dir / config["docs_dir"]
+    output = plan_stage_file(plan, step.id) if plan else stage_file(docs, step.id)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    record = RunStore(working_dir).load(run_id)
+    values = {
+        "active_dir": active_dir,
+        "docs_dir": docs,
+        "request": record.request,
+        "feature_name": record.results.get("feature_name"),
+        "plan_file": plan,
+        "review_file": output,
+        "report_file": output,
+        "output_file": output,
+        "round": round_number,
+        "plan_given": plan is not None,
+        "lint_instructions": lint_instructions(config["lint"]),
+        "verdict_format": verdict_format(output, "finding")
+        if step.kind == "gate"
+        else None,
+    }
+    task = render(
+        step.task
+        or "Perform this stage for {{request}}. Write your report only to the "
+        "exact path {{output_file}}.",
+        values,
+        where=str(agent.file),
+    )
+    return {
+        "kind": step.kind,
+        "blocks": step.blocks,
+        "system_prompt": render_agent(agent, values),
+        "task": task,
+        "report_file": str(output),
+        "tools": None if agent.tools is None else list(agent.tools),
+        "model": agent.model,
     }
 
 

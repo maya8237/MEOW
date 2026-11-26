@@ -69,7 +69,7 @@ _EXPECTED_IGNORED = {
     ".claude/skills/meow-project-linked/skills/x/SKILL.md": True,
     ".claude/skills/meow-local-linked/skills/x/SKILL.md": True,
     ".meow/agents/x.md": False,
-    ".meow/workflows/x.toml": False,
+    ".meow/workflows/x.js": False,
     ".meow/hooks/x.toml": False,
     ".meow/local/hooks/x.toml": True,
     ".meow/runs/x.json": True,

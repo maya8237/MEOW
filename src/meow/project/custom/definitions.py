@@ -251,13 +251,13 @@ def _definitions(source: CustomSource) -> list:
     if source.kind == "workflows":
         from meow.project.custom.workflows import load_workflow
 
-        load = load_workflow
+        load, suffixes = load_workflow, {".js", ".toml"}  # .toml: retired
     else:
-        load = load_hook
+        load, suffixes = load_hook, {".toml"}
     return [
         load(validate_source_path(path, source), source)
-        for path in sorted(source.path.glob("*.toml"))
-        if path.is_file()
+        for path in sorted(source.path.iterdir())
+        if path.suffix in suffixes and path.is_file()
     ]
 
 

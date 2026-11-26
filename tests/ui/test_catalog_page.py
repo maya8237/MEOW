@@ -1,7 +1,6 @@
 import http.client
 import json
 import re
-import shutil
 import subprocess
 import threading
 from http import HTTPStatus
@@ -21,7 +20,12 @@ from meow.ui.server import _Server
 def project(tmp_path):
     workflows = tmp_path / ".meow" / "workflows"
     workflows.mkdir(parents=True)
-    shutil.copy(builtin_dir() / "workflows" / "quick.toml", workflows / "nightly.toml")
+    (workflows / "nightly.js").write_text(
+        (builtin_dir() / "workflows" / "quick.js")
+        .read_text(encoding="utf-8")
+        .replace('"name": "quick"', '"name": "nightly"', 1),
+        encoding="utf-8",
+    )
 
     agents = tmp_path / ".meow" / "agents"
     agents.mkdir(parents=True)
@@ -176,8 +180,10 @@ def test_catalog_bytes_follow_file_changes(project):
     try:
         first = server.catalog_bytes()
         assert server.catalog_bytes() is first
-        (project / ".meow" / "workflows" / "fresh.toml").write_text(
-            (builtin_dir() / "workflows" / "quick.toml").read_text(encoding="utf-8"),
+        (project / ".meow" / "workflows" / "fresh.js").write_text(
+            (builtin_dir() / "workflows" / "quick.js")
+            .read_text(encoding="utf-8")
+            .replace('"name": "quick"', '"name": "fresh"', 1),
             encoding="utf-8",
         )
         assert b'"fresh"' in server.catalog_bytes()
@@ -265,9 +271,12 @@ def _fresh_definition(folder, kind):
         target = folder / "fresh" / "SKILL.md"
         target.parent.mkdir()
         return target, "---\nname: fresh\ndescription: Before.\n---\nBody.\n"
-    suffix, template = (".md", "explorer") if kind == "agents" else (".toml", "quick")
+    suffix, template = (".md", "explorer") if kind == "agents" else (".js", "quick")
     text = (builtin_dir() / kind / f"{template}{suffix}").read_text(encoding="utf-8")
-    return folder / f"fresh{suffix}", text.replace("name: explorer", "name: fresh", 1)
+    text = text.replace("name: explorer", "name: fresh", 1)
+    return folder / f"fresh{suffix}", text.replace(
+        '"name": "quick"', '"name": "fresh"', 1
+    )
 
 
 @pytest.mark.parametrize("kind", ["skills", "agents", "workflows"])
@@ -398,7 +407,7 @@ def test_create_at_user_scope(running, project, tmp_path, monkeypatch):
     )
 
     assert status == HTTPStatus.CREATED
-    assert (home / "workflows" / "shared-flow.toml").is_file()
+    assert (home / "workflows" / "shared-flow.js").is_file()
 
 
 def test_create_user_skill_is_published_to_the_user_claude_folder(

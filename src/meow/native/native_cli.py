@@ -425,6 +425,16 @@ def add_native_parser(  # ruff: ignore[too-many-statements] -- register independ
     workflow = sub.add_parser("workflow", help="Print the resolved workflow as JSON.")
     workflow.add_argument("name")
     _add_dirs(workflow)
+    stage = sub.add_parser(
+        "stage",
+        help="Render one agent or gate step of a workflow running in Claude Code.",
+    )
+    stage.add_argument("step_id")
+    stage.add_argument("--workflow", required=True)
+    stage.add_argument("--run-id", dest="run_id", required=True)
+    stage.add_argument("--plan", default=None)
+    stage.add_argument("--round", dest="round_number", type=int, default=1)
+    _add_dirs(stage)
     _add_orchestrate(sub)
     guard = sub.add_parser(
         "merge-guard",
@@ -584,6 +594,15 @@ def _orchestrate(args, working_dir: Path, active: Path) -> dict:
 
 _HANDLERS = {
     "workflow": lambda args, wd, active: native.workflow(wd, active, args.name),
+    "stage": lambda args, wd, active: native.stage(
+        wd,
+        active,
+        args.step_id,
+        workflow_name=args.workflow,
+        run_id=args.run_id,
+        plan=_resolve(args.plan, active) if args.plan else None,
+        round_number=args.round_number,
+    ),
     "prepare": _prepare,
     "verify": _verify,
     "latest-plan": lambda args, wd, active: native.latest_plan(wd, active),

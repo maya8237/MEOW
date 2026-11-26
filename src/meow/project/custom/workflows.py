@@ -1,6 +1,7 @@
 """Strict TOML workflow definitions, composition, and preflight validation."""
 
 import hashlib
+import json
 import math
 import re
 import tomllib
@@ -164,13 +165,22 @@ def _steps(data: object, path: Path, inside_loop=False) -> tuple[Step, ...]:
     return tuple(_step(item, path, inside_loop) for item in data)
 
 
+def read_workflow_data(path: Path) -> dict:
+    """A `.js` workflow's definition, or a retired `.toml` one's table."""
+    if path.suffix == ".js":
+        from meow.project.custom.workflow_js import read_workflow_js
+
+        return read_workflow_js(path)
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, UnicodeError) as exc:
+        raise ValueError(f"{path}: {exc}") from exc
+
+
 def load_workflow(path: Path, source: CustomSource) -> WorkflowFile:
     from meow.project.custom.definitions import _name
 
-    try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-    except (tomllib.TOMLDecodeError, UnicodeError) as exc:
-        raise ValueError(f"{path}: {exc}") from exc
+    data = read_workflow_data(path)
     if set(data) - {
         "name",
         "description",
@@ -295,9 +305,37 @@ def validate(workflow: WorkflowFile, catalog: "Customizations") -> list[str]:
     return problems
 
 
-def _normalized(path) -> bytes:
-    """File bytes with CRLF folded to LF, so checkout line endings do not matter."""
-    return path.read_bytes().replace(b"\r\n", b"\n")
+FINGERPRINT_VERSION = "v2:"
+
+
+def _canonical(value: object) -> bytes:
+    return json.dumps(value, sort_keys=True, ensure_ascii=False).encode()
+
+
+def _workflow_content(item: "WorkflowFile") -> bytes:
+    """What the workflow does, independent of its file format or whitespace."""
+    return _canonical({
+        "description": " ".join(item.description.split()),
+        "steps": read_workflow_data(item.file).get("steps", []),
+        "auto_test": item.auto_test,
+        "short_plan": item.short_plan,
+    })
+
+
+def _agent_content(agent) -> bytes:
+    """What the agent does, independent of its file format or whitespace."""
+    return _canonical({
+        "description": agent.description,
+        "prompt": agent.prompt.strip(),
+        "variants": {k: v.strip() for k, v in agent.variants.items()},
+        "fragments": {k: v.strip() for k, v in agent.fragments.items()},
+        "tools": agent.tools,
+        "model": agent.model,
+        "skills": agent.skills,
+        "agents": agent.agents,
+        "session": agent.session,
+        "lint_on_edit": agent.lint_on_edit,
+    })
 
 
 def fingerprint(workflow: WorkflowFile, catalog: "Customizations") -> str:  # ruff: ignore[complex-structure] -- recursively visit both workflow and agent dependencies once
@@ -307,7 +345,7 @@ def fingerprint(workflow: WorkflowFile, catalog: "Customizations") -> str:  # ru
         if ("agent", name) in files:
             return
         agent = catalog.agent(name)
-        files["agent", name] = _normalized(agent.file)
+        files["agent", name] = _agent_content(agent)
         for delegate in agent.agents:
             agent_file(delegate)
         for delegate in catalog.agents_for(agent.role):
@@ -316,7 +354,7 @@ def fingerprint(workflow: WorkflowFile, catalog: "Customizations") -> str:  # ru
     def workflow_file(item):
         if ("workflow", item.name) in files:
             return
-        files["workflow", item.name] = _normalized(item.file)
+        files["workflow", item.name] = _workflow_content(item)
         for step in walk(item.steps):
             if step.kind == "call":
                 workflow_file(catalog.workflow(step.target))
@@ -331,7 +369,7 @@ def fingerprint(workflow: WorkflowFile, catalog: "Customizations") -> str:  # ru
     digest = hashlib.sha256()
     for key, data in sorted(files.items()):
         digest.update(repr(key).encode() + b"\0" + data + b"\0")
-    return digest.hexdigest()
+    return FINGERPRINT_VERSION + digest.hexdigest()
 
 
 def select_workflow(config: dict, name: str | None = None, saved: dict | None = None):
@@ -349,9 +387,15 @@ def select_workflow(config: dict, name: str | None = None, saved: dict | None = 
     problems = validate(workflow, catalog)
     if problems:
         raise ValueError("\n".join(problems))
+    recorded = (saved or {}).get("fingerprint") or ""
     if saved and (
         selected != saved["name"]
-        or fingerprint(workflow, catalog) != saved["fingerprint"]
+        # A fingerprint from before FINGERPRINT_VERSION hashed file bytes that
+        # the TOML-to-Markdown/JS migration rewrote; it cannot be compared.
+        or (
+            recorded.startswith(FINGERPRINT_VERSION)
+            and fingerprint(workflow, catalog) != recorded
+        )
     ):
         raise ValueError(
             f"Workflow changed: {selected}. "

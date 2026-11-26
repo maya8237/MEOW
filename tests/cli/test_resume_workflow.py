@@ -67,7 +67,10 @@ def test_workflow_journal_and_resume_skip_completed_steps(tmp_path):
 def test_changed_workflow_refuses_resume_before_agent(tmp_path, capsys):
     store, record, metadata, path = setup_workflow(tmp_path)
     store.transition(record.id, "failed", results={"workflow": metadata})
-    path.write_text(path.read_text() + "\n# edited\n", encoding="utf-8")
+    path.write_text(
+        path.read_text().replace('description="Audit"', 'description="Audit v2"'),
+        encoding="utf-8",
+    )
     with patch("meow.cli.resume_cli.run_sprint", new=AsyncMock(return_value="")) as run:
         assert asyncio.run(resume(tmp_path, record.id, continue_run=True)) == 1
     run.assert_not_awaited()

@@ -4,12 +4,13 @@ import difflib
 import hashlib
 from pathlib import Path
 
-from meow.project.config import agent_definition_dirs, load_config, user_config_path
+from meow.project.config import definition_dirs, load_config, user_config_path
 from meow.project.custom.agent_markdown import migrate_toml_agents, to_markdown
 from meow.project.custom.definitions import discover
 from meow.project.custom.diagnostics import warn_definition, warn_workflow
 from meow.project.custom.sources import builtin_sources, conventional_dir
-from meow.project.custom.workflows import validate
+from meow.project.custom.workflow_js import migrate_toml_workflows, to_js
+from meow.project.custom.workflows import read_workflow_data, validate
 
 
 def _lookup(catalog, kind, name):
@@ -26,13 +27,16 @@ def _shipped(kind, name):
 def eject(kind, name, scope, project_dir):
     """Copy the shipped file exclusively, preserving its origin hash.
 
-    Agents are written as Claude Code Markdown; workflows keep their format.
+    Agents are written as Claude Code Markdown, workflows as workflow scripts.
     """
     item = _shipped(kind, name)
     directory = conventional_dir(scope, kind, project_dir, user_config_path().parent)
     directory.mkdir(parents=True, exist_ok=True)
-    target = directory / f"{name}.{'md' if kind == 'agents' else 'toml'}"
-    for existing in (target.with_suffix(".md"), target.with_suffix(".toml")):
+    target = directory / f"{name}.{'md' if kind == 'agents' else 'js'}"
+    for existing in (
+        target.with_suffix(".md" if kind == "agents" else ".js"),
+        target.with_suffix(".toml"),
+    ):
         if existing.exists():
             raise FileExistsError(f"Refusing to overwrite definition {existing}")
     data = item.file.read_bytes()
@@ -41,7 +45,7 @@ def eject(kind, name, scope, project_dir):
     text = (
         to_markdown(item, origin)
         if kind == "agents"
-        else f'ejected_from = "{origin}"\n\n{data.decode("utf-8")}'
+        else to_js(name, {**read_workflow_data(item.file), "ejected_from": origin})
     )
     with target.open("x", encoding="utf-8", newline="\n") as output:
         output.write(text)
@@ -74,9 +78,12 @@ def _warn(item, catalog, kind):
         warn_definition(item, kind)
 
 
-def _migrate(_args, project_dir: Path) -> list[str]:
-    moved = migrate_toml_agents(agent_definition_dirs(project_dir))
-    return moved or ["No TOML agents to migrate."]
+def _migrate(args, project_dir: Path) -> list[str]:
+    if args.command == "agents":
+        moved = migrate_toml_agents(definition_dirs(project_dir, "agents"))
+    else:
+        moved = migrate_toml_workflows(definition_dirs(project_dir, "workflows"))
+    return moved or [f"No TOML {args.command} to migrate."]
 
 
 _WRITERS = {
@@ -131,7 +138,8 @@ def add_catalog_parsers(subparsers):
             "list",
             "show",
             "eject",
-            *(("validate",) if kind == "workflows" else ("diff", "migrate")),
+            *(("validate",) if kind == "workflows" else ("diff",)),
+            "migrate",
         ):
             entry = actions.add_parser(action)
             if action not in {"list", "migrate"}:

@@ -210,8 +210,8 @@ def _layered(working_dir: Path) -> tuple[dict, list[CustomSource]]:
     return user_config, custom_sources
 
 
-def agent_definition_dirs(working_dir: Path) -> list[Path]:
-    """Your agent folders (configured and conventional), without loading them.
+def definition_dirs(working_dir: Path, kind: str) -> list[Path]:
+    """Your folders of `kind` (configured and conventional), without loading them.
 
     A config that does not parse still yields the conventional folders.
     """
@@ -226,7 +226,7 @@ def agent_definition_dirs(working_dir: Path) -> list[Path]:
     return [
         source.path
         for source in sources
-        if source.kind == "agents" and not source.kit and not source.missing
+        if source.kind == kind and not source.kit and not source.missing
     ]
 
 

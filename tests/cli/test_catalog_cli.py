@@ -64,7 +64,7 @@ def test_catalog_lists_shipped_workflows_and_shows_resolved_override(tmp_path, c
 def test_eject_stamps_origin_refuses_overwrite_and_warns_on_drift(
     tmp_path, capsys, kind, name
 ):
-    suffix = ".md" if kind == "agents" else ".toml"
+    suffix = ".md" if kind == "agents" else ".js"
     command(tmp_path, kind, "eject", name, "--scope", "local")
     file = tmp_path / ".meow" / "local" / kind / f"{name}{suffix}"
     origin = hashlib.sha256(

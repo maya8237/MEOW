@@ -7,8 +7,8 @@ registry per user, so every checkout and worktree claimed the same `meow-*`
 names and broke the others ("Marketplace file not found"). Those plugins now
 live in `.claude/skills/meow-<scope>/` (`sources.scope_plugin_dir`).
 
-Agents written in TOML move to Claude Code Markdown beside them, and the
-retired `[claude]` table (which exposed builtin agents) is deleted.
+Agents and workflows written in TOML move to Claude Code Markdown agents and
+workflow scripts beside them.
 
 The old layout is migrated, not supported: MEOW no longer reads it. Migration
 runs before configuration loads (any MEOW command's onboarding check, `meow
@@ -226,37 +226,23 @@ def _rewrite_configs(project_dir: Path, apply: bool) -> list[str]:
     return found
 
 
-def _drop_claude_tables(project_dir: Path, apply: bool) -> list[str]:
-    """`[claude] agents` exposed builtins; builtins are now always private."""
-    from meow.project.config import config_paths
-
-    found = []
-    for path in config_paths(project_dir):
-        try:
-            document = tomlkit.parse(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if "claude" not in document:
-            continue
-        found.append(f"{path}: removed retired [claude] table")
-        if apply:
-            del document["claude"]
-            path.write_text(tomlkit.dumps(document), encoding="utf-8")
-    return found
-
-
-def _toml_agents(project_dir: Path, apply: bool) -> list[str]:
-    """Agents you own move from retired TOML to Claude Code Markdown."""
-    from meow.project.config import agent_definition_dirs
+def _toml_definitions(project_dir: Path, apply: bool) -> list[str]:
+    """Agents and workflows you own move from retired TOML to Claude Code files."""
+    from meow.project.config import definition_dirs
     from meow.project.custom.agent_markdown import migrate_toml_agents
+    from meow.project.custom.workflow_js import migrate_toml_workflows
 
     try:
-        directories = agent_definition_dirs(project_dir)
+        agents = definition_dirs(project_dir, "agents")
+        workflows = definition_dirs(project_dir, "workflows")
     except (OSError, ValueError):
         return []
     return [
         line
-        for line in migrate_toml_agents(directories, apply=apply)
+        for line in [
+            *migrate_toml_agents(agents, apply=apply),
+            *migrate_toml_workflows(workflows, apply=apply),
+        ]
         if line.startswith(("migrated", "will migrate"))
     ]
 
@@ -264,8 +250,7 @@ def _toml_agents(project_dir: Path, apply: bool) -> list[str]:
 def legacy_layout(project_dir: Path, apply: bool = False) -> list[str]:
     """Describe (and with `apply`, migrate) everything in the old layout."""
     project_dir = Path(project_dir)
-    found = _drop_claude_tables(project_dir, apply)
-    found += _toml_agents(project_dir, apply)
+    found = _toml_definitions(project_dir, apply)
     found += _rewrite_configs(project_dir, apply)
     for scope in ("project", "local"):
         found += _move_plugin(scope, project_dir, apply)

@@ -164,21 +164,16 @@ def test_a_broken_toml_agent_is_left_alone(project):
     assert path.read_text(encoding="utf-8") == "not = [valid"
 
 
-def test_the_retired_claude_table_is_deleted_and_the_rest_kept(project):
+def test_the_retired_claude_table_is_left_in_place_and_ignored(project):
+    """Rewriting the config would change its fingerprint and stop a run that
+    was started before the upgrade from resuming."""
     config = project / ".meow" / "config.toml"
-    config.write_text(
-        '# my settings\n[claude]\nagents = ["reviewer"]\n\n[run]\nmax_rounds = 4\n',
-        encoding="utf-8",
-    )
+    text = '# mine\n[claude]\nagents = ["reviewer"]\n\n[workflow]\ndefault = "quick"\n'
+    config.write_text(text, encoding="utf-8")
 
-    assert old_layout(project, apply=True) == [
-        f"{config}: removed retired [claude] table"
-    ]
-
-    text = config.read_text(encoding="utf-8")
-    assert "[claude]" not in text
-    assert "# my settings" in text and "max_rounds = 4" in text
-    assert old_layout(project) == []
+    assert old_layout(project, apply=True) == []
+    assert config.read_text(encoding="utf-8") == text
+    assert _agents(project).agent("reviewer").source.scope == "builtin"
 
 
 def test_a_never_edited_eject_from_0_1_19_is_brought_up_to_date(project):

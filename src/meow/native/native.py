@@ -14,7 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from meow.infrastructure.worktree import _push_branch
-from meow.native.native_custom import custom, workflow
+from meow.native.native_custom import custom, stage, workflow
 from meow.native.native_hooks import HookOptions, hook
 from meow.native.native_lint import LintOptions, lint
 from meow.native.native_prepare import (
@@ -61,6 +61,7 @@ __all__ = [
     "push",
     "role_prompt",
     "round_state",
+    "stage",
     "verdict",
     "verify",
     "workflow",

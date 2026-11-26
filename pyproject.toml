@@ -28,6 +28,7 @@ packages = ["src/meow"]
 [tool.hatch.build.targets.wheel.force-include]
 "skills" = "meow/_release/plugin/skills"
 ".claude-plugin" = "meow/_release/plugin/.claude-plugin"
+"workflows" = "meow/_release/plugin/workflows"
 "scripts/release" = "meow/_release/launcher"
 "requirements-release.txt" = "meow/_release/requirements-release.txt"
 "LICENSE" = "meow/_release/LICENSE"

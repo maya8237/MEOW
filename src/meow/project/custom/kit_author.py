@@ -52,7 +52,9 @@ def _files(root: Path, kind: str) -> list[Path]:
         return []
     if kind == "skills":
         return sorted(p for p in folder.iterdir() if p.is_dir())
-    suffixes = {".md", ".toml"} if kind == "agents" else {".toml"}  # .toml: retired
+    suffixes = {"agents": {".md", ".toml"}, "workflows": {".js", ".toml"}}.get(
+        kind, {".toml"}
+    )  # .toml agents and workflows: retired
     return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix in suffixes)
 
 

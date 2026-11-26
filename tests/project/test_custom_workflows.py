@@ -86,13 +86,12 @@ def test_fingerprint_tracks_used_agent_and_called_workflow(tmp_path):
     definitions = catalog(tmp_path, '[[steps]]\nid="audit"\nagent="explorer"')
     workflow = definitions.workflow("custom")
     before = fingerprint(workflow, definitions)
-    agent = definitions.agent("explorer")
-    path = tmp_path / "explorer.toml"
-    path.write_bytes(agent.file.read_bytes() + b"\n# changed\n")
     definitions = replace(
         definitions,
         catalog=tuple(
-            replace(item, file=path) if item.name == "explorer" else item
+            replace(item, prompt=item.prompt + " Changed.")
+            if item.name == "explorer"
+            else item
             for item in definitions.catalog
         ),
     )
